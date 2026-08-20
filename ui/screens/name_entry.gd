@@ -21,9 +21,18 @@ func _ready() -> void:
 	# Enter on a hardware keyboard should start the run, same as the button.
 	_name.text_submitted.connect(func(_t: String) -> void: _on_begin())
 	_name.text_changed.connect(_on_text_changed)
+	# Re-raise the keyboard when the field is tapped while it already has focus.
+	# Godot only calls virtual_keyboard_show() on FOCUS_ENTER, so once the field
+	# is focused a further tap does nothing — and a player who dismissed the
+	# keyboard would have no way to get it back.
+	_name.gui_input.connect(_on_name_gui_input)
 	_bind_preview()
 	_refresh_begin()
-	_name.grab_focus()
+	# Deliberately NOT grab_focus() here. Mobile browsers only honour a focus
+	# that happens inside a user gesture; focusing during _ready() falls outside
+	# one, and worse, it leaves the field focused so the player's first tap never
+	# fires FOCUS_ENTER and the keyboard never appears at all. Letting the tap do
+	# the focusing is what makes this work on iOS Safari.
 
 ## The card previews where the run opens. Read from GameState rather than baked
 ## into the scene so it cannot drift from what Home will actually show.
@@ -34,6 +43,15 @@ func _bind_preview() -> void:
 func _opening_district_name() -> String:
 	var d: Dictionary = gs.district_by_id("north_star_lot")
 	return str(d.get("name", "SPENARD"))
+
+func _on_name_gui_input(event: InputEvent) -> void:
+	if not _name.has_focus():
+		return  # FOCUS_ENTER is about to fire and will raise it anyway
+	# Explicit type: event.pressed off an untyped InputEvent is a Variant, and
+	# := cannot infer from it.
+	var mb := event as InputEventMouseButton
+	if mb != null and mb.pressed and DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+		DisplayServer.virtual_keyboard_show(_name.text, Rect2(), DisplayServer.KEYBOARD_TYPE_DEFAULT, gs.STREET_NAME_MAX, _name.caret_column)
 
 func _on_text_changed(_t: String) -> void:
 	_refresh_begin()

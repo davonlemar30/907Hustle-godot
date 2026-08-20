@@ -34,9 +34,9 @@ func _status_card(sys: Object) -> Control:
 	v.add_child(label("TIER %d  ·  TECHNIQUE %d" % [gs.boost_tier, gs.boost_technique], "CardTitle", 13, CREAM))
 	if gs.boost_tier < 2:
 		var need: int = gs.BOOST_TIER2_TECHNIQUE - gs.boost_technique
-		v.add_child(label("%d more clean lifts opens the bigger rooms  ·  heat %d/%d" % [maxi(0, need), gs.heat, gs.heat_max], "Muted", 11, AMBER))
+		v.add_child(label("%d more clean lifts opens the bigger rooms  ·  heat %d/%d" % [maxi(0, need), gs.heat_shown(), gs.heat_max], "Muted", 11, AMBER))
 	else:
-		v.add_child(label("Tier 3 needs a crew to field-assign  ·  heat %d/%d" % [gs.heat, gs.heat_max], "Muted", 11, MUTED))
+		v.add_child(label("Tier 3 needs a crew to field-assign  ·  heat %d/%d" % [gs.heat_shown(), gs.heat_max], "Muted", 11, MUTED))
 	return c
 
 func _fence_card(sys: Object) -> Control:
@@ -87,11 +87,11 @@ func _on_boost(target_id: String) -> void:
 	if not _gm.dispatch("boost", {"target_id": target_id}):
 		return
 	if gs.cash > before:
-		nav.show_toast("Out with $%d. Heat is %d/%d." % [gs.cash - before, gs.heat, gs.heat_max])
+		nav.show_toast("Out with $%d. Heat is %d/%d." % [gs.cash - before, gs.heat_shown(), gs.heat_max])
 	elif gs.boost_merchandise > before_goods:
 		nav.show_toast("$%d in goods for the fence." % (gs.boost_merchandise - before_goods))
 	else:
-		nav.show_toast("Empty handed. Heat is %d/%d." % [gs.heat, gs.heat_max])
+		nav.show_toast("Empty handed. Heat is %d/%d." % [gs.heat_shown(), gs.heat_max])
 
 func _on_fence() -> void:
 	var before: int = gs.cash

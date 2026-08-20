@@ -37,7 +37,7 @@ func _ready() -> void:
 	register_system("obligations", obligations)
 
 	var stickup = preload("res://systems/stickup.gd").new()
-	stickup.setup(_gs, rng, time)
+	stickup.setup(_gs, rng, time, self)
 	register_system("stickup", stickup)
 
 	var shark = preload("res://systems/shark.gd").new()
@@ -49,8 +49,15 @@ func _ready() -> void:
 	register_system("list", nine07list)
 
 	var boost = preload("res://systems/boost.gd").new()
-	boost.setup(_gs, rng, time)
+	boost.setup(_gs, rng, time, self)
 	register_system("boost", boost)
+
+	# Crew is registered after the surfaces that consult it, but registration
+	# order only decides dispatch routing, not construction — the surfaces look
+	# it up through system() at call time.
+	var crew = preload("res://systems/crew.gd").new()
+	crew.setup(_gs)
+	register_system("crew", crew)
 
 func register_system(sys_name: String, instance: Object) -> void:
 	_systems.append({"name": sys_name, "node": instance})

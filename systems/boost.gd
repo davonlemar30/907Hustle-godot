@@ -29,11 +29,24 @@ const AMBER := Color(0.882, 0.651, 0.227)
 var gs: Node
 var rng: Node
 var time_system: RefCounted
+var gm: Node
 
-func setup(game_state: Node, rng_manager: Node, time: RefCounted) -> void:
+func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node) -> void:
 	gs = game_state
 	rng = rng_manager
 	time_system = time
+	gm = manager
+
+func _apply_heat(amount: int) -> float:
+	var mult: float = 1.0
+	var crew: Object = gm.system("crew") if gm != null else null
+	if crew != null:
+		mult = crew.heat_multiplier()
+	# Kept fractional deliberately: rounding here is what made the reduction
+	# invisible on small amounts.
+	var scaled: float = float(amount) * mult if amount > 0 else 0.0
+	gs.heat = clampf(gs.heat + scaled, 0.0, float(gs.heat_max))
+	return scaled
 
 func can_handle(action: String) -> bool:
 	return action in ["boost", "fence_goods"]
@@ -99,8 +112,7 @@ func _run(target_id: String) -> Dictionary:
 		var take: int = rng.seeded_int_range(gs.run_seed, key + ":take", int(band[0]), int(band[1]))
 		gs.boost_technique += 1
 		# Canon scales heat by tier: 0.5 · 1 · 2, before district weighting.
-		var heat_add: int = 1 if tier == 1 else (1 if tier == 2 else 2)
-		gs.heat = clampi(gs.heat + heat_add, 0, gs.heat_max)
+		_apply_heat(1 if tier == 1 else (1 if tier == 2 else 2))
 		if tier == 3:
 			# Tier 3 comes out as merchandise, not cash. Slide fences it.
 			gs.boost_merchandise += take
@@ -110,7 +122,7 @@ func _run(target_id: String) -> Dictionary:
 			gs.log_activity("Left %s with goods worth $%d." % [str(t["name"]), take], GREEN)
 		result = {"ok": true, "success": true, "take": take, "tier": tier}
 	else:
-		gs.heat = clampi(gs.heat + 1, 0, gs.heat_max)
+		_apply_heat(1)
 		gs.log_activity("Walked out of %s empty. Somebody clocked you." % str(t["name"]), RED)
 		result = {"ok": true, "success": false, "take": 0, "tier": tier}
 
@@ -143,5 +155,10 @@ func _update_tier() -> void:
 	var was: int = gs.boost_tier
 	if gs.boost_technique >= gs.BOOST_TIER2_TECHNIQUE:
 		gs.boost_tier = maxi(gs.boost_tier, 2)
+	# Canon gates tier 3 on technique AND somebody who can be field-assigned.
+	# Crew exists now, so this finally has a way to become true.
+	var crew: Object = gm.system("crew") if gm != null else null
+	if gs.boost_technique >= gs.BOOST_TIER3_TECHNIQUE and crew != null and crew.has_field_crew():
+		gs.boost_tier = maxi(gs.boost_tier, 3)
 	if gs.boost_tier > was:
 		gs.log_activity("You're getting smooth. Bigger rooms are open now.", GREEN)

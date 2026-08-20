@@ -30,7 +30,7 @@ func _status_card() -> Control:
 	var left: int = gs.STICK_DAILY_CAP - gs.stick_daily_count
 	v.add_child(label("TIER %d  ·  %d/%d DONE TODAY" % [gs.stick_tier, gs.stick_daily_count, gs.STICK_DAILY_CAP], "CardTitle", 13, CREAM))
 	var line := "%d left today" % left if left > 0 else "Done for today"
-	v.add_child(label("%s  ·  %d/%d pulled off  ·  heat %d/%d" % [line, gs.stick_successes, gs.stick_attempts, gs.heat, gs.heat_max], "Muted", 11, MUTED if left > 0 else AMBER))
+	v.add_child(label("%s  ·  %d/%d pulled off  ·  heat %d/%d" % [line, gs.stick_successes, gs.stick_attempts, gs.heat_shown(), gs.heat_max], "Muted", 11, MUTED if left > 0 else AMBER))
 	return c
 
 func _target_row(sys: Object, t: Dictionary) -> Control:
@@ -66,6 +66,6 @@ func _on_hit(target_id: String) -> void:
 		return
 	# The dispatch already logged it; the toast is the immediate read.
 	if gs.cash > before_cash:
-		nav.show_toast("Took $%d. Heat is %d/%d." % [gs.cash - before_cash, gs.heat, gs.heat_max])
+		nav.show_toast("Took $%d. Heat is %d/%d." % [gs.cash - before_cash, gs.heat_shown(), gs.heat_max])
 	else:
-		nav.show_toast("It went wrong. Heat is %d/%d." % [gs.heat, gs.heat_max])
+		nav.show_toast("It went wrong. Heat is %d/%d." % [gs.heat_shown(), gs.heat_max])

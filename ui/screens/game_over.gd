@@ -24,7 +24,7 @@ func _fill_stats() -> void:
 	var rows := [
 		["DAYS SURVIVED", str(gs.day)],
 		["CASH LEFT", "$%s" % _commas(gs.cash)],
-		["HEAT", "%d/%d" % [gs.heat, gs.heat_max]],
+		["HEAT", "%d/%d" % [gs.heat_shown(), gs.heat_max]],
 		["HEALTH", "%d/%d" % [gs.health, gs.health_max]],
 		["RENT WEEKS MISSED", str(gs.rent_missed)],
 	]

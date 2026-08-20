@@ -433,6 +433,30 @@ Not ported, each its own feature: coworkers and their relationships, shift
 dialogue, `learn_job` workplace details, Deshawn's rent grace, contraband and
 danger-brought-home as warning sources, Exposure broadcasts, Dre's lending.
 
+## PROCESS: documentation ships with the PR  (adopted 2026-08-20)
+
+**Standing rule. Not a suggestion.**
+
+1. The relevant ClickUp doc section is updated **in the same session as the PR**,
+   before merge — Current Godot Build State, Design Decisions Log, and the Migration
+   Status block where the phase moves.
+2. A `HANDOFF.md` entry ships **inside the PR**, not after.
+3. A PR that introduces a new system carries its doc update in the same commit range.
+4. **No retro-documentation passes.**
+
+Phases 3c-3f were written up retroactively and this rule exists to stop that repeating.
+Retro-documentation loses the reasoning that was live at the time — the near-miss, the
+alternative that was discarded and why, the exact reason a number is what it is — and
+that reasoning is most of the value. The Build State page can be reconstructed from
+`git log`; the Decisions Log cannot.
+
+### What "documented" means for a new system
+
+- The file header names what was ported, from which canon source, and **what was not**.
+- Any term pinned at a canon neutral is named, with the system that will unpin it.
+- Any deliberate divergence from canon is named with the reason.
+- Any canon oddity found is recorded rather than silently corrected.
+
 ## Phase 3f (part 2): Curtis awareness  (added 2026-08-20)
 
 `autoload/curtis.gd` — port of `src/data/curtis-awareness.js` plus

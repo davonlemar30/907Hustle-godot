@@ -433,6 +433,72 @@ Not ported, each its own feature: coworkers and their relationships, shift
 dialogue, `learn_job` workplace details, Deshawn's rent grace, contraband and
 danger-brought-home as warning sources, Exposure broadcasts, Dre's lending.
 
+## Phase 3d (part 1): Stickup + Shark  (added 2026-08-20)
+
+Two of the four criminal surfaces. 907List and Boost are part 2 — see the note
+at the end of this section for why the phase split.
+
+- **`systems/stickup.gd`** — the nine canon `STICK_TARGETS` (src/data/districts.js),
+  `STICK_DAILY_CAP = 2`, and canon's chance formula. **This is what finally makes
+  Heat a live stat**; it sat at 0/15 in the HUD doing nothing until now.
+- **`systems/shark.gd`** — the four canon `SHARK_BORROWERS` and
+  `SHARK_TERMS = {2: 0.40, 4: 0.25, 7: 0.15}`. Notes settle on `day_crossed`,
+  reusing the same machinery the obligations run on. Dre takes 12% of the
+  interest on every note that comes back.
+
+### Terms pinned at canon neutral
+
+Both formulas reference systems that do not exist yet. Rather than invent
+values, each term sits at its canon default and is named in the file header so
+the gap is legible when those systems land:
+
+| term | pinned to | why |
+| --- | --- | --- |
+| `combat` / `intelligence` | 1 | `ATTRIBUTE_DEFAULTS` — no attribute system |
+| `weaponBonus` | 0 | no equipment system; tier 2+ weapon gating relaxed to suit |
+| `planning` (casing, crew) | 0 | no casing, no crew |
+| `districtDelta` | 0 | no district heat/attention tracking |
+| Dre bond | false | no relationship bands |
+
+So a tier-1 mark at 0 heat reads 0.62 - 0.08 = **0.54**, which is what the screen
+shows. When attributes land, that number moves on its own.
+
+### `RngManager.seeded_unit_10k`
+
+Canon uses **two** normalisations for the same hash: `hash / 2^32` in most
+places, and `hash % 10000 / 10000` for others — the Shark default roll
+(game-core.js:6561) among them. They produce different values from the same key,
+so the roll has to use whichever form canon used or Phase 5's dual-run parity
+will not hold. Both live in `RngManager` now; pick by what canon does at that
+call site, not by preference.
+
+### `ui/screens/surface_base.gd` and the screen generator
+
+The surfaces are all "a list of state-shaped rows", so the shared builders live
+in `surface_base.gd` and each surface overrides `_build_body()` (never
+`_bind_content()` — the base does the clear-and-rebuild).
+
+`scripts/make_surface_screen.py <name> <heading> <subtitle> [backdrop]` derives a
+new surface scene from `hustle.tscn`: chrome verbatim, content nodes dropped, a
+Title and one empty `Body` VBox left behind. Re-authoring 600 lines of chrome per
+surface would guarantee they drift.
+
+**Gotcha found here:** `autowrap_mode = WORD_SMART` on a Label inside an HBox
+with an expanding sibling collapses it to one character per line. `label()` takes
+`wrap` as an opt-in for that reason; only prose asks for it. `jobs.gd` had the
+same latent bug and was fixed with it.
+
+### Why the phase split
+
+3d is nineteen canon actions across four surfaces (`BUY_907LIST`,
+`BUY_BULK_907LIST`, `SELL_907LIST`, `QUICK_SELL_907LIST`, `DELIVER_907LIST`,
+`FILL_BUYER_REQUEST`, `BOOST`, `SHOPLIFT`, `CASE_TARGET`, `ASK_BOOST_WINDOW`,
+`ASSIGN_BOOST_CREW`, `FENCE_BOOST_GOODS`, `STICKUP`, `ROB`, `ROB_DEALER`,
+`FUND_SHARK`, `ENFORCE_SHARK`, `EXTEND_SHARK`, `FORGIVE_SHARK`). Stickup and
+Shark went first because they hook cleanly into infrastructure that already
+exists — Heat and the day clock. 907List and Boost need an item/inventory model
+and a fencing loop, which is its own shape of work.
+
 ## Working notes / gotchas
 - **Build loop:** `session_activate` → edit scene/theme → `scene_open(force_reload)`
   → `project_run(mode=current)` → `editor_screenshot(source=game)` to verify.

@@ -1,0 +1,172 @@
+extends RefCounted
+## Shark — lending money out and finding out whether it comes back.
+##
+## Ported from game-core.js FUND_SHARK (~7970), resolveSharkLoans (~6556), and
+## the SHARK_BORROWERS / SHARK_TERMS tables.
+##
+## A note runs on the day clock, which is why this system fits the day_crossed
+## machinery the obligations already use. On the due day it settles:
+##
+##   probability = clamp(borrower.risk
+##                       + (amount >= 500 ? 0.18 : amount >= 250 ? 0.08 : 0)
+##                       + (term == 2 ? 0.12 : term == 4 ? 0.04 : -0.04)
+##                       - intelligence * 0.025
+##                       - (bonded with Dre ? 0.08 : 0),
+##                       0.03, 0.82)
+##
+## Repaid: the borrower returns amount + interest, minus Dre's 12% of the
+## interest. Defaulted: the note sits open until the player decides.
+##
+## Pinned at canon neutral because their systems do not exist yet:
+##   intelligence → ATTRIBUTE_DEFAULTS.intelligence = 1
+##   Dre bond     → false (no relationship bands yet)
+##
+## Not ported: ENFORCE's violence and heat consequences beyond the cash, Dre's
+## standing moving with each outcome, Exposure observations.
+
+const GREEN := Color(0.451, 0.722, 0.404)
+const RED := Color(0.827, 0.161, 0.125)
+const AMBER := Color(0.882, 0.651, 0.227)
+
+## Canon ATTRIBUTE_DEFAULTS.intelligence for a fresh run.
+const INTELLIGENCE_DEFAULT := 1
+
+var gs: Node
+var rng: Node
+
+func setup(game_state: Node, rng_manager: Node) -> void:
+	gs = game_state
+	rng = rng_manager
+	gs.day_crossed.connect(_on_day_crossed)
+
+func can_handle(action: String) -> bool:
+	return action in ["fund_shark", "enforce_shark", "extend_shark", "forgive_shark"]
+
+func handle(action: String, payload: Dictionary) -> Dictionary:
+	match action:
+		"fund_shark":
+			return _fund(str(payload.get("borrower_id", "")), int(payload.get("amount", 0)), int(payload.get("term", 4)))
+		"enforce_shark":
+			return _resolve_defaulted(int(payload.get("loan_id", -1)), "enforce")
+		"extend_shark":
+			return _resolve_defaulted(int(payload.get("loan_id", -1)), "extend")
+		"forgive_shark":
+			return _resolve_defaulted(int(payload.get("loan_id", -1)), "forgive")
+	return {"ok": false, "reason": "Unknown shark action."}
+
+func loan_by_id(loan_id: int) -> Dictionary:
+	for l in shark_open_loans():
+		if int(l["id"]) == loan_id:
+			return l
+	return {}
+
+func shark_open_loans() -> Array:
+	return gs.shark_loans
+
+## Canon refuses a second note to a borrower who already owes.
+func has_open_note(borrower_id: String) -> bool:
+	for l in gs.shark_loans:
+		if str(l["borrower_id"]) == borrower_id and str(l["status"]) in ["active", "extended", "defaulted"]:
+			return true
+	return false
+
+func fund_blocker(borrower_id: String, amount: int) -> String:
+	if gs.game_over:
+		return "The run is over."
+	var b: Dictionary = gs.borrower_by_id(borrower_id)
+	if b.is_empty():
+		return "No such borrower."
+	if has_open_note(borrower_id):
+		return "That borrower already has an open note."
+	if amount <= 0:
+		return "Pick an amount."
+	if amount > int(b["max"]):
+		return "%s won't take more than $%d." % [str(b["name"]), int(b["max"])]
+	if gs.cash < amount:
+		return "You don't have $%d." % amount
+	return ""
+
+func _fund(borrower_id: String, amount: int, term: int) -> Dictionary:
+	var blocked := fund_blocker(borrower_id, amount)
+	if not blocked.is_empty():
+		return {"ok": false, "reason": blocked}
+	if not gs.SHARK_TERMS.has(term):
+		return {"ok": false, "reason": "Terms are 2, 4 or 7 days."}
+	var b: Dictionary = gs.borrower_by_id(borrower_id)
+
+	gs.cash -= amount
+	var loan := {
+		"id": gs.shark_next_loan_id,
+		"borrower_id": borrower_id,
+		"amount": amount,
+		"term": term,
+		"opened_day": gs.day,
+		"due_day": gs.day + term,
+		"status": "active",
+		"risk_label": str(b["risk_label"]),
+	}
+	gs.shark_next_loan_id += 1
+	gs.shark_loans.append(loan)
+	gs.log_activity("%s takes $%d for %d days." % [str(b["name"]), amount, term], AMBER)
+	return {"ok": true, "loan_id": int(loan["id"])}
+
+## Canon default probability, with the unbuilt terms at neutral (see header).
+func default_probability(loan: Dictionary) -> float:
+	var b: Dictionary = gs.borrower_by_id(str(loan["borrower_id"]))
+	var amount: int = int(loan["amount"])
+	var term: int = int(loan["term"])
+	var amount_bump: float = 0.18 if amount >= 500 else (0.08 if amount >= 250 else 0.0)
+	var term_bump: float = 0.12 if term == 2 else (0.04 if term == 4 else -0.04)
+	var p: float = float(b["risk"]) + amount_bump + term_bump - float(INTELLIGENCE_DEFAULT) * 0.025
+	return clampf(p, 0.03, 0.82)
+
+func interest_for(loan: Dictionary) -> int:
+	return int(round(float(loan["amount"]) * float(gs.SHARK_TERMS[int(loan["term"])])))
+
+func _resolve_defaulted(loan_id: int, how: String) -> Dictionary:
+	var loan: Dictionary = loan_by_id(loan_id)
+	if loan.is_empty() or str(loan["status"]) != "defaulted":
+		return {"ok": false, "reason": "No defaulted note by that id."}
+	var b: Dictionary = gs.borrower_by_id(str(loan["borrower_id"]))
+	var interest: int = interest_for(loan)
+
+	match how:
+		"extend":
+			# Canon gives two more days and leaves the note open.
+			loan["status"] = "extended"
+			loan["due_day"] = gs.day + 2
+			gs.log_activity("%s gets two more days. The note stays open." % str(b["name"]), AMBER)
+		"forgive":
+			loan["status"] = "forgiven"
+			gs.log_activity("You let %s off the note. Word travels." % str(b["name"]), AMBER)
+		"enforce":
+			# The principal comes back; the interest does not. Canon's violence
+			# and heat consequences are a later feature.
+			gs.cash += int(loan["amount"])
+			loan["status"] = "enforced"
+			gs.log_activity("Collected $%d from %s the hard way." % [int(loan["amount"]), str(b["name"])], RED)
+	return {"ok": true, "interest": interest}
+
+func _on_day_crossed() -> void:
+	if gs.game_over:
+		return
+	for loan in gs.shark_loans:
+		if not str(loan["status"]) in ["active", "extended"]:
+			continue
+		if gs.day < int(loan["due_day"]):
+			continue
+		var b: Dictionary = gs.borrower_by_id(str(loan["borrower_id"]))
+		# Canon keys this on seed:shark:loanId:dueDay and normalises with
+		# `% 10000 / 10000` rather than / 2^32 — see RngManager.seeded_unit_10k.
+		var key := "shark:%d:%d" % [int(loan["id"]), int(loan["due_day"])]
+		var roll: float = rng.seeded_unit_10k(gs.run_seed, key)
+		if roll < default_probability(loan):
+			loan["status"] = "defaulted"
+			gs.log_activity("%s misses the deadline. The note needs a decision." % str(b["name"]), RED)
+		else:
+			var interest: int = interest_for(loan)
+			var dre_cut: int = int(round(float(interest) * gs.SHARK_DRE_CUT))
+			var returned: int = int(loan["amount"]) + interest - dre_cut
+			gs.cash += returned
+			loan["status"] = "repaid"
+			gs.log_activity("%s returns $%d after Dre's $%d cut." % [str(b["name"]), returned, dre_cut], GREEN)

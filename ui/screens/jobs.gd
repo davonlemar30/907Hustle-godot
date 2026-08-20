@@ -180,18 +180,21 @@ func _card() -> PanelContainer:
 	p.theme_type_variation = &"Card"
 	return p
 
-func _label(text: String, variation: String, size: int, col: Color) -> Label:
+func _label(text: String, variation: String, size: int, col: Color, wrap: bool = false) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.theme_type_variation = StringName(variation)
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", col)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Same hazard as surface_base: a wrapping label squeezed by an expanding
+	# sibling in an HBox collapses to one character per line.
+	if wrap:
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return l
 
 func _note(text: String) -> Control:
 	var card := _card()
-	card.add_child(_label(text, "Muted", 12, MUTED))
+	card.add_child(_label(text, "Muted", 12, MUTED, true))
 	return card
 
 func _spacer(h: int) -> Control:

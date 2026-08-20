@@ -154,18 +154,27 @@ IMPORT_PARAMS = {
     "detect_3d/compress_to": "0",     # this is a 2D project; never silently switch to VRAM
 }
 
+# Assets a lossless RULE claims keep a lossless import too. Lossy WebP rings around
+# hard edges, which on an icon's alpha channel shows up as a halo when the nav bar
+# tints it. Icons are a couple of KB either way, so there is nothing to win here.
+LOSSLESS_IMPORT_PARAMS = dict(IMPORT_PARAMS, **{"compress/mode": "0"})
+
 
 def enforce_import_settings(dry_run: bool) -> int:
     """Pin texture import params on generated .import files.
 
     Godot writes these with defaults on first import and then honours whatever is
     in the file, so committing them is how the setting sticks. SVGs are left
-    lossless -- they rasterise to small textures and lossy blurs their edges.
+    lossless -- they rasterise to small textures and lossy blurs their edges --
+    and so is any WebP whose rule asked for lossless, for the same reason.
     """
     changed = 0
     for imp in sorted(ASSETS.rglob("*.webp.import")):
+        source = imp.relative_to(ROOT).as_posix().removesuffix(".import")
+        _, _, lossless = rule_for(source)
+        params = LOSSLESS_IMPORT_PARAMS if lossless else IMPORT_PARAMS
         text = original = imp.read_text(encoding="utf-8")
-        for key, value in IMPORT_PARAMS.items():
+        for key, value in params.items():
             pattern = rf"^{re.escape(key)}=.*$"
             if re.search(pattern, text, flags=re.M):
                 text = re.sub(pattern, f"{key}={value}", text, flags=re.M)

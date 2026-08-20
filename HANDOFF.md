@@ -183,9 +183,9 @@ anchored bottom-center of the root). Side tabs: STREET · HUSTLE | (home) | PHON
   only shows it on Street in the *early* game before Hustle unlocks.) Also 907List flips + jobs.
 - **Phone** = texts/contacts/bills (People & relationships live here).
 - **More** = settings/status/menu (turf/crew likely surface here or on Home).
-Icon placeholders in use (need real art): Street→`icon-travel` (want a walking figure),
-Hustle→`icon-market` (want a running figure), Phone→`icon-chat` (want a handset).
-Home→`icon-home`, More→`icon-menu` are fine.
+Icons (real art, wired in all four nav scenes): Street→`nav/icon-street.webp` (walking
+figure), Hustle→`nav/icon-hustle.webp` (running figure), Phone→`nav/icon-phone.webp`
+(handset). Home→`icon-home`, More→`icon-menu` unchanged.
 
 ## Canon (verified in web source — use for content, not guesses)
 - **Primary travel areas:** Spenard, Downtown, **Industrial Service Roads**.
@@ -238,16 +238,73 @@ Live build, rebuilt on every push to `main`:
 - Renaming `.png` → `.webp` invalidates the `uid` in `.tscn` files. The script strips the
   stale `uid` and leaves `path=`; Godot re-resolves by path and re-adds a uid on next save.
 - The script is idempotent — re-running skips anything already within budget.
+- **Nav icons must be white-on-alpha, not black-on-white.** The bar tints them with
+  `self_modulate`, which multiplies — so the glyph has to live in the alpha channel with
+  white RGB, or it renders as a square (opaque background) or a black smudge (dark RGB).
+  `scripts/icon_to_mask.py in.webp out.webp` does the conversion: it sniffs the background
+  from the corners, derives alpha from luminance, repaints RGB white, and rescales the glyph
+  to ~80% of the canvas so it matches the hand-authored SVG icons optically.
+- Lossless rules now carry through to import. `enforce_import_settings` used to pin
+  `compress/mode=1` on *every* `.webp.import`; it now honours the `RULES` lossless flag, so
+  `assets/icons/**` imports lossless. Lossy rings around hard edges, and on an icon's alpha
+  that reads as a halo once the nav bar tints it.
 
 ## Known issues (not yet fixed)
 
-- **Nav icon PNGs have no transparency.** `icon-street`, `icon-hustl`, `icon-phone` are black
-  art on a solid white background, unlike the existing SVG nav icons which are transparent and
-  get tinted via `self_modulate`. They need alpha before they can be wired into the dark nav
-  bar. (`icon-street` has an alpha channel but it is opaque.)
-- **Missing font glyphs.** `↗` (U+2197, home.tscn:480 "LIVE UPDATE ↗") and `♛` (U+265B,
-  home.tscn:675 "♛  TURF & CREW") render as tofu boxes — the subsetted woff2 fonts lack them.
-  Other symbols in use (`▲ ● ○ • ⚠ ›`) render fine. Either swap the glyphs or add a fallback font.
+- **Missing font glyphs (wider than first recorded).** Verified with `Font.has_char()`
+  against all three theme fonts: none of Anton, Barlow Condensed or Share Tech Mono carry
+  `↗` U+2197, `♛` U+265B, `▲` U+25B2 or `⚠` U+26A0. Only `•` U+2022 is present. These
+  **render fine in the editor** because macOS supplies a system fallback, and break in the
+  web export, which has none — so the editor is not a valid check for this. In use at
+  `home.tscn:480` (`LIVE UPDATE ↗`), `home.tscn:675` (`♛ TURF & CREW`), and the ▲/⚠ in
+  market and hustle. Fix by swapping the glyphs for ASCII or adding a fallback font to the
+  theme.
+
+## App flow: Title → Name Entry → Home  (added 2026-08-20)
+
+`main_scene` is `title.tscn`. The chain is Title → Name Entry → Home, then the bottom nav
+moves between the four game screens.
+
+- **`ScreenManager`** (`autoload/screen_manager.gd`) is the only thing that swaps screens.
+  Screens call `nav.go_to(path)`, never `change_scene_to_file()` directly. The change is
+  deferred: a nav button is mid-signal when it calls, and freeing the scene that owns that
+  button inside its own handler crashes.
+- **Title and Name Entry do NOT extend `screen_base.gd`.** They have no chrome, no HUD and
+  no nav. Nav visibility therefore needs no logic — those scenes just have no NavBar.
+- **The nav bar is now real.** Each cell is a flat `Button` (48px, clearing the 44px tap
+  floor) wrapping a full-rect `VBoxContainer` with `mouse_filter = 2` that holds the old
+  Ind/Ico/L. The raised HOME FAB has a transparent `HomeBtn` over it. Connections are made
+  once in `screen_base.gd::_wire_nav()` from `_ready()` — never `_bind_content()`, which
+  re-runs on every state change.
+- **Phone and More are `disabled`**, not wired to a missing scene.
+- **New-run state is canon.** `GameState.reset_to_new_game()` mirrors the web reducer's
+  START_RUN branch: `$100`, heat 0, health 100, debt 0, Spenard, Day 1 MORNING. Not the
+  CHOOSE_BACKGROUND branch ($375 + a $620 note from Dre, `run.premise = legacy_established`)
+  — that is a different opening this build has no screen for. `sanitize_street_name()` is a
+  port of `sanitizeStreetName` (`game-core.js:83-86`), 16-char cap, and an empty result
+  blocks the run exactly as canon does.
+- **CONTINUE RUN and the LAST RUN line are hidden**, gated on `title.gd::_has_save()`, which
+  returns false until save/load lands in Phase 4. That one function is the whole switch.
+
+## Touch input on mobile — there was never a bug  (2026-08-20)
+
+Recorded because it cost real time and looks like a bug from the outside.
+
+The report was "nothing responds to taps on the phone." The actual cause: **Home has no
+functional controls at all.** `home.gd`, `hustle.gd` and `street.gd` contain zero
+`connect()` calls; only `market.gd` wires anything (buy/sell). The app booted onto Home, and
+the nav that would have reached Market had no Buttons in it. Nothing was tappable, so
+nothing responded.
+
+Touch itself was fine, and was proven so before any fix was attempted: dispatching a
+synthetic touch-drag at the deployed canvas scrolled Godot's ScrollContainer. Canvas
+geometry was already correct too (375x812 CSS against 750x1624 render at DPR 2), and
+Godot's own shell already ships `touch-action: none` on `<body>` plus a correct viewport
+meta. **Check whether a control is actually connected before suspecting the web layer.**
+
+The one genuine weakness found: `touch-action` does not inherit, so the canvas computed to
+`auto`. `html/head_include` now pins `#canvas{touch-action:none}`. That is hardening, not
+the fix.
 
 ## Working notes / gotchas
 - **Build loop:** `session_activate` → edit scene/theme → `scene_open(force_reload)`

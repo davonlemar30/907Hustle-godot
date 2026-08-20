@@ -2,20 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bkxfguwgtk470"
-path="res://.godot/imported/icon-hustl.webp-fdb4ab99774aaf02ec41102410c26267.ctex"
+uid="uid://dc2dh6p7alk6n"
+path="res://.godot/imported/icon-hustle.webp-86c2f2e85c83f19c6c91f572892b6d75.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/icons/icon-hustl.webp"
-dest_files=["res://.godot/imported/icon-hustl.webp-fdb4ab99774aaf02ec41102410c26267.ctex"]
+source_file="res://assets/icons/nav/icon-hustle.webp"
+dest_files=["res://.godot/imported/icon-hustle.webp-86c2f2e85c83f19c6c91f572892b6d75.ctex"]
 
 [params]
 
-compress/mode=1
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.9
 compress/uastc_level=0

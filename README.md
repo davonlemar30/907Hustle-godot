@@ -9,8 +9,16 @@ game data and logic.
 
 ## Status
 
-Static, canon-populated screens with the state spine now in place. **No game logic
-yet** — screens read a fixed mid-game snapshot; the reducer port is a later phase.
+Playable shell: the game opens on a title screen, NEW RUN leads through name entry
+into a fresh Day 1, and the bottom nav moves between the four game screens.
+
+| Screen | File | Notes |
+| --- | --- | --- |
+| Title | `ui/screens/title.tscn` | NEW RUN / CONTINUE RUN; standalone, no chrome |
+| Name Entry | `ui/screens/name_entry.tscn` | street name + canon Day 1 preview |
+
+Beyond the opening, screens still read a largely fixed mid-game snapshot; the
+reducer port is a later phase.
 
 | Screen | File | Notes |
 | --- | --- | --- |
@@ -26,6 +34,9 @@ mini-map, feed, messages), and Hustle (Today's Take, income surfaces, Curtis). O
 existing screens).
 
 **Nav:** `STREET · HUSTLE · HOME · PHONE · MORE` with a raised red center HOME button.
+Each cell is a real Button routed through the `ScreenManager` autoload. Phone and More
+are disabled until those screens exist.
+
 Not yet built: Phone, More, Crew/Territory, Travel detail, and the Hustle sub-screens
 (Jobs, 907List, Boost, Stickup, Shark).
 
@@ -33,6 +44,7 @@ Not yet built: Phone, More, Crew/Territory, Travel detail, and the Hustle sub-sc
 
 ```
 autoload/game_state.gd     # GameState singleton — the run's state spine
+autoload/screen_manager.gd # the only thing that swaps top-level screens
 ui/screens/*.tscn|.gd      # one scene per screen (Street is script-driven)
 ui/components/atmosphere.tscn   # reusable screen-space FX layer, instanced everywhere
 ui/theme/hustle_theme.tres      # palette, fonts, SVG 9-slice skins, type variations

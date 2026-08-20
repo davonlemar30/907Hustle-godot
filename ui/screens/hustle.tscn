@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
 [ext_resource type="Script" path="res://ui/screens/hustle.gd" id="scr"]
@@ -6,9 +6,7 @@
 [ext_resource type="Texture2D" path="res://assets/textures/bg-hustle.webp" id="bg_hustle"]
 [ext_resource type="Texture2D" path="res://assets/textures/logo1trans.webp" id="logo"]
 [ext_resource type="Texture2D" uid="uid://ciawbrqicop31" path="res://assets/icons/nav/icon-home.svg" id="ic_home"]
-[ext_resource type="Texture2D" uid="uid://7hxto5lndefv" path="res://assets/icons/nav/icon-travel.svg" id="ic_travel"]
 [ext_resource type="Texture2D" uid="uid://qxxecxf6e7f8" path="res://assets/icons/nav/icon-market.svg" id="ic_market"]
-[ext_resource type="Texture2D" uid="uid://bn4ak40fmlcau" path="res://assets/icons/ui/icon-chat.svg" id="ic_chat"]
 [ext_resource type="Texture2D" uid="uid://cqkn2m0xs6w3d" path="res://assets/icons/ui/icon-menu.svg" id="ic_menu"]
 [ext_resource type="Texture2D" uid="uid://dxeaajkgr7tyr" path="res://assets/icons/hud/icon-heat.svg" id="ic_heat"]
 [ext_resource type="Texture2D" uid="uid://c11k5uwpyoqbd" path="res://assets/icons/hud/icon-health.svg" id="ic_health"]
@@ -19,6 +17,9 @@
 [ext_resource type="Texture2D" uid="uid://r7311yoxptea" path="res://assets/icons/ui/icon-cash.svg" id="ic_cash"]
 [ext_resource type="Texture2D" uid="uid://1bbv00nt3ok8" path="res://assets/icons/ui/icon-external.svg" id="ic_ext"]
 [ext_resource type="Texture2D" uid="uid://c51emj88yov0m" path="res://assets/icons/ui/icon-warning.svg" id="ic_warn"]
+[ext_resource type="Texture2D" path="res://assets/icons/nav/icon-street.webp" id="ic_nav_street"]
+[ext_resource type="Texture2D" path="res://assets/icons/nav/icon-hustle.webp" id="ic_nav_hustle"]
+[ext_resource type="Texture2D" path="res://assets/icons/nav/icon-phone.webp" id="ic_nav_phone"]
 
 [sub_resource type="StyleBoxFlat" id="SB_fab"]
 bg_color = Color(0.7, 0.13, 0.1, 1)
@@ -888,51 +889,75 @@ theme_type_variation = &"NavBar"
 layout_mode = 2
 theme_override_constants/separation = 3
 
-[node name="Street" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+[node name="Street" type="Button" parent="Shell/NavBar/NavRow"]
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
+focus_mode = 0
+flat = true
+
+[node name="V" type="VBoxContainer" parent="Shell/NavBar/NavRow/Street"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Street"]
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Street/V"]
 custom_minimum_size = Vector2(0, 2)
 layout_mode = 2
 color = Color(0, 0, 0, 0)
 
-[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Street"]
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Street/V"]
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
 size_flags_horizontal = 4
-texture = ExtResource("ic_travel")
+texture = ExtResource("ic_nav_street")
 expand_mode = 1
 stretch_mode = 5
 self_modulate = Color(0.42, 0.42, 0.42, 1)
 
-[node name="L" type="Label" parent="Shell/NavBar/NavRow/Street"]
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Street/V"]
 layout_mode = 2
 theme_type_variation = &"NavLabel"
 horizontal_alignment = 1
 text = "STREET"
 
-[node name="Hustle" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+[node name="Hustle" type="Button" parent="Shell/NavBar/NavRow"]
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
+focus_mode = 0
+flat = true
+
+[node name="V" type="VBoxContainer" parent="Shell/NavBar/NavRow/Hustle"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Hustle"]
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Hustle/V"]
 custom_minimum_size = Vector2(0, 2)
 layout_mode = 2
 color = Color(1, 0.29, 0.239, 1)
 
-[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Hustle"]
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Hustle/V"]
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
 size_flags_horizontal = 4
-texture = ExtResource("ic_market")
+texture = ExtResource("ic_nav_hustle")
 expand_mode = 1
 stretch_mode = 5
 self_modulate = Color(1, 0.29, 0.239, 1)
 
-[node name="L" type="Label" parent="Shell/NavBar/NavRow/Hustle"]
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Hustle/V"]
 layout_mode = 2
 theme_type_variation = &"NavLabel"
 theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
@@ -944,42 +969,66 @@ custom_minimum_size = Vector2(64, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Phone" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+[node name="Phone" type="Button" parent="Shell/NavBar/NavRow"]
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
+focus_mode = 0
+flat = true
+
+[node name="V" type="VBoxContainer" parent="Shell/NavBar/NavRow/Phone"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Phone"]
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Phone/V"]
 custom_minimum_size = Vector2(0, 2)
 layout_mode = 2
 color = Color(0, 0, 0, 0)
 
-[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Phone"]
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Phone/V"]
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
 size_flags_horizontal = 4
-texture = ExtResource("ic_chat")
+texture = ExtResource("ic_nav_phone")
 expand_mode = 1
 stretch_mode = 5
 self_modulate = Color(0.42, 0.42, 0.42, 1)
 
-[node name="L" type="Label" parent="Shell/NavBar/NavRow/Phone"]
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Phone/V"]
 layout_mode = 2
 theme_type_variation = &"NavLabel"
 horizontal_alignment = 1
 text = "PHONE"
 
-[node name="More" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+[node name="More" type="Button" parent="Shell/NavBar/NavRow"]
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
+focus_mode = 0
+flat = true
+
+[node name="V" type="VBoxContainer" parent="Shell/NavBar/NavRow/More"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/More"]
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/More/V"]
 custom_minimum_size = Vector2(0, 2)
 layout_mode = 2
 color = Color(0, 0, 0, 0)
 
-[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/More"]
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/More/V"]
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -988,7 +1037,7 @@ expand_mode = 1
 stretch_mode = 5
 self_modulate = Color(0.42, 0.42, 0.42, 1)
 
-[node name="L" type="Label" parent="Shell/NavBar/NavRow/More"]
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/More/V"]
 layout_mode = 2
 theme_type_variation = &"NavLabel"
 horizontal_alignment = 1
@@ -1032,5 +1081,20 @@ theme_type_variation = &"NavLabel"
 theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
 horizontal_alignment = 1
 text = "HOME"
+
+[node name="HomeBtn" type="Button" parent="."]
+layout_mode = 1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -34.0
+offset_top = -86.0
+offset_right = 34.0
+offset_bottom = -9.0
+grow_horizontal = 2
+grow_vertical = 0
+focus_mode = 0
+flat = true
 
 [node name="Atmosphere" parent="." instance=ExtResource("atmo")]

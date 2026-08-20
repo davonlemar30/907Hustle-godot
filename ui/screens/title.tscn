@@ -1,0 +1,220 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
+[ext_resource type="Script" path="res://ui/screens/title.gd" id="scr"]
+[ext_resource type="PackedScene" path="res://ui/components/atmosphere.tscn" id="atmo"]
+[ext_resource type="Texture2D" path="res://assets/textures/bg-title.webp" id="bg_title"]
+[ext_resource type="Texture2D" path="res://assets/textures/logo1trans.webp" id="logo"]
+
+[sub_resource type="Gradient" id="GradScrim"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(0.027, 0.027, 0.027, 0, 0.027, 0.027, 0.027, 0.92)
+
+[sub_resource type="GradientTexture2D" id="TexScrim"]
+gradient = SubResource("GradScrim")
+width = 8
+height = 256
+fill_from = Vector2(0, 0.42)
+fill_to = Vector2(0, 0.9)
+
+[sub_resource type="Gradient" id="GradFlake"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="TexFlake"]
+gradient = SubResource("GradFlake")
+width = 8
+height = 8
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+[sub_resource type="ParticleProcessMaterial" id="MatSnow"]
+particle_flags_disable_z = true
+emission_shape = 3
+emission_box_extents = Vector3(200, 4, 1)
+direction = Vector3(0, 1, 0)
+spread = 14.0
+initial_velocity_min = 8.0
+initial_velocity_max = 22.0
+gravity = Vector3(3, 12, 0)
+scale_min = 0.35
+scale_max = 1.0
+
+[node name="Title" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("theme")
+script = ExtResource("scr")
+
+[node name="BG" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.027, 0.027, 0.027, 1)
+
+[node name="BGPhoto" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+modulate = Color(1.7, 1.7, 1.7, 1)
+texture = ExtResource("bg_title")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Scrim" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("TexScrim")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Snow" type="GPUParticles2D" parent="."]
+position = Vector2(187, -16)
+amount = 20
+process_material = SubResource("MatSnow")
+texture = SubResource("TexFlake")
+lifetime = 14.0
+preprocess = 7.0
+speed_scale = 0.85
+modulate = Color(1, 1, 1, 0.5)
+
+[node name="Pad" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 40
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 36
+
+[node name="V" type="VBoxContainer" parent="Pad"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="TopSpace" type="Control" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Logo" type="TextureRect" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 104)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("logo")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Divider" type="HBoxContainer" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 26)
+layout_mode = 2
+mouse_filter = 2
+alignment = 1
+theme_override_constants/separation = 10
+
+[node name="L1" type="ColorRect" parent="Pad/V/Divider"]
+custom_minimum_size = Vector2(96, 1)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.55, 0.12, 0.1, 1)
+
+[node name="Dot" type="ColorRect" parent="Pad/V/Divider"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+rotation = 0.785398
+pivot_offset = Vector2(3.5, 3.5)
+color = Color(0.83, 0.18, 0.14, 1)
+
+[node name="L2" type="ColorRect" parent="Pad/V/Divider"]
+custom_minimum_size = Vector2(96, 1)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.55, 0.12, 0.1, 1)
+
+[node name="LastRun" type="Label" parent="Pad/V"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.62, 0.6, 0.58, 1)
+theme_override_font_sizes/font_size = 10
+horizontal_alignment = 1
+text = "LAST RUN"
+
+[node name="Gap" type="Control" parent="Pad/V"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="NewRun" type="Button" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+focus_mode = 0
+theme_type_variation = &"BtnPrimary"
+theme_override_font_sizes/font_size = 16
+text = ">>  NEW RUN"
+
+[node name="BtnGap" type="Control" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ContinueRun" type="Button" parent="Pad/V"]
+visible = false
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+focus_mode = 0
+theme_type_variation = &"BtnSecondary"
+theme_override_font_sizes/font_size = 14
+text = "CONTINUE RUN"
+
+[node name="HelpGap" type="Control" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="HowTo" type="Label" parent="Pad/V"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 11
+horizontal_alignment = 1
+text = "HOW TO PLAY"
+
+[node name="HowToRule" type="CenterContainer" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 7)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Line" type="ColorRect" parent="Pad/V/HowToRule"]
+custom_minimum_size = Vector2(78, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.83, 0.18, 0.14, 0.8)
+
+[node name="Atmosphere" parent="." instance=ExtResource("atmo")]

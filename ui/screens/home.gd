@@ -10,6 +10,40 @@ extends "res://ui/screens/screen_base.gd"
 const RED := Color(0.827, 0.161, 0.125, 1)
 const DIM := Color(1, 1, 1, 0.06)
 
+@onready var _gm: Node = get_node("/root/GameManager")
+
+func _ready() -> void:
+	super()
+	_wire_taps()
+
+func _wire_taps() -> void:
+	# The operation card's three actions are already Buttons in the scene; only
+	# the first spends time for now, the other two are Phase 4 story beats.
+	var move := get_node_or_null("Shell/Scroll/Pad/Content/OpCard/V/Actions/Move") as Button
+	if move:
+		move.pressed.connect(_on_move_product)
+	for spec in [["Post", "Posting Eli"], ["Lay", "Laying low"]]:
+		var b := get_node_or_null("Shell/Scroll/Pad/Content/OpCard/V/Actions/" + spec[0]) as Button
+		if b:
+			b.pressed.connect(_on_stub.bind(spec[1]))
+	make_tappable("Shell/Scroll/Pad/Content/Columns/Market", _on_market)
+
+## Canon's explore_spenard: cashCost 0, timeCost 1 (game-core.js:358-360).
+func _on_move_product() -> void:
+	var before_day: int = gs.day
+	if not _gm.dispatch("advance_time", {}):
+		return
+	if gs.day > before_day:
+		nav.show_toast("A new day. Day %d, %s in %s." % [gs.day, gs.time_slot.capitalize(), gs.current_district().get("name", "")])
+	else:
+		nav.show_toast("Time passes. %s in %s." % [gs.time_slot.capitalize(), gs.current_district().get("name", "")])
+
+func _on_stub(what: String) -> void:
+	nav.show_toast("%s — coming soon." % what)
+
+func _on_market() -> void:
+	nav.go_to(nav.MARKET)
+
 func _bind_content() -> void:
 	_bind_all()
 

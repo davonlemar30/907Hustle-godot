@@ -7,6 +7,30 @@ extends "res://ui/screens/screen_base.gd"
 
 const SURFACE_ORDER := ["Jobs", "List", "Market", "Boost", "Stick", "Shark"]
 
+# Street Market is the one surface that already exists as a screen. The rest
+# are Phase 4 systems, so their rows say so instead of dead-ending.
+const SURFACE_ROUTES := {
+	"Jobs": "", "List": "", "Market": "res://ui/screens/market.tscn",
+	"Boost": "", "Stick": "", "Shark": "",
+}
+
+func _ready() -> void:
+	super()
+	_wire_taps()
+
+func _wire_taps() -> void:
+	for i in range(min(SURFACE_ORDER.size(), gs.hustle_surfaces.size())):
+		var row: String = SURFACE_ORDER[i]
+		var label: String = str(gs.hustle_surfaces[i].get("label", row))
+		make_tappable("Shell/Scroll/Pad/Content/Rows/" + row, _on_surface.bind(row, label))
+
+func _on_surface(row: String, label: String) -> void:
+	var route: String = SURFACE_ROUTES.get(row, "")
+	if route.is_empty():
+		nav.show_toast("%s — coming soon." % label)
+		return
+	nav.go_to(route)
+
 func _bind_content() -> void:
 	_bind_take()
 	_bind_surfaces()

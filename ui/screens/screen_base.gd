@@ -54,6 +54,29 @@ func refresh() -> void:
 	_fill_chrome()
 	_bind_content()
 
+## Make a card tappable without restructuring the scene.
+##
+## The cards are PanelContainers, which size every child to the panel rect and
+## take their own minimum size from the largest child. So a flat Button added as
+## a second child covers the card exactly, adds nothing to its height, and draws
+## last — on top, where it can take the tap. Buttons inside the ScrollContainer
+## already coexist with drag-scrolling (Market's BUY/SELL prove it), which a
+## gui_input handler on the card itself would not.
+##
+## Returns the Button so callers can disable it, or null if the path is missing.
+func make_tappable(path: String, handler: Callable) -> Button:
+	var card := get_node_or_null(path) as Control
+	if card == null:
+		return null
+	var hit := Button.new()
+	hit.name = "Tap"
+	hit.flat = true
+	hit.focus_mode = Control.FOCUS_NONE
+	hit.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.add_child(hit)
+	hit.pressed.connect(handler)
+	return hit
+
 ## Screens override this to bind their own content. Base is a no-op.
 func _bind_content() -> void:
 	pass

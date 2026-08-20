@@ -31,6 +31,22 @@ const NAV_ROUTES := {
 ## Emitted after a successful screen change, with the path that was loaded.
 signal screen_changed(path: String)
 
+const TOAST := "res://ui/components/toast.tscn"
+
+# One toast for the session. Parented to /root rather than the current scene so a
+# message survives a screen change instead of being freed mid-fade.
+var _toast: CanvasLayer
+
+## Brief, non-blocking feedback. Safe to call from any screen at any time.
+func show_toast(text: String) -> void:
+	if _toast == null or not is_instance_valid(_toast):
+		_toast = load(TOAST).instantiate()
+		# Deferred: this is usually called from a button handler, and adding to
+		# the tree while the tree is flushing input is not allowed.
+		get_tree().root.add_child.call_deferred(_toast)
+		await _toast.ready
+	_toast.show_message(text)
+
 func go_to(scene_path: String) -> void:
 	if scene_path.is_empty():
 		return

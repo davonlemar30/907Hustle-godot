@@ -337,6 +337,57 @@ The one genuine weakness found: `touch-action` does not inherit, so the canvas c
 `auto`. `html/head_include` now pins `#canvas{touch-action:none}`. That is hardening, not
 the fix.
 
+## Phase 3b: interactive screens  (added 2026-08-20)
+
+Every screen responds now. Home, Street and Hustle had zero connected controls
+before this.
+
+- **`make_tappable(path, handler)`** in `screen_base.gd` is how a card becomes
+  tappable. The cards are `PanelContainer`s, which size every child to the panel
+  rect and take their minimum size from the largest child — so a flat `Button`
+  added as a second child covers the card exactly, adds nothing to its height, and
+  draws last. **Do not** reach for `gui_input` on the card instead: Buttons already
+  coexist with drag-scrolling inside the `ScrollContainer` (Market's BUY/SELL prove
+  it), and a card consuming `InputEventMouseButton` would fight the scroll.
+- **`systems/travel.gd`** handles the `travel` action: flat **$5** fare plus one
+  slot, in either direction. That is canon — `TRAVEL` and `BUS_TRAVEL` both spend
+  `access.cashCost` and log `" for $5" : " on your pass"` (`game-core.js:8718-8760`),
+  and both run through `advanceRun`, which costs a slot. Rejection uses canon's own
+  string, "Need $5 fare." Not modelled: transit passes (`transitCovered`), `WALK_HOME`
+  (no fare, two slots, 3 health), Downtown arrival events.
+- **`ScreenManager.show_toast(text)`** — one `ui/components/toast.tscn` lives under
+  `/root` for the session, so a message survives a screen change instead of being
+  freed mid-fade. Layer 100 (above atmosphere's 50); every node in it is
+  `mouse_filter = IGNORE` so a toast can never eat a tap.
+- **`districts[]` no longer carries `here` or a baked `travel` string.** Both went
+  stale the moment travel worked. `GameState.travel_label_for(id)` derives the label.
+- **`economy.evolve()` now keys on day + slot + product.** Keyed on day alone, every
+  advance within a day produced identical prices — the market only moved at
+  midnight. Canon keys its own rolls the same way (`${seed}:meetup:${day}:${slot}:${nonce}`,
+  `game-core.js:3128`). Still the simplified ±VARIANCE model; parity is Phase 5.
+
+## Mobile virtual keyboard — Godot already ships the fix  (2026-08-20)
+
+The LineEdit did not raise the keyboard on mobile. No custom HTML shell and no
+hidden-`<input>` workaround were needed: **Godot already implements exactly that**,
+and the preset had it switched off.
+
+`html/experimental_virtual_keyboard` becomes `experimentalVK` in the engine config
+(`platform/web/export/export_plugin.cpp`). In the engine JS, `GodotDisplayVK` creates
+a hidden `<input>` and `<textarea>`, inserts them before the canvas, and pipes their
+`input` events into the LineEdit. Its availability guard is:
+
+```js
+available: function(){ return GodotConfig.virtual_keyboard && "ontouchstart" in window }
+```
+
+So enabling it cannot affect desktop — the `ontouchstart` half of that guard is
+false there. The preset now sets it to `true`. Godot's `LineEdit` calls
+`virtual_keyboard_show()` on focus by itself, so no GDScript change was required.
+
+**The preset was written by hand, and defaults copied into it are decisions.** This
+one sat as `false` for two builds because it looked like boilerplate.
+
 ## Working notes / gotchas
 - **Build loop:** `session_activate` → edit scene/theme → `scene_open(force_reload)`
   → `project_run(mode=current)` → `editor_screenshot(source=game)` to verify.

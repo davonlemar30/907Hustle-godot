@@ -51,9 +51,9 @@ func cargo_used() -> int:
 # --- Districts (canon: src/data/locations.js NEIGHBORHOODS) ----------------
 # risk/police/rival are the raw 0-4 scores; travel is the how-you-get-there.
 var districts: Array = [
-	{"id": "north_star_lot", "name": "SPENARD", "role": "HOME TURF", "risk": 1, "police": 1, "rival": 0, "travel": "YOU ARE HERE", "here": true, "accent": Color(0.842, 0.842, 0.842), "blurb": "Safest footing in the city. Thin margins, low patrol."},
-	{"id": "downtown", "name": "DOWNTOWN", "role": "COMMERCIAL", "risk": 2, "police": 3, "rival": 1, "travel": "BUS · $5", "here": false, "accent": Color(0.882, 0.263, 0.196), "blurb": "Nightlife money moves fast under cameras and Curtis's buyers."},
-	{"id": "airport_industrial", "name": "INDUSTRIAL", "role": "SERVICE ROADS", "risk": 4, "police": 2, "rival": 3, "travel": "TRAVEL", "here": false, "accent": Color(0.604, 0.114, 0.094), "blurb": "Loading yards, rare supply, and expensive mistakes."},
+	{"id": "north_star_lot", "name": "SPENARD", "role": "HOME TURF", "risk": 1, "police": 1, "rival": 0, "accent": Color(0.842, 0.842, 0.842), "blurb": "Safest footing in the city. Thin margins, low patrol."},
+	{"id": "downtown", "name": "DOWNTOWN", "role": "COMMERCIAL", "risk": 2, "police": 3, "rival": 1, "accent": Color(0.882, 0.263, 0.196), "blurb": "Nightlife money moves fast under cameras and Curtis's buyers."},
+	{"id": "airport_industrial", "name": "INDUSTRIAL", "role": "SERVICE ROADS", "risk": 4, "police": 2, "rival": 3, "accent": Color(0.604, 0.114, 0.094), "blurb": "Loading yards, rare supply, and expensive mistakes."},
 ]
 
 # --- Spenard local venues (canon: Locations doc + jobs/gambling data) -------
@@ -151,6 +151,16 @@ func district_by_id(id: String) -> Dictionary:
 
 func current_district() -> Dictionary:
 	return district_by_id(current_district_id)
+
+## Label for a district's travel affordance. Derived rather than stored: a baked
+## "YOU ARE HERE" string goes stale the moment the player travels.
+func travel_label_for(district_id: String) -> String:
+	if district_id == current_district_id:
+		return "YOU ARE HERE"
+	return "BUS · $%d" % TravelFare
+
+## Canon charges the same flat fare in either direction (game-core.js:8718-8760).
+const TravelFare := 5
 
 # --- Run identity + lifecycle ---------------------------------------------
 ## The name the player picks on the name-entry screen. Canon calls this

@@ -112,9 +112,23 @@ products[0].price + held_blocks + soldiers, then `notify_changed()`, updated hea
 snapshot + mini-map + list in a single pass. (People portrait stays the static Yalonda
 texture — per-npc portrait swap needs a portrait lookup, later.)
 
-**Open / next (build order per user):** bind **Hustle** hub's 6 income surfaces + Today's
-Take to GameState (finishes Phase 2 for existing screens); Phone → More; then the Hustle
-sub-screens (Jobs, 907List, Boost, Stickup, Shark). Also:
+**DONE — Hustle content binding → Phase 2 complete for all existing screens.**
+`ui/screens/hustle.gd` (extends `screen_base`, `_bind_content()`) fills Today's Take
+(`todays_take` + `income_sources` chips), the 6 income surfaces (`hustle_surfaces` —
+label/desc/status/detail + accent color kept as the existing per-row color), and the
+Curtis card (`curtis_attention`/`_max`). The scene's placeholder value strings were
+blanked (grep-clean). Proven: one eval (take=500, surface[0].status, curtis=7) +
+`notify_changed()` updated Take + Jobs + Curtis in a single pass; other rows unchanged.
+NOTE: per-surface colors kept the current design values (the build prompt's illustrative
+hex would have recolored rows — skipped to honor "no visual change"). income_sources use
+the prompt's split (jobs 180 / market 87 / stick 45).
+
+**All four screens (Home, Market, Street, Hustle) are now fully GameState-driven** — one
+`notify_changed()` re-renders the visible screen. Phase 2 (State Spine) done for existing
+screens; Phase 3 is the reducer/logic port.
+
+**Open / next:** Phone → More screens; the Hustle sub-screens (Jobs, 907List, Boost,
+Stickup, Shark); then Phase 3 (reducer port + RNG parity). Also:
 1. Build **Crew**, **Travel**, **People** screens; wire remaining portraits.
 2. Refresh Home's MARKET SNAPSHOT card to canon prices (currently placeholder:
    WEED $28/METH $61/PILLS $17 — real Spenard anchors are $27/$176/$105).

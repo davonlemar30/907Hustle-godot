@@ -100,6 +100,23 @@ var pending_messages: Array = [
 	{"npc_id": "yalonda", "name": "YALONDA", "preview": "\"You owe me a favor. Slide through when you're ready.\"", "timestamp": "12m ago"},
 ]
 
+# --- Hustle hub (canon: web HustleScreen income surfaces + Curtis) --------------
+var todays_take: int = 312
+# Source split shown as chips under Today's Take (sums to todays_take).
+var income_sources: Dictionary = {"jobs": 180, "market": 87, "stick": 45}
+# The six income surfaces. color = the existing per-row accent (kept as-is so the
+# look is unchanged); only the data is driven from here.
+var hustle_surfaces: Array = [
+	{"id": "jobs", "label": "JOBS", "desc": "Applications, callbacks, and available shifts.", "status": "NIGHT OWL", "detail": "RANK 1 · $55–75 ›", "color": Color(0.451, 0.722, 0.404)},
+	{"id": "list", "label": "907LIST", "desc": "Buy low, read the listing, find the next buyer.", "status": "2/4 HELD", "detail": "FLIPPER TIER ›", "color": Color(0.373, 0.663, 0.847)},
+	{"id": "market", "label": "STREET MARKET", "desc": "Buy, sell, and finish a market session.", "status": "12 SOLD", "detail": "SESSION OPEN ›", "color": Color(0.882, 0.651, 0.227)},
+	{"id": "boost", "label": "BOOST", "desc": "Store lifts, targets, and the fence.", "status": "TIER 1", "detail": "FENCE: DOWNTOWN ›", "color": Color(0.475, 0.733, 0.757)},
+	{"id": "stick", "label": "STICKUP", "desc": "Street robbery, registers, and organized work.", "status": "TIER 1", "detail": "2 SUCCESSES ›", "color": Color(1, 0.29, 0.239)},
+	{"id": "shark", "label": "SHARK", "desc": "Fund borrowers and resolve defaults.", "status": "1 OPEN", "detail": "$250 OUT ›", "color": Color(0.62, 0.5, 0.85)},
+]
+var curtis_attention: int = 4
+var curtis_attention_max: int = 8
+
 func product_by_id(id: String) -> Dictionary:
 	for p in products:
 		if p.get("id", "") == id:

@@ -19,10 +19,11 @@ yet** — screens read a fixed mid-game snapshot; the reducer port is a later ph
 | Hustle | `ui/screens/hustle.tscn` | income hub — 6 surfaces, Today's Take, Curtis pressure |
 | Street | `ui/screens/street.tscn` | exploration hub — districts, venues, people (fully `GameState`-driven) |
 
-All four screens read their shared chrome (day/cash/HUD) from `GameState`. Street
-(districts/venues), Market (product rows/prices), and Home (operation, snapshot, turf +
-mini-map, feed, messages) drive their full content from it. Only Hustle's surfaces
-remain baked.
+**All four screens are fully `GameState`-driven** — chrome plus content: Street
+(districts/venues), Market (product rows/prices), Home (operation, snapshot, turf +
+mini-map, feed, messages), and Hustle (Today's Take, income surfaces, Curtis). One
+`notify_changed()` re-renders the visible screen (Phase 2 / State Spine complete for
+existing screens).
 
 **Nav:** `STREET · HUSTLE · HOME · PHONE · MORE` with a raised red center HOME button.
 Not yet built: Phone, More, Crew/Territory, Travel detail, and the Hustle sub-screens
@@ -47,7 +48,7 @@ addons/godot_ai/           # committed MCP bridge (works on any clone)
   `state_changed` signal; screens connect `refresh()` to it, so one `notify_changed()`
   re-renders everything (the web-reducer pattern) — no per-field wiring.
 - **`screen_base.gd`** fills the shared chrome and calls a `_bind_content()` hook each
-  screen overrides. Home/Market/Street are fully `GameState`-driven; Hustle is next.
+  screen overrides. Home, Market, Street, and Hustle are all fully `GameState`-driven.
 - **Reusable atmosphere** (`atmosphere.tscn`) is a `CanvasLayer` each screen instances;
   one screen-space shader does a `tex-card` material pass + animated film grain + a soft
   vignette. Intensity is a set of shader uniforms.
@@ -64,7 +65,7 @@ Project Settings. Target viewport is 375×812 portrait, mobile renderer. The
 
 0. **UI scaffold** ✅ — screens, nav, atmosphere, theme
 1. **IA completion** — remaining screens + Hustle sub-screens (static)
-2. **State spine** — `GameState` exists; shared chrome retrofitted ✅; per-screen content binding next
+2. **State spine** ✅ — `GameState` + reactive `state_changed`; all existing screens fully data-driven
 3. **Reducer port + RNG parity** — translate `game-core.js` actions to GDScript
 4. **Save/load parity** · 5. **Behavioral test harness vs the JS oracle** · 6. **Cutover**
 

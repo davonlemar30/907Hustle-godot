@@ -1,7 +1,7 @@
 [gd_scene load_steps=20 format=3]
 
 [ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
-[ext_resource type="Script" path="res://ui/screens/screen_base.gd" id="scr"]
+[ext_resource type="Script" path="res://ui/screens/hustle.gd" id="scr"]
 [ext_resource type="PackedScene" path="res://ui/components/atmosphere.tscn" id="atmo"]
 [ext_resource type="Texture2D" uid="uid://c6j8rv770ptx6" path="res://assets/textures/bg-hustle.png" id="bg_hustle"]
 [ext_resource type="Texture2D" uid="uid://co8ljnuanvgjj" path="res://assets/textures/logo1trans.png" id="logo"]
@@ -443,7 +443,7 @@ layout_mode = 2
 theme_type_variation = &"MonoBig"
 theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
 theme_override_font_sizes/font_size = 30
-text = "$312"
+text = "—"
 
 [node name="Chips" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Take/V"]
 layout_mode = 2
@@ -469,7 +469,7 @@ layout_mode = 2
 theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
 theme_override_font_sizes/font_size = 13
-text = "+$70"
+text = "—"
 
 [node name="M" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Take/V/Chips"]
 layout_mode = 2
@@ -491,7 +491,7 @@ layout_mode = 2
 theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
 theme_override_font_sizes/font_size = 13
-text = "+$180"
+text = "—"
 
 [node name="S" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Take/V/Chips"]
 layout_mode = 2
@@ -513,7 +513,7 @@ layout_mode = 2
 theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
 theme_override_font_sizes/font_size = 13
-text = "+$62"
+text = "—"
 
 [node name="SectLabel" type="Label" parent="Shell/Scroll/Pad/Content"]
 layout_mode = 2
@@ -569,14 +569,14 @@ theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
 theme_override_font_sizes/font_size = 12
 horizontal_alignment = 2
-text = "NIGHT OWL"
+text = "—"
 
 [node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Jobs/H/Right"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 horizontal_alignment = 2
-text = "RANK 1 · $55–75 ›"
+text = "—"
 
 [node name="List" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
 layout_mode = 2
@@ -623,14 +623,14 @@ theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
 theme_override_font_sizes/font_size = 12
 horizontal_alignment = 2
-text = "2/4 HELD"
+text = "—"
 
 [node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/List/H/Right"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 horizontal_alignment = 2
-text = "FLIPPER TIER ›"
+text = "—"
 
 [node name="Market" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
 layout_mode = 2
@@ -677,14 +677,14 @@ theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
 theme_override_font_sizes/font_size = 12
 horizontal_alignment = 2
-text = "12 SOLD"
+text = "—"
 
 [node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Market/H/Right"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 horizontal_alignment = 2
-text = "SESSION OPEN ›"
+text = "—"
 
 [node name="Boost" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
 layout_mode = 2
@@ -731,14 +731,14 @@ theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(0.475, 0.733, 0.757, 1)
 theme_override_font_sizes/font_size = 12
 horizontal_alignment = 2
-text = "TIER 1"
+text = "—"
 
 [node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Boost/H/Right"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 horizontal_alignment = 2
-text = "FENCE: DOWNTOWN ›"
+text = "—"
 
 [node name="Stick" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
 layout_mode = 2
@@ -785,14 +785,14 @@ theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
 theme_override_font_sizes/font_size = 12
 horizontal_alignment = 2
-text = "TIER 1"
+text = "—"
 
 [node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Stick/H/Right"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 horizontal_alignment = 2
-text = "2 SUCCESSES ›"
+text = "—"
 
 [node name="Shark" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
 layout_mode = 2
@@ -839,14 +839,14 @@ theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(0.62, 0.5, 0.85, 1)
 theme_override_font_sizes/font_size = 12
 horizontal_alignment = 2
-text = "1 OPEN"
+text = "—"
 
 [node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Shark/H/Right"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 horizontal_alignment = 2
-text = "$250 OUT ›"
+text = "—"
 
 [node name="Rival" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
 layout_mode = 2
@@ -871,7 +871,7 @@ layout_mode = 2
 size_flags_vertical = 4
 theme_type_variation = &"Kicker"
 theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
-text = "ATTENTION 4/8"
+text = "—"
 
 [node name="Body" type="Label" parent="Shell/Scroll/Pad/Content/Rival/V"]
 layout_mode = 2

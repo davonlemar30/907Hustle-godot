@@ -9,9 +9,11 @@ game data and logic.
 
 ## Status
 
-Playable demo: the game opens on a title screen, NEW RUN leads through name entry
-into a fresh Day 1, and every screen responds. Time passes, prices shift, travel
-costs a fare and a slot, and the bottom nav moves between the four game screens.
+Playable demo with survival pressure: the game opens on a title screen, NEW RUN
+leads through name entry into a fresh Day 1, and every screen responds. Time
+passes, prices shift, travel costs a fare and a slot, jobs pay clean money on a
+schedule, and rent and the phone bill arrive whether or not you earned anything.
+Miss enough rent and the run ends.
 
 | Screen | File | Notes |
 | --- | --- | --- |
@@ -46,7 +48,7 @@ Not yet built: Phone, More, Crew/Territory, Travel detail, and the Hustle sub-sc
 ```
 autoload/game_state.gd     # GameState singleton — the run's state spine
 autoload/screen_manager.gd # the only thing that swaps top-level screens; also toasts
-systems/*.gd               # economy, time, travel — the only writers of GameState
+systems/*.gd               # economy, time, travel, jobs, obligations — the only writers of GameState
 ui/components/toast.tscn   # brief non-blocking feedback, one instance under /root
 ui/screens/*.tscn|.gd      # one scene per screen (Street is script-driven)
 ui/components/atmosphere.tscn   # reusable screen-space FX layer, instanced everywhere

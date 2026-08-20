@@ -183,9 +183,9 @@ anchored bottom-center of the root). Side tabs: STREET · HUSTLE | (home) | PHON
   only shows it on Street in the *early* game before Hustle unlocks.) Also 907List flips + jobs.
 - **Phone** = texts/contacts/bills (People & relationships live here).
 - **More** = settings/status/menu (turf/crew likely surface here or on Home).
-Icon placeholders in use (need real art): Street→`icon-travel` (want a walking figure),
-Hustle→`icon-market` (want a running figure), Phone→`icon-chat` (want a handset).
-Home→`icon-home`, More→`icon-menu` are fine.
+Icons (real art, wired in all four nav scenes): Street→`nav/icon-street.webp` (walking
+figure), Hustle→`nav/icon-hustle.webp` (running figure), Phone→`nav/icon-phone.webp`
+(handset). Home→`icon-home`, More→`icon-menu` unchanged.
 
 ## Canon (verified in web source — use for content, not guesses)
 - **Primary travel areas:** Spenard, Downtown, **Industrial Service Roads**.
@@ -238,13 +238,19 @@ Live build, rebuilt on every push to `main`:
 - Renaming `.png` → `.webp` invalidates the `uid` in `.tscn` files. The script strips the
   stale `uid` and leaves `path=`; Godot re-resolves by path and re-adds a uid on next save.
 - The script is idempotent — re-running skips anything already within budget.
+- **Nav icons must be white-on-alpha, not black-on-white.** The bar tints them with
+  `self_modulate`, which multiplies — so the glyph has to live in the alpha channel with
+  white RGB, or it renders as a square (opaque background) or a black smudge (dark RGB).
+  `scripts/icon_to_mask.py in.webp out.webp` does the conversion: it sniffs the background
+  from the corners, derives alpha from luminance, repaints RGB white, and rescales the glyph
+  to ~80% of the canvas so it matches the hand-authored SVG icons optically.
+- Lossless rules now carry through to import. `enforce_import_settings` used to pin
+  `compress/mode=1` on *every* `.webp.import`; it now honours the `RULES` lossless flag, so
+  `assets/icons/**` imports lossless. Lossy rings around hard edges, and on an icon's alpha
+  that reads as a halo once the nav bar tints it.
 
 ## Known issues (not yet fixed)
 
-- **Nav icon PNGs have no transparency.** `icon-street`, `icon-hustl`, `icon-phone` are black
-  art on a solid white background, unlike the existing SVG nav icons which are transparent and
-  get tinted via `self_modulate`. They need alpha before they can be wired into the dark nav
-  bar. (`icon-street` has an alpha channel but it is opaque.)
 - **Missing font glyphs.** `↗` (U+2197, home.tscn:480 "LIVE UPDATE ↗") and `♛` (U+265B,
   home.tscn:675 "♛  TURF & CREW") render as tofu boxes — the subsetted woff2 fonts lack them.
   Other symbols in use (`▲ ● ○ • ⚠ ›`) render fine. Either swap the glyphs or add a fallback font.

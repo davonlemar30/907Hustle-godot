@@ -15,7 +15,7 @@ dest_files=["res://.godot/imported/icon-hustl.webp-fdb4ab99774aaf02ec41102410c26
 
 [params]
 
-compress/mode=1
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.9
 compress/uastc_level=0

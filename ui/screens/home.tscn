@@ -7,11 +7,8 @@
 [ext_resource type="Texture2D" path="res://assets/img/assest1home.webp" id="home_photo"]
 [ext_resource type="Texture2D" path="res://assets/img/Yalonda1.webp" id="yalonda"]
 [ext_resource type="Texture2D" uid="uid://ciawbrqicop31" path="res://assets/icons/nav/icon-home.svg" id="ic_home"]
-[ext_resource type="Texture2D" uid="uid://qxxecxf6e7f8" path="res://assets/icons/nav/icon-market.svg" id="ic_market"]
 [ext_resource type="Texture2D" uid="uid://bp521w0vtsd8a" path="res://assets/icons/nav/icon-crew.svg" id="ic_crew"]
-[ext_resource type="Texture2D" uid="uid://7hxto5lndefv" path="res://assets/icons/nav/icon-travel.svg" id="ic_travel"]
 [ext_resource type="Texture2D" uid="uid://pdedvxirnal6" path="res://assets/icons/nav/icon-people.svg" id="ic_people"]
-[ext_resource type="Texture2D" uid="uid://bn4ak40fmlcau" path="res://assets/icons/ui/icon-chat.svg" id="ic_chat"]
 [ext_resource type="Texture2D" uid="uid://cqkn2m0xs6w3d" path="res://assets/icons/ui/icon-menu.svg" id="ic_menu"]
 [ext_resource type="Texture2D" uid="uid://dxeaajkgr7tyr" path="res://assets/icons/hud/icon-heat.svg" id="ic_heat"]
 [ext_resource type="Texture2D" uid="uid://c11k5uwpyoqbd" path="res://assets/icons/hud/icon-health.svg" id="ic_health"]
@@ -23,6 +20,9 @@
 [ext_resource type="Texture2D" uid="uid://b4g6v8b8d2hk6" path="res://assets/icons/products/icon-meth.svg" id="ic_meth"]
 [ext_resource type="Texture2D" uid="uid://bpgwbng2814nu" path="res://assets/icons/products/icon-pills.svg" id="ic_pills"]
 [ext_resource type="Texture2D" uid="uid://cj8ac21ukcvmf" path="res://assets/icons/ui/icon-soldier.svg" id="ic_soldier"]
+[ext_resource type="Texture2D" path="res://assets/icons/nav/icon-street.webp" id="ic_nav_street"]
+[ext_resource type="Texture2D" path="res://assets/icons/nav/icon-hustle.webp" id="ic_nav_hustle"]
+[ext_resource type="Texture2D" path="res://assets/icons/nav/icon-phone.webp" id="ic_nav_phone"]
 
 [sub_resource type="StyleBoxFlat" id="SB_avatar"]
 bg_color = Color(0.235, 0.2, 0.216, 1)
@@ -1010,7 +1010,7 @@ color = Color(0, 0, 0, 0)
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
 size_flags_horizontal = 4
-texture = ExtResource("ic_travel")
+texture = ExtResource("ic_nav_street")
 expand_mode = 1
 stretch_mode = 5
 self_modulate = Color(0.42, 0.42, 0.42, 1)
@@ -1035,7 +1035,7 @@ color = Color(0, 0, 0, 0)
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
 size_flags_horizontal = 4
-texture = ExtResource("ic_market")
+texture = ExtResource("ic_nav_hustle")
 expand_mode = 1
 stretch_mode = 5
 self_modulate = Color(0.42, 0.42, 0.42, 1)
@@ -1065,7 +1065,7 @@ color = Color(0, 0, 0, 0)
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
 size_flags_horizontal = 4
-texture = ExtResource("ic_chat")
+texture = ExtResource("ic_nav_phone")
 expand_mode = 1
 stretch_mode = 5
 self_modulate = Color(0.42, 0.42, 0.42, 1)

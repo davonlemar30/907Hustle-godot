@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dttvro27y6qve"
-path="res://.godot/imported/icon-phone.webp-9717492ba0fc51ab7250038ebadf055a.ctex"
+uid="uid://cyvblhixrvbb2"
+path="res://.godot/imported/icon-phone.webp-f2b320381df0a7d9f9d99fdaba9f7322.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/icons/icon-phone.webp"
-dest_files=["res://.godot/imported/icon-phone.webp-9717492ba0fc51ab7250038ebadf055a.ctex"]
+source_file="res://assets/icons/nav/icon-phone.webp"
+dest_files=["res://.godot/imported/icon-phone.webp-f2b320381df0a7d9f9d99fdaba9f7322.ctex"]
 
 [params]
 

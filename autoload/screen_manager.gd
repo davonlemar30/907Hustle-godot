@@ -23,6 +23,7 @@ const SHARK := "res://ui/screens/shark.tscn"
 const LIST := "res://ui/screens/nine07list.tscn"
 const BOOST := "res://ui/screens/boost.tscn"
 const CREW := "res://ui/screens/crew.tscn"
+const TURF := "res://ui/screens/turf.tscn"
 const GAME_OVER := "res://ui/screens/game_over.tscn"
 
 ## Screens the bottom nav can reach today. Phone and More have no scene yet, so

@@ -59,6 +59,10 @@ func _ready() -> void:
 	crew.setup(_gs)
 	register_system("crew", crew)
 
+	var territory = preload("res://systems/territory.gd").new()
+	territory.setup(_gs, self)
+	register_system("territory", territory)
+
 func register_system(sys_name: String, instance: Object) -> void:
 	_systems.append({"name": sys_name, "node": instance})
 

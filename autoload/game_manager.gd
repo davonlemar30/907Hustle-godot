@@ -27,8 +27,25 @@ func _ready() -> void:
 	travel.setup(_gs, time)
 	register_system("travel", travel)
 
+	# Jobs and obligations both hang off day_crossed, which time_system emits.
+	var jobs = preload("res://systems/jobs.gd").new()
+	jobs.setup(_gs, rng, time)
+	register_system("jobs", jobs)
+
+	var obligations = preload("res://systems/obligations.gd").new()
+	obligations.setup(_gs)
+	register_system("obligations", obligations)
+
 func register_system(sys_name: String, instance: Object) -> void:
 	_systems.append({"name": sys_name, "node": instance})
+
+## Read-only handle on a system, for screens that need to ask it a question
+## (e.g. "why can't I work right now?"). Mutations still go through dispatch.
+func system(sys_name: String) -> Object:
+	for entry in _systems:
+		if entry["name"] == sys_name:
+			return entry["node"]
+	return null
 
 ## Route an action to the first system that handles it. Returns true on success.
 func dispatch(action: String, payload: Dictionary = {}) -> bool:

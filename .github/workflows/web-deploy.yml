@@ -1,0 +1,98 @@
+name: Deploy web build
+
+# Publishes a phone-testable build to GitHub Pages on every push to main.
+# Godot's web export runs without thread support (see export_presets.cfg), so it
+# needs no SharedArrayBuffer and therefore no COOP/COEP headers -- which is what
+# makes plain GitHub Pages a viable host.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than publishing a half-built site.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  build:
+    name: Export web
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.7.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Place export templates
+        # The image ships templates under /root, but Actions overrides HOME to
+        # /github/home, so Godot looks somewhere they aren't.
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates
+          if [ -d "/root/.local/share/godot/export_templates/${GODOT_VERSION}.stable" ] \
+             && [ ! -d ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable ]; then
+            cp -r "/root/.local/share/godot/export_templates/${GODOT_VERSION}.stable" \
+                  ~/.local/share/godot/export_templates/
+          fi
+          ls ~/.local/share/godot/export_templates/
+
+      - name: Drop editor-only MCP addon
+        # godot_ai is editor tooling. Its autoload dials a local WebSocket that
+        # will never exist in a browser, so strip it from the shipped build.
+        run: |
+          sed -i '/_mcp_game_helper/d' project.godot
+          sed -i '/addons\/godot_ai\/plugin.cfg/d' project.godot
+
+      - name: Import resources
+        # First import builds the .godot cache. It reports missing-dependency
+        # noise on a cold cache; the export step is the real gate.
+        run: godot --headless --import || true
+
+      - name: Export release
+        run: |
+          mkdir -p build/web
+          godot --headless --export-release "Web" build/web/index.html
+          test -f build/web/index.html
+          test -f build/web/index.wasm
+          touch build/web/.nojekyll
+          ls -lh build/web
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: build/web
+          include-hidden-files: true
+
+  deploy:
+    name: Publish to Pages
+    needs: build
+    # Pull requests build but do not publish -- they exist to catch a broken
+    # export before it reaches the live URL.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Deploying from a plain runner rather than the Godot container keeps the
+      # Pages actions on their expected environment.
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: build/web
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,6 +1,6 @@
 .godot/
 /build/
 /export/
-export_presets.cfg
+# export_presets.cfg is committed on purpose: CI needs it to build the web export.
 .DS_Store
 *~

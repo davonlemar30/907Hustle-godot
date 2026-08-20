@@ -1,13 +1,12 @@
-[gd_scene load_steps=20 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
-[ext_resource type="Script" path="res://ui/screens/screen_base.gd" id="scr"]
 [ext_resource type="PackedScene" path="res://ui/components/atmosphere.tscn" id="atmo"]
-[ext_resource type="Texture2D" uid="uid://c6j8rv770ptx6" path="res://assets/textures/bg-hustle.png" id="bg_hustle"]
 [ext_resource type="Texture2D" uid="uid://co8ljnuanvgjj" path="res://assets/textures/logo1trans.png" id="logo"]
-[ext_resource type="Texture2D" uid="uid://ciawbrqicop31" path="res://assets/icons/nav/icon-home.svg" id="ic_home"]
+[ext_resource type="Script" path="res://ui/screens/street.gd" id="scr"]
 [ext_resource type="Texture2D" uid="uid://7hxto5lndefv" path="res://assets/icons/nav/icon-travel.svg" id="ic_travel"]
 [ext_resource type="Texture2D" uid="uid://qxxecxf6e7f8" path="res://assets/icons/nav/icon-market.svg" id="ic_market"]
+[ext_resource type="Texture2D" uid="uid://ciawbrqicop31" path="res://assets/icons/nav/icon-home.svg" id="ic_home"]
 [ext_resource type="Texture2D" uid="uid://bn4ak40fmlcau" path="res://assets/icons/ui/icon-chat.svg" id="ic_chat"]
 [ext_resource type="Texture2D" uid="uid://cqkn2m0xs6w3d" path="res://assets/icons/ui/icon-menu.svg" id="ic_menu"]
 [ext_resource type="Texture2D" uid="uid://dxeaajkgr7tyr" path="res://assets/icons/hud/icon-heat.svg" id="ic_heat"]
@@ -16,9 +15,6 @@
 [ext_resource type="Texture2D" uid="uid://bw130ej2fexja" path="res://assets/icons/hud/icon-cargo.svg" id="ic_cargo"]
 [ext_resource type="Texture2D" uid="uid://dmae0luhr7igo" path="res://assets/icons/hud/icon-respect.svg" id="ic_respect"]
 [ext_resource type="Texture2D" uid="uid://c24qf4w1hbbqc" path="res://assets/icons/hud/icon-crewpower.svg" id="ic_crewpwr"]
-[ext_resource type="Texture2D" uid="uid://r7311yoxptea" path="res://assets/icons/ui/icon-cash.svg" id="ic_cash"]
-[ext_resource type="Texture2D" uid="uid://1bbv00nt3ok8" path="res://assets/icons/ui/icon-external.svg" id="ic_ext"]
-[ext_resource type="Texture2D" uid="uid://c51emj88yov0m" path="res://assets/icons/ui/icon-warning.svg" id="ic_warn"]
 
 [sub_resource type="StyleBoxFlat" id="SB_fab"]
 bg_color = Color(0.7, 0.13, 0.1, 1)
@@ -34,7 +30,7 @@ corner_radius_bottom_left = 28
 shadow_color = Color(0.83, 0.16, 0.12, 0.55)
 shadow_size = 11
 
-[node name="Hustle" type="Control"]
+[node name="Street" type="Control"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -52,18 +48,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.043, 0.039, 0.055, 1)
-
-[node name="BGPhoto" type="TextureRect" parent="."]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-texture = ExtResource("bg_hustle")
-expand_mode = 1
-stretch_mode = 6
 
 [node name="Shell" type="VBoxContainer" parent="."]
 layout_mode = 1
@@ -406,479 +390,460 @@ theme_override_constants/separation = 0
 [node name="H" type="Label" parent="Shell/Scroll/Pad/Content/Title"]
 layout_mode = 2
 theme_type_variation = &"H1"
-text = "HUSTLE"
+text = "STREET"
 
 [node name="Sub" type="Label" parent="Shell/Scroll/Pad/Content/Title"]
 layout_mode = 2
 theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 11
-text = "All your money, one place."
+text = "Destinations, local places, and people."
 
-[node name="Take" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
+[node name="TravelLabel" type="Label" parent="Shell/Scroll/Pad/Content"]
 layout_mode = 2
-theme_type_variation = &"Card"
+theme_type_variation = &"Kicker"
+text = "TRAVEL · DESTINATIONS"
 
-[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Take"]
+[node name="Districts" type="VBoxContainer" parent="Shell/Scroll/Pad/Content"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Head" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Take/V"]
+[node name="Dist0" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Districts"]
+layout_mode = 2
+theme_type_variation = &"Card"
+
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist0"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V"]
 layout_mode = 2
 
-[node name="K" type="Label" parent="Shell/Scroll/Pad/Content/Take/V/Head"]
+[node name="Name" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V/Top"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"CardTitle"
-text = "TODAY'S TAKE"
+theme_override_font_sizes/font_size = 16
+text = "SPENARD"
 
-[node name="Sub" type="Label" parent="Shell/Scroll/Pad/Content/Take/V/Head"]
+[node name="Travel" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V/Top"]
 layout_mode = 2
 size_flags_vertical = 4
-theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 9
-text = "3 SURFACES WORKED"
-
-[node name="Big" type="Label" parent="Shell/Scroll/Pad/Content/Take/V"]
-layout_mode = 2
-theme_type_variation = &"MonoBig"
-theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
-theme_override_font_sizes/font_size = 30
-text = "$312"
-
-[node name="Chips" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Take/V"]
-layout_mode = 2
-theme_override_constants/separation = 7
-
-[node name="J" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Take/V/Chips"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_type_variation = &"Inset"
-
-[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Take/V/Chips/J"]
-layout_mode = 2
-theme_override_constants/separation = 0
-
-[node name="K" type="Label" parent="Shell/Scroll/Pad/Content/Take/V/Chips/J/V"]
-layout_mode = 2
-theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 8
-text = "JOBS"
-
-[node name="Val" type="Label" parent="Shell/Scroll/Pad/Content/Take/V/Chips/J/V"]
-layout_mode = 2
 theme_type_variation = &"Mono"
-theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
-theme_override_font_sizes/font_size = 13
-text = "+$70"
+theme_override_font_sizes/font_size = 12
+text = "YOU ARE HERE"
 
-[node name="M" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Take/V/Chips"]
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V"]
 layout_mode = 2
-size_flags_horizontal = 3
-theme_type_variation = &"Inset"
+theme_type_variation = &"Kicker"
+theme_override_colors/font_color = Color(0.608, 0.608, 0.608, 1)
+text = "HOME TURF"
 
-[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Take/V/Chips/M"]
+[node name="Blurb" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V"]
+layout_mode = 2
+autowrap_mode = 3
+theme_type_variation = &"Muted"
+text = "Safest footing in the city. Thin margins, low patrol."
+
+[node name="Pips" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Risk" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V/Pips"]
 layout_mode = 2
 theme_override_constants/separation = 0
 
-[node name="K" type="Label" parent="Shell/Scroll/Pad/Content/Take/V/Chips/M/V"]
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V/Pips/Risk"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 8
-text = "MARKET"
+text = "RISK"
 
-[node name="Val" type="Label" parent="Shell/Scroll/Pad/Content/Take/V/Chips/M/V"]
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V/Pips/Risk"]
 layout_mode = 2
 theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
-theme_override_font_sizes/font_size = 13
-text = "+$180"
+theme_override_font_sizes/font_size = 12
+text = "●○○○"
 
-[node name="S" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Take/V/Chips"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_type_variation = &"Inset"
-
-[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Take/V/Chips/S"]
+[node name="Police" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V/Pips"]
 layout_mode = 2
 theme_override_constants/separation = 0
 
-[node name="K" type="Label" parent="Shell/Scroll/Pad/Content/Take/V/Chips/S/V"]
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V/Pips/Police"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 8
-text = "STICK"
+text = "POLICE"
 
-[node name="Val" type="Label" parent="Shell/Scroll/Pad/Content/Take/V/Chips/S/V"]
-layout_mode = 2
-theme_type_variation = &"Mono"
-theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
-theme_override_font_sizes/font_size = 13
-text = "+$62"
-
-[node name="SectLabel" type="Label" parent="Shell/Scroll/Pad/Content"]
-layout_mode = 2
-theme_type_variation = &"Kicker"
-text = "INCOME SURFACES"
-
-[node name="Rows" type="VBoxContainer" parent="Shell/Scroll/Pad/Content"]
-layout_mode = 2
-theme_override_constants/separation = 7
-
-[node name="Jobs" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
-layout_mode = 2
-theme_type_variation = &"Inset"
-
-[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Jobs"]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/Jobs/H"]
-custom_minimum_size = Vector2(24, 24)
-layout_mode = 2
-size_flags_vertical = 4
-texture = ExtResource("ic_cash")
-expand_mode = 1
-stretch_mode = 5
-self_modulate = Color(0.451, 0.722, 0.404, 1)
-
-[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Jobs/H"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Jobs/H/Mid"]
-layout_mode = 2
-theme_type_variation = &"CardTitle"
-text = "JOBS"
-
-[node name="Desc" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Jobs/H/Mid"]
-layout_mode = 2
-theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 10
-text = "Applications, callbacks, and available shifts."
-
-[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Jobs/H"]
-layout_mode = 2
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="St" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Jobs/H/Right"]
-layout_mode = 2
-theme_type_variation = &"Mono"
-theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
-theme_override_font_sizes/font_size = 12
-horizontal_alignment = 2
-text = "NIGHT OWL"
-
-[node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Jobs/H/Right"]
-layout_mode = 2
-theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 9
-horizontal_alignment = 2
-text = "RANK 1 · $55–75 ›"
-
-[node name="List" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
-layout_mode = 2
-theme_type_variation = &"Inset"
-
-[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/List"]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/List/H"]
-custom_minimum_size = Vector2(24, 24)
-layout_mode = 2
-size_flags_vertical = 4
-texture = ExtResource("ic_ext")
-expand_mode = 1
-stretch_mode = 5
-self_modulate = Color(0.373, 0.663, 0.847, 1)
-
-[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/List/H"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/List/H/Mid"]
-layout_mode = 2
-theme_type_variation = &"CardTitle"
-text = "907LIST"
-
-[node name="Desc" type="Label" parent="Shell/Scroll/Pad/Content/Rows/List/H/Mid"]
-layout_mode = 2
-theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 10
-text = "Buy low, read the listing, find the next buyer."
-
-[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/List/H"]
-layout_mode = 2
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="St" type="Label" parent="Shell/Scroll/Pad/Content/Rows/List/H/Right"]
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V/Pips/Police"]
 layout_mode = 2
 theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
 theme_override_font_sizes/font_size = 12
-horizontal_alignment = 2
-text = "2/4 HELD"
+text = "●○○"
 
-[node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/List/H/Right"]
+[node name="Rival" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V/Pips"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V/Pips/Rival"]
 layout_mode = 2
 theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 9
-horizontal_alignment = 2
-text = "FLIPPER TIER ›"
+theme_override_font_sizes/font_size = 8
+text = "RIVAL"
 
-[node name="Market" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist0/V/Pips/Rival"]
 layout_mode = 2
-theme_type_variation = &"Inset"
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.827, 0.161, 0.125, 1)
+theme_override_font_sizes/font_size = 12
+text = "○○○"
 
-[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Market"]
+[node name="Dist1" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Districts"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_type_variation = &"Card"
 
-[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/Market/H"]
-custom_minimum_size = Vector2(24, 24)
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist1"]
 layout_mode = 2
-size_flags_vertical = 4
-texture = ExtResource("ic_market")
-expand_mode = 1
-stretch_mode = 5
-self_modulate = Color(0.882, 0.651, 0.227, 1)
+theme_override_constants/separation = 6
 
-[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Market/H"]
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V"]
+layout_mode = 2
+
+[node name="Name" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V/Top"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Market/H/Mid"]
-layout_mode = 2
 theme_type_variation = &"CardTitle"
-text = "STREET MARKET"
+theme_override_font_sizes/font_size = 16
+text = "DOWNTOWN"
 
-[node name="Desc" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Market/H/Mid"]
+[node name="Travel" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V/Top"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Mono"
+theme_override_font_sizes/font_size = 12
+text = "BUS · $5"
+
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+theme_override_colors/font_color = Color(0.608, 0.608, 0.608, 1)
+text = "COMMERCIAL"
+
+[node name="Blurb" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V"]
+layout_mode = 2
+autowrap_mode = 3
+theme_type_variation = &"Muted"
+text = "Nightlife money moves fast under cameras and Curtis's buyers."
+
+[node name="Pips" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Risk" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V/Pips"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V/Pips/Risk"]
 layout_mode = 2
 theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 10
-text = "Buy, sell, and finish a market session."
+theme_override_font_sizes/font_size = 8
+text = "RISK"
 
-[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Market/H"]
-layout_mode = 2
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="St" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Market/H/Right"]
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V/Pips/Risk"]
 layout_mode = 2
 theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
 theme_override_font_sizes/font_size = 12
-horizontal_alignment = 2
-text = "12 SOLD"
+text = "●●○○"
 
-[node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Market/H/Right"]
+[node name="Police" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V/Pips"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V/Pips/Police"]
 layout_mode = 2
 theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 9
-horizontal_alignment = 2
-text = "SESSION OPEN ›"
+theme_override_font_sizes/font_size = 8
+text = "POLICE"
 
-[node name="Boost" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
-layout_mode = 2
-theme_type_variation = &"Inset"
-
-[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Boost"]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/Boost/H"]
-custom_minimum_size = Vector2(24, 24)
-layout_mode = 2
-size_flags_vertical = 4
-texture = ExtResource("ic_cargo")
-expand_mode = 1
-stretch_mode = 5
-self_modulate = Color(0.475, 0.733, 0.757, 1)
-
-[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Boost/H"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Boost/H/Mid"]
-layout_mode = 2
-theme_type_variation = &"CardTitle"
-text = "BOOST"
-
-[node name="Desc" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Boost/H/Mid"]
-layout_mode = 2
-theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 10
-text = "Store lifts, targets, and the fence."
-
-[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Boost/H"]
-layout_mode = 2
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="St" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Boost/H/Right"]
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V/Pips/Police"]
 layout_mode = 2
 theme_type_variation = &"Mono"
-theme_override_colors/font_color = Color(0.475, 0.733, 0.757, 1)
+theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
 theme_override_font_sizes/font_size = 12
-horizontal_alignment = 2
-text = "TIER 1"
+text = "●●●"
 
-[node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Boost/H/Right"]
+[node name="Rival" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V/Pips"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V/Pips/Rival"]
 layout_mode = 2
 theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 9
-horizontal_alignment = 2
-text = "FENCE: DOWNTOWN ›"
+theme_override_font_sizes/font_size = 8
+text = "RIVAL"
 
-[node name="Stick" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
-layout_mode = 2
-theme_type_variation = &"Inset"
-
-[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Stick"]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/Stick/H"]
-custom_minimum_size = Vector2(24, 24)
-layout_mode = 2
-size_flags_vertical = 4
-texture = ExtResource("ic_warn")
-expand_mode = 1
-stretch_mode = 5
-self_modulate = Color(1, 0.29, 0.239, 1)
-
-[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Stick/H"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Stick/H/Mid"]
-layout_mode = 2
-theme_type_variation = &"CardTitle"
-text = "STICKUP"
-
-[node name="Desc" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Stick/H/Mid"]
-layout_mode = 2
-theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 10
-text = "Street robbery, registers, and organized work."
-
-[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Stick/H"]
-layout_mode = 2
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="St" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Stick/H/Right"]
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist1/V/Pips/Rival"]
 layout_mode = 2
 theme_type_variation = &"Mono"
-theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+theme_override_colors/font_color = Color(0.827, 0.161, 0.125, 1)
 theme_override_font_sizes/font_size = 12
-horizontal_alignment = 2
-text = "TIER 1"
+text = "●○○"
 
-[node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Stick/H/Right"]
-layout_mode = 2
-theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 9
-horizontal_alignment = 2
-text = "2 SUCCESSES ›"
-
-[node name="Shark" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
-layout_mode = 2
-theme_type_variation = &"Inset"
-
-[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Shark"]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/Shark/H"]
-custom_minimum_size = Vector2(24, 24)
-layout_mode = 2
-size_flags_vertical = 4
-texture = ExtResource("ic_debt")
-expand_mode = 1
-stretch_mode = 5
-self_modulate = Color(0.62, 0.5, 0.85, 1)
-
-[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Shark/H"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Shark/H/Mid"]
-layout_mode = 2
-theme_type_variation = &"CardTitle"
-text = "SHARK"
-
-[node name="Desc" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Shark/H/Mid"]
-layout_mode = 2
-theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 10
-text = "Fund borrowers and resolve defaults."
-
-[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/Shark/H"]
-layout_mode = 2
-size_flags_vertical = 4
-theme_override_constants/separation = 1
-
-[node name="St" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Shark/H/Right"]
-layout_mode = 2
-theme_type_variation = &"Mono"
-theme_override_colors/font_color = Color(0.62, 0.5, 0.85, 1)
-theme_override_font_sizes/font_size = 12
-horizontal_alignment = 2
-text = "1 OPEN"
-
-[node name="St2" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Shark/H/Right"]
-layout_mode = 2
-theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 9
-horizontal_alignment = 2
-text = "$250 OUT ›"
-
-[node name="Rival" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
+[node name="Dist2" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Districts"]
 layout_mode = 2
 theme_type_variation = &"Card"
 
-[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rival"]
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist2"]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 6
 
-[node name="Head" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rival/V"]
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V"]
 layout_mode = 2
 
-[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Rival/V/Head"]
+[node name="Name" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V/Top"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"CardTitle"
-theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
-text = "⚠  RIVAL PRESSURE"
+theme_override_font_sizes/font_size = 16
+text = "INDUSTRIAL"
 
-[node name="A" type="Label" parent="Shell/Scroll/Pad/Content/Rival/V/Head"]
+[node name="Travel" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V/Top"]
 layout_mode = 2
 size_flags_vertical = 4
-theme_type_variation = &"Kicker"
-theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
-text = "ATTENTION 4/8"
+theme_type_variation = &"Mono"
+theme_override_font_sizes/font_size = 12
+text = "TRAVEL"
 
-[node name="Body" type="Label" parent="Shell/Scroll/Pad/Content/Rival/V"]
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+theme_override_colors/font_color = Color(0.608, 0.608, 0.608, 1)
+text = "SERVICE ROADS"
+
+[node name="Blurb" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V"]
 layout_mode = 2
 autowrap_mode = 3
 theme_type_variation = &"Muted"
-theme_override_font_sizes/font_size = 11
-text = "Curtis Foyer reads this operation at Respect 2 · dismissive. Attention climbs with visible sales and rolling illegal revenue."
+text = "Loading yards, rare supply, and expensive mistakes."
+
+[node name="Pips" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Risk" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V/Pips"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V/Pips/Risk"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 8
+text = "RISK"
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V/Pips/Risk"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 12
+text = "●●●●"
+
+[node name="Police" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V/Pips"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V/Pips/Police"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 8
+text = "POLICE"
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V/Pips/Police"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
+theme_override_font_sizes/font_size = 12
+text = "●●○"
+
+[node name="Rival" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V/Pips"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V/Pips/Rival"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 8
+text = "RIVAL"
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist2/V/Pips/Rival"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.827, 0.161, 0.125, 1)
+theme_override_font_sizes/font_size = 12
+text = "●●●"
+
+[node name="AroundLabel" type="Label" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "AROUND SPENARD"
+
+[node name="Venues" type="VBoxContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Ven0" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Venues"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Venues/Ven0"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Tag" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven0/H"]
+custom_minimum_size = Vector2(46, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Kicker"
+horizontal_alignment = 1
+text = "BASE"
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Venues/Ven0/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 1
+
+[node name="Name" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven0/H/Mid"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+text = "North Star Garage"
+
+[node name="Desc" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven0/H/Mid"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 10
+text = "Your operation. Recruit crew, stash product."
+
+[node name="Ven1" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Venues"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Venues/Ven1"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Tag" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven1/H"]
+custom_minimum_size = Vector2(46, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Kicker"
+horizontal_alignment = 1
+text = "SHOP"
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Venues/Ven1/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 1
+
+[node name="Name" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven1/H/Mid"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+text = "Night Owl Mini-Mart"
+
+[node name="Desc" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven1/H/Mid"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 10
+text = "Mina's counter. Tools, a shift, word around town."
+
+[node name="Ven2" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Venues"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Venues/Ven2"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Tag" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven2/H"]
+custom_minimum_size = Vector2(46, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Kicker"
+horizontal_alignment = 1
+text = "TRAIN"
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Venues/Ven2/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 1
+
+[node name="Name" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven2/H/Mid"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+text = "Spenard Gym"
+
+[node name="Desc" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven2/H/Mid"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 10
+text = "Build strength. Let some heat cool off."
+
+[node name="Ven3" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Venues"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Venues/Ven3"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Tag" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven3/H"]
+custom_minimum_size = Vector2(46, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Kicker"
+horizontal_alignment = 1
+text = "CARDS"
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Venues/Ven3/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 1
+
+[node name="Name" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven3/H/Mid"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+text = "The Nile"
+
+[node name="Desc" type="Label" parent="Shell/Scroll/Pad/Content/Venues/Ven3/H/Mid"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 10
+text = "Biniam's game. Gamble and hear what's moving."
+
+[node name="People" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_type_variation = &"Card"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/People"]
+layout_mode = 2
+
+[node name="Name" type="Label" parent="Shell/Scroll/Pad/Content/People/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+text = "♟  PEOPLE"
+
+[node name="Status" type="Label" parent="Shell/Scroll/Pad/Content/People/H"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Mono"
+theme_override_font_sizes/font_size = 12
+text = "3 PERSONAL CONTACTS  ›"
 
 [node name="NavBar" type="PanelContainer" parent="Shell"]
 layout_mode = 2
@@ -896,7 +861,7 @@ theme_override_constants/separation = 4
 [node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Street"]
 custom_minimum_size = Vector2(0, 2)
 layout_mode = 2
-color = Color(0, 0, 0, 0)
+color = Color(1, 0.29, 0.239, 1)
 
 [node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Street"]
 custom_minimum_size = Vector2(22, 22)
@@ -905,11 +870,12 @@ size_flags_horizontal = 4
 texture = ExtResource("ic_travel")
 expand_mode = 1
 stretch_mode = 5
-self_modulate = Color(0.42, 0.42, 0.42, 1)
+self_modulate = Color(1, 0.29, 0.239, 1)
 
 [node name="L" type="Label" parent="Shell/NavBar/NavRow/Street"]
 layout_mode = 2
 theme_type_variation = &"NavLabel"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
 horizontal_alignment = 1
 text = "STREET"
 
@@ -921,7 +887,7 @@ theme_override_constants/separation = 4
 [node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Hustle"]
 custom_minimum_size = Vector2(0, 2)
 layout_mode = 2
-color = Color(1, 0.29, 0.239, 1)
+color = Color(0, 0, 0, 0)
 
 [node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Hustle"]
 custom_minimum_size = Vector2(22, 22)
@@ -930,12 +896,11 @@ size_flags_horizontal = 4
 texture = ExtResource("ic_market")
 expand_mode = 1
 stretch_mode = 5
-self_modulate = Color(1, 0.29, 0.239, 1)
+self_modulate = Color(0.42, 0.42, 0.42, 1)
 
 [node name="L" type="Label" parent="Shell/NavBar/NavRow/Hustle"]
 layout_mode = 2
 theme_type_variation = &"NavLabel"
-theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
 horizontal_alignment = 1
 text = "HUSTLE"
 

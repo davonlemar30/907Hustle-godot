@@ -54,8 +54,45 @@ Plus the **RIVAL PRESSURE** card (Curtis attention 4/8). Fits one screen (no scr
 Real data from `src/data/{jobs,districts,market}.js`; each row is a stub that will
 open its own sub-screen later (Jobs list/detail, 907List grid, Boost, Rob, Shark).
 
-**Open / next (build order per user):** Street → Phone → More; then the Hustle
-sub-screens (Jobs, 907List, Boost, Stickup, Shark). Also:
+**DONE — GameState autoload** (`autoload/game_state.gd`, registered in project.godot):
+the state spine. Plain canon data (DAY 14 snapshot from web v1.35) — run clock, player
+stats, `districts[]` (risk/police/rival/travel/accent), `spenard_venues[]`, contacts —
+plus `district_by_id()`/`current_district()` helpers. Static now; the reducer port
+(Phase 3) makes it mutate and every reader updates for free.
+
+**DONE — Street screen** (`ui/screens/street.tscn` + `street.gd`), verified via run:
+the exploration hub — STREET title, **3 district cards** (Spenard/Downtown/Industrial
+with travel method + RISK/POLICE/RIVAL pips), **AROUND SPENARD** venues (North Star
+Garage/Night Owl/Spenard Gym/The Nile), People contacts row. STREET active in nav.
+**First live GameState consumer:** `street.gd._ready()` fills the top bar, HUD, district
+cards (name+accent+pips computed via `_pips()`), venues, and contact count from the
+autoload — no hardcoded game values in the screen. GDScript gotchas learned:
+- Don't name a helper `_set(` — it collides with `Object._set(StringName,Variant)`.
+- Reference the autoload as `get_node("/root/GameState")` (runtime), not the compile-time
+  global `GameState`, so the script compiles before the editor reloads the autoload list.
+  (Registered the autoload live via `autoload_manage(op=add)`.)
+
+**DONE — UX pass 2** (`/ux-designer` follow-ups, verified via run):
+- **Touch targets** — Market BUY/SELL bumped 42×26 → **48×44** (WCAG/HIG 44px floor).
+- **Mini territory map** — Home Turf & Crew now has a 6×2 block grid (`.../Turf/V/Map`,
+  12 ColorRects) with the 3 held blocks lit red in a stepped diagonal, matching the concept.
+- Repo now has a root **`README.md`** (front-door doc; `HANDOFF.md` stays the deep log).
+
+**DONE — GameState retrofit (Phase 2 chrome)**, verified via run:
+`ui/screens/screen_base.gd` (extends Control) fills the shared chrome — top bar
+(day/part/location/cash) + 6-stat HUD — from GameState in `_ready()`. **All four
+screens now read the chrome from GameState**, none hardcode `$847`/`DAY 14`:
+- Home/Market/Hustle attach `screen_base.gd` directly (`script = ExtResource("scr")`).
+- `street.gd` now `extends "res://ui/screens/screen_base.gd"`, calls `super()` for the
+  chrome, then adds its district/venue/people fills. Shared helpers (`_set_text`,
+  `_pips`, `_commas`) live in the base.
+Proven by temporarily setting GameState cash=1337/day=21 → all screens showed it, then
+reverted to canon. NOTE: screen-specific content (market prices, Today's Take, activity
+feed, turf counts) is still baked in the .tscn — extend GameState + bind those next.
+
+**Open / next (build order per user):** bind screen-specific content to GameState
+(market prices, turf/soldiers, feed); Phone → More; then the Hustle sub-screens
+(Jobs, 907List, Boost, Stickup, Shark). Also:
 1. Build **Crew**, **Travel**, **People** screens; wire remaining portraits.
 2. Refresh Home's MARKET SNAPSHOT card to canon prices (currently placeholder:
    WEED $28/METH $61/PILLS $17 — real Spenard anchors are $27/$176/$105).

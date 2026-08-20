@@ -39,11 +39,11 @@ the oracle won; those divergences are listed in `HANDOFF.md`.
 | Claim corners, post soldiers, collect nightly | Home → Turf |
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
+| Pick up where you left off | automatic autosave · title → CONTINUE RUN |
 
 ### Not built yet
 
-Phone and More screens (their nav cells are disabled), save/load — so `CONTINUE RUN`
-and the LAST RUN line on the title screen stay hidden — venue interiors, combat
+Phone and More screens (their nav cells are disabled), venue interiors, combat
 encounters, equipment, attributes, and the behavioral parity harness.
 
 ## Project layout
@@ -56,6 +56,7 @@ autoload/
   screen_manager.gd   # the only thing that swaps screens; also toasts
   exposure.gd         # observation ledgers, NPC lenses, channels, disposition bands
   curtis.gd           # rival awareness phases, watchers, quiet-streak decay
+  save_system.gd      # versioned autosave on every state change; title save preview
 
 systems/              # the ONLY writers of GameState
   economy.gd          # buy / sell / seeded price evolution
@@ -149,8 +150,8 @@ regardless of how small the source file is.
 | 3d. 907List, Boost, Stickup, Shark | ✅ |
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
-| **4. Save / load** | **next** |
-| 5. Behavioral parity harness vs the JS oracle | — |
+| 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
+| **5. Behavioral parity harness vs the JS oracle** | **next** |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

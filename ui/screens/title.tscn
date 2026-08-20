@@ -193,6 +193,37 @@ theme_type_variation = &"BtnSecondary"
 theme_override_font_sizes/font_size = 14
 text = "CONTINUE RUN"
 
+[node name="Confirm" type="VBoxContainer" parent="Pad/V"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Prompt" type="Label" parent="Pad/V/Confirm"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+autowrap_mode = 3
+text = "Start a new run? The current autosave will be replaced."
+
+[node name="StartNew" type="Button" parent="Pad/V/Confirm"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+focus_mode = 0
+theme_type_variation = &"BtnPrimary"
+theme_override_font_sizes/font_size = 14
+text = "START NEW RUN"
+
+[node name="KeepSave" type="Button" parent="Pad/V/Confirm"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+focus_mode = 0
+theme_type_variation = &"BtnSecondary"
+theme_override_font_sizes/font_size = 14
+text = "KEEP SAVED RUN"
+
 [node name="HelpGap" type="Control" parent="Pad/V"]
 custom_minimum_size = Vector2(0, 22)
 layout_mode = 2

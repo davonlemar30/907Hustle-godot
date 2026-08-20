@@ -1,6 +1,7 @@
-[gd_scene load_steps=30 format=3]
+[gd_scene load_steps=31 format=3]
 
 [ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
+[ext_resource type="Script" path="res://ui/screens/screen_base.gd" id="scr"]
 [ext_resource type="PackedScene" path="res://ui/components/atmosphere.tscn" id="atmo"]
 [ext_resource type="Texture2D" uid="uid://co8ljnuanvgjj" path="res://assets/textures/logo1trans.png" id="logo"]
 [ext_resource type="Texture2D" uid="uid://b6ehqo1t57ham" path="res://assets/img/assest1home.png" id="home_photo"]
@@ -83,6 +84,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme = ExtResource("theme")
+script = ExtResource("scr")
 
 [node name="BG" type="ColorRect" parent="."]
 layout_mode = 1

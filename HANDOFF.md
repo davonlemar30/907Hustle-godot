@@ -78,8 +78,21 @@ autoload — no hardcoded game values in the screen. GDScript gotchas learned:
   12 ColorRects) with the 3 held blocks lit red in a stepped diagonal, matching the concept.
 - Repo now has a root **`README.md`** (front-door doc; `HANDOFF.md` stays the deep log).
 
-**Open / next (build order per user):** retrofit Home/Market/Hustle onto GameState;
-Phone → More; then the Hustle sub-screens (Jobs, 907List, Boost, Stickup, Shark). Also:
+**DONE — GameState retrofit (Phase 2 chrome)**, verified via run:
+`ui/screens/screen_base.gd` (extends Control) fills the shared chrome — top bar
+(day/part/location/cash) + 6-stat HUD — from GameState in `_ready()`. **All four
+screens now read the chrome from GameState**, none hardcode `$847`/`DAY 14`:
+- Home/Market/Hustle attach `screen_base.gd` directly (`script = ExtResource("scr")`).
+- `street.gd` now `extends "res://ui/screens/screen_base.gd"`, calls `super()` for the
+  chrome, then adds its district/venue/people fills. Shared helpers (`_set_text`,
+  `_pips`, `_commas`) live in the base.
+Proven by temporarily setting GameState cash=1337/day=21 → all screens showed it, then
+reverted to canon. NOTE: screen-specific content (market prices, Today's Take, activity
+feed, turf counts) is still baked in the .tscn — extend GameState + bind those next.
+
+**Open / next (build order per user):** bind screen-specific content to GameState
+(market prices, turf/soldiers, feed); Phone → More; then the Hustle sub-screens
+(Jobs, 907List, Boost, Stickup, Shark). Also:
 1. Build **Crew**, **Travel**, **People** screens; wire remaining portraits.
 2. Refresh Home's MARKET SNAPSHOT card to canon prices (currently placeholder:
    WEED $28/METH $61/PILLS $17 — real Spenard anchors are $27/$176/$105).

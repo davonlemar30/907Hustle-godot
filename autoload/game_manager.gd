@@ -41,7 +41,7 @@ func _ready() -> void:
 	register_system("stickup", stickup)
 
 	var shark = preload("res://systems/shark.gd").new()
-	shark.setup(_gs, rng)
+	shark.setup(_gs, rng, self)
 	register_system("shark", shark)
 
 	var nine07list = preload("res://systems/nine07list.gd").new()

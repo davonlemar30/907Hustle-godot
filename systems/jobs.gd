@@ -35,6 +35,15 @@ func setup(game_state: Node, rng_manager: Node, time: RefCounted) -> void:
 	time_system = time
 	gs.day_crossed.connect(_on_day_crossed)
 
+
+## The exposure layer, or null before it exists. Every system reaches it the
+## same way so the null-check lives in one shape rather than five.
+func _exposure() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+
+func _curtis_node() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
+
 func can_handle(action: String) -> bool:
 	return action in ["apply_job", "work_shift", "quit_job"]
 
@@ -124,6 +133,13 @@ func _work(approach_id: String) -> Dictionary:
 	gs.job_missed[job_id] = 0
 
 	gs.log_activity("%s shift: +$%d." % [job["name"], payout], GREEN)
+	# Canon tags WORK_SHIFT as presence/steady_work on the neighbourhood channel.
+	var exposure: Node = _exposure()
+	if exposure != null:
+		exposure.broadcast_observation({
+			"type": "presence", "event": "steady_work",
+			"location": gs.current_district_id, "channel": "neighborhood",
+		})
 	var ranked_up: bool = int(rec["rank"]) > old_rank
 	if ranked_up:
 		gs.log_activity("%s moved you up to rank %d." % [job["name"], int(rec["rank"])], GREEN)
@@ -169,6 +185,15 @@ func _on_day_crossed() -> void:
 			rec["hired_day"] = -1
 			gs.job_missed.erase(job_id)
 			gs.log_activity("%s let you go for not showing up." % job["name"], RED)
+			# Canon broadcasts this on BOTH channels the block hears — losing a
+			# job is household news and street news at the same time.
+			var exposure: Node = _exposure()
+			if exposure != null:
+				for channel in ["household", "neighborhood"]:
+					exposure.broadcast_observation({
+						"type": "financial", "event": "job_lost",
+						"location": gs.current_district_id, "channel": channel,
+					})
 	elif missed == MISSED_FINAL_WARNING:
 		gs.log_activity("%s: last warning about attendance." % job["name"], RED)
 	elif missed == MISSED_FIRST_WARNING:

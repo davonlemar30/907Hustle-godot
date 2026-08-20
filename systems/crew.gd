@@ -35,6 +35,15 @@ func setup(game_state: Node) -> void:
 	gs = game_state
 	gs.day_crossed.connect(_on_day_crossed)
 
+
+## The exposure layer, or null before it exists. Every system reaches it the
+## same way so the null-check lives in one shape rather than five.
+func _exposure() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+
+func _curtis_node() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
+
 func can_handle(action: String) -> bool:
 	return action in ["recruit_crew", "pay_crew", "promote_crew", "dismiss_crew"]
 
@@ -86,6 +95,15 @@ func _recruit(id: String) -> Dictionary:
 	}
 	_recompute_power()
 	gs.log_activity("%s is on the crew." % str(person["name"]).split(" ")[0], GREEN)
+	# Canon: crew_recruited is `growth` on the neighbourhood channel. Curtis
+	# weights growth at -3.0, so building an operation is exactly the thing that
+	# makes a rival colder — which is the point.
+	var curtis: Node = _curtis_node()
+	if curtis != null:
+		curtis.broadcast_tracked({
+			"type": "growth", "event": "crew_recruited",
+			"location": gs.current_district_id, "channel": "neighborhood",
+		})
 	return {"ok": true}
 
 func _dismiss(id: String) -> Dictionary:
@@ -123,6 +141,11 @@ func _pay(id: String) -> Dictionary:
 	rec["loyalty"] = clampi(int(rec["loyalty"]) + 1, gs.CREW_LOYALTY_MIN, gs.CREW_LOYALTY_MAX)
 	_recompute_power()
 	gs.log_activity("%s folds the full $%d into a pocket." % [str(gs.crew_member_by_id(id)["name"]).split(" ")[0], amount], GREEN)
+	var exposure: Node = _exposure()
+	if exposure != null:
+		exposure.broadcast_observation({
+			"type": "loyalty", "event": "paid_the_crew", "channel": "network",
+		})
 	return {"ok": true, "paid": amount}
 
 # --- tiers -----------------------------------------------------------------

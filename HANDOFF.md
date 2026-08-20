@@ -542,26 +542,61 @@ runs on.
 evidence behind it, because a lens disagreeing with another lens should be
 legible rather than mysterious.
 
-## OWED: retroactive Exposure wiring  (opened 2026-08-20)
+## Exposure wiring pass — DONE  (closed 2026-08-20)
 
-**The substrate is live as of 3f part 1.** Two Yalonda observations are already wired
-(`rent_paid`, `missed_obligation`) as proof; the rest of the table below is still owed.
-It is its own small PR.
+The OWED checklist from 3c/3d is wired. Every system that makes noise now says so
+through the exposure layer:
 
-Every system ported in 3c and 3d skips canon's `Exposure.recordObservation` /
-`Exposure.broadcastObservation` calls and `raiseCurtisAwareness`, because none of
-that exists yet. Each skip is noted in its file header under "Not ported", but
-they need collecting and wiring rather than rediscovering one at a time. Known
-call sites in canon that have a Godot counterpart already:
+| system | observation | channel |
+| --- | --- | --- |
+| `jobs.gd` | `steady_work` (presence) per shift | neighborhood |
+| `jobs.gd` | `job_lost` (financial) on firing | household **and** neighborhood |
+| `obligations.gd` | `rent_paid` / `missed_obligation` | household (direct) |
+| `crew.gd` | `crew_recruited` (growth) | neighborhood, via `broadcast_tracked` |
+| `crew.gd` | `paid_the_crew` (loyalty) | network |
+| `stickup.gd` | `stickup` (violence) + `organized_hit` at 2+ tier-3 | neighborhood / network |
+| `boost.gd` | `fenced_goods` (financial) | **household only** — Slide is discreet |
+| `shark.gd` | `note_returned` to Dre · `collected_hard` (violence) · `let_it_go` | direct / neighborhood |
 
-| system | canon call |
-| --- | --- |
-| `jobs.gd` | `job_lost` broadcast on firing (household + neighborhood channels) |
-| `obligations.gd` | `missed_obligation` on yalonda for every missed rent week |
-| `stickup.gd` | `raiseCurtisAwareness(2)` per success; `organized_hit` at 2+ tier-3 hits |
-| `boost.gd` | `recordCriminalActivity` per attempt; Slide's household-channel leak on a fence |
-| `shark.gd` | Dre standing movement per outcome |
-| `crew.gd` | recruitment and departure observations |
+Also closed a real gap found while wiring: **canon charges `heat + 2` for a
+violent Shark collection**, which 3d deferred. It is applied now, damped by
+Deshawn like every other heat source.
+
+### ⚠ Probable canon bug: `job_lost` scores POSITIVE
+
+`job_lost` is category `financial`, which CIVILIAN weights at **+1.5**, and it is
+**not** in `SHARED_EVENT_WEIGHTS`. So being fired currently makes Yalonda think
+*better* of you:
+
+```
+yalonda after job_lost:          +1.50 (NEUTRAL)
+yalonda after missed_obligation: -2.50 (COLD)
+```
+
+This is ported faithfully rather than quietly corrected, because the oracle is
+the oracle. But it looks like an oversight upstream: canon's own comment on
+`SHARED_EVENT_WEIGHTS` says *"Anything that means 'you cost me something' is
+priced here instead of inherited from its category"*, and being fired is plainly
+that. **Worth fixing in the web build**, at which point adding
+`"job_lost": -2.0` here keeps the two in step.
+
+This is the same shape as the bug the substrate PR caught with
+`missed_obligation`. When adding any new event, ask whether it means "you cost me
+something" — if so it needs an entry in that table, not a category weight.
+
+### Curtis: awareness and disposition move independently, on purpose
+
+Worth seeing in the numbers. After one stickup:
+
+```
+curtis disposition 0.0  ·  curtis awareness 2
+```
+
+His people noticed (the stickup rides `neighborhood`, and awareness rose from the
+direct `raise_awareness(2)`), but he has formed no opinion, because **Curtis does
+not listen on the neighborhood channel** — he is on `direct`, `network` and
+`reputation`. That is canon and it is the right behaviour: being noticed and
+being judged are different things.
 
 ## Phase 3e (part 2): Territory  (added 2026-08-20)
 

@@ -1,0 +1,1367 @@
+[gd_scene load_steps=29 format=3]
+
+[ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
+[ext_resource type="PackedScene" path="res://ui/components/atmosphere.tscn" id="atmo"]
+[ext_resource type="Texture2D" uid="uid://co8ljnuanvgjj" path="res://assets/textures/logo1trans.png" id="logo"]
+[ext_resource type="Texture2D" uid="uid://cagtvuxxjnp3r" path="res://assets/icons/products/icon-weed.svg" id="ic_weed"]
+[ext_resource type="Texture2D" uid="uid://dod08nb2juavy" path="res://assets/icons/products/icon-shrooms.svg" id="ic_shrooms"]
+[ext_resource type="Texture2D" uid="uid://bpgwbng2814nu" path="res://assets/icons/products/icon-pills.svg" id="ic_pills"]
+[ext_resource type="Texture2D" uid="uid://b38qktp2bep40" path="res://assets/icons/products/icon-lean.svg" id="ic_lean"]
+[ext_resource type="Texture2D" uid="uid://gqmaahqnp5o5" path="res://assets/icons/products/icon-coke.svg" id="ic_coke"]
+[ext_resource type="Texture2D" uid="uid://c63o60at0g6ax" path="res://assets/icons/products/icon-molly.svg" id="ic_molly"]
+[ext_resource type="Texture2D" uid="uid://b4g6v8b8d2hk6" path="res://assets/icons/products/icon-meth.svg" id="ic_meth"]
+[ext_resource type="Texture2D" uid="uid://ciawbrqicop31" path="res://assets/icons/nav/icon-home.svg" id="ic_home"]
+[ext_resource type="Texture2D" uid="uid://qxxecxf6e7f8" path="res://assets/icons/nav/icon-market.svg" id="ic_market"]
+[ext_resource type="Texture2D" uid="uid://bp521w0vtsd8a" path="res://assets/icons/nav/icon-crew.svg" id="ic_crew"]
+[ext_resource type="Texture2D" uid="uid://7hxto5lndefv" path="res://assets/icons/nav/icon-travel.svg" id="ic_travel"]
+[ext_resource type="Texture2D" uid="uid://pdedvxirnal6" path="res://assets/icons/nav/icon-people.svg" id="ic_people"]
+[ext_resource type="Texture2D" uid="uid://bn4ak40fmlcau" path="res://assets/icons/ui/icon-chat.svg" id="ic_chat"]
+[ext_resource type="Texture2D" uid="uid://cqkn2m0xs6w3d" path="res://assets/icons/ui/icon-menu.svg" id="ic_menu"]
+[ext_resource type="Texture2D" uid="uid://dxeaajkgr7tyr" path="res://assets/icons/hud/icon-heat.svg" id="ic_heat"]
+[ext_resource type="Texture2D" uid="uid://c11k5uwpyoqbd" path="res://assets/icons/hud/icon-health.svg" id="ic_health"]
+[ext_resource type="Texture2D" uid="uid://luq1ybqq3kxr" path="res://assets/icons/hud/icon-debt.svg" id="ic_debt"]
+[ext_resource type="Texture2D" uid="uid://bw130ej2fexja" path="res://assets/icons/hud/icon-cargo.svg" id="ic_cargo"]
+[ext_resource type="Texture2D" uid="uid://dmae0luhr7igo" path="res://assets/icons/hud/icon-respect.svg" id="ic_respect"]
+[ext_resource type="Texture2D" uid="uid://c24qf4w1hbbqc" path="res://assets/icons/hud/icon-crewpower.svg" id="ic_crewpwr"]
+[ext_resource type="Texture2D" uid="uid://ctcioy64750ty" path="res://assets/icons/ui/icon-arrow-up.svg" id="ic_up"]
+[ext_resource type="Texture2D" uid="uid://beqs2dorx0wut" path="res://assets/icons/ui/icon-lock.svg" id="ic_lock"]
+
+[sub_resource type="StyleBoxFlat" id="SB_fab"]
+bg_color = Color(0.7, 0.13, 0.1, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.35, 0.3, 1)
+corner_radius_top_left = 28
+corner_radius_top_right = 28
+corner_radius_bottom_right = 28
+corner_radius_bottom_left = 28
+shadow_color = Color(0.83, 0.16, 0.12, 0.55)
+shadow_size = 11
+
+[node name="Market" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("theme")
+
+[node name="BG" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.043, 0.039, 0.055, 1)
+
+[node name="Shell" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
+
+[node name="TopBar" type="PanelContainer" parent="Shell"]
+layout_mode = 2
+theme_type_variation = &"TopBar"
+
+[node name="HBox" type="HBoxContainer" parent="Shell/TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DayBox" type="PanelContainer" parent="Shell/TopBar/HBox"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Inset"
+
+[node name="V" type="VBoxContainer" parent="Shell/TopBar/HBox/DayBox"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Day" type="Label" parent="Shell/TopBar/HBox/DayBox/V"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+text = "DAY 14"
+
+[node name="Part" type="Label" parent="Shell/TopBar/HBox/DayBox/V"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "EVENING"
+
+[node name="Brand" type="TextureRect" parent="Shell/TopBar/HBox"]
+custom_minimum_size = Vector2(0, 66)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+texture = ExtResource("logo")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Right" type="VBoxContainer" parent="Shell/TopBar/HBox"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="LocBox" type="PanelContainer" parent="Shell/TopBar/HBox/Right"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="V" type="VBoxContainer" parent="Shell/TopBar/HBox/Right/LocBox"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="L1" type="Label" parent="Shell/TopBar/HBox/Right/LocBox/V"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+horizontal_alignment = 1
+text = "SPENARD"
+
+[node name="L2" type="Label" parent="Shell/TopBar/HBox/Right/LocBox/V"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+horizontal_alignment = 1
+text = "ANCHORAGE, AK"
+
+[node name="CashBox" type="PanelContainer" parent="Shell/TopBar/HBox/Right"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="V" type="VBoxContainer" parent="Shell/TopBar/HBox/Right/CashBox"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="C1" type="Label" parent="Shell/TopBar/HBox/Right/CashBox/V"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+horizontal_alignment = 1
+text = "CASH"
+
+[node name="C2" type="Label" parent="Shell/TopBar/HBox/Right/CashBox/V"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 1
+text = "$847"
+
+[node name="Line" type="ColorRect" parent="Shell"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+color = Color(0.2, 0.2, 0.2, 1)
+
+[node name="Hud" type="PanelContainer" parent="Shell"]
+layout_mode = 2
+
+[node name="HudRow" type="HBoxContainer" parent="Shell/Hud"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="C0" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C0"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C0/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_heat")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.29, 0.239, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C0/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "HEAT"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C0"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "6/15"
+
+[node name="S0" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C1" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C1"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C1/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_health")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.451, 0.722, 0.404, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C1/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "HEALTH"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C1"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "78/100"
+
+[node name="S1" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C2" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C2"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C2/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_debt")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.29, 0.239, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C2/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "DEBT"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C2"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "$1,200"
+
+[node name="S2" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C3" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C3"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C3/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_cargo")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.882, 0.651, 0.227, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C3/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "CARGO"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C3"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "9/18"
+
+[node name="S3" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C4" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C4"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C4/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_respect")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.475, 0.733, 0.757, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C4/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "RESPECT"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C4"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.475, 0.733, 0.757, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "4"
+
+[node name="S4" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C5" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C5"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C5/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_crewpwr")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.62, 0.5, 0.85, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C5/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "CREW"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C5"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.62, 0.5, 0.85, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "11"
+
+[node name="Scroll" type="ScrollContainer" parent="Shell"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Pad" type="MarginContainer" parent="Shell/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 20
+
+[node name="Content" type="VBoxContainer" parent="Shell/Scroll/Pad"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Districts" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_type_variation = &"Card"
+
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Head" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V"]
+layout_mode = 2
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Head"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"CardTitle"
+text = "TRADING BOARD"
+
+[node name="Upd" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Head"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "UPD 20m"
+
+[node name="Tabs" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Spenard" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V/Tabs"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 5
+
+[node name="L" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Tabs/Spenard"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+horizontal_alignment = 1
+text = "SPENARD"
+
+[node name="Ind" type="ColorRect" parent="Shell/Scroll/Pad/Content/Districts/V/Tabs/Spenard"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(1, 0.29, 0.239, 1)
+
+[node name="Downtown" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V/Tabs"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 5
+
+[node name="L" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Tabs/Downtown"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(0.522, 0.522, 0.522, 1)
+horizontal_alignment = 1
+text = "DOWNTOWN"
+
+[node name="Ind" type="ColorRect" parent="Shell/Scroll/Pad/Content/Districts/V/Tabs/Downtown"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Industrial" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V/Tabs"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 5
+
+[node name="L" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Tabs/Industrial"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(0.522, 0.522, 0.522, 1)
+horizontal_alignment = 1
+text = "INDUSTRIAL"
+
+[node name="Ind" type="ColorRect" parent="Shell/Scroll/Pad/Content/Districts/V/Tabs/Industrial"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ctx" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Blurb" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+autowrap_mode = 3
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 10
+text = "Home turf. Safest footing in the city — thin margins, low patrol."
+
+[node name="Risk" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Risk"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 8
+horizontal_alignment = 1
+text = "RISK"
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Risk"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+text = "●○○○"
+
+[node name="Police" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Police"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 8
+horizontal_alignment = 1
+text = "POLICE"
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Police"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+text = "●○○"
+
+[node name="Rival" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Rival"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 8
+horizontal_alignment = 1
+text = "RIVAL"
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Rival"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.827, 0.161, 0.125, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+text = "○○○"
+
+[node name="Rows" type="VBoxContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="R0" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R0"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R0/H"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_weed")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.451, 0.722, 0.404, 1)
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R0/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Mid/Top"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 15
+text = "WEED"
+
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Mid/Top"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "DEPENDABLE · OWN 4oz"
+
+[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Mid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 10
+text = "▲ SELL INDUSTRIAL  +$11"
+
+[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R0/H"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Right"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 2
+text = "$27"
+
+[node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Right"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnPrimary"
+theme_override_font_sizes/font_size = 10
+text = "BUY"
+
+[node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnSecondary"
+theme_override_font_sizes/font_size = 10
+text = "SELL"
+
+[node name="R1" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R1"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R1/H"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_shrooms")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.373, 0.663, 0.847, 1)
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R1/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Mid/Top"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
+theme_override_font_sizes/font_size = 15
+text = "SHROOMS"
+
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Mid/Top"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "VOLATILE · OWN 2"
+
+[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Mid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 10
+text = "▲ SELL DOWNTOWN  +$36"
+
+[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R1/H"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Right"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 2
+text = "$72"
+
+[node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Right"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnPrimary"
+theme_override_font_sizes/font_size = 10
+text = "BUY"
+
+[node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnSecondary"
+theme_override_font_sizes/font_size = 10
+text = "SELL"
+
+[node name="R2" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R2"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R2/H"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pills")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.882, 0.651, 0.227, 1)
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R2/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Mid/Top"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 15
+text = "PILLS"
+
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Mid/Top"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "STEADY MARGIN · OWN 12"
+
+[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Mid"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 10
+text = "— STABLE CITYWIDE"
+
+[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R2/H"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Right"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 2
+text = "$105"
+
+[node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Right"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnPrimary"
+theme_override_font_sizes/font_size = 10
+text = "BUY"
+
+[node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnSecondary"
+theme_override_font_sizes/font_size = 10
+text = "SELL"
+
+[node name="R3" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R3"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R3/H"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_lean")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.62, 0.5, 0.85, 1)
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R3/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Mid/Top"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(0.62, 0.5, 0.85, 1)
+theme_override_font_sizes/font_size = 15
+text = "LEAN"
+
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Mid/Top"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "PREMIUM"
+
+[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Mid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
+theme_override_font_sizes/font_size = 10
+text = "↗ +30% MARGIN DOWNTOWN"
+
+[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R3/H"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Right"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.62, 0.5, 0.85, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 2
+text = "$155"
+
+[node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Right"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnPrimary"
+theme_override_font_sizes/font_size = 10
+text = "BUY"
+
+[node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnSecondary"
+theme_override_font_sizes/font_size = 10
+text = "SELL"
+
+[node name="R4" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R4"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R4/H"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_molly")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.29, 0.239, 1)
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R4/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Mid/Top"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+theme_override_font_sizes/font_size = 15
+text = "MOLLY"
+
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Mid/Top"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "CLUB DEMAND"
+
+[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Mid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
+theme_override_font_sizes/font_size = 10
+text = "↗ +30% MARGIN DOWNTOWN"
+
+[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R4/H"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Right"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 2
+text = "$215"
+
+[node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Right"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnPrimary"
+theme_override_font_sizes/font_size = 10
+text = "BUY"
+
+[node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnSecondary"
+theme_override_font_sizes/font_size = 10
+text = "SELL"
+
+[node name="R5" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R5"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R5/H"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_coke")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.9, 0.89, 0.86, 1)
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R5/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Mid/Top"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(0.9, 0.89, 0.86, 1)
+theme_override_font_sizes/font_size = 15
+text = "COKE"
+
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Mid/Top"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "HIGH MARGIN"
+
+[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Mid"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 10
+text = "— STABLE CITYWIDE"
+
+[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R5/H"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Right"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.9, 0.89, 0.86, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 2
+text = "$290"
+
+[node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Right"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnPrimary"
+theme_override_font_sizes/font_size = 10
+text = "BUY"
+
+[node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnSecondary"
+theme_override_font_sizes/font_size = 10
+text = "SELL"
+
+[node name="R6" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R6"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R6/H"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_coke")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.85, 0.72, 0.42, 1)
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R6/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Mid/Top"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(0.85, 0.72, 0.42, 1)
+theme_override_font_sizes/font_size = 15
+text = "COCAINE"
+
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Mid/Top"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "PREMIUM"
+
+[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Mid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 10
+text = "▲ SELL DOWNTOWN  +$127"
+
+[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R6/H"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Right"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.85, 0.72, 0.42, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 2
+text = "$296"
+
+[node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Right"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnPrimary"
+theme_override_font_sizes/font_size = 10
+text = "BUY"
+
+[node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Right/Btns"]
+custom_minimum_size = Vector2(42, 26)
+layout_mode = 2
+theme_type_variation = &"BtnSecondary"
+theme_override_font_sizes/font_size = 10
+text = "SELL"
+
+[node name="R7" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Rows"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+modulate = Color(1, 1, 1, 0.72)
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R7"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R7/H"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_meth")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="Mid" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R7/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R7/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R7/H/Mid/Top"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_font_sizes/font_size = 15
+text = "METH"
+
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R7/H/Mid/Top"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "EXTREME RISK"
+
+[node name="Hint" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R7/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Lk" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R7/H/Mid/Hint"]
+custom_minimum_size = Vector2(11, 11)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_lock")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.827, 0.161, 0.125, 1)
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R7/H/Mid/Hint"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.827, 0.161, 0.125, 1)
+theme_override_font_sizes/font_size = 10
+text = "NEEDS INDUSTRIAL TURF"
+
+[node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R7/H"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R7/H/Right"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 2
+text = "$176"
+
+[node name="Lock" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R7/H/Right"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+horizontal_alignment = 2
+text = "LOCKED"
+
+[node name="Foot" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_type_variation = &"Card"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Foot"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Foot/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 1
+
+[node name="K" type="Label" parent="Shell/Scroll/Pad/Content/Foot/H/V"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "CARGO VALUE"
+
+[node name="Val" type="Label" parent="Shell/Scroll/Pad/Content/Foot/H/V"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 18
+text = "$1,428"
+
+[node name="Note" type="Label" parent="Shell/Scroll/Pad/Content/Foot/H/V"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "3 of 8 products moving at a spread"
+
+[node name="Go" type="Button" parent="Shell/Scroll/Pad/Content/Foot/H"]
+custom_minimum_size = Vector2(128, 52)
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"BtnPrimary"
+text = "PLAN A ROUTE"
+
+[node name="NavBar" type="PanelContainer" parent="Shell"]
+layout_mode = 2
+theme_type_variation = &"NavBar"
+
+[node name="NavRow" type="HBoxContainer" parent="Shell/NavBar"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="Street" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Street"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(1, 0.29, 0.239, 1)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Street"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_travel")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.29, 0.239, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Street"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+horizontal_alignment = 1
+text = "STREET"
+
+[node name="Hustle" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Hustle"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Hustle"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_market")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Hustle"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+horizontal_alignment = 1
+text = "HUSTLE"
+
+[node name="HomeSlot" type="Control" parent="Shell/NavBar/NavRow"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Phone" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Phone"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Phone"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_chat")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Phone"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+horizontal_alignment = 1
+text = "PHONE"
+
+[node name="More" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/More"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/More"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_menu")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/More"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+horizontal_alignment = 1
+text = "MORE"
+
+[node name="HomeFab" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -34.0
+offset_top = -86.0
+offset_right = 34.0
+offset_bottom = -9.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_constants/separation = 5
+
+[node name="Circle" type="PanelContainer" parent="HomeFab"]
+custom_minimum_size = Vector2(56, 56)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_styles/panel = SubResource("SB_fab")
+
+[node name="Center" type="CenterContainer" parent="HomeFab/Circle"]
+layout_mode = 2
+
+[node name="Ico" type="TextureRect" parent="HomeFab/Circle/Center"]
+custom_minimum_size = Vector2(26, 26)
+layout_mode = 2
+texture = ExtResource("ic_home")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.93, 0.92, 1)
+
+[node name="L" type="Label" parent="HomeFab"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+horizontal_alignment = 1
+text = "HOME"
+
+[node name="Atmosphere" parent="." instance=ExtResource("atmo")]

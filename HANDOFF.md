@@ -176,9 +176,11 @@ on an old `codex/v1-11` branch — re-`git pull` origin/main before pulling data
 (red circle FAB, `SB_fab` stylebox, sits above the bar via a `HomeFab` overlay
 anchored bottom-center of the root). Side tabs: STREET · HUSTLE | (home) | PHONE · MORE.
 **There is no top-level MARKET/CREW/TRAVEL/PEOPLE tab.** In the web IA:
-- **Street** = exploration + the **Street Market** (so `market.tscn` shows STREET active),
-  district travel, encounters, robberies.
-- **Hustle** = legit jobs + the 907List flip market.
+- **Street** = exploration: district travel, local venues, encounters, robberies, People.
+- **Hustle** = income hub, incl. the **Street Market** (drug trading). The market is a
+  *sub-page of Hustle* once `hustle.visible` (true mid-game) — reached via the Hustle
+  hub's "STREET MARKET" row — so **`market.tscn` shows HUSTLE active**, not STREET. (Web
+  only shows it on Street in the *early* game before Hustle unlocks.) Also 907List flips + jobs.
 - **Phone** = texts/contacts/bills (People & relationships live here).
 - **More** = settings/status/menu (turf/crew likely surface here or on Home).
 Icon placeholders in use (need real art): Street→`icon-travel` (want a walking figure),

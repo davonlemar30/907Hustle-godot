@@ -9,8 +9,7 @@ const RISK_MAX := 4
 const POLICE_MAX := 3
 const RIVAL_MAX := 3
 
-func _ready() -> void:
-	super()
+func _bind_content() -> void:
 	_fill_districts()
 	_fill_venues()
 	_fill_people()

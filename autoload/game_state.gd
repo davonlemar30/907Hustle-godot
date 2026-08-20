@@ -10,6 +10,11 @@ extends Node
 ## the first consumer. Retrofitting Home/Market/Hustle onto GameState is a
 ## follow-up pass.
 
+## Emitted after any batch of state changes. Screens connect to this and re-render
+## everything in one pass (the web-reducer pattern). Call notify_changed() after
+## mutating fields to trigger a refresh.
+signal state_changed
+
 # --- Run clock -------------------------------------------------------------
 var day: int = 14
 var part: String = "EVENING"
@@ -51,15 +56,59 @@ var personal_contacts: int = 3
 # price = the current district's anchor (base x district bias). role folds in the
 # owned quantity for the mid-game snapshot; hint is the route read for this district.
 var products: Array = [
-	{"id": "weed", "name": "WEED", "role": "DEPENDABLE · OWN 4oz", "color": Color(0.451, 0.722, 0.404), "price": 27, "hint": "▲ SELL INDUSTRIAL  +$11", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
-	{"id": "shrooms", "name": "SHROOMS", "role": "VOLATILE · OWN 2", "color": Color(0.373, 0.663, 0.847), "price": 72, "hint": "▲ SELL DOWNTOWN  +$36", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
-	{"id": "pills", "name": "PILLS", "role": "STEADY MARGIN · OWN 12", "color": Color(0.882, 0.651, 0.227), "price": 105, "hint": "— STABLE CITYWIDE", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
-	{"id": "lean", "name": "LEAN", "role": "PREMIUM", "color": Color(0.62, 0.5, 0.85), "price": 155, "hint": "↗ +30% MARGIN DOWNTOWN", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
-	{"id": "molly", "name": "MOLLY", "role": "CLUB DEMAND", "color": Color(1, 0.29, 0.239), "price": 215, "hint": "↗ +30% MARGIN DOWNTOWN", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
-	{"id": "coke", "name": "COKE", "role": "HIGH MARGIN", "color": Color(0.9, 0.89, 0.86), "price": 290, "hint": "— STABLE CITYWIDE", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
-	{"id": "cocaine", "name": "COCAINE", "role": "PREMIUM", "color": Color(0.85, 0.72, 0.42), "price": 296, "hint": "▲ SELL DOWNTOWN  +$127", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
-	{"id": "meth", "name": "METH", "role": "EXTREME RISK", "color": Color(0.6, 0.6, 0.6), "price": 176, "hint": "NEEDS INDUSTRIAL TURF", "hint_color": Color(0.827, 0.161, 0.125), "locked": true},
+	{"id": "weed", "name": "WEED", "role": "DEPENDABLE · OWN 4oz", "owned": "4oz", "route": "+$11 Industrial", "color": Color(0.451, 0.722, 0.404), "price": 27, "hint": "▲ SELL INDUSTRIAL  +$11", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "shrooms", "name": "SHROOMS", "role": "VOLATILE · OWN 2", "owned": "2", "route": "+$36 Downtown", "color": Color(0.373, 0.663, 0.847), "price": 72, "hint": "▲ SELL DOWNTOWN  +$36", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "pills", "name": "PILLS", "role": "STEADY MARGIN · OWN 12", "owned": "12", "route": "Stable citywide", "color": Color(0.882, 0.651, 0.227), "price": 105, "hint": "— STABLE CITYWIDE", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
+	{"id": "lean", "name": "LEAN", "role": "PREMIUM", "owned": "0", "route": "Downtown margin", "color": Color(0.62, 0.5, 0.85), "price": 155, "hint": "↗ +30% MARGIN DOWNTOWN", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
+	{"id": "molly", "name": "MOLLY", "role": "CLUB DEMAND", "owned": "0", "route": "Downtown margin", "color": Color(1, 0.29, 0.239), "price": 215, "hint": "↗ +30% MARGIN DOWNTOWN", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
+	{"id": "coke", "name": "COKE", "role": "HIGH MARGIN", "owned": "0", "route": "Stable citywide", "color": Color(0.9, 0.89, 0.86), "price": 290, "hint": "— STABLE CITYWIDE", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
+	{"id": "cocaine", "name": "COCAINE", "role": "PREMIUM", "owned": "0", "route": "+$127 Downtown", "color": Color(0.85, 0.72, 0.42), "price": 296, "hint": "▲ SELL DOWNTOWN  +$127", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "meth", "name": "METH", "role": "EXTREME RISK", "owned": "0", "route": "Locked", "color": Color(0.6, 0.6, 0.6), "price": 176, "hint": "NEEDS INDUSTRIAL TURF", "hint_color": Color(0.827, 0.161, 0.125), "locked": true},
 ]
+
+# Which products the Home "Market Snapshot" summarizes (by id), in display order.
+var home_snapshot: Array = ["weed", "meth", "pills"]
+
+# --- Turf & crew (canon: locations.js TERRITORIES / SPENARD_BLOCKS) --------------
+# held_blocks: each held block + which mini-map grid cell (0-11) it lights.
+var map_cells: int = 12
+var held_blocks: Array = [
+	{"name": "Minnesota Dr.", "cell": 2},
+	{"name": "Burlwood", "cell": 9},
+	{"name": "W. 36th Ave.", "cell": 10},
+]
+var soldiers: int = 6
+var soldiers_shown: int = 6
+var eli_report: String = "One corner stayed quiet, one got pressured."
+
+# --- Tonight's Operation ---------------------------------------------------------
+var active_operation: Dictionary = {
+	"title": "TONIGHT'S OPERATION",
+	"body": "Curtis is probing Minnesota Off-Ramp. Police pressure rising in North Spenard.",
+	"actions": ["MOVE PRODUCT", "POST ELI", "LAY LOW"],
+}
+
+# --- Activity feed ---------------------------------------------------------------
+var activity_log: Array = [
+	{"text": "Afternoon: Sold 3 pills in Midtown.", "time": "3:46 PM", "color": Color(0.451, 0.722, 0.404)},
+	{"text": "Morning: Paid bus pass.", "time": "8:12 AM", "color": Color(0.373, 0.663, 0.847)},
+	{"text": "Night watch: No arrests yet.", "time": "9:31 PM", "color": Color(0.62, 0.5, 0.85)},
+]
+
+# --- People & events -------------------------------------------------------------
+var pending_messages: Array = [
+	{"npc_id": "yalonda", "name": "YALONDA", "preview": "\"You owe me a favor. Slide through when you're ready.\"", "timestamp": "12m ago"},
+]
+
+func product_by_id(id: String) -> Dictionary:
+	for p in products:
+		if p.get("id", "") == id:
+			return p
+	return {}
+
+## Emit state_changed so every connected screen re-renders. Call after mutations.
+func notify_changed() -> void:
+	state_changed.emit()
 
 func district_by_id(id: String) -> Dictionary:
 	for d in districts:

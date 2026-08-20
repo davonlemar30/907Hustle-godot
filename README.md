@@ -19,10 +19,10 @@ yet** — screens read a fixed mid-game snapshot; the reducer port is a later ph
 | Hustle | `ui/screens/hustle.tscn` | income hub — 6 surfaces, Today's Take, Curtis pressure |
 | Street | `ui/screens/street.tscn` | exploration hub — districts, venues, people (fully `GameState`-driven) |
 
-All four screens read their shared chrome (day/cash/HUD) from `GameState` via
-`ui/screens/screen_base.gd`. Street (districts/venues) and Market (product rows +
-prices) also drive their content from it. Remaining baked content (Home's snapshot/
-turf, Hustle's surfaces) gets bound as `GameState` grows.
+All four screens read their shared chrome (day/cash/HUD) from `GameState`. Street
+(districts/venues), Market (product rows/prices), and Home (operation, snapshot, turf +
+mini-map, feed, messages) drive their full content from it. Only Hustle's surfaces
+remain baked.
 
 **Nav:** `STREET · HUSTLE · HOME · PHONE · MORE` with a raised red center HOME button.
 Not yet built: Phone, More, Crew/Territory, Travel detail, and the Hustle sub-screens
@@ -43,8 +43,11 @@ addons/godot_ai/           # committed MCP bridge (works on any clone)
 ## Architecture
 
 - **`GameState` autoload** is the single source of truth for the run (stats, districts,
-  venues, contacts). Screens read from it in `_ready()` rather than hardcoding values —
-  when it later mutates via the reducer port, every reader updates for free.
+  venues, contacts, products, turf, operation, feed, messages). It exposes a
+  `state_changed` signal; screens connect `refresh()` to it, so one `notify_changed()`
+  re-renders everything (the web-reducer pattern) — no per-field wiring.
+- **`screen_base.gd`** fills the shared chrome and calls a `_bind_content()` hook each
+  screen overrides. Home/Market/Street are fully `GameState`-driven; Hustle is next.
 - **Reusable atmosphere** (`atmosphere.tscn`) is a `CanvasLayer` each screen instances;
   one screen-space shader does a `tex-card` material pass + animated film grain + a soft
   vignette. Intensity is a set of shader uniforms.

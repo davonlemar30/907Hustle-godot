@@ -1,19 +1,30 @@
 extends Control
 ## Base for every top-level screen.
 ##
-## Fills the shared chrome — the top bar (day/part/location/cash) and the 6-stat
-## HUD — from the GameState autoload in _ready(), so no screen hardcodes cash, day,
-## or stat strings. The values baked into each .tscn are just editor-time previews;
-## at runtime GameState is the source of truth.
+## Renders the whole screen from GameState in one pass — the shared chrome (top bar
+## day/part/location/cash + 6-stat HUD) here, and each screen's own content via the
+## `_bind_content()` hook. `refresh()` runs once on ready and again whenever GameState
+## emits `state_changed`, so a single state update re-renders everything (the
+## web-reducer pattern) with no per-field signal wiring.
 ##
-## Screens with extra content (e.g. Street) extend this, override _ready(), and
-## call super() before doing their own fills. Also exposes the shared helpers
-## (_set_text / _pips / _commas).
+## The values baked into each .tscn are just editor-time previews; at runtime
+## GameState is the source of truth. Screens with content override `_bind_content()`.
 
 @onready var gs: Node = get_node("/root/GameState")
 
 func _ready() -> void:
+	if gs and gs.has_signal("state_changed"):
+		gs.state_changed.connect(refresh)
+	refresh()
+
+## Re-render the entire screen from GameState.
+func refresh() -> void:
 	_fill_chrome()
+	_bind_content()
+
+## Screens override this to bind their own content. Base is a no-op.
+func _bind_content() -> void:
+	pass
 
 func _fill_chrome() -> void:
 	_set_text("Shell/TopBar/HBox/DayBox/V/Day", "DAY %d" % gs.day)

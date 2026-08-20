@@ -1,40 +1,19 @@
-extends Control
-## Street screen — the first consumer of gs.
+extends "res://ui/screens/screen_base.gd"
+## Street screen — the exploration hub.
 ##
-## The screen's layout is static, but every game value (top bar, HUD, the three
-## district cards, the Spenard venues, the contact count) is pulled from the
-## GameState autoload in _ready(). No canon numbers are hardcoded in this screen.
-## This is the pattern the other screens will be retrofitted onto.
+## The shared chrome (top bar + HUD) is filled by screen_base. This adds the
+## Street-specific content — district cards, Spenard venues, and the contact
+## count — all read from GameState. No canon values are hardcoded in the screen.
 
 const RISK_MAX := 4
 const POLICE_MAX := 3
 const RIVAL_MAX := 3
 
-# Resolved at runtime (via /root) rather than the compile-time autoload global,
-# so the script compiles even before the editor has reloaded the autoload list.
-@onready var gs: Node = get_node("/root/GameState")
-
 func _ready() -> void:
-	_fill_topbar()
-	_fill_hud()
+	super()
 	_fill_districts()
 	_fill_venues()
 	_fill_people()
-
-func _fill_topbar() -> void:
-	_set_text("Shell/TopBar/HBox/DayBox/V/Day", "DAY %d" % gs.day)
-	_set_text("Shell/TopBar/HBox/DayBox/V/Part", gs.part)
-	_set_text("Shell/TopBar/HBox/Right/LocBox/V/L1", gs.current_district().get("name", "SPENARD"))
-	_set_text("Shell/TopBar/HBox/Right/LocBox/V/L2", gs.city)
-	_set_text("Shell/TopBar/HBox/Right/CashBox/V/C2", "$%s" % _commas(gs.cash))
-
-func _fill_hud() -> void:
-	_set_text("Shell/Hud/HudRow/C0/V", "%d/%d" % [gs.heat, gs.heat_max])
-	_set_text("Shell/Hud/HudRow/C1/V", "%d/%d" % [gs.health, gs.health_max])
-	_set_text("Shell/Hud/HudRow/C2/V", "$%s" % _commas(gs.debt))
-	_set_text("Shell/Hud/HudRow/C3/V", "%d/%d" % [gs.cargo, gs.cargo_max])
-	_set_text("Shell/Hud/HudRow/C4/V", str(gs.respect))
-	_set_text("Shell/Hud/HudRow/C5/V", str(gs.crew_power))
 
 func _fill_districts() -> void:
 	for i in range(3):
@@ -65,25 +44,3 @@ func _fill_venues() -> void:
 
 func _fill_people() -> void:
 	_set_text("Shell/Scroll/Pad/Content/People/H/Status", "%d PERSONAL CONTACTS  ›" % gs.personal_contacts)
-
-# --- helpers ---------------------------------------------------------------
-
-func _set_text(path: String, text: String) -> void:
-	var node := get_node_or_null(path) as Label
-	if node:
-		node.text = text
-
-func _pips(filled: int, total: int) -> String:
-	filled = clampi(filled, 0, total)
-	return "●".repeat(filled) + "○".repeat(total - filled)
-
-func _commas(n: int) -> String:
-	var s := str(n)
-	var out := ""
-	var count := 0
-	for i in range(s.length() - 1, -1, -1):
-		out = s[i] + out
-		count += 1
-		if count % 3 == 0 and i > 0:
-			out = "," + out
-	return out

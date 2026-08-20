@@ -17,7 +17,11 @@ yet** — screens read a fixed mid-game snapshot; the reducer port is a later ph
 | Home | `ui/screens/home.tscn` | HUD, hero photo, Tonight's Operation, market/turf, people, feed |
 | Market | `ui/screens/market.tscn` | 8 products, canon per-district pricing, buy/sell (the "Street Market") |
 | Hustle | `ui/screens/hustle.tscn` | income hub — 6 surfaces, Today's Take, Curtis pressure |
-| Street | `ui/screens/street.tscn` | exploration hub — districts, venues, people. **First live `GameState` consumer.** |
+| Street | `ui/screens/street.tscn` | exploration hub — districts, venues, people (fully `GameState`-driven) |
+
+All four screens read their shared chrome (day/cash/HUD) from `GameState` via
+`ui/screens/screen_base.gd`; Street also drives its content from it. Per-screen
+content (market prices, turf counts, feed) is still baked and gets bound next.
 
 **Nav:** `STREET · HUSTLE · HOME · PHONE · MORE` with a raised red center HOME button.
 Not yet built: Phone, More, Crew/Territory, Travel detail, and the Hustle sub-screens
@@ -56,7 +60,7 @@ Project Settings. Target viewport is 375×812 portrait, mobile renderer. The
 
 0. **UI scaffold** ✅ — screens, nav, atmosphere, theme
 1. **IA completion** — remaining screens + Hustle sub-screens (static)
-2. **State spine** 🔜 — `GameState` exists; retrofit Home/Market/Hustle onto it
+2. **State spine** — `GameState` exists; shared chrome retrofitted ✅; per-screen content binding next
 3. **Reducer port + RNG parity** — translate `game-core.js` actions to GDScript
 4. **Save/load parity** · 5. **Behavioral test harness vs the JS oracle** · 6. **Cutover**
 

@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Shader" path="res://ui/theme/atmosphere.gdshader" id="sh_atmo"]
+[ext_resource type="Texture2D" uid="uid://bm01mf3ra4ffj" path="res://assets/textures/tex-card.png" id="tex_mat"]
+
+[sub_resource type="ShaderMaterial" id="MatAtmo"]
+shader = ExtResource("sh_atmo")
+shader_parameter/material_tex = ExtResource("tex_mat")
+shader_parameter/material_tiles = Vector2(2.4, 5.1)
+shader_parameter/material_strength = 0.55
+shader_parameter/material_contrast = 1.6
+shader_parameter/grain_amount = 0.05
+shader_parameter/grain_speed = 12.0
+shader_parameter/vignette_strength = 0.42
+shader_parameter/vignette_radius = 0.34
+shader_parameter/vignette_softness = 0.5
+
+[node name="Atmosphere" type="CanvasLayer"]
+layer = 50
+
+[node name="FX" type="ColorRect" parent="."]
+material = SubResource("MatAtmo")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)

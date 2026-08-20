@@ -90,8 +90,15 @@ Proven by temporarily setting GameState cash=1337/day=21 → all screens showed 
 reverted to canon. NOTE: screen-specific content (market prices, Today's Take, activity
 feed, turf counts) is still baked in the .tscn — extend GameState + bind those next.
 
-**Open / next (build order per user):** bind screen-specific content to GameState
-(market prices, turf/soldiers, feed); Phone → More; then the Hustle sub-screens
+**DONE — Market content binding**, verified via run + live eval:
+`GameState.products` (8 canon products: name/role/color/price/hint/locked) added.
+`ui/screens/market.gd` (extends `screen_base`) fills all 8 rows — icon tint, name+color,
+role/owned, route hint, price — from `GameState.products` in `_ready()`. Proven by
+mutating a product's price in the running instance → the row updated. The locked-row
+(meth) hint wraps its label as `Hint/T`, handled in `_fill_products`.
+
+**Open / next (build order per user):** bind remaining content (Home snapshot/turf/feed,
+Hustle surfaces) as GameState grows; Phone → More; then the Hustle sub-screens
 (Jobs, 907List, Boost, Stickup, Shark). Also:
 1. Build **Crew**, **Travel**, **People** screens; wire remaining portraits.
 2. Refresh Home's MARKET SNAPSHOT card to canon prices (currently placeholder:

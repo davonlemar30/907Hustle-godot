@@ -47,6 +47,20 @@ var spenard_venues: Array = [
 
 var personal_contacts: int = 3
 
+# --- Market products (canon: src/data/products.js + per-district anchors) --------
+# price = the current district's anchor (base x district bias). role folds in the
+# owned quantity for the mid-game snapshot; hint is the route read for this district.
+var products: Array = [
+	{"id": "weed", "name": "WEED", "role": "DEPENDABLE · OWN 4oz", "color": Color(0.451, 0.722, 0.404), "price": 27, "hint": "▲ SELL INDUSTRIAL  +$11", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "shrooms", "name": "SHROOMS", "role": "VOLATILE · OWN 2", "color": Color(0.373, 0.663, 0.847), "price": 72, "hint": "▲ SELL DOWNTOWN  +$36", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "pills", "name": "PILLS", "role": "STEADY MARGIN · OWN 12", "color": Color(0.882, 0.651, 0.227), "price": 105, "hint": "— STABLE CITYWIDE", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
+	{"id": "lean", "name": "LEAN", "role": "PREMIUM", "color": Color(0.62, 0.5, 0.85), "price": 155, "hint": "↗ +30% MARGIN DOWNTOWN", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
+	{"id": "molly", "name": "MOLLY", "role": "CLUB DEMAND", "color": Color(1, 0.29, 0.239), "price": 215, "hint": "↗ +30% MARGIN DOWNTOWN", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
+	{"id": "coke", "name": "COKE", "role": "HIGH MARGIN", "color": Color(0.9, 0.89, 0.86), "price": 290, "hint": "— STABLE CITYWIDE", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
+	{"id": "cocaine", "name": "COCAINE", "role": "PREMIUM", "color": Color(0.85, 0.72, 0.42), "price": 296, "hint": "▲ SELL DOWNTOWN  +$127", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "meth", "name": "METH", "role": "EXTREME RISK", "color": Color(0.6, 0.6, 0.6), "price": 176, "hint": "NEEDS INDUSTRIAL TURF", "hint_color": Color(0.827, 0.161, 0.125), "locked": true},
+]
+
 func district_by_id(id: String) -> Dictionary:
 	for d in districts:
 		if d.get("id", "") == id:

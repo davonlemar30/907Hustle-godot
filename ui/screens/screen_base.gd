@@ -59,28 +59,57 @@ func refresh() -> void:
 	_fill_chrome()
 	_bind_content()
 
+## How far a finger may travel and still count as a tap rather than a scroll.
+const TAP_SLOP := 12.0
+
+## Fire `handler` on a tap, while letting a drag reach the ScrollContainer above.
+##
+## **This is the only correct way to make something inside the scroll respond.**
+## A control at MOUSE_FILTER_STOP swallows the press, so the ScrollContainer
+## never sees the gesture start and the screen will not scroll from anywhere
+## that control covers. MOUSE_FILTER_PASS lets us handle the event AND lets it
+## continue up to the scroll.
+##
+## Because PASS means the gesture still reaches us on release, a plain
+## `pressed` connection would fire at the end of a scroll drag. So presses are
+## measured: a release more than TAP_SLOP from where the finger landed was a
+## scroll, not a tap, and the handler does not run.
+func tap_connect(target: Control, handler: Callable) -> void:
+	if target == null:
+		return
+	target.mouse_filter = Control.MOUSE_FILTER_PASS
+	if not target.gui_input.is_connected(_on_tap_gui_input):
+		target.gui_input.connect(_on_tap_gui_input.bind(target, handler))
+
+func _on_tap_gui_input(event: InputEvent, target: Control, handler: Callable) -> void:
+	var mb := event as InputEventMouseButton
+	if mb == null or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if mb.pressed:
+		target.set_meta("tap_origin", mb.position)
+		return
+	if not target.has_meta("tap_origin"):
+		return
+	var origin: Vector2 = target.get_meta("tap_origin")
+	target.remove_meta("tap_origin")
+	if mb.position.distance_to(origin) <= TAP_SLOP:
+		handler.call()
+
 ## Make a card tappable without restructuring the scene.
 ##
-## The cards are PanelContainers, which size every child to the panel rect and
-## take their own minimum size from the largest child. So a flat Button added as
-## a second child covers the card exactly, adds nothing to its height, and draws
-## last — on top, where it can take the tap. Buttons inside the ScrollContainer
-## already coexist with drag-scrolling (Market's BUY/SELL prove it), which a
-## gui_input handler on the card itself would not.
+## The card itself becomes the target — no overlay Button. An earlier version
+## added a flat Button covering the whole card, which is what broke scrolling:
+## a full-card STOP control means a drag starting anywhere on a card never
+## reaches the ScrollContainer, so the screen only scrolled from bare
+## background. Market's small BUY/SELL buttons had hidden that from me.
 ##
-## Returns the Button so callers can disable it, or null if the path is missing.
-func make_tappable(path: String, handler: Callable) -> Button:
+## Returns the card, or null if the path is missing.
+func make_tappable(path: String, handler: Callable) -> Control:
 	var card := get_node_or_null(path) as Control
 	if card == null:
 		return null
-	var hit := Button.new()
-	hit.name = "Tap"
-	hit.flat = true
-	hit.focus_mode = Control.FOCUS_NONE
-	hit.mouse_filter = Control.MOUSE_FILTER_STOP
-	card.add_child(hit)
-	hit.pressed.connect(handler)
-	return hit
+	tap_connect(card, handler)
+	return card
 
 ## Screens override this to bind their own content. Base is a no-op.
 func _bind_content() -> void:

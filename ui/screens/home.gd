@@ -21,11 +21,11 @@ func _wire_taps() -> void:
 	# the first spends time for now, the other two are Phase 4 story beats.
 	var move := get_node_or_null("Shell/Scroll/Pad/Content/OpCard/V/Actions/Move") as Button
 	if move:
-		move.pressed.connect(_on_move_product)
+		tap_connect(move, _on_move_product)
 	for spec in [["Post", "Posting Eli"], ["Lay", "Laying low"]]:
 		var b := get_node_or_null("Shell/Scroll/Pad/Content/OpCard/V/Actions/" + spec[0]) as Button
 		if b:
-			b.pressed.connect(_on_stub.bind(spec[1]))
+			tap_connect(b, _on_stub.bind(spec[1]))
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Market", _on_market)
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Turf", _on_turf)
 	make_tappable("Shell/Scroll/Pad/Content/People", _on_people)

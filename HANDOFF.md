@@ -433,6 +433,37 @@ Not ported, each its own feature: coworkers and their relationships, shift
 dialogue, `learn_job` workplace details, Deshawn's rent grace, contraband and
 danger-brought-home as warning sources, Exposure broadcasts, Dre's lending.
 
+## Phase 3d (part 2): 907List + Boost  (added 2026-08-20)
+
+All six Hustle surfaces are live. No row toasts "coming soon" any more.
+
+- **`systems/nine07list.gd`** — the eighteen canon `LISTING_ITEMS` and the three
+  `MARKET_TIERS`. **The mechanic is information, not arithmetic.** Every item has a
+  hidden `true_value` band and four of the eighteen are traps that sell for less
+  than they cost. A Scrapper's board shows only title and price, so condition is a
+  guess; Flipper shows condition, which is what turns the guess into a read. The
+  screen shows exactly the fields the tier allows and no colour cue either — the
+  tier hides the read, not just the word.
+- **`systems/boost.gd`** — the twelve canon `BOOST_TARGETS`, `boostChance`,
+  `updateBoostTier` and `boostFenceRate` (0.40 + standing*0.05, 0.55 from 3, 0.60
+  from 5). Tier 1 reads 0.70 and tier 2 reads 0.45, or 0.65 inside its window.
+
+### Two deliberate divergences
+
+1. **Boost windows are shown outright.** Canon only reveals a tier-2 target's
+   window after you have hit it (`ASK_BOOST_WINDOW`). With no surface to learn it
+   on, hiding it would be a +0.20 modifier the player can neither see nor act on.
+2. **907List tier 2 is gated on flips, not a purchase.** Canon opens Flipper by
+   buying a laptop; there is no gear store yet, so it gates on three clean flips
+   (`FLIPPER_FLIP_REQUIREMENT`). Tier 3 keeps canon's ten (`BROKER_FLIP_REQUIREMENT`).
+
+### Boost tier 3 is written but unreachable
+
+Canon gates it on technique 13 **and** field-assignable crew. Crew lands in 3e, so
+the merchandise-and-fence loop cannot trigger yet. That is canon's gate, not an
+omission — the code and the fence screen section are there and will light up when
+crew does.
+
 ## Phase 3d (part 1): Stickup + Shark  (added 2026-08-20)
 
 Two of the four criminal surfaces. 907List and Boost are part 2 — see the note

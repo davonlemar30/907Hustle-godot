@@ -44,6 +44,14 @@ func _ready() -> void:
 	shark.setup(_gs, rng)
 	register_system("shark", shark)
 
+	var nine07list = preload("res://systems/nine07list.gd").new()
+	nine07list.setup(_gs, rng, time)
+	register_system("list", nine07list)
+
+	var boost = preload("res://systems/boost.gd").new()
+	boost.setup(_gs, rng, time)
+	register_system("boost", boost)
+
 func register_system(sys_name: String, instance: Object) -> void:
 	_systems.append({"name": sys_name, "node": instance})
 

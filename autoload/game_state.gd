@@ -90,15 +90,10 @@ var products: Array = [
 var home_snapshot: Array = ["weed", "meth", "pills"]
 
 # --- Turf & crew (canon: locations.js TERRITORIES / SPENARD_BLOCKS) --------------
-# held_blocks: each held block + which mini-map grid cell (0-11) it lights.
+# The Home mini-map is a 12-cell grid. Which cells light up is derived from the
+# blocks actually held -- see spenard_blocks / held_blocks further down, which
+# the territory system owns. This used to be three hardcoded names.
 var map_cells: int = 12
-var held_blocks: Array = [
-	{"name": "Minnesota Dr.", "cell": 2},
-	{"name": "Burlwood", "cell": 9},
-	{"name": "W. 36th Ave.", "cell": 10},
-]
-var soldiers: int = 6
-var soldiers_shown: int = 6
 var eli_report: String = "One corner stayed quiet, one got pressured."
 
 # --- Tonight's Operation ---------------------------------------------------------
@@ -242,6 +237,8 @@ func reset_to_new_game() -> void:
 	boost_fence_standing = 0
 	boost_daily_hits = {}
 	crew_records = {}
+	held_blocks = {}
+	soldiers_idle = 0
 	activity_log = []
 	notify_changed()
 
@@ -541,3 +538,47 @@ func crew_wage_for(id: String, tier: int) -> int:
 		var curve: Array = TIER_WAGES[id]
 		return int(curve[clampi(tier - 1, 0, curve.size() - 1)])
 	return int(crew_member_by_id(id).get("wage", 0))
+
+# --- Territory (canon: src/data/locations.js SPENARD_BLOCKS) ---------------
+# earning_potential is per staffed soldier, with diminishing returns.
+# heat_exposure is charged nightly for OWNING the block, staffed or not:
+# an empty corner you hold is still a corner people know is yours.
+var spenard_blocks: Array = [
+	{"id": "spenard_rec_lot", "cell": 1, "name": "Spenard Rec Center Lot", "earning": 45, "heat_exposure": 1, "patrol": 1, "claim_cost": 180},
+	{"id": "wash_and_go_lot", "cell": 2, "name": "Wash & Go Lot", "earning": 55, "heat_exposure": 1, "patrol": 1, "claim_cost": 220},
+	{"id": "minnesota_offramp", "cell": 5, "name": "Minnesota Off-Ramp", "earning": 65, "heat_exposure": 2, "patrol": 1, "claim_cost": 260},
+	{"id": "service_road_chokepoint", "cell": 6, "name": "Service Road Chokepoint", "earning": 70, "heat_exposure": 2, "patrol": 3, "claim_cost": 300},
+	{"id": "fourth_ave_strip", "cell": 9, "name": "Fourth Avenue Strip", "earning": 80, "heat_exposure": 2, "patrol": 2, "claim_cost": 320},
+	{"id": "northern_lights_motels", "cell": 10, "name": "Northern Lights Motel Row", "earning": 100, "heat_exposure": 3, "patrol": 2, "claim_cost": 400},
+]
+
+const SOLDIER_RECRUIT_COST := 140
+const SOLDIER_BASE_CAPACITY := 2
+const SOLDIER_CAPACITY_PER_BLOCK := 2
+## Canon SOLDIER_INCOME_BASE_DIMINISH — the second soldier on a corner earns
+## 85% of the first, the third 85% of that.
+const SOLDIER_INCOME_DIMINISH := 0.85
+
+## block_id -> {soldiers: int, claimed_day: int, income_collected: int}
+var held_blocks: Dictionary = {}
+## Soldiers hired but not posted to a block.
+var soldiers_idle: int = 0
+
+func block_by_id(id: String) -> Dictionary:
+	for b in spenard_blocks:
+		if b.get("id", "") == id:
+			return b
+	return {}
+
+func holds_block(id: String) -> bool:
+	return held_blocks.has(id)
+
+func soldiers_total() -> int:
+	var n: int = soldiers_idle
+	for rec in held_blocks.values():
+		n += int(rec.get("soldiers", 0))
+	return n
+
+## Canon: 2, plus 2 for every block held.
+func soldier_capacity() -> int:
+	return SOLDIER_BASE_CAPACITY + held_blocks.size() * SOLDIER_CAPACITY_PER_BLOCK

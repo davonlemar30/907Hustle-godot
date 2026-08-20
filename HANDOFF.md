@@ -452,6 +452,36 @@ call sites in canon that have a Godot counterpart already:
 | `shark.gd` | Dre standing movement per outcome |
 | `crew.gd` | recruitment and departure observations |
 
+## Phase 3e (part 2): Territory  (added 2026-08-20)
+
+**The first income that arrives without an action** — which is also the first
+thing that can outrun the rent.
+
+- **`systems/territory.gd`** — the six canon `SPENARD_BLOCKS`, soldiers at
+  `SOLDIER_RECRUIT_COST = 140`, capacity `2 + 2 per block held`, and the nightly
+  settlement.
+- **Income is per soldier with diminishing returns** (`0.85^index`). The decision
+  that creates: a second corner beats a second soldier on the first **only if it
+  earns at least 85% as much**. Two soldiers on Motel Row (100) make $185;
+  split across Motel Row and Fourth Ave (80) they make $180.
+- **Ownership costs heat nightly whether or not the corner is staffed.** Canon is
+  explicit about why: an empty corner you hold is still a corner people know is
+  yours. A block you cannot staff is a pure liability, and the screen says so.
+- Territory heat routes through `crew.heat_multiplier()`, same as stickup and
+  boost, so Deshawn damps it too.
+
+### The Home Turf card is real now
+
+`GameState.held_blocks` **used to be three hardcoded names** with fixed mini-map
+cells (`Minnesota Dr.`, `Burlwood`, `W. 36th Ave.`) and `soldiers = 6`. Those were
+placeholders and are gone. The card now derives held count, the 12-cell mini-map,
+soldier pips and the report line from the real system, and taps through to Turf.
+
+**Watch for this pattern.** `held_blocks` collided on name with the placeholder
+when the real one was added — GDScript takes the duplicate declaration as a parse
+error. There are likely more placeholder fields in `GameState` waiting to be
+replaced the same way; check for an existing name before adding one.
+
 ## Phase 3e (part 1): Crew  (added 2026-08-20)
 
 **This makes `crew_power` a live stat.** It read 0 in the HUD from the first build

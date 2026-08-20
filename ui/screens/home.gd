@@ -27,6 +27,7 @@ func _wire_taps() -> void:
 		if b:
 			b.pressed.connect(_on_stub.bind(spec[1]))
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Market", _on_market)
+	make_tappable("Shell/Scroll/Pad/Content/Columns/Turf", _on_turf)
 
 ## Canon's explore_spenard: cashCost 0, timeCost 1 (game-core.js:358-360).
 func _on_move_product() -> void:
@@ -43,6 +44,9 @@ func _on_stub(what: String) -> void:
 
 func _on_market() -> void:
 	nav.go_to(nav.MARKET)
+
+func _on_turf() -> void:
+	nav.go_to(nav.TURF)
 
 func _bind_content() -> void:
 	_bind_all()
@@ -111,12 +115,14 @@ func _bind_snapshot() -> void:
 			pr.add_theme_color_override("font_color", col)
 
 func _bind_turf() -> void:
-	var held: Array = gs.held_blocks
-	_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Blocks/N", str(held.size()))
+	_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Blocks/N", str(gs.held_blocks.size()))
 
 	var held_cells := {}
 	var names := []
-	for b in held:
+	for id in gs.held_blocks.keys():
+		var b: Dictionary = gs.block_by_id(str(id))
+		if b.is_empty():
+			continue
 		held_cells[int(b.get("cell", -1))] = true
 		names.append("• " + str(b.get("name", "")))
 	for i in range(gs.map_cells):
@@ -125,13 +131,19 @@ func _bind_turf() -> void:
 			cell.color = RED if held_cells.has(i) else DIM
 	_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/List", "\n".join(names))
 
-	_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Sold/N", str(gs.soldiers))
+	var soldiers: int = gs.soldiers_total()
+	_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Sold/N", str(soldiers))
 	for i in range(6):
 		var pip := get_node_or_null("Shell/Scroll/Pad/Content/Columns/Turf/V/Pips/P%d" % i) as TextureRect
 		if pip:
-			pip.self_modulate = RED if i < gs.soldiers else PIP_DIM
+			pip.self_modulate = RED if i < soldiers else PIP_DIM
 
-	_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Eli", gs.eli_report)
+	# Report what the corners are actually doing rather than a fixed line.
+	var terr: Object = _gm.system("territory") if _gm else null
+	if terr != null and not gs.held_blocks.is_empty():
+		_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Eli", "$%d a night from %d held." % [int(terr.nightly_income()), gs.held_blocks.size()])
+	else:
+		_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Eli", "No corners held yet.")
 
 func _bind_activity() -> void:
 	var rows := ["A0", "A1", "A2"]

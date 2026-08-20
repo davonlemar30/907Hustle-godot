@@ -14,7 +14,8 @@ leads through name entry into a fresh Day 1, and every screen responds. Time
 passes, prices shift, travel costs a fare and a slot, jobs pay clean money on a
 schedule, stickups pay fast money and raise Heat, 907List rewards reading a
 listing, Boost trades odds for stock, Shark notes run on a due-day clock, and rent and the phone bill arrive whether or not you earned anything.
-Miss enough rent and the run ends.
+Crew cost wages every night, corners pay out while you sleep, and missing enough
+rent ends the run.
 
 | Screen | File | Notes |
 | --- | --- | --- |

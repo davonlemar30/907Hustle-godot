@@ -149,3 +149,48 @@ func district_by_id(id: String) -> Dictionary:
 
 func current_district() -> Dictionary:
 	return district_by_id(current_district_id)
+
+# --- Run identity + lifecycle ---------------------------------------------
+## The name the player picks on the name-entry screen. Canon calls this
+## state.player.streetName (game-core.js:1511).
+var street_name: String = ""
+
+## Longest street name canon accepts (game-core.js:58 STREET_NAME_MAX).
+const STREET_NAME_MAX: int = 16
+
+## Port of sanitizeStreetName (game-core.js:83-86). Keeps letters, digits,
+## spaces, apostrophes, hyphens and periods; collapses runs of whitespace;
+## trims; caps at STREET_NAME_MAX. Trims again because the slice can leave a
+## trailing space.
+func sanitize_street_name(input: String) -> String:
+	var re := RegEx.new()
+	re.compile("[^A-Za-z0-9 '\\-.]")
+	var out := re.sub(input, "", true)
+	var ws := RegEx.new()
+	ws.compile("\\s+")
+	out = ws.sub(out, " ", true).strip_edges()
+	if out.length() > STREET_NAME_MAX:
+		out = out.substr(0, STREET_NAME_MAX)
+	return out.strip_edges()
+
+## Reset to the canon opening state — the START_RUN branch of the web reducer
+## (game-core.js:7415-7458): "$name wakes in Yalonda's spare room with $100 and
+## a city that has not opened yet."
+##
+## Deliberately NOT the CHOOSE_BACKGROUND branch, which starts an established
+## week at $375 with a $620 note from Dre. That is a different opening and a
+## screen this build does not have.
+func reset_to_new_game() -> void:
+	day = 1
+	time_slot = "MORNING"
+	time_slots_today = 0
+	current_district_id = "north_star_lot"
+	cash = 100
+	heat = 0
+	health = 100
+	debt = 0
+	debt_due_days = 0
+	respect = 0
+	crew_power = 0
+	inventory = {}
+	notify_changed()

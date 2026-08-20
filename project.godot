@@ -21,6 +21,7 @@ _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 GameState="*res://autoload/game_state.gd"
 RngManager="*res://autoload/rng_manager.gd"
 GameManager="*res://autoload/game_manager.gd"
+ScreenManager="*res://autoload/screen_manager.gd"
 
 [display]
 

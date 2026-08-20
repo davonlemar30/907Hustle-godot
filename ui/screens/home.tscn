@@ -1,0 +1,899 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
+[ext_resource type="Texture2D" uid="uid://db42qfo1l5ask" path="res://assets/img/title.webp" id="title"]
+[ext_resource type="Texture2D" uid="uid://ciawbrqicop31" path="res://assets/icons/nav/icon-home.svg" id="ic_home"]
+[ext_resource type="Texture2D" uid="uid://qxxecxf6e7f8" path="res://assets/icons/nav/icon-market.svg" id="ic_market"]
+[ext_resource type="Texture2D" uid="uid://bp521w0vtsd8a" path="res://assets/icons/nav/icon-crew.svg" id="ic_crew"]
+[ext_resource type="Texture2D" uid="uid://7hxto5lndefv" path="res://assets/icons/nav/icon-travel.svg" id="ic_travel"]
+[ext_resource type="Texture2D" uid="uid://pdedvxirnal6" path="res://assets/icons/nav/icon-people.svg" id="ic_people"]
+
+[sub_resource type="StyleBoxFlat" id="SB_avatar"]
+bg_color = Color(0.235, 0.2, 0.216, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.25, 0.24, 1)
+corner_radius_top_left = 24
+corner_radius_top_right = 24
+corner_radius_bottom_right = 24
+corner_radius_bottom_left = 24
+
+[node name="Home" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("theme")
+
+[node name="BG" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.027, 0.027, 0.027, 1)
+
+[node name="Shell" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
+
+[node name="TopBar" type="PanelContainer" parent="Shell"]
+layout_mode = 2
+theme_type_variation = &"TopBar"
+
+[node name="HBox" type="HBoxContainer" parent="Shell/TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DayBox" type="PanelContainer" parent="Shell/TopBar/HBox"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Inset"
+
+[node name="V" type="VBoxContainer" parent="Shell/TopBar/HBox/DayBox"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Day" type="Label" parent="Shell/TopBar/HBox/DayBox/V"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+text = "DAY 14"
+
+[node name="Part" type="Label" parent="Shell/TopBar/HBox/DayBox/V"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "EVENING"
+
+[node name="Brand" type="VBoxContainer" parent="Shell/TopBar/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Row" type="HBoxContainer" parent="Shell/TopBar/HBox/Brand"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 0
+
+[node name="B1" type="Label" parent="Shell/TopBar/HBox/Brand/Row"]
+layout_mode = 2
+theme_type_variation = &"Brand"
+text = "907"
+
+[node name="B2" type="Label" parent="Shell/TopBar/HBox/Brand/Row"]
+layout_mode = 2
+theme_type_variation = &"BrandAccent"
+text = "HUSTLE"
+
+[node name="Sub" type="Label" parent="Shell/TopBar/HBox/Brand"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+horizontal_alignment = 1
+text = "★  ONE GOOD RUN  ★"
+
+[node name="Right" type="VBoxContainer" parent="Shell/TopBar/HBox"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="LocBox" type="PanelContainer" parent="Shell/TopBar/HBox/Right"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="V" type="VBoxContainer" parent="Shell/TopBar/HBox/Right/LocBox"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="L1" type="Label" parent="Shell/TopBar/HBox/Right/LocBox/V"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+horizontal_alignment = 1
+text = "SPENARD"
+
+[node name="L2" type="Label" parent="Shell/TopBar/HBox/Right/LocBox/V"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+horizontal_alignment = 1
+text = "ANCHORAGE, AK"
+
+[node name="CashBox" type="PanelContainer" parent="Shell/TopBar/HBox/Right"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="V" type="VBoxContainer" parent="Shell/TopBar/HBox/Right/CashBox"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="C1" type="Label" parent="Shell/TopBar/HBox/Right/CashBox/V"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+horizontal_alignment = 1
+text = "CASH"
+
+[node name="C2" type="Label" parent="Shell/TopBar/HBox/Right/CashBox/V"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 1
+text = "$847"
+
+[node name="Line" type="ColorRect" parent="Shell"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+color = Color(0.2, 0.2, 0.2, 1)
+
+[node name="Hud" type="PanelContainer" parent="Shell"]
+layout_mode = 2
+
+[node name="HudRow" type="HBoxContainer" parent="Shell/Hud"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="C0" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Ico" type="ColorRect" parent="Shell/Hud/HudRow/C0"]
+custom_minimum_size = Vector2(0, 3)
+layout_mode = 2
+color = Color(1, 0.29, 0.239, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C0"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 1
+text = "HEAT"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C0"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "6/15"
+
+[node name="S0" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C1" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Ico" type="ColorRect" parent="Shell/Hud/HudRow/C1"]
+custom_minimum_size = Vector2(0, 3)
+layout_mode = 2
+color = Color(0.451, 0.722, 0.404, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C1"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 1
+text = "HEALTH"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C1"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "78/100"
+
+[node name="S1" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C2" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Ico" type="ColorRect" parent="Shell/Hud/HudRow/C2"]
+custom_minimum_size = Vector2(0, 3)
+layout_mode = 2
+color = Color(1, 0.29, 0.239, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C2"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 1
+text = "DEBT"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C2"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "$1,200"
+
+[node name="Due" type="Label" parent="Shell/Hud/HudRow/C2"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 7
+horizontal_alignment = 1
+text = "DUE IN 2 DAYS"
+
+[node name="S2" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C3" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Ico" type="ColorRect" parent="Shell/Hud/HudRow/C3"]
+custom_minimum_size = Vector2(0, 3)
+layout_mode = 2
+color = Color(0.882, 0.651, 0.227, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C3"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 1
+text = "CARGO"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C3"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "9/18"
+
+[node name="S3" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C4" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Ico" type="ColorRect" parent="Shell/Hud/HudRow/C4"]
+custom_minimum_size = Vector2(0, 3)
+layout_mode = 2
+color = Color(0.475, 0.733, 0.757, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C4"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 1
+text = "RESPECT"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C4"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.475, 0.733, 0.757, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "4"
+
+[node name="S4" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C5" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Ico" type="ColorRect" parent="Shell/Hud/HudRow/C5"]
+custom_minimum_size = Vector2(0, 3)
+layout_mode = 2
+color = Color(0.62, 0.5, 0.85, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C5"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 1
+text = "CREW PWR"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C5"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.62, 0.5, 0.85, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "11"
+
+[node name="Scroll" type="ScrollContainer" parent="Shell"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Pad" type="MarginContainer" parent="Shell/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 18
+
+[node name="Content" type="VBoxContainer" parent="Shell/Scroll/Pad"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Photo" type="TextureRect" parent="Shell/Scroll/Pad/Content"]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+texture = ExtResource("title")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="OpCard" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_type_variation = &"OpCard"
+
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/OpCard"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Head" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/OpCard/V"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Shell/Scroll/Pad/Content/OpCard/V/Head"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"H1"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+text = "◎  TONIGHT'S OPERATION"
+
+[node name="Live" type="Label" parent="Shell/Scroll/Pad/Content/OpCard/V/Head"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Kicker"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+text = "LIVE UPDATE ↗"
+
+[node name="Body" type="Label" parent="Shell/Scroll/Pad/Content/OpCard/V"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Curtis is probing Minnesota Off-Ramp. Police pressure rising in North Spenard."
+
+[node name="Actions" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/OpCard/V"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Move" type="Button" parent="Shell/Scroll/Pad/Content/OpCard/V/Actions"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"BtnPrimary"
+text = "MOVE PRODUCT"
+
+[node name="Post" type="Button" parent="Shell/Scroll/Pad/Content/OpCard/V/Actions"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"BtnSecondary"
+text = "POST ELI"
+
+[node name="Lay" type="Button" parent="Shell/Scroll/Pad/Content/OpCard/V/Actions"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"BtnSecondary"
+text = "LAY LOW"
+
+[node name="Columns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Market" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Card"
+
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Market"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Head" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Market/V"]
+layout_mode = 2
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/Head"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"CardTitle"
+theme_override_font_sizes/font_size = 12
+text = "MARKET SNAPSHOT"
+
+[node name="U" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/Head"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 8
+text = "UPD 20m"
+
+[node name="R0" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Market/V"]
+layout_mode = 2
+
+[node name="I" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R0"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+
+[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R0/I"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_fonts/font = ExtResource("theme")
+theme_override_font_sizes/font_size = 15
+text = "WEED"
+
+[node name="Sub" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R0/I"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "Own 4oz · +$42 Downtown"
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R0"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 16
+text = "$28"
+
+[node name="R1" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Market/V"]
+layout_mode = 2
+
+[node name="I" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R1"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+
+[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R1/I"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.475, 0.733, 0.757, 1)
+theme_override_font_sizes/font_size = 15
+text = "METH"
+
+[node name="Sub" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R1/I"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "Own 1.5g · Sell Midtown"
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R1"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.475, 0.733, 0.757, 1)
+theme_override_font_sizes/font_size = 16
+text = "$61"
+
+[node name="R2" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Market/V"]
+layout_mode = 2
+
+[node name="I" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R2"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+
+[node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R2/I"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 15
+text = "PILLS"
+
+[node name="Sub" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R2/I"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "Own 12 · +$18 U-Med"
+
+[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/R2"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 16
+text = "$17"
+
+[node name="Foot" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 11
+text = "MARKET IS UP ↗"
+
+[node name="Turf" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Card"
+
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Turf"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_font_sizes/font_size = 12
+text = "♛  TURF & CREW"
+
+[node name="Blocks" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
+layout_mode = 2
+
+[node name="K" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Blocks"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 10
+text = "HELD BLOCKS"
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Blocks"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_font_sizes/font_size = 14
+text = "3"
+
+[node name="List" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 10
+text = "• Minnesota Dr.
+• Burlwood
+• W. 36th Ave."
+
+[node name="Sep" type="HSeparator" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
+layout_mode = 2
+
+[node name="Sold" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
+layout_mode = 2
+
+[node name="K" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Sold"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 10
+text = "SOLDIERS"
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Sold"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_font_sizes/font_size = 14
+text = "6"
+
+[node name="Pips" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="P0" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Pips"]
+custom_minimum_size = Vector2(9, 14)
+layout_mode = 2
+color = Color(0.827, 0.161, 0.125, 1)
+
+[node name="P1" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Pips"]
+custom_minimum_size = Vector2(9, 14)
+layout_mode = 2
+color = Color(0.827, 0.161, 0.125, 1)
+
+[node name="P2" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Pips"]
+custom_minimum_size = Vector2(9, 14)
+layout_mode = 2
+color = Color(0.827, 0.161, 0.125, 1)
+
+[node name="P3" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Pips"]
+custom_minimum_size = Vector2(9, 14)
+layout_mode = 2
+color = Color(0.827, 0.161, 0.125, 1)
+
+[node name="P4" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Pips"]
+custom_minimum_size = Vector2(9, 14)
+layout_mode = 2
+color = Color(0.827, 0.161, 0.125, 1)
+
+[node name="P5" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Pips"]
+custom_minimum_size = Vector2(9, 14)
+layout_mode = 2
+color = Color(0.827, 0.161, 0.125, 1)
+
+[node name="EliK" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "ELI REPORT"
+
+[node name="Eli" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
+layout_mode = 2
+autowrap_mode = 3
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 10
+text = "One corner stayed quiet, one got pressured."
+
+[node name="People" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_type_variation = &"Card"
+
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/People"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Avatar" type="PanelContainer" parent="Shell/Scroll/Pad/Content/People/H"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_styles/panel = SubResource("SB_avatar")
+
+[node name="Y" type="Label" parent="Shell/Scroll/Pad/Content/People/H/Avatar"]
+layout_mode = 2
+theme_type_variation = &"H1"
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "Y"
+
+[node name="Txt" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/People/H"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Name" type="Label" parent="Shell/Scroll/Pad/Content/People/H/Txt"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+text = "YALONDA TEXTED"
+
+[node name="Msg" type="Label" parent="Shell/Scroll/Pad/Content/People/H/Txt"]
+layout_mode = 2
+autowrap_mode = 3
+theme_type_variation = &"Muted"
+text = "\"You owe me a favor. Slide through when you're ready.\""
+
+[node name="Ago" type="Label" parent="Shell/Scroll/Pad/Content/People/H/Txt"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "12m ago"
+
+[node name="Chat" type="Button" parent="Shell/Scroll/Pad/Content/People/H"]
+custom_minimum_size = Vector2(52, 52)
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"BtnPrimary"
+text = "1"
+
+[node name="Activity" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_type_variation = &"Card"
+
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Activity"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Head" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Activity/V"]
+layout_mode = 2
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Activity/V/Head"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"CardTitle"
+text = "ACTIVITY FEED"
+
+[node name="All" type="Label" parent="Shell/Scroll/Pad/Content/Activity/V/Head"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Kicker"
+text = "VIEW ALL"
+
+[node name="A0" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Activity/V"]
+layout_mode = 2
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Activity/V/A0"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Muted"
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "Afternoon: Sold 3 pills in Midtown."
+
+[node name="M" type="Label" parent="Shell/Scroll/Pad/Content/Activity/V/A0"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 11
+text = "3:46 PM"
+
+[node name="A1" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Activity/V"]
+layout_mode = 2
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Activity/V/A1"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Muted"
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "Morning: Paid bus pass."
+
+[node name="M" type="Label" parent="Shell/Scroll/Pad/Content/Activity/V/A1"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
+theme_override_font_sizes/font_size = 11
+text = "8:12 AM"
+
+[node name="A2" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Activity/V"]
+layout_mode = 2
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Activity/V/A2"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Muted"
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "Night watch: No arrests yet."
+
+[node name="M" type="Label" parent="Shell/Scroll/Pad/Content/Activity/V/A2"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.62, 0.5, 0.85, 1)
+theme_override_font_sizes/font_size = 11
+text = "9:31 PM"
+
+[node name="NavBar" type="PanelContainer" parent="Shell"]
+layout_mode = 2
+theme_type_variation = &"NavBar"
+
+[node name="NavRow" type="HBoxContainer" parent="Shell/NavBar"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="Home" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Home"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(1, 0.29, 0.239, 1)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Home"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_home")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.29, 0.239, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Home"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+horizontal_alignment = 1
+text = "HOME"
+
+[node name="Market" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Market"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Market"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_market")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Market"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+horizontal_alignment = 1
+text = "MARKET"
+
+[node name="Crew" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Crew"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Crew"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_crew")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Crew"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+horizontal_alignment = 1
+text = "CREW"
+
+[node name="Travel" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Travel"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Travel"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_travel")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Travel"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+horizontal_alignment = 1
+text = "TRAVEL"
+
+[node name="People" type="VBoxContainer" parent="Shell/NavBar/NavRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/People"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/People"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_people")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/People"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+horizontal_alignment = 1
+text = "PEOPLE"

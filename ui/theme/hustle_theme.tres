@@ -1,0 +1,190 @@
+[gd_resource type="Theme" load_steps=22 format=3]
+
+[ext_resource type="FontFile" uid="uid://dquhf7tpudfly" path="res://assets/fonts/anton.woff2" id="anton"]
+[ext_resource type="FontFile" uid="uid://cqgbbc4x4rgbe" path="res://assets/fonts/barlow-condensed-400.woff2" id="bar4"]
+[ext_resource type="FontFile" uid="uid://plwo7qg7m7x" path="res://assets/fonts/barlow-condensed-600.woff2" id="bar6"]
+[ext_resource type="FontFile" uid="uid://da1akm310lv2w" path="res://assets/fonts/barlow-condensed-700.woff2" id="bar7"]
+[ext_resource type="FontFile" uid="uid://ch0t5dnyd4iuj" path="res://assets/fonts/share-tech-mono.woff2" id="mono"]
+[ext_resource type="Texture2D" uid="uid://bhy0ypndr8dds" path="res://assets/skins/skin-card.svg" id="sk_card"]
+[ext_resource type="Texture2D" uid="uid://d2pt2mq2wsqvv" path="res://assets/skins/skin-inset.svg" id="sk_inset"]
+[ext_resource type="Texture2D" uid="uid://d07kj2u3so4wj" path="res://assets/skins/skin-panel.svg" id="sk_panel"]
+[ext_resource type="Texture2D" uid="uid://tixq5q8i7ycl" path="res://assets/skins/skin-opcard.svg" id="sk_op"]
+[ext_resource type="Texture2D" uid="uid://bl168q6at1qrb" path="res://assets/skins/skin-btnp.svg" id="sk_btnp"]
+[ext_resource type="Texture2D" uid="uid://doyxlubsj5b33" path="res://assets/skins/skin-btns.svg" id="sk_btns"]
+[ext_resource type="Texture2D" uid="uid://bcjqdjyf6w5t2" path="res://assets/skins/skin-btnn.svg" id="sk_btnn"]
+
+[sub_resource type="StyleBoxTexture" id="SB_panel"]
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
+texture = ExtResource("sk_panel")
+texture_margin_left = 6.0
+texture_margin_top = 6.0
+texture_margin_right = 6.0
+texture_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxTexture" id="SB_card"]
+content_margin_left = 11.0
+content_margin_top = 11.0
+content_margin_right = 11.0
+content_margin_bottom = 11.0
+texture = ExtResource("sk_card")
+texture_margin_left = 8.0
+texture_margin_top = 8.0
+texture_margin_right = 8.0
+texture_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="SB_opcard"]
+content_margin_left = 14.0
+content_margin_top = 13.0
+content_margin_right = 14.0
+content_margin_bottom = 13.0
+texture = ExtResource("sk_op")
+texture_margin_left = 10.0
+texture_margin_top = 10.0
+texture_margin_right = 10.0
+texture_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxTexture" id="SB_inset"]
+content_margin_left = 9.0
+content_margin_top = 6.0
+content_margin_right = 9.0
+content_margin_bottom = 6.0
+texture = ExtResource("sk_inset")
+texture_margin_left = 5.0
+texture_margin_top = 5.0
+texture_margin_right = 5.0
+texture_margin_bottom = 5.0
+
+[sub_resource type="StyleBoxTexture" id="SB_btn_norm"]
+content_margin_left = 10.0
+content_margin_top = 9.0
+content_margin_right = 10.0
+content_margin_bottom = 9.0
+texture = ExtResource("sk_btnn")
+texture_margin_left = 5.0
+texture_margin_top = 5.0
+texture_margin_right = 5.0
+texture_margin_bottom = 5.0
+
+[sub_resource type="StyleBoxTexture" id="SB_btn_primary"]
+content_margin_left = 10.0
+content_margin_top = 9.0
+content_margin_right = 10.0
+content_margin_bottom = 9.0
+texture = ExtResource("sk_btnp")
+texture_margin_left = 5.0
+texture_margin_top = 5.0
+texture_margin_right = 5.0
+texture_margin_bottom = 5.0
+
+[sub_resource type="StyleBoxTexture" id="SB_btn_secondary"]
+content_margin_left = 10.0
+content_margin_top = 9.0
+content_margin_right = 10.0
+content_margin_bottom = 9.0
+texture = ExtResource("sk_btns")
+texture_margin_left = 5.0
+texture_margin_top = 5.0
+texture_margin_right = 5.0
+texture_margin_bottom = 5.0
+
+[sub_resource type="StyleBoxFlat" id="SB_topbar"]
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.035, 0.035, 0.035, 0.97)
+border_width_top = 4
+border_color = Color(0.827, 0.161, 0.125, 1)
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_size = 6
+shadow_offset = Vector2(0, 3)
+
+[sub_resource type="StyleBoxFlat" id="SB_navbar"]
+content_margin_left = 5.0
+content_margin_top = 6.0
+content_margin_right = 5.0
+content_margin_bottom = 8.0
+bg_color = Color(0.031, 0.031, 0.031, 1)
+border_width_top = 1
+border_color = Color(0.2, 0.2, 0.2, 1)
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_size = 6
+shadow_offset = Vector2(0, -3)
+
+[resource]
+default_font = ExtResource("bar6")
+default_font_size = 14
+Label/colors/font_color = Color(0.949, 0.941, 0.922, 1)
+Brand/base_type = &"Label"
+Brand/fonts/font = ExtResource("anton")
+Brand/font_sizes/font_size = 34
+Brand/colors/font_color = Color(0.949, 0.941, 0.922, 1)
+BrandAccent/base_type = &"Label"
+BrandAccent/fonts/font = ExtResource("anton")
+BrandAccent/font_sizes/font_size = 34
+BrandAccent/colors/font_color = Color(1, 0.29, 0.239, 1)
+H1/base_type = &"Label"
+H1/fonts/font = ExtResource("anton")
+H1/font_sizes/font_size = 18
+H1/colors/font_color = Color(0.949, 0.941, 0.922, 1)
+CardTitle/base_type = &"Label"
+CardTitle/fonts/font = ExtResource("bar7")
+CardTitle/font_sizes/font_size = 13
+CardTitle/colors/font_color = Color(0.949, 0.941, 0.922, 1)
+Kicker/base_type = &"Label"
+Kicker/fonts/font = ExtResource("bar7")
+Kicker/font_sizes/font_size = 10
+Kicker/colors/font_color = Color(0.882, 0.651, 0.227, 1)
+Muted/base_type = &"Label"
+Muted/fonts/font = ExtResource("bar6")
+Muted/font_sizes/font_size = 11
+Muted/colors/font_color = Color(0.608, 0.608, 0.608, 1)
+Mono/base_type = &"Label"
+Mono/fonts/font = ExtResource("mono")
+Mono/font_sizes/font_size = 14
+Mono/colors/font_color = Color(0.949, 0.941, 0.922, 1)
+MonoBig/base_type = &"Label"
+MonoBig/fonts/font = ExtResource("mono")
+MonoBig/font_sizes/font_size = 20
+MonoBig/colors/font_color = Color(0.949, 0.941, 0.922, 1)
+NavLabel/base_type = &"Label"
+NavLabel/fonts/font = ExtResource("bar7")
+NavLabel/font_sizes/font_size = 9
+NavLabel/colors/font_color = Color(0.522, 0.522, 0.522, 1)
+Card/base_type = &"PanelContainer"
+Card/styles/panel = SubResource("SB_card")
+OpCard/base_type = &"PanelContainer"
+OpCard/styles/panel = SubResource("SB_opcard")
+TopBar/base_type = &"PanelContainer"
+TopBar/styles/panel = SubResource("SB_topbar")
+NavBar/base_type = &"PanelContainer"
+NavBar/styles/panel = SubResource("SB_navbar")
+Inset/base_type = &"PanelContainer"
+Inset/styles/panel = SubResource("SB_inset")
+PanelContainer/styles/panel = SubResource("SB_panel")
+Button/styles/normal = SubResource("SB_btn_norm")
+Button/styles/hover = SubResource("SB_btn_norm")
+Button/styles/pressed = SubResource("SB_btn_norm")
+Button/styles/focus = SubResource("SB_btn_norm")
+Button/colors/font_color = Color(0.949, 0.941, 0.922, 1)
+Button/fonts/font = ExtResource("bar7")
+Button/font_sizes/font_size = 13
+BtnPrimary/base_type = &"Button"
+BtnPrimary/styles/normal = SubResource("SB_btn_primary")
+BtnPrimary/styles/hover = SubResource("SB_btn_primary")
+BtnPrimary/styles/pressed = SubResource("SB_btn_primary")
+BtnPrimary/styles/focus = SubResource("SB_btn_primary")
+BtnPrimary/colors/font_color = Color(1, 1, 1, 1)
+BtnPrimary/fonts/font = ExtResource("bar7")
+BtnPrimary/font_sizes/font_size = 13
+BtnSecondary/base_type = &"Button"
+BtnSecondary/styles/normal = SubResource("SB_btn_secondary")
+BtnSecondary/styles/hover = SubResource("SB_btn_secondary")
+BtnSecondary/styles/pressed = SubResource("SB_btn_secondary")
+BtnSecondary/styles/focus = SubResource("SB_btn_secondary")
+BtnSecondary/colors/font_color = Color(0.949, 0.941, 0.922, 1)
+BtnSecondary/fonts/font = ExtResource("bar7")
+BtnSecondary/font_sizes/font_size = 13

@@ -97,9 +97,24 @@ role/owned, route hint, price — from `GameState.products` in `_ready()`. Prove
 mutating a product's price in the running instance → the row updated. The locked-row
 (meth) hint wraps its label as `Hint/T`, handled in `_fill_products`.
 
-**Open / next (build order per user):** bind remaining content (Home snapshot/turf/feed,
-Hustle surfaces) as GameState grows; Phone → More; then the Hustle sub-screens
-(Jobs, 907List, Boost, Stickup, Shark). Also:
+**DONE — Home content binding + reactive architecture**, verified via run + live eval:
+`screen_base.gd` now wires the reducer pattern — `_ready()` connects `refresh()` to
+`GameState.state_changed` and calls it once; `refresh()` = `_fill_chrome()` + a
+`_bind_content()` hook each screen overrides. **One `GameState.notify_changed()`
+re-renders the whole screen** (no per-field signal wiring). `market.gd`/`street.gd`
+moved to `_bind_content()`. `home.gd._bind_all()` binds every Home card from GameState:
+Tonight's Operation (`active_operation`), Market Snapshot (`home_snapshot` → `products`),
+Turf & Crew (`held_blocks`→count/mini-map/list, `soldiers`→count/pips, `eli_report`),
+Activity Feed (`activity_log`), People (`pending_messages`). New GameState fields added
+for all of these + `notify_changed()`/`product_by_id()`. Home snapshot now shows CANON
+prices ($27/$176/$105), not the old placeholders. Proven: one eval mutating cash +
+products[0].price + held_blocks + soldiers, then `notify_changed()`, updated header +
+snapshot + mini-map + list in a single pass. (People portrait stays the static Yalonda
+texture — per-npc portrait swap needs a portrait lookup, later.)
+
+**Open / next (build order per user):** bind **Hustle** hub's 6 income surfaces + Today's
+Take to GameState (finishes Phase 2 for existing screens); Phone → More; then the Hustle
+sub-screens (Jobs, 907List, Boost, Stickup, Shark). Also:
 1. Build **Crew**, **Travel**, **People** screens; wire remaining portraits.
 2. Refresh Home's MARKET SNAPSHOT card to canon prices (currently placeholder:
    WEED $28/METH $61/PILLS $17 — real Spenard anchors are $27/$176/$105).

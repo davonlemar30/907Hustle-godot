@@ -5,8 +5,7 @@ extends "res://ui/screens/screen_base.gd"
 ## GameState.products (icon tint, name + color, role/owned, route hint, price).
 ## Buy/Sell and the locked-row treatment stay as authored — only data binds here.
 
-func _ready() -> void:
-	super()
+func _bind_content() -> void:
 	_fill_products()
 
 func _fill_products() -> void:

@@ -88,4 +88,6 @@ func _jobs_row_text() -> Array:
 	return [str(job["name"]).to_upper(), detail, Color(0.451, 0.722, 0.404)]
 
 func _bind_curtis() -> void:
-	_set_text("Shell/Scroll/Pad/Content/Rival/V/Head/A", "ATTENTION %d/%d" % [gs.curtis_attention, gs.curtis_attention_max])
+	var curtis: Node = get_node_or_null("/root/Curtis")
+	var label: String = str(curtis.phase_label()) if curtis != null else "INVISIBLE"
+	_set_text("Shell/Scroll/Pad/Content/Rival/V/Head/A", "%s  %d/%d" % [label, gs.curtis_awareness, gs.AWARENESS_MAX])

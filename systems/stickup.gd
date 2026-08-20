@@ -56,6 +56,9 @@ func _apply_heat(amount: int) -> float:
 	gs.heat = clampf(gs.heat + scaled, 0.0, float(gs.heat_max))
 	return scaled
 
+func _curtis() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
+
 func can_handle(action: String) -> bool:
 	return action == "stickup"
 
@@ -130,6 +133,11 @@ func _run(target_id: String) -> Dictionary:
 		var applied: float = _apply_heat(int(t["heat"]))
 		gs.stick_rep += 1
 		gs.stick_successes += 1
+		# Canon: a successful robbery is loud in Curtis's world.
+		var curtis: Node = _curtis()
+		if curtis != null:
+			curtis.raise_awareness(2)
+			curtis.mark_criminal_activity()
 		gs.log_activity("%s: +$%d, heat +%.1f." % [str(t["name"]), take, applied], GREEN)
 		result = {"ok": true, "success": true, "take": take, "heat": applied}
 	else:

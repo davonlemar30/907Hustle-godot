@@ -47,4 +47,10 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 	# system rather than reimplemented so the day-cross and the market evolve
 	# stay in one place.
 	time_system.handle("advance_time", {})
-	return {"ok": true, "arrived": district.get("name", "")}
+
+	# Watchers appear during ordinary movement, never during the crime itself.
+	var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
+	var watcher := ""
+	if curtis != null:
+		watcher = str(curtis.maybe_watcher_encounter("travel"))
+	return {"ok": true, "arrived": district.get("name", ""), "watcher": watcher}

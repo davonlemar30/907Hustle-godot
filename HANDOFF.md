@@ -314,8 +314,8 @@ moves between the four game screens.
   — that is a different opening this build has no screen for. `sanitize_street_name()` is a
   port of `sanitizeStreetName` (`game-core.js:83-86`), 16-char cap, and an empty result
   blocks the run exactly as canon does.
-- **CONTINUE RUN and the LAST RUN line are hidden**, gated on `title.gd::_has_save()`, which
-  returns false until save/load lands in Phase 4. That one function is the whole switch.
+- **CONTINUE RUN and the LAST RUN line are live** (Phase 4), gated on `title.gd::_has_save()`,
+  which now reads `SaveSystem.inspect()`. See the Phase 4 section for the whole flow.
 
 ## Touch input on mobile — there was never a bug  (2026-08-20)
 
@@ -494,6 +494,88 @@ that reasoning is most of the value. The Build State page can be reconstructed f
 - Any term pinned at a canon neutral is named, with the system that will unpin it.
 - Any deliberate divergence from canon is named with the reason.
 - Any canon oddity found is recorded rather than silently corrected.
+
+## Phase 4: save/load  (added 2026-08-20)
+
+`autoload/save_system.gd` (`SaveSystem`, the 7th autoload) — port of canon's
+autosave loop (serialize the whole state to storage on **every** state change
+while in-game, ui.built.js `App`) and `inspectSave` (game-core.js:2179). This
+closes plan-Phase 3 of the Migration doc ("save → reload → same state restored")
+and unblocks CONTINUE RUN + the LAST RUN preview on the title screen.
+
+### The shape
+
+- **Everything mutable in GameState persists** — clock, player stats, inventory,
+  jobs, obligations, all six hustle surfaces, crew records + wage clock,
+  territory, `npc_ledgers` + `observation_queue`, every Curtis awareness field,
+  and the activity feed — via a `PERSIST_FIELDS` manifest, captured and applied
+  by name. The current market prices ride separately as a `{product_id: price}`
+  slice because `price` is the one mutable value living inside a canon table.
+- **Canon tables and UI-scaffold placeholders deliberately do NOT persist**
+  (districts, stick_targets, crew_roster… and todays_take, income_sources,
+  hustle_surfaces, active_operation, eli_report, pending_messages). A
+  data-tuning commit must win over a stale save, and a placeholder that
+  persists becomes a fake fact.
+- **Autosave cadence is canon's**: GameManager fires exactly one
+  `notify_changed()` per successful dispatch, and SaveSystem saves on each one.
+  The gate is `street_name != ""` — canon gates on `screen === "game"`, and
+  these are the same fact: a run exists once it has a name, and nothing fires
+  `state_changed` before name entry sets one.
+
+### Two deliberate divergences from canon's storage
+
+1. **Format is Godot variant text (`var_to_str`), not JSON.** `activity_log`
+   rows carry `Color` values JSON cannot represent, and a JSON round-trip turns
+   every int into a float, which a typed GDScript var refuses at assignment.
+   `str_to_var` round-trips every type exactly and evaluates no code.
+2. **One file (`user://907hustle_run.save`) with the version inside the
+   payload**, not canon's key-per-version localStorage scheme (`SAVE_KEY` + 8
+   `LEGACY_SAVE_KEYS`). That scheme exists because localStorage cannot rename;
+   a file has no such constraint, so the legacy-key scan was not ported — no
+   Godot save predates this file.
+
+**Versioning is built in from the first byte** — canon's history (migrateSave
+handles v3–v10, game-core.js:1719) says the chain WILL be needed. `_migrate()`
+is that chain: one `match` arm per future version bump, and a version the build
+has never heard of (0, or newer than itself) is invalid, not a guess. A save
+missing a required key (`day`/`cash`/`street_name`) is invalid; every other
+absent field keeps GameState's declared default — canon's `mergeDefaults`, done
+by omission. Values are coerced to the live field's type on apply, so a
+hand-edited or migrated save cannot feed a float into a typed int var.
+
+### The title flow (canon `TitleScreen` + `App.startNew`)
+
+- LAST RUN preview is canon's stack: name / "SAVED RUN · DAY X · PART" /
+  "DISTRICT · $cash CASH · $debt DEBT", from `inspect().preview`.
+- CONTINUE loads and enters the game; if the file dies between inspect and
+  load, canon's copy ("The saved run could not be read…") shows as a toast and
+  the button re-hides.
+- **NEW RUN over a valid save confirms first** ("Start a new run? The current
+  autosave will be replaced."). The save is only overwritten by the first
+  autosave of the new run — backing out at name entry keeps the old run, same
+  as canon.
+- **A game-over run stays saved, and CONTINUE routes it straight back to the
+  game-over screen** (via `screen_base.refresh()`'s existing game_over gate).
+  That is canon parity: the web build autosaves the ended state and Load
+  resumes into the EndModal.
+
+### Verified (editor run, all via game_eval; game log clean)
+
+Fresh boot → no save → both title controls hidden. Start run → autosave exists,
+preview correct. A lived-in run (market buy, job apply+work, advance, travel,
+exposure records + broadcast, awareness 4, crew record, held block, shark loan,
+fractional heat 1.6, Color'd log entry) → scramble every field silently → load →
+**zero deep-equality differences across the full manifest + prices**; heat came
+back float, day came back int. Corrupt file / future version / version 0 /
+missing key → exists-but-invalid, load refused, state untouched. Confirm flow
+shows/cancels; CONTINUE lands on Home with the run intact; game-over run
+re-routes to game_over. **Not verified: IndexedDB persistence across a browser
+reload on the deployed web build** — user:// maps to IndexedDB there and the
+engine syncs it, but check on a real device after merge.
+
+Gotcha for future save tests: compare captures with `==` (deep content
+equality), not `str()` — dictionary key order shifts across a round-trip and
+`str()` flags phantom diffs.
 
 ## Phase 3f (part 2): Curtis awareness  (added 2026-08-20)
 

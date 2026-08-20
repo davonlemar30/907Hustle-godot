@@ -24,6 +24,7 @@ GameManager="*res://autoload/game_manager.gd"
 ScreenManager="*res://autoload/screen_manager.gd"
 Exposure="*res://autoload/exposure.gd"
 Curtis="*res://autoload/curtis.gd"
+SaveSystem="*res://autoload/save_system.gd"
 
 [display]
 

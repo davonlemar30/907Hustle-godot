@@ -23,6 +23,10 @@ func _ready() -> void:
 	time.setup(_gs, economy)
 	register_system("time", time)
 
+	var travel = preload("res://systems/travel.gd").new()
+	travel.setup(_gs, time)
+	register_system("travel", travel)
+
 func register_system(sys_name: String, instance: Object) -> void:
 	_systems.append({"name": sys_name, "node": instance})
 

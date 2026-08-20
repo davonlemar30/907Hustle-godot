@@ -1,0 +1,64 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
+[ext_resource type="Script" path="res://ui/components/toast.gd" id="scr"]
+
+[sub_resource type="StyleBoxFlat" id="SB_toast"]
+content_margin_left = 16.0
+content_margin_top = 10.0
+content_margin_right = 16.0
+content_margin_bottom = 10.0
+bg_color = Color(0.067, 0.067, 0.067, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.14)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_size = 10
+
+[node name="Toast" type="CanvasLayer"]
+layer = 100
+script = ExtResource("scr")
+
+[node name="Anchor" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("theme")
+
+[node name="Panel" type="PanelContainer" parent="Anchor"]
+modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -160.0
+offset_top = -170.0
+offset_right = 160.0
+offset_bottom = -128.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_toast")
+
+[node name="Msg" type="Label" parent="Anchor/Panel"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Muted"
+theme_override_colors/font_color = Color(0.87, 0.86, 0.84, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+text = ""

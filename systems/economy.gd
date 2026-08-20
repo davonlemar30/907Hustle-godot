@@ -69,10 +69,18 @@ func _sell(p: Dictionary) -> Dictionary:
 	return {"ok": true}
 
 ## Seeded price walk — each product ±VARIANCE around its base, clamped to min/max.
-## Keyed by day + product id so a replay of the same day produces the same prices.
+##
+## Keyed by day + slot + product id, so prices move on every time advance and a
+## replay of the same run reproduces them exactly. Slot belongs in the key
+## because canon keys its own rolls the same way — see the
+## `${seed}:meetup:${day}:${slot}:${nonce}` form at game-core.js:3128. Keying on
+## day alone made every advance within a day a no-op.
+##
+## Still the simplified ±VARIANCE model, not canon's xorshift walk with mean
+## reversion; exact parity is a Phase 5 test-harness goal.
 func evolve() -> void:
 	for prod in gs.products:
-		var key: String = "market_evolve_day%d_%s" % [gs.day, prod.id]
+		var key: String = "market_evolve_day%d_slot%d_%s" % [gs.day, gs.time_slots_today, prod.id]
 		var swing: float = (float(rng.seeded_random(gs.run_seed, key)) * 2.0 - 1.0) * VARIANCE
 		var np: int = int(round(float(prod.base) * (1.0 + swing)))
 		prod.price = clampi(np, int(prod.min), int(prod.max))

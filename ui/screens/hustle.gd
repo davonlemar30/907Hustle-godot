@@ -10,8 +10,8 @@ const SURFACE_ORDER := ["Jobs", "List", "Market", "Boost", "Stick", "Shark"]
 # Street Market is the one surface that already exists as a screen. The rest
 # are Phase 4 systems, so their rows say so instead of dead-ending.
 const SURFACE_ROUTES := {
-	"Jobs": "res://ui/screens/jobs.tscn", "List": "", "Market": "res://ui/screens/market.tscn",
-	"Boost": "", "Stick": "res://ui/screens/stickup.tscn", "Shark": "res://ui/screens/shark.tscn",
+	"Jobs": "res://ui/screens/jobs.tscn", "List": "res://ui/screens/nine07list.tscn", "Market": "res://ui/screens/market.tscn",
+	"Boost": "res://ui/screens/boost.tscn", "Stick": "res://ui/screens/stickup.tscn", "Shark": "res://ui/screens/shark.tscn",
 }
 
 func _ready() -> void:

@@ -1,0 +1,147 @@
+extends RefCounted
+## Boost — lifting stock, and the ladder that turns it into a trade.
+##
+## Ported from game-core.js BOOST_TARGETS, boostChance, resolveBoostAttempt,
+## updateBoostTier and boostFenceRate.
+##
+## Canon's chance formula:
+##   skill  = tier 1|2 → (combat + intelligence) / 2 · tier 3 → (intelligence + charisma) / 2
+##   base   = tier 1 → 0.80 · tier 2 → 0.55 · tier 3 → 0.40
+##   chance = clamp(base + (skill - 2) * 0.10 + windowBonus + districtDelta, 0.10, 0.95)
+##
+## Attributes are pinned at ATTRIBUTE_DEFAULTS (all 1) and districtDelta at 0,
+## the same treatment stickup.gd documents. So tier 1 reads 0.70, tier 2 reads
+## 0.45 and 0.65 inside its window.
+##
+## Tier 2 targets each have a window slot worth +0.20. Canon only reveals a
+## window once you have hit that target, which is what ASK_BOOST_WINDOW is for;
+## here the window is shown outright, because the alternative is a hidden
+## modifier the player cannot act on and no surface to learn it from.
+##
+## Tier 3 needs technique 13 AND field-assignable crew, so it is unreachable
+## until crew lands in 3e. Its merchandise-and-fence loop is written and tested
+## but has no way to trigger yet — that is canon's gate, not an omission.
+
+const GREEN := Color(0.451, 0.722, 0.404)
+const RED := Color(0.827, 0.161, 0.125)
+const AMBER := Color(0.882, 0.651, 0.227)
+
+var gs: Node
+var rng: Node
+var time_system: RefCounted
+
+func setup(game_state: Node, rng_manager: Node, time: RefCounted) -> void:
+	gs = game_state
+	rng = rng_manager
+	time_system = time
+
+func can_handle(action: String) -> bool:
+	return action in ["boost", "fence_goods"]
+
+func handle(action: String, payload: Dictionary) -> Dictionary:
+	match action:
+		"boost":
+			return _run(str(payload.get("target_id", "")))
+		"fence_goods":
+			return _fence()
+	return {"ok": false, "reason": "Unknown boost action."}
+
+func visible_targets() -> Array:
+	var out: Array = []
+	for t in gs.boost_targets:
+		if str(t["area"]) != gs.current_district_id:
+			continue
+		if int(t["tier"]) > gs.boost_tier:
+			continue
+		out.append(t)
+	return out
+
+## Canon boostChance with attributes pinned at their defaults (see header).
+func chance_for(target: Dictionary) -> float:
+	var tier: int = int(target["tier"])
+	var base: float = 0.80 if tier == 1 else (0.55 if tier == 2 else 0.40)
+	# All three compat scores are 1 on a fresh run, so skill is 1 whichever
+	# pair the tier blends.
+	var skill: float = 1.0
+	var window_bonus: float = 0.20 if tier == 2 and int(target["window"]) == gs.time_slots_today else 0.0
+	return clampf(base + (skill - 2.0) * 0.10 + window_bonus, 0.10, 0.95)
+
+func blocker(target_id: String) -> String:
+	if gs.game_over:
+		return "The run is over."
+	var t: Dictionary = gs.boost_target_by_id(target_id)
+	if t.is_empty():
+		return "No such place."
+	if str(t["area"]) != gs.current_district_id:
+		return "Wrong part of town."
+	if int(t["tier"]) > gs.boost_tier:
+		return "You're not smooth enough yet."
+	if int(gs.boost_daily_hits.get(target_id, -1)) == gs.day:
+		return "You've already been in today."
+	return ""
+
+func _run(target_id: String) -> Dictionary:
+	var blocked := blocker(target_id)
+	if not blocked.is_empty():
+		return {"ok": false, "reason": blocked}
+	var t: Dictionary = gs.boost_target_by_id(target_id)
+	var tier: int = int(t["tier"])
+
+	var key := "boost:%d:%d:%s" % [gs.day, gs.time_slots_today, target_id]
+	var roll: float = rng.seeded_random(gs.run_seed, key)
+	var success: bool = roll < chance_for(t)
+
+	gs.boost_daily_hits[target_id] = gs.day
+
+	var result: Dictionary
+	if success:
+		var band: Array = t["take"]
+		var take: int = rng.seeded_int_range(gs.run_seed, key + ":take", int(band[0]), int(band[1]))
+		gs.boost_technique += 1
+		# Canon scales heat by tier: 0.5 · 1 · 2, before district weighting.
+		var heat_add: int = 1 if tier == 1 else (1 if tier == 2 else 2)
+		gs.heat = clampi(gs.heat + heat_add, 0, gs.heat_max)
+		if tier == 3:
+			# Tier 3 comes out as merchandise, not cash. Slide fences it.
+			gs.boost_merchandise += take
+			gs.log_activity("%s lands. $%d in merchandise waiting for the fence." % [str(t["name"]), take], GREEN)
+		else:
+			gs.cash += take
+			gs.log_activity("Left %s with goods worth $%d." % [str(t["name"]), take], GREEN)
+		result = {"ok": true, "success": true, "take": take, "tier": tier}
+	else:
+		gs.heat = clampi(gs.heat + 1, 0, gs.heat_max)
+		gs.log_activity("Walked out of %s empty. Somebody clocked you." % str(t["name"]), RED)
+		result = {"ok": true, "success": false, "take": 0, "tier": tier}
+
+	_update_tier()
+	time_system.handle("advance_time", {})
+	return result
+
+## Canon boostFenceRate: 0.40 + standing*0.05, 0.55 from 3, 0.60 from 5.
+func fence_rate() -> float:
+	var v: int = clampi(gs.boost_fence_standing, 0, 5)
+	if v >= 5:
+		return 0.60
+	if v >= 3:
+		return 0.55
+	return 0.40 + float(v) * 0.05
+
+func _fence() -> Dictionary:
+	if gs.boost_merchandise <= 0:
+		return {"ok": false, "reason": "Nothing to move."}
+	var payout: int = int(round(float(gs.boost_merchandise) * fence_rate()))
+	gs.boost_merchandise = 0
+	gs.boost_fence_standing = clampi(gs.boost_fence_standing + 1, 0, 5)
+	gs.cash += payout
+	gs.log_activity("Slide takes the lot for $%d." % payout, GREEN)
+	return {"ok": true, "payout": payout}
+
+## Canon updateBoostTier. Tier 3 also needs field-assignable crew, which does
+## not exist yet, so it stays out of reach until 3e.
+func _update_tier() -> void:
+	var was: int = gs.boost_tier
+	if gs.boost_technique >= gs.BOOST_TIER2_TECHNIQUE:
+		gs.boost_tier = maxi(gs.boost_tier, 2)
+	if gs.boost_tier > was:
+		gs.log_activity("You're getting smooth. Bigger rooms are open now.", GREEN)

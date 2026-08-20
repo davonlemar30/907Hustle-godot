@@ -20,6 +20,8 @@ const HUSTLE := "res://ui/screens/hustle.tscn"
 const JOBS := "res://ui/screens/jobs.tscn"
 const STICKUP := "res://ui/screens/stickup.tscn"
 const SHARK := "res://ui/screens/shark.tscn"
+const LIST := "res://ui/screens/nine07list.tscn"
+const BOOST := "res://ui/screens/boost.tscn"
 const GAME_OVER := "res://ui/screens/game_over.tscn"
 
 ## Screens the bottom nav can reach today. Phone and More have no scene yet, so

@@ -225,6 +225,14 @@ func reset_to_new_game() -> void:
 	stick_successes = 0
 	shark_loans = []
 	shark_next_loan_id = 1
+	list_tier = 1
+	list_flips = 0
+	list_holdings = []
+	boost_tier = 1
+	boost_technique = 0
+	boost_merchandise = 0
+	boost_fence_standing = 0
+	boost_daily_hits = {}
 	activity_log = []
 	notify_changed()
 
@@ -374,4 +382,90 @@ func borrower_by_id(id: String) -> Dictionary:
 	for b in shark_borrowers:
 		if b.get("id", "") == id:
 			return b
+	return {}
+
+# --- 907List (canon: src/data/market.js LISTING_ITEMS / MARKET_TIERS) -------
+# A flip market. Every item has a `buy` price and a hidden `true_value` band,
+# and four of them are traps: the `rough` ones sell for less than they cost.
+# Which fields the board shows you is the tier's whole point — a Scrapper sees
+# only title and price, so condition is a guess until Flipper.
+var listing_items: Array = [
+	{"id": "space_heater", "name": "Space heater", "category": "household", "tier": 1, "buy": 25, "true_value": [42, 58], "condition": "good"},
+	{"id": "winter_coat", "name": "Winter coat bundle", "category": "household", "tier": 1, "buy": 35, "true_value": [56, 78], "condition": "good"},
+	{"id": "dresser", "name": "Solid dresser", "category": "furniture", "tier": 1, "buy": 40, "true_value": [64, 88], "condition": "good"},
+	{"id": "shop_vac", "name": "Shop vacuum", "category": "household", "tier": 1, "buy": 45, "true_value": [71, 97], "condition": "fair"},
+	{"id": "used_tv", "name": "Used television", "category": "electronics", "tier": 1, "buy": 55, "true_value": [86, 116], "condition": "good"},
+	{"id": "camp_stove", "name": "Camp stove", "category": "household", "tier": 1, "buy": 60, "true_value": [93, 125], "condition": "mint"},
+	{"id": "cracked_tv", "name": "Flatscreen, cracked bezel", "category": "electronics", "tier": 1, "buy": 65, "true_value": [30, 48], "condition": "rough"},
+	{"id": "sagging_couch", "name": "Couch, sags in the middle", "category": "furniture", "tier": 1, "buy": 60, "true_value": [28, 46], "condition": "rough"},
+	{"id": "office_chair", "name": "Ergonomic office chair", "category": "furniture", "tier": 2, "buy": 95, "true_value": [140, 186], "condition": "good"},
+	{"id": "bluetooth_speaker", "name": "Bluetooth speaker set", "category": "electronics", "tier": 2, "buy": 105, "true_value": [154, 205], "condition": "mint"},
+	{"id": "game_console", "name": "Game console, two pads", "category": "electronics", "tier": 2, "buy": 125, "true_value": [183, 243], "condition": "good"},
+	{"id": "chest_freezer", "name": "Chest freezer", "category": "household", "tier": 2, "buy": 140, "true_value": [204, 271], "condition": "fair"},
+	{"id": "flood_console", "name": "Console, was in a flood", "category": "electronics", "tier": 2, "buy": 125, "true_value": [58, 92], "condition": "rough"},
+	{"id": "sectional_couch", "name": "Leather sectional", "category": "furniture", "tier": 3, "buy": 165, "true_value": [244, 320], "condition": "good"},
+	{"id": "dslr_camera", "name": "DSLR body and lens", "category": "electronics", "tier": 3, "buy": 175, "true_value": [258, 340], "condition": "mint"},
+	{"id": "dining_set", "name": "Dining set, six chairs", "category": "furniture", "tier": 3, "buy": 185, "true_value": [273, 359], "condition": "good"},
+	{"id": "snow_blower", "name": "Two-stage snow blower", "category": "household", "tier": 3, "buy": 195, "true_value": [288, 378], "condition": "good"},
+	{"id": "seized_blower", "name": "Snow blower, seized last winter", "category": "household", "tier": 3, "buy": 190, "true_value": [82, 128], "condition": "rough"},
+]
+
+## Canon MARKET_TIERS. `fields` is what the board will show at that tier.
+var market_tiers: Dictionary = {
+	1: {"name": "SCRAPPER", "listings": 2, "capacity": 3, "sell_delay": 1, "shows_condition": false, "quick_sell": false, "blurb": "A random poster with no reputation. Two listings, no detail."},
+	2: {"name": "FLIPPER", "listings": 4, "capacity": 4, "sell_delay": 1, "shows_condition": true, "quick_sell": true, "blurb": "Condition, seller reliability, Downtown meetups, quick sells."},
+	3: {"name": "BROKER", "listings": 4, "capacity": 6, "sell_delay": 0, "shows_condition": true, "quick_sell": true, "blurb": "Named buyers text what they need. Verified status sells same day."},
+}
+
+## Canon: tier 3 opens at ten clean flips.
+const BROKER_FLIP_REQUIREMENT := 10
+## Tier 2 is the laptop. Canon gates it on a purchase; here it is flips, since
+## the gear store is a later feature.
+const FLIPPER_FLIP_REQUIREMENT := 3
+
+var list_tier: int = 1
+var list_flips: int = 0
+## Items currently held, each {item_id, bought_day}.
+var list_holdings: Array = []
+
+func listing_item_by_id(id: String) -> Dictionary:
+	for i in listing_items:
+		if i.get("id", "") == id:
+			return i
+	return {}
+
+func market_tier() -> Dictionary:
+	return market_tiers.get(list_tier, market_tiers[1])
+
+# --- Boost (canon: game-core.js BOOST_TARGETS) -----------------------------
+var boost_targets: Array = [
+	{"id": "night_owl", "name": "Night Owl Mini-Mart", "area": "north_star_lot", "tier": 1, "take": [15, 40], "window": -1, "desc": "The counter you already know. The camera by the back aisle has a blind spot everyone in Spenard learned first."},
+	{"id": "spenard_fuel", "name": "Spenard Chevron", "area": "north_star_lot", "tier": 1, "take": [15, 40], "window": -1, "desc": "Two pumps and a cooler aisle. The clerk watches the lot, never the shelves."},
+	{"id": "fourth_ave_market", "name": "Rebel Convenience on 4th", "area": "downtown", "tier": 1, "take": [15, 40], "window": -1, "desc": "One camera, aimed at the register, exactly like the sticker on the door promises."},
+	{"id": "downtown_fuel", "name": "Holiday on C Street", "area": "downtown", "tier": 1, "take": [15, 40], "window": -1, "desc": "The snack aisle sits behind a pillar the security mirror cannot see around."},
+	{"id": "service_stop", "name": "Denali Express", "area": "airport_industrial", "tier": 1, "take": [15, 40], "window": -1, "desc": "A truck-stop shop off Old Seward. Everything is bolted down except what you came in for."},
+	{"id": "airport_fuel", "name": "Shell on International", "area": "airport_industrial", "tier": 1, "take": [15, 40], "window": -1, "desc": "Half the customers are on the clock and all of them are on their phones."},
+	{"id": "northern_value", "name": "Northern Value", "area": "north_star_lot", "tier": 2, "take": [60, 150], "window": 1, "desc": "The Spenard thrift barn. Racks too dense to police, tags too cheap to chase."},
+	{"id": "midtown_pharmacy", "name": "Northern Lights Pharmacy", "area": "north_star_lot", "tier": 2, "take": [60, 150], "window": 2, "desc": "The pickup line keeps every eye in the building pointed forward."},
+	{"id": "fourth_ave_electronics", "name": "Gateway Electronics on 4th", "area": "downtown", "tier": 2, "take": [60, 150], "window": 3, "desc": "Locked cases up front, open stock in the back. The one clerk cannot be both places."},
+	{"id": "warehouse_club", "name": "Arctic Cash & Carry", "area": "north_star_lot", "tier": 3, "take": [200, 500], "window": -1, "desc": "The membership desk checks cards on the way in, never boxes on the way out."},
+	{"id": "loading_dock_seven", "name": "Ship Creek Yards, Dock Seven", "area": "airport_industrial", "tier": 3, "take": [200, 500], "window": -1, "desc": "The manifest says more than the fence-line cameras ever will."},
+	{"id": "delivery_route_4", "name": "Minnesota Drive Route", "area": "downtown", "tier": 3, "take": [200, 500], "window": -1, "desc": "A box truck running the same loop every day. A schedule is a kind of key."},
+]
+
+## Canon: technique >= 5 opens tier 2; tier 3 also needs field-assignable crew.
+const BOOST_TIER2_TECHNIQUE := 5
+const BOOST_TIER3_TECHNIQUE := 13
+
+var boost_tier: int = 1
+var boost_technique: int = 0
+var boost_merchandise: int = 0
+var boost_fence_standing: int = 0
+## target_id -> day it was last hit. One go per target per day.
+var boost_daily_hits: Dictionary = {}
+
+func boost_target_by_id(id: String) -> Dictionary:
+	for t in boost_targets:
+		if t.get("id", "") == id:
+			return t
 	return {}

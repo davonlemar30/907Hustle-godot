@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://db42qfo1l5ask"
-path="res://.godot/imported/title.webp-d65c688ed2a8cd2a9a811a90b0bcdfc9.ctex"
+uid="uid://dtril2bdv5ges"
+path="res://.godot/imported/tex-frost-edges.webp-c66a1a69471ecdaa434fa5d378a8690c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/img/title.webp"
-dest_files=["res://.godot/imported/title.webp-d65c688ed2a8cd2a9a811a90b0bcdfc9.ctex"]
+source_file="res://assets/textures/tex-frost-edges.webp"
+dest_files=["res://.godot/imported/tex-frost-edges.webp-c66a1a69471ecdaa434fa5d378a8690c.ctex"]
 
 [params]
 

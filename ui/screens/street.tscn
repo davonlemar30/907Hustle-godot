@@ -2,7 +2,7 @@
 
 [ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
 [ext_resource type="PackedScene" path="res://ui/components/atmosphere.tscn" id="atmo"]
-[ext_resource type="Texture2D" uid="uid://co8ljnuanvgjj" path="res://assets/textures/logo1trans.png" id="logo"]
+[ext_resource type="Texture2D" path="res://assets/textures/logo1trans.webp" id="logo"]
 [ext_resource type="Script" path="res://ui/screens/street.gd" id="scr"]
 [ext_resource type="Texture2D" uid="uid://7hxto5lndefv" path="res://assets/icons/nav/icon-travel.svg" id="ic_travel"]
 [ext_resource type="Texture2D" uid="uid://qxxecxf6e7f8" path="res://assets/icons/nav/icon-market.svg" id="ic_market"]

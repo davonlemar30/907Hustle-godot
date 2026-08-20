@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://db42qfo1l5ask"
-path="res://.godot/imported/title.webp-d65c688ed2a8cd2a9a811a90b0bcdfc9.ctex"
+uid="uid://bhbh87t5hin1q"
+path="res://.godot/imported/downtownassest1.webp-9e79886c8b71c4d871d0e4252782ab19.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/img/title.webp"
-dest_files=["res://.godot/imported/title.webp-d65c688ed2a8cd2a9a811a90b0bcdfc9.ctex"]
+source_file="res://assets/img/downtownassest1.webp"
+dest_files=["res://.godot/imported/downtownassest1.webp-9e79886c8b71c4d871d0e4252782ab19.ctex"]
 
 [params]
 

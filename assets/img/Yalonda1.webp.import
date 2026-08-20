@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://db42qfo1l5ask"
-path="res://.godot/imported/title.webp-d65c688ed2a8cd2a9a811a90b0bcdfc9.ctex"
+uid="uid://c5uo7xauv60ua"
+path="res://.godot/imported/Yalonda1.webp-50d8d1502a4cf675b50dc19e6ee1b083.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/img/title.webp"
-dest_files=["res://.godot/imported/title.webp-d65c688ed2a8cd2a9a811a90b0bcdfc9.ctex"]
+source_file="res://assets/img/Yalonda1.webp"
+dest_files=["res://.godot/imported/Yalonda1.webp-50d8d1502a4cf675b50dc19e6ee1b083.ctex"]
 
 [params]
 

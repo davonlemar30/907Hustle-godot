@@ -12,7 +12,8 @@ game data and logic.
 Playable demo with survival pressure: the game opens on a title screen, NEW RUN
 leads through name entry into a fresh Day 1, and every screen responds. Time
 passes, prices shift, travel costs a fare and a slot, jobs pay clean money on a
-schedule, and rent and the phone bill arrive whether or not you earned anything.
+schedule, stickups pay fast money and raise Heat, Shark notes run on a due-day
+clock, and rent and the phone bill arrive whether or not you earned anything.
 Miss enough rent and the run ends.
 
 | Screen | File | Notes |

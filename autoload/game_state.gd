@@ -218,6 +218,13 @@ func reset_to_new_game() -> void:
 	phone_active = true
 	game_over = false
 	game_over_reason = ""
+	stick_tier = 1
+	stick_daily_count = 0
+	stick_rep = 0
+	stick_attempts = 0
+	stick_successes = 0
+	shark_loans = []
+	shark_next_loan_id = 1
 	activity_log = []
 	notify_changed()
 
@@ -314,3 +321,57 @@ func log_activity(text: String, color: Color = Color(0.608, 0.608, 0.608)) -> vo
 	activity_log.push_front({"text": text, "time": time_slot, "color": color})
 	if activity_log.size() > 12:
 		activity_log.resize(12)
+
+# --- Stickup (canon: src/data/districts.js STICK_TARGETS) ------------------
+# take is a [min,max] band. resistance and heat feed the chance and the cost.
+# slots empty means any slot; otherwise indices into TimeSystem.SLOTS.
+var stick_targets: Array = [
+	{"id": "chilkoots_stumbler", "name": "Stumbler outside Koots", "area": "north_star_lot", "tier": 1, "take": [40, 80], "slots": [3], "resistance": 0, "heat": 2, "desc": "Somebody weaving out of Chilkoot Charlie's alone, cab money visible."},
+	{"id": "washgo_regular", "name": "Wash & Go regular", "area": "north_star_lot", "tier": 1, "take": [30, 50], "slots": [], "resistance": 0, "heat": 2, "desc": "Same guy every week. Quarters and a phone, back to the door."},
+	{"id": "fourth_ave_crawler", "name": "Fourth Avenue bar crawler", "area": "downtown", "tier": 1, "take": [50, 100], "slots": [2, 3], "resistance": 0, "heat": 2, "desc": "Bar to bar on 4th with a fresh ATM stop in between."},
+	{"id": "c_street_atm", "name": "C Street ATM run", "area": "downtown", "tier": 1, "take": [60, 100], "slots": [2], "resistance": 1, "heat": 2, "desc": "Office types pull dinner cash on C Street. Heads down, cards out."},
+	{"id": "lot_hauler", "name": "Long-haul driver at the truck lot", "area": "airport_industrial", "tier": 1, "take": [40, 90], "slots": [0, 1], "resistance": 0, "heat": 2, "desc": "Overnighting off International with the cab curtains drawn."},
+	{"id": "spenard_fuel_till", "name": "Spenard Chevron night till", "area": "north_star_lot", "tier": 2, "take": [100, 180], "slots": [3], "resistance": 1, "heat": 3, "desc": "One clerk after midnight, and a till that fattens until morning."},
+	{"id": "downtown_fuel_till", "name": "Holiday register on C Street", "area": "downtown", "tier": 2, "take": [100, 200], "slots": [], "resistance": 1, "heat": 3, "desc": "The register sits open between customers. One clerk, no partition."},
+	{"id": "rec_center_dice", "name": "Dice game behind the rec center", "area": "north_star_lot", "tier": 3, "take": [500, 1200], "slots": [2, 3], "resistance": 2, "heat": 4, "desc": "Folding-table money. Fast pockets, faster tempers, no cameras."},
+	{"id": "goodie_stash", "name": "Goodie's stash spot", "area": "north_star_lot", "tier": 3, "take": [800, 1500], "slots": [], "resistance": 3, "heat": 4, "desc": "Everybody knows Goodie keeps a spot. Finding out is the easy part."},
+]
+
+## Canon STICK_DAILY_CAP — "two in a day is how people get named."
+const STICK_DAILY_CAP := 2
+## Canon DISTRICT_DIFF_STEP, how much a point of resistance costs.
+const DISTRICT_DIFF_STEP := 0.08
+
+var stick_tier: int = 1
+var stick_daily_count: int = 0
+var stick_rep: int = 0
+var stick_attempts: int = 0
+var stick_successes: int = 0
+
+func stick_target_by_id(id: String) -> Dictionary:
+	for t in stick_targets:
+		if t.get("id", "") == id:
+			return t
+	return {}
+
+# --- Shark (canon: game-core.js SHARK_BORROWERS / SHARK_TERMS) -------------
+var shark_borrowers: Array = [
+	{"id": "nora", "name": "Nora Pike", "risk": 0.08, "risk_label": "LOW", "max": 100, "desc": "Food-cart owner covering a repair before the lunch rush."},
+	{"id": "jamal", "name": "Jamal Briggs", "risk": 0.18, "risk_label": "MEDIUM", "max": 250, "desc": "Dock worker bridging the week before overtime clears."},
+	{"id": "kelsey", "name": "Kelsey Roy", "risk": 0.28, "risk_label": "ELEVATED", "max": 500, "desc": "Bartender with steady cash and inconsistent timing."},
+	{"id": "leon", "name": "Leon Grant", "risk": 0.42, "risk_label": "HIGH", "max": 500, "desc": "Street runner whose next score always settles everything."},
+]
+
+## Interest rate by term length in days. Shorter term, higher rate.
+const SHARK_TERMS := {2: 0.40, 4: 0.25, 7: 0.15}
+## Dre takes a cut of the interest on every note that comes back.
+const SHARK_DRE_CUT := 0.12
+
+var shark_loans: Array = []
+var shark_next_loan_id: int = 1
+
+func borrower_by_id(id: String) -> Dictionary:
+	for b in shark_borrowers:
+		if b.get("id", "") == id:
+			return b
+	return {}

@@ -18,6 +18,8 @@ const STREET := "res://ui/screens/street.tscn"
 const MARKET := "res://ui/screens/market.tscn"
 const HUSTLE := "res://ui/screens/hustle.tscn"
 const JOBS := "res://ui/screens/jobs.tscn"
+const STICKUP := "res://ui/screens/stickup.tscn"
+const SHARK := "res://ui/screens/shark.tscn"
 const GAME_OVER := "res://ui/screens/game_over.tscn"
 
 ## Screens the bottom nav can reach today. Phone and More have no scene yet, so

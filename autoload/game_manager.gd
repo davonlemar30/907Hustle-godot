@@ -36,6 +36,14 @@ func _ready() -> void:
 	obligations.setup(_gs)
 	register_system("obligations", obligations)
 
+	var stickup = preload("res://systems/stickup.gd").new()
+	stickup.setup(_gs, rng, time)
+	register_system("stickup", stickup)
+
+	var shark = preload("res://systems/shark.gd").new()
+	shark.setup(_gs, rng)
+	register_system("shark", shark)
+
 func register_system(sys_name: String, instance: Object) -> void:
 	_systems.append({"name": sys_name, "node": instance})
 

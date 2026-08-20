@@ -29,3 +29,11 @@ func seeded_int_range(seed: String, context: String, min_v: int, max_v: int) -> 
 	if max_v <= min_v:
 		return min_v
 	return min_v + int(floor(seeded_random(seed, context) * (max_v - min_v + 1)))
+
+## Deterministic float in [0, 1) using the web's OTHER normalisation:
+## `stringHash(key) % 10000 / 10000`. Canon uses this form for some rolls (the
+## Shark default check at game-core.js:6561 among them) and `hash / 2^32` for
+## others. The two produce different values from the same hash, so the roll has
+## to use whichever form canon used or Phase 5's dual-run parity will not hold.
+func seeded_unit_10k(seed: String, context: String) -> float:
+	return float(string_hash(seed + ":" + context) % 10000) / 10000.0

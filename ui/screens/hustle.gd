@@ -11,7 +11,7 @@ const SURFACE_ORDER := ["Jobs", "List", "Market", "Boost", "Stick", "Shark"]
 # are Phase 4 systems, so their rows say so instead of dead-ending.
 const SURFACE_ROUTES := {
 	"Jobs": "res://ui/screens/jobs.tscn", "List": "", "Market": "res://ui/screens/market.tscn",
-	"Boost": "", "Stick": "", "Shark": "",
+	"Boost": "", "Stick": "res://ui/screens/stickup.tscn", "Shark": "res://ui/screens/shark.tscn",
 }
 
 func _ready() -> void:

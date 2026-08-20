@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="907Hustle-godot"
-run/main_scene="res://ui/screens/home.tscn"
+run/main_scene="res://ui/screens/title.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
@@ -34,6 +34,11 @@ window/handheld/orientation=1
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/godot_ai/plugin.cfg")
+
+[input_devices]
+
+pointing/emulate_mouse_from_touch=true
+pointing/emulate_touch_from_mouse=false
 
 [physics]
 

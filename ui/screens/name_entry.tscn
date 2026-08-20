@@ -1,0 +1,300 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
+[ext_resource type="Script" path="res://ui/screens/name_entry.gd" id="scr"]
+[ext_resource type="PackedScene" path="res://ui/components/atmosphere.tscn" id="atmo"]
+[ext_resource type="FontFile" path="res://assets/fonts/anton.woff2" id="anton"]
+[ext_resource type="FontFile" path="res://assets/fonts/barlow-condensed-400.woff2" id="bar4"]
+
+[sub_resource type="Gradient" id="GradGlow"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(0.83, 0.18, 0.14, 1, 0.83, 0.18, 0.14, 0)
+
+[sub_resource type="GradientTexture2D" id="TexGlow"]
+gradient = SubResource("GradGlow")
+width = 128
+height = 128
+fill = 1
+fill_from = Vector2(0.5, 0.02)
+fill_to = Vector2(1, 0.62)
+
+[sub_resource type="StyleBoxFlat" id="SB_input"]
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+bg_color = Color(0.067, 0.067, 0.067, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.12)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_input_focus"]
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+bg_color = Color(0.09, 0.067, 0.067, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.83, 0.18, 0.14, 0.9)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_btn_off"]
+bg_color = Color(0.16, 0.075, 0.067, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.08)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="NameEntry" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("theme")
+script = ExtResource("scr")
+
+[node name="BG" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.027, 0.027, 0.027, 1)
+
+[node name="Glow" type="TextureRect" parent="."]
+modulate = Color(1, 1, 1, 0.17)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 0.52
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("TexGlow")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="Pad" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 44
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 32
+
+[node name="V" type="VBoxContainer" parent="Pad"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Kicker" type="HBoxContainer" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+mouse_filter = 2
+alignment = 1
+theme_override_constants/separation = 9
+
+[node name="L1" type="ColorRect" parent="Pad/V/Kicker"]
+custom_minimum_size = Vector2(52, 1)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.55, 0.12, 0.1, 1)
+
+[node name="D1" type="ColorRect" parent="Pad/V/Kicker"]
+custom_minimum_size = Vector2(5, 5)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+rotation = 0.785398
+pivot_offset = Vector2(2.5, 2.5)
+color = Color(0.83, 0.18, 0.14, 1)
+
+[node name="T" type="Label" parent="Pad/V/Kicker"]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_type_variation = &"Kicker"
+theme_override_colors/font_color = Color(0.83, 0.18, 0.14, 1)
+theme_override_constants/line_spacing = 0
+text = "NEW RUN"
+
+[node name="D2" type="ColorRect" parent="Pad/V/Kicker"]
+custom_minimum_size = Vector2(5, 5)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+rotation = 0.785398
+pivot_offset = Vector2(2.5, 2.5)
+color = Color(0.83, 0.18, 0.14, 1)
+
+[node name="L2" type="ColorRect" parent="Pad/V/Kicker"]
+custom_minimum_size = Vector2(52, 1)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.55, 0.12, 0.1, 1)
+
+[node name="Head" type="Label" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 106)
+layout_mode = 2
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("anton")
+theme_override_font_sizes/font_size = 42
+theme_override_colors/font_color = Color(0.949, 0.941, 0.922, 1)
+theme_override_constants/line_spacing = -4
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "START FROM
+THE BOTTOM"
+
+[node name="Sub" type="Label" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "Anchorage doesn't know you yet."
+
+[node name="FieldLabel" type="Label" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 26)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Kicker"
+theme_override_colors/font_color = Color(0.83, 0.18, 0.14, 1)
+theme_override_font_sizes/font_size = 11
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "STREET NAME"
+
+[node name="Name" type="LineEdit" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_styles/normal = SubResource("SB_input")
+theme_override_styles/focus = SubResource("SB_input_focus")
+theme_override_fonts/font = ExtResource("bar4")
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.949, 0.941, 0.922, 1)
+theme_override_colors/font_placeholder_color = Color(0.53, 0.52, 0.51, 1)
+theme_override_colors/caret_color = Color(0.83, 0.18, 0.14, 1)
+placeholder_text = "What do they call you?"
+max_length = 16
+alignment = 1
+
+[node name="CardGap" type="Control" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Info" type="PanelContainer" parent="Pad/V"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Card"
+
+[node name="IV" type="VBoxContainer" parent="Pad/V/Info"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="Where" type="Label" parent="Pad/V/Info/IV"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"CardTitle"
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "SPENARD   ·   DAY 1   ·   MORNING"
+
+[node name="Have" type="Label" parent="Pad/V/Info/IV"]
+custom_minimum_size = Vector2(0, 26)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 11
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "NO JOB · NO CONTACTS · NO REPUTATION"
+
+[node name="Rule" type="HBoxContainer" parent="Pad/V/Info/IV"]
+custom_minimum_size = Vector2(0, 16)
+layout_mode = 2
+mouse_filter = 2
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="R1" type="ColorRect" parent="Pad/V/Info/IV/Rule"]
+custom_minimum_size = Vector2(58, 1)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(1, 1, 1, 0.1)
+
+[node name="D" type="ColorRect" parent="Pad/V/Info/IV/Rule"]
+custom_minimum_size = Vector2(4, 4)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+rotation = 0.785398
+pivot_offset = Vector2(2, 2)
+color = Color(0.55, 0.12, 0.1, 1)
+
+[node name="R2" type="ColorRect" parent="Pad/V/Info/IV/Rule"]
+custom_minimum_size = Vector2(58, 1)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(1, 1, 1, 0.1)
+
+[node name="Room" type="Label" parent="Pad/V/Info/IV"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+text = "You've got a room for now. The rest is on you."
+
+[node name="Gap" type="Control" parent="Pad/V"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Begin" type="Button" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+focus_mode = 0
+theme_type_variation = &"BtnPrimary"
+theme_override_styles/disabled = SubResource("SB_btn_off")
+theme_override_colors/font_disabled_color = Color(0.62, 0.5, 0.48, 1)
+theme_override_font_sizes/font_size = 16
+text = ">>  BEGIN THE RUN"
+
+[node name="Atmosphere" parent="." instance=ExtResource("atmo")]

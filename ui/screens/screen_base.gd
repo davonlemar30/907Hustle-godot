@@ -64,6 +64,13 @@ func _fill_chrome() -> void:
 	_set_text("Shell/Hud/HudRow/C0/V", "%d/%d" % [gs.heat, gs.heat_max])
 	_set_text("Shell/Hud/HudRow/C1/V", "%d/%d" % [gs.health, gs.health_max])
 	_set_text("Shell/Hud/HudRow/C2/V", "$%s" % _commas(gs.debt))
+	# A fresh run owes nobody yet — canon only opens the note once Dre offers
+	# it — so the countdown under the debt figure has nothing to count.
+	var due := get_node_or_null("Shell/Hud/HudRow/C2/Due") as Label
+	if due:
+		due.visible = gs.debt > 0
+		if gs.debt > 0:
+			due.text = "DUE IN %d DAYS" % gs.debt_due_days
 	_set_text("Shell/Hud/HudRow/C3/V", "%d/%d" % [gs.cargo_used(), gs.cargo_max])
 	_set_text("Shell/Hud/HudRow/C4/V", str(gs.respect))
 	_set_text("Shell/Hud/HudRow/C5/V", str(gs.crew_power))

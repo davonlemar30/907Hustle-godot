@@ -192,10 +192,15 @@ func record_observation(npc_id: String, spec: Dictionary) -> void:
 
 ## Something the world learns. Routed to whoever listens on that channel, and
 ## delayed by however long the channel takes to carry it.
-func broadcast_observation(spec: Dictionary) -> void:
+##
+## Returns the NPCs it reached — including ones it only queued for. Canon's
+## broadcastTracked needs that to decide whether a thing genuinely landed on
+## Curtis, which is the only way ambient awareness rises.
+func broadcast_observation(spec: Dictionary) -> Array:
+	var reached: Array = []
 	var channel: String = str(spec.get("channel", "neighborhood"))
 	if not CHANNELS.has(channel):
-		return
+		return reached
 	var def: Dictionary = CHANNELS[channel]
 	var delay: int = int(def["days"])
 	for npc_id in NPC_LENSES.keys():
@@ -203,6 +208,7 @@ func broadcast_observation(spec: Dictionary) -> void:
 			continue
 		var delivered := spec.duplicate()
 		delivered["source"] = str(def["source"])
+		reached.append(str(npc_id))
 		if delay <= 0:
 			record_observation(str(npc_id), delivered)
 		else:
@@ -211,6 +217,7 @@ func broadcast_observation(spec: Dictionary) -> void:
 				"spec": delivered,
 				"deliver_on_day": gs.day + delay,
 			})
+	return reached
 
 # --- scoring ---------------------------------------------------------------
 

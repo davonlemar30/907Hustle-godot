@@ -129,8 +129,20 @@ var hustle_surfaces: Array = [
 	{"id": "stick", "label": "STICKUP", "desc": "Street robbery, registers, and organized work.", "status": "TIER 1", "detail": "2 SUCCESSES ›", "color": Color(1, 0.29, 0.239)},
 	{"id": "shark", "label": "SHARK", "desc": "Fund borrowers and resolve defaults.", "status": "1 OPEN", "detail": "$250 OUT ›", "color": Color(0.62, 0.5, 0.85)},
 ]
-var curtis_attention: int = 4
-var curtis_attention_max: int = 8
+# Curtis's people, and how hard they are looking. Canon scale is 0-15, the same
+# as Heat, and the phase floors ratchet: once he notices you he does not fully
+# forget. Owned by autoload/curtis.gd. This used to be a static 4/8.
+const AWARENESS_MAX := 15
+var curtis_awareness: int = 0
+var curtis_phase: String = "invisible"
+## The highest phase floor ever reached. Decay never goes below it.
+var curtis_floor: int = 0
+var curtis_quiet_streak: int = 0
+var curtis_last_criminal_day: int = -1
+var curtis_watchers_seen: int = 0
+var curtis_last_watcher_day: int = -1
+var curtis_recent_watcher_lines: Array = []
+var curtis_phase_messages_sent: Array = []
 
 func product_by_id(id: String) -> Dictionary:
 	for p in products:
@@ -241,6 +253,15 @@ func reset_to_new_game() -> void:
 	soldiers_idle = 0
 	npc_ledgers = {}
 	observation_queue = []
+	curtis_awareness = 0
+	curtis_phase = "invisible"
+	curtis_floor = 0
+	curtis_quiet_streak = 0
+	curtis_last_criminal_day = -1
+	curtis_watchers_seen = 0
+	curtis_last_watcher_day = -1
+	curtis_recent_watcher_lines = []
+	curtis_phase_messages_sent = []
 	activity_log = []
 	notify_changed()
 

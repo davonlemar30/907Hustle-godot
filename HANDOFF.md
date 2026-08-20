@@ -433,6 +433,60 @@ Not ported, each its own feature: coworkers and their relationships, shift
 dialogue, `learn_job` workplace details, Deshawn's rent grace, contraband and
 danger-brought-home as warning sources, Exposure broadcasts, Dre's lending.
 
+## Phase 3f (part 2): Curtis awareness  (added 2026-08-20)
+
+`autoload/curtis.gd` — port of `src/data/curtis-awareness.js` plus
+`raiseCurtisAwareness` / `refreshAwarenessPhase` / `broadcastTracked` /
+`maybeWatcherEncounter` and the quiet-streak decay.
+
+### Three different things track Curtis, and canon keeps them apart
+
+| | what it is | where |
+| --- | --- | --- |
+| his ledger | what he **feels** about you (THREAT lens, inverted) | `Exposure` |
+| awareness | how hard his **people are looking** | `Curtis` |
+| district awareness | police difficulty | not ported |
+
+Do not collapse these. The disposition can be Hostile while awareness is still
+Invisible, and that is a meaningful state: he dislikes what he has heard but is
+not yet looking for you.
+
+### The join is `broadcast_tracked`
+
+Awareness rises **only when an observation genuinely reaches Curtis over the
+network channel**. A thing he never hears about does not make his people look
+harder. Verified: a household broadcast leaves awareness untouched, the same
+broadcast on network raises it by one.
+
+### Phase floors ratchet
+
+`invisible 0 · ambient 3 · watching 7 · approaching 11`, on canon's 0-15 scale —
+the same scale as Heat. Once a phase is reached, decay can never take the level
+back below that phase's floor. **Once Curtis notices you, he does not fully
+forget.** Verified: awareness 9 decayed to 7 over three quiet days and stopped.
+
+Decay itself is a quiet-streak: the first quiet day is free, and from the second
+consecutive one awareness bleeds a point a day. Any criminal action resets it,
+which is why `boost.gd` calls `mark_criminal_activity()` even though it is not
+loud enough to raise awareness on its own.
+
+### Watchers are texture, not observations
+
+No ledger row, nothing to resolve. At most one a day, only in Spenard, and only
+during **ordinary movement** — canon is deliberate that watchers appear while
+travelling rather than during the crime itself, which is what makes them
+unsettling. `watcher_chance = min(0.7, 0.3 + level * 0.04)`. Lines cycle without
+repeating inside the last three.
+
+Rolled off `seeded_unit_10k` rather than a stream, so a run that never qualifies
+keeps its exact event sequence.
+
+### Another placeholder retired
+
+`curtis_attention` was a static `4/8`. The Hustle rival card reads the real phase
+and level now (`WATCHING 7/15`). **That is the second placeholder found this way
+— check `GameState` for an existing name before adding one.**
+
 ## Phase 3f (part 1): the Exposure substrate  (added 2026-08-20)
 
 `autoload/exposure.gd` — port of `src/exposure/engine.js` plus `observations.js`,

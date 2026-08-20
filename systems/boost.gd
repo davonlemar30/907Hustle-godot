@@ -126,6 +126,12 @@ func _run(target_id: String) -> Dictionary:
 		gs.log_activity("Walked out of %s empty. Somebody clocked you." % str(t["name"]), RED)
 		result = {"ok": true, "success": false, "take": 0, "tier": tier}
 
+	# Not loud enough to raise awareness on its own, but it is criminal activity,
+	# which is what stops the quiet streak from bleeding awareness down.
+	var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
+	if curtis != null:
+		curtis.mark_criminal_activity()
+
 	_update_tier()
 	time_system.handle("advance_time", {})
 	return result

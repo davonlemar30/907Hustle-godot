@@ -1,4 +1,4 @@
-[gd_scene load_steps=29 format=3]
+[gd_scene load_steps=31 format=3]
 
 [ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
 [ext_resource type="Script" path="res://ui/screens/market.gd" id="scr"]
@@ -16,6 +16,8 @@
 [ext_resource type="Texture2D" uid="uid://bp521w0vtsd8a" path="res://assets/icons/nav/icon-crew.svg" id="ic_crew"]
 [ext_resource type="Texture2D" uid="uid://pdedvxirnal6" path="res://assets/icons/nav/icon-people.svg" id="ic_people"]
 [ext_resource type="Texture2D" uid="uid://cqkn2m0xs6w3d" path="res://assets/icons/ui/icon-menu.svg" id="ic_menu"]
+[ext_resource type="Texture2D" path="res://assets/icons/ui/icon-pip.svg" id="ic_pip"]
+[ext_resource type="Texture2D" uid="uid://ctcioy64750ty" path="res://assets/icons/ui/icon-arrow-up.svg" id="ic_arrow_up"]
 [ext_resource type="Texture2D" uid="uid://dxeaajkgr7tyr" path="res://assets/icons/hud/icon-heat.svg" id="ic_heat"]
 [ext_resource type="Texture2D" uid="uid://c11k5uwpyoqbd" path="res://assets/icons/hud/icon-health.svg" id="ic_health"]
 [ext_resource type="Texture2D" uid="uid://luq1ybqq3kxr" path="res://assets/icons/hud/icon-debt.svg" id="ic_debt"]
@@ -511,13 +513,47 @@ theme_override_font_sizes/font_size = 8
 horizontal_alignment = 1
 text = "RISK"
 
-[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Risk"]
+[node name="P" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Risk"]
+custom_minimum_size = Vector2(0, 14)
 layout_mode = 2
-theme_type_variation = &"Mono"
-theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
-theme_override_font_sizes/font_size = 12
-horizontal_alignment = 1
-text = "●○○○"
+theme_override_constants/separation = 3
+alignment = 1
+
+[node name="D0" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Risk/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.882, 0.651, 0.227, 1)
+
+[node name="D1" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Risk/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 1, 1, 0.12)
+
+[node name="D2" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Risk/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 1, 1, 0.12)
+
+[node name="D3" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Risk/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 1, 1, 0.12)
 
 [node name="Police" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx"]
 layout_mode = 2
@@ -530,13 +566,38 @@ theme_override_font_sizes/font_size = 8
 horizontal_alignment = 1
 text = "POLICE"
 
-[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Police"]
+[node name="P" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Police"]
+custom_minimum_size = Vector2(0, 14)
 layout_mode = 2
-theme_type_variation = &"Mono"
-theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
-theme_override_font_sizes/font_size = 12
-horizontal_alignment = 1
-text = "●○○"
+theme_override_constants/separation = 3
+alignment = 1
+
+[node name="D0" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Police/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.373, 0.663, 0.847, 1)
+
+[node name="D1" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Police/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 1, 1, 0.12)
+
+[node name="D2" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Police/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 1, 1, 0.12)
 
 [node name="Rival" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx"]
 layout_mode = 2
@@ -549,13 +610,38 @@ theme_override_font_sizes/font_size = 8
 horizontal_alignment = 1
 text = "RIVAL"
 
-[node name="P" type="Label" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Rival"]
+[node name="P" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Rival"]
+custom_minimum_size = Vector2(0, 14)
 layout_mode = 2
-theme_type_variation = &"Mono"
-theme_override_colors/font_color = Color(0.827, 0.161, 0.125, 1)
-theme_override_font_sizes/font_size = 12
-horizontal_alignment = 1
-text = "○○○"
+theme_override_constants/separation = 3
+alignment = 1
+
+[node name="D0" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Rival/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 1, 1, 0.12)
+
+[node name="D1" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Rival/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 1, 1, 0.12)
+
+[node name="D2" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/V/Ctx/Rival/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 1, 1, 0.12)
 
 [node name="Rows" type="VBoxContainer" parent="Shell/Scroll/Pad/Content"]
 layout_mode = 2
@@ -602,11 +688,24 @@ theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 text = "DEPENDABLE · OWN 4oz"
 
-[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Mid"]
+[node name="Hint" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Mid/Hint"]
+custom_minimum_size = Vector2(9, 9)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_arrow_up")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.451, 0.722, 0.404, 1)
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Mid/Hint"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
 theme_override_font_sizes/font_size = 10
-text = "▲ SELL INDUSTRIAL  +$11"
+text = "SELL INDUSTRIAL  +$11"
 
 [node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R0/H"]
 layout_mode = 2
@@ -680,11 +779,24 @@ theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 text = "VOLATILE · OWN 2"
 
-[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Mid"]
+[node name="Hint" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Mid/Hint"]
+custom_minimum_size = Vector2(9, 9)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_arrow_up")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.451, 0.722, 0.404, 1)
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Mid/Hint"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
 theme_override_font_sizes/font_size = 10
-text = "▲ SELL DOWNTOWN  +$36"
+text = "SELL DOWNTOWN  +$36"
 
 [node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R1/H"]
 layout_mode = 2
@@ -758,7 +870,21 @@ theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 text = "STEADY MARGIN · OWN 12"
 
-[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Mid"]
+[node name="Hint" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Mid/Hint"]
+custom_minimum_size = Vector2(9, 9)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_arrow_up")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.608, 0.608, 0.608, 1)
+visible = false
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Mid/Hint"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 10
@@ -836,11 +962,24 @@ theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 text = "PREMIUM"
 
-[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Mid"]
+[node name="Hint" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Mid/Hint"]
+custom_minimum_size = Vector2(9, 9)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_arrow_up")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.373, 0.663, 0.847, 1)
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Mid/Hint"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
 theme_override_font_sizes/font_size = 10
-text = "↗ +30% MARGIN DOWNTOWN"
+text = "+30% MARGIN DOWNTOWN"
 
 [node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R3/H"]
 layout_mode = 2
@@ -914,11 +1053,24 @@ theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 text = "CLUB DEMAND"
 
-[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Mid"]
+[node name="Hint" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Mid/Hint"]
+custom_minimum_size = Vector2(9, 9)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_arrow_up")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.373, 0.663, 0.847, 1)
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Mid/Hint"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
 theme_override_font_sizes/font_size = 10
-text = "↗ +30% MARGIN DOWNTOWN"
+text = "+30% MARGIN DOWNTOWN"
 
 [node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R4/H"]
 layout_mode = 2
@@ -992,7 +1144,21 @@ theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 text = "HIGH MARGIN"
 
-[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Mid"]
+[node name="Hint" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Mid/Hint"]
+custom_minimum_size = Vector2(9, 9)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_arrow_up")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.608, 0.608, 0.608, 1)
+visible = false
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Mid/Hint"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 10
@@ -1070,11 +1236,24 @@ theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 text = "PREMIUM"
 
-[node name="Hint" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Mid"]
+[node name="Hint" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Mid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Mid/Hint"]
+custom_minimum_size = Vector2(9, 9)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_arrow_up")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.451, 0.722, 0.404, 1)
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Mid/Hint"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
 theme_override_font_sizes/font_size = 10
-text = "▲ SELL DOWNTOWN  +$127"
+text = "SELL DOWNTOWN  +$127"
 
 [node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R6/H"]
 layout_mode = 2

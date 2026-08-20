@@ -251,14 +251,45 @@ Live build, rebuilt on every push to `main`:
 
 ## Known issues (not yet fixed)
 
-- **Missing font glyphs (wider than first recorded).** Verified with `Font.has_char()`
-  against all three theme fonts: none of Anton, Barlow Condensed or Share Tech Mono carry
-  `↗` U+2197, `♛` U+265B, `▲` U+25B2 or `⚠` U+26A0. Only `•` U+2022 is present. These
-  **render fine in the editor** because macOS supplies a system fallback, and break in the
-  web export, which has none — so the editor is not a valid check for this. In use at
-  `home.tscn:480` (`LIVE UPDATE ↗`), `home.tscn:675` (`♛ TURF & CREW`), and the ▲/⚠ in
-  market and hustle. Fix by swapping the glyphs for ASCII or adding a fallback font to the
-  theme.
+_None recorded._
+
+## Missing font glyphs — fixed, and now guarded  (2026-08-20)
+
+**Eight** characters were being drawn by fonts that cannot draw them, not the four first
+recorded. Re-checked with `Font.has_char()` across all five font files (Anton, Barlow
+Condensed 400/600/700, Share Tech Mono); the whole Geometric Shapes and Arrows blocks are
+absent from every one of them:
+
+| | | was | now |
+|---|---|---|---|
+| U+2197 | north-east arrow | `LIVE UPDATE ↗`, market hints | `icon-external` / `icon-arrow-up` |
+| U+25B2 | up triangle | market trend hints | `icon-arrow-up` |
+| U+26A0 | warning | `⚠ RIVAL PRESSURE` | `icon-warning` |
+| U+265B | chess queen | `♛ TURF & CREW` | `icon-crew` |
+| U+265F | chess pawn | `♟ PEOPLE` | `icon-people` |
+| U+25CE | bullseye | `◎ TONIGHT'S OPERATION` | `icon-target` |
+| U+25CF / U+25CB | filled / hollow circle | **every RISK/POLICE/RIVAL meter** | `icon-pip` dots |
+
+The two circles were the widest miss: 12 meters across Street and Market, plus every meter
+`screen_base.gd` generated at runtime. They are `TextureRect` dots now (`_set_pips()`), lit
+with the meter's accent or dimmed to `PIP_DIM`.
+
+Still safe, and deliberately left as text — present in all five fonts: `·` `–` `—` `•` `›`.
+
+**Why the editor can never catch this:** macOS lends the editor a system font for any glyph
+the theme fonts lack, so the character looks perfect locally. The web export has no system
+font to borrow and draws a tofu box. An editor screenshot is not evidence.
+
+So `scripts/check_glyph_coverage.py` reads the fonts' cmap tables and fails on any shipped
+character outside them; CI runs it as its own job on every push and PR. It skips comments,
+and intersects the fonts rather than unioning them — a string can be styled with any type
+variation, so a character is only safe if all five can draw it.
+
+- Trend arrows moved out of `GameState.products[].hint` into a `trend` field ("up"/"flat")
+  so the string stays plain text and the arrow is an icon the row shows or hides.
+- Adding a fallback font to the theme was the alternative. Not taken: the project already
+  owned a matching SVG for every glyph but the meter dots, and a fallback font would have
+  put another file in the `.pck` to draw seven characters.
 
 ## App flow: Title → Name Entry → Home  (added 2026-08-20)
 

@@ -59,15 +59,18 @@ func _fill_products() -> void:
 
 		_set_text(base + "/H/Mid/Top/Role", p.role)
 
-		var hint_node := get_node_or_null(base + "/H/Mid/Hint")
-		if hint_node is Label:
-			hint_node.text = p.hint
-			hint_node.add_theme_color_override("font_color", p.hint_color)
-		else:
-			var t := get_node_or_null(base + "/H/Mid/Hint/T") as Label
-			if t:
-				t.text = p.hint
-				t.add_theme_color_override("font_color", p.hint_color)
+		# The hint is an icon + a label. The trend arrow used to be a U+25B2 /
+		# U+2197 baked into the string, which no theme font carries — it only
+		# ever drew because the editor borrows a macOS system font, and the web
+		# export has none to borrow. It is a TextureRect now.
+		var t := get_node_or_null(base + "/H/Mid/Hint/T") as Label
+		if t:
+			t.text = p.hint
+			t.add_theme_color_override("font_color", p.hint_color)
+		var trend := get_node_or_null(base + "/H/Mid/Hint/Ico") as TextureRect
+		if trend:
+			trend.visible = p.get("trend", "flat") == "up"
+			trend.self_modulate = p.hint_color
 
 		var pr := get_node_or_null(base + "/H/Right/P") as Label
 		if pr:

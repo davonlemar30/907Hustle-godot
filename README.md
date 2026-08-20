@@ -20,8 +20,9 @@ yet** — screens read a fixed mid-game snapshot; the reducer port is a later ph
 | Street | `ui/screens/street.tscn` | exploration hub — districts, venues, people (fully `GameState`-driven) |
 
 All four screens read their shared chrome (day/cash/HUD) from `GameState` via
-`ui/screens/screen_base.gd`; Street also drives its content from it. Per-screen
-content (market prices, turf counts, feed) is still baked and gets bound next.
+`ui/screens/screen_base.gd`. Street (districts/venues) and Market (product rows +
+prices) also drive their content from it. Remaining baked content (Home's snapshot/
+turf, Hustle's surfaces) gets bound as `GameState` grows.
 
 **Nav:** `STREET · HUSTLE · HOME · PHONE · MORE` with a raised red center HOME button.
 Not yet built: Phone, More, Crew/Territory, Travel detail, and the Hustle sub-screens

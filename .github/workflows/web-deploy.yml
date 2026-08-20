@@ -25,6 +25,23 @@ env:
   GODOT_VERSION: 4.7.2
 
 jobs:
+  glyphs:
+    name: Check glyph coverage
+    # A character no theme font carries renders fine in the editor (macOS lends a
+    # system font) and as a tofu box in the browser (the export has none to lend).
+    # Nothing downstream can see the difference, so it is caught here instead.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install fonttools brotli
+
+      - run: scripts/check_glyph_coverage.py --list
+
   build:
     name: Export web
     runs-on: ubuntu-latest

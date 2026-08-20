@@ -9,6 +9,11 @@ const RISK_MAX := 4
 const POLICE_MAX := 3
 const RIVAL_MAX := 3
 
+# Lit-dot colours, matching the accents the cards were already drawn with.
+const RISK_TINT := Color(0.882, 0.651, 0.227, 1)
+const POLICE_TINT := Color(0.373, 0.663, 0.847, 1)
+const RIVAL_TINT := Color(0.827, 0.161, 0.125, 1)
+
 func _bind_content() -> void:
 	_fill_districts()
 	_fill_venues()
@@ -27,9 +32,9 @@ func _fill_districts() -> void:
 		_set_text(base + "/Top/Travel", d.travel)
 		_set_text(base + "/Role", d.role)
 		_set_text(base + "/Blurb", d.blurb)
-		_set_text(base + "/Pips/Risk/P", _pips(d.risk, RISK_MAX))
-		_set_text(base + "/Pips/Police/P", _pips(d.police, POLICE_MAX))
-		_set_text(base + "/Pips/Rival/P", _pips(d.rival, RIVAL_MAX))
+		_set_pips(base + "/Pips/Risk/P", d.risk, RISK_MAX, RISK_TINT)
+		_set_pips(base + "/Pips/Police/P", d.police, POLICE_MAX, POLICE_TINT)
+		_set_pips(base + "/Pips/Rival/P", d.rival, RIVAL_MAX, RIVAL_TINT)
 
 func _fill_venues() -> void:
 	for i in range(4):

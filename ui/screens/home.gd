@@ -9,7 +9,6 @@ extends "res://ui/screens/screen_base.gd"
 
 const RED := Color(0.827, 0.161, 0.125, 1)
 const DIM := Color(1, 1, 1, 0.06)
-const PIP_DIM := Color(1, 1, 1, 0.12)
 
 func _bind_content() -> void:
 	_bind_all()

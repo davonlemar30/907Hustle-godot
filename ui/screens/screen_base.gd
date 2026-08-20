@@ -10,6 +10,9 @@ extends Control
 ## The values baked into each .tscn are just editor-time previews; at runtime
 ## GameState is the source of truth. Screens with content override `_bind_content()`.
 
+## Unlit meter dot. Shared so every screen's meters read the same.
+const PIP_DIM := Color(1, 1, 1, 0.12)
+
 @onready var gs: Node = get_node("/root/GameState")
 # Autoloads are reached by path, not by the compile-time global: the editor does
 # not have a freshly-registered singleton until it reloads.
@@ -80,9 +83,22 @@ func _set_text(path: String, text: String) -> void:
 	if node:
 		node.text = text
 
-func _pips(filled: int, total: int) -> String:
+## Fill a meter row: `filled` of its dots take `tint`, the rest go dim.
+##
+## Meters used to be a string of U+25CF/U+25CB, which only ever worked in the editor:
+## macOS lends a system font for glyphs the theme fonts lack, and the web export
+## has no system fonts to lend. None of Anton, Barlow Condensed or Share Tech
+## Mono carries U+25CF/U+25CB, so the browser drew tofu. The dots are TextureRects
+## now, so nothing about them depends on font coverage.
+func _set_pips(path: String, filled: int, total: int, tint: Color) -> void:
+	var row := get_node_or_null(path)
+	if row == null:
+		return
 	filled = clampi(filled, 0, total)
-	return "●".repeat(filled) + "○".repeat(total - filled)
+	for i in range(total):
+		var dot := row.get_node_or_null("D%d" % i) as TextureRect
+		if dot:
+			dot.self_modulate = tint if i < filled else PIP_DIM
 
 func _commas(n: int) -> String:
 	var s := str(n)

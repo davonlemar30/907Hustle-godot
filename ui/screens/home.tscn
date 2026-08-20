@@ -1,4 +1,4 @@
-[gd_scene load_steps=31 format=3]
+[gd_scene load_steps=34 format=3]
 
 [ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
 [ext_resource type="Script" path="res://ui/screens/home.gd" id="scr"]
@@ -10,6 +10,9 @@
 [ext_resource type="Texture2D" uid="uid://bp521w0vtsd8a" path="res://assets/icons/nav/icon-crew.svg" id="ic_crew"]
 [ext_resource type="Texture2D" uid="uid://pdedvxirnal6" path="res://assets/icons/nav/icon-people.svg" id="ic_people"]
 [ext_resource type="Texture2D" uid="uid://cqkn2m0xs6w3d" path="res://assets/icons/ui/icon-menu.svg" id="ic_menu"]
+[ext_resource type="Texture2D" uid="uid://crdkfx5mlfcjo" path="res://assets/icons/ui/icon-target.svg" id="ic_target"]
+[ext_resource type="Texture2D" uid="uid://1bbv00nt3ok8" path="res://assets/icons/ui/icon-external.svg" id="ic_external"]
+[ext_resource type="Texture2D" uid="uid://ctcioy64750ty" path="res://assets/icons/ui/icon-arrow-up.svg" id="ic_arrow_up"]
 [ext_resource type="Texture2D" uid="uid://dxeaajkgr7tyr" path="res://assets/icons/hud/icon-heat.svg" id="ic_heat"]
 [ext_resource type="Texture2D" uid="uid://c11k5uwpyoqbd" path="res://assets/icons/hud/icon-health.svg" id="ic_health"]
 [ext_resource type="Texture2D" uid="uid://luq1ybqq3kxr" path="res://assets/icons/hud/icon-debt.svg" id="ic_debt"]
@@ -464,20 +467,39 @@ theme_override_constants/separation = 9
 
 [node name="Head" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/OpCard/V"]
 layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/OpCard/V/Head"]
+custom_minimum_size = Vector2(15, 15)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_target")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.29, 0.239, 1)
 
 [node name="Title" type="Label" parent="Shell/Scroll/Pad/Content/OpCard/V/Head"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"H1"
 theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
-text = "◎  TONIGHT'S OPERATION"
+text = "TONIGHT'S OPERATION"
 
 [node name="Live" type="Label" parent="Shell/Scroll/Pad/Content/OpCard/V/Head"]
 layout_mode = 2
 size_flags_vertical = 4
 theme_type_variation = &"Kicker"
 theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
-text = "LIVE UPDATE ↗"
+text = "LIVE UPDATE"
+
+[node name="LiveIco" type="TextureRect" parent="Shell/Scroll/Pad/Content/OpCard/V/Head"]
+custom_minimum_size = Vector2(10, 10)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_external")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.29, 0.239, 1)
 
 [node name="Body" type="Label" parent="Shell/Scroll/Pad/Content/OpCard/V"]
 layout_mode = 2
@@ -653,11 +675,24 @@ theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
 theme_override_font_sizes/font_size = 16
 text = "$17"
 
-[node name="Foot" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V"]
+[node name="Foot" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Market/V"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Market/V/Foot"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
 theme_override_font_sizes/font_size = 11
-text = "MARKET IS UP ↗"
+text = "MARKET IS UP"
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Columns/Market/V/Foot"]
+custom_minimum_size = Vector2(9, 9)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_arrow_up")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.451, 0.722, 0.404, 1)
 
 [node name="Turf" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Columns"]
 layout_mode = 2
@@ -668,11 +703,23 @@ theme_type_variation = &"Card"
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
+[node name="T" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="Ico" type="TextureRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/T"]
+custom_minimum_size = Vector2(12, 12)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_crew")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="L" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/T"]
 layout_mode = 2
 theme_type_variation = &"CardTitle"
 theme_override_font_sizes/font_size = 12
-text = "♛  TURF & CREW"
+text = "TURF & CREW"
 
 [node name="Blocks" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
 layout_mode = 2

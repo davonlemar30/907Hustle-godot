@@ -54,8 +54,32 @@ func _bind_all() -> void:
 	_bind_activity()
 	_bind_people()
 
+## Employment and the rent clock outrank the scripted operation copy: they are
+## the things with a deadline attached.
+func _operation_override() -> Dictionary:
+	var ob: Object = _gm.system("obligations") if _gm else null
+	if ob != null and gs.cash < gs.WEEKLY_RENT:
+		var days: int = int(ob.days_until_rent())
+		if days <= 2:
+			var when := "today" if days <= 0 else ("tomorrow" if days == 1 else "in %d days" % days)
+			return {"title": "RENT %s" % when.to_upper(),
+					"body": "Yalonda wants $%d %s and you have $%d. Find the difference." % [gs.WEEKLY_RENT, when, gs.cash]}
+	if not gs.active_job_id.is_empty():
+		var job: Dictionary = gs.active_job()
+		var sys: Object = _gm.system("jobs") if _gm else null
+		var blocker: String = str(sys.shift_blocker()) if sys != null else ""
+		if blocker.is_empty():
+			return {"title": "SHIFT: %s" % str(job["name"]).to_upper(),
+					"body": "They're expecting you this %s. Clean money, and it keeps the room." % gs.time_slot.capitalize()}
+	return {}
+
 func _bind_operation() -> void:
 	var op: Dictionary = gs.active_operation
+	var over: Dictionary = _operation_override()
+	if not over.is_empty():
+		_set_text("Shell/Scroll/Pad/Content/OpCard/V/Head/Title", str(over["title"]))
+		_set_text("Shell/Scroll/Pad/Content/OpCard/V/Body", str(over["body"]))
+		return
 	_set_text("Shell/Scroll/Pad/Content/OpCard/V/Body", op.get("body", ""))
 	var actions: Array = op.get("actions", [])
 	var btns := ["Move", "Post", "Lay"]

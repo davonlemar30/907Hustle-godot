@@ -205,4 +205,112 @@ func reset_to_new_game() -> void:
 	respect = 0
 	crew_power = 0
 	inventory = {}
+	# Jobs and obligations reset with the run.
+	active_job_id = ""
+	job_records = {}
+	job_missed = {}
+	jobs_discovered = ["wash_go", "spenard_chevron", "rebel_convenience", "northern_value", "day_labor"]
+	rent_due_day = 7
+	rent_missed = 0
+	household_warnings = 0
+	phone_due_day = 7
+	phone_days_past_due = 0
+	phone_active = true
+	game_over = false
+	game_over_reason = ""
+	activity_log = []
 	notify_changed()
+
+# --- Jobs (canon: src/data/jobs.js SPENARD_JOBS) ---------------------------
+# Pay is a [min, max] band, not a flat rate. A shift rolls inside the band, then
+# scales by rank (1 + rank*0.10) and by the approach the player picks.
+# slots are indices into TimeSystem.SLOTS: 0 MORNING · 1 AFTERNOON · 2 EVENING · 3 NIGHT.
+var jobs: Array = [
+	{"id": "wash_go", "name": "Wash & Go Attendant", "pay": [40, 60], "slots": [0, 1, 2, 3], "starter": true, "day_labor": false},
+	{"id": "spenard_chevron", "name": "Spenard Chevron Clerk", "pay": [48, 60], "slots": [0, 1, 2, 3], "starter": true, "day_labor": false},
+	{"id": "rebel_convenience", "name": "Rebel Convenience Clerk", "pay": [48, 60], "slots": [0, 1, 2, 3], "starter": true, "day_labor": false},
+	{"id": "northern_value", "name": "Northern Value Floor Staff", "pay": [48, 60], "slots": [0, 1, 2], "starter": true, "day_labor": false},
+	{"id": "night_owl", "name": "Night Owl counter shift", "pay": [55, 75], "slots": [2], "starter": false, "day_labor": false},
+	{"id": "juan_warehouse", "name": "Spenard Warehouse Dock", "pay": [70, 95], "slots": [0, 1], "starter": false, "day_labor": false},
+	{"id": "ship_creek", "name": "Ship Creek Freight", "pay": [110, 140], "slots": [0], "starter": false, "day_labor": false},
+	{"id": "day_labor", "name": "Day Labor Pickup", "pay": [40, 60], "slots": [0, 1], "starter": false, "day_labor": true},
+]
+
+## How a shift is worked. Canon JOB_APPROACHES (src/data/jobs.js).
+var job_approaches: Array = [
+	{"id": "work_hard", "label": "WORK HARD", "pay_mult": 1.10, "xp": 2.0, "health": -2, "desc": "+10% pay · 2 XP · -2 Health"},
+	{"id": "socialize", "label": "SOCIALIZE", "pay_mult": 1.0, "xp": 1.0, "health": 0, "desc": "+1 relationship · 1 XP"},
+	{"id": "take_it_easy", "label": "TAKE IT EASY", "pay_mult": 1.0, "xp": 0.0, "health": 1, "desc": "+1 Health · no XP"},
+	{"id": "learn_job", "label": "LEARN THE JOB", "pay_mult": 1.0, "xp": 1.5, "health": 0, "desc": "1.5 XP · learn the room"},
+]
+
+## Canon JOB_RANK_THRESHOLDS — XP needed for rank 1, 2, 3.
+const JOB_RANK_THRESHOLDS := [4.0, 8.0, 14.0]
+
+var active_job_id: String = ""
+## Per-job bookkeeping, keyed by job id: {xp, rank, last_worked_day, hired_day}.
+var job_records: Dictionary = {}
+## Consecutive days ended without working, keyed by job id. Working resets it.
+var job_missed: Dictionary = {}
+## Job ids the player knows about. Canon seeds this from a Week Zero shuffle over
+## STARTER_JOB_IDS; here the four starters plus day labour are known from Day 1.
+var jobs_discovered: Array = ["wash_go", "spenard_chevron", "rebel_convenience", "northern_value", "day_labor"]
+
+func job_by_id(id: String) -> Dictionary:
+	for j in jobs:
+		if j.get("id", "") == id:
+			return j
+	return {}
+
+func approach_by_id(id: String) -> Dictionary:
+	for a in job_approaches:
+		if a.get("id", "") == id:
+			return a
+	return {}
+
+func active_job() -> Dictionary:
+	return job_by_id(active_job_id)
+
+## Canon jobRankForXp — how many thresholds the XP has passed.
+func job_rank_for_xp(xp: float) -> int:
+	var rank := 0
+	for t in JOB_RANK_THRESHOLDS:
+		if xp >= float(t):
+			rank += 1
+	return rank
+
+## Canon jobPayRange — the band scaled by rank.
+func job_pay_range(job_id: String) -> Dictionary:
+	var job: Dictionary = job_by_id(job_id)
+	if job.is_empty():
+		return {}
+	var rec: Dictionary = job_records.get(job_id, {})
+	var rank: int = int(rec.get("rank", 0))
+	var mult: float = 1.0 + float(rank) * 0.10
+	var band: Array = job["pay"]
+	return {"min": int(round(float(band[0]) * mult)), "max": int(round(float(band[1]) * mult)), "rank": rank}
+
+# --- Obligations (canon: game-core.js WEEKLY_RENT / PHONE_BILL) ------------
+## Rent is Yalonda's — the same spare room the name-entry screen refers to.
+const WEEKLY_RENT := 150
+const PHONE_BILL := 75
+
+var rent_due_day: int = 7
+var rent_missed: int = 0
+## Canon: household.warnings; 3 means evicted.
+var household_warnings: int = 0
+const HOUSEHOLD_WARNING_LIMIT := 3
+
+var phone_due_day: int = 7
+var phone_days_past_due: int = 0
+var phone_active: bool = true
+
+var game_over: bool = false
+var game_over_reason: String = ""
+
+## Prepend a feed entry. Home shows the newest three, so new events go on top.
+## `time` is the slot rather than a clock reading — the run has no wall clock.
+func log_activity(text: String, color: Color = Color(0.608, 0.608, 0.608)) -> void:
+	activity_log.push_front({"text": text, "time": time_slot, "color": color})
+	if activity_log.size() > 12:
+		activity_log.resize(12)

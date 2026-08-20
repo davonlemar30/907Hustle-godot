@@ -10,7 +10,7 @@ const SURFACE_ORDER := ["Jobs", "List", "Market", "Boost", "Stick", "Shark"]
 # Street Market is the one surface that already exists as a screen. The rest
 # are Phase 4 systems, so their rows say so instead of dead-ending.
 const SURFACE_ROUTES := {
-	"Jobs": "", "List": "", "Market": "res://ui/screens/market.tscn",
+	"Jobs": "res://ui/screens/jobs.tscn", "List": "", "Market": "res://ui/screens/market.tscn",
 	"Boost": "", "Stick": "", "Shark": "",
 }
 
@@ -55,12 +55,37 @@ func _bind_surfaces() -> void:
 		_set_text(base + "/Mid/Nm", s.label)
 		_set_text(base + "/Mid/Desc", s.desc)
 
+		# Jobs is a real system now, so its row reports real employment instead of
+		# the DAY-14 placeholder the other surfaces still carry.
+		var status: String = str(s.status)
+		var detail: String = str(s.detail)
+		if SURFACE_ORDER[i] == "Jobs":
+			var live: Array = _jobs_row_text()
+			status = live[0]
+			detail = live[1]
+			col = live[2]
+
 		var st := get_node_or_null(base + "/Right/St") as Label
 		if st:
-			st.text = s.status
+			st.text = status
 			st.add_theme_color_override("font_color", col)
 
-		_set_text(base + "/Right/St2", s.detail)
+		_set_text(base + "/Right/St2", detail)
+
+## [status, detail, colour] for the Jobs row, from actual employment.
+func _jobs_row_text() -> Array:
+	if gs.active_job_id.is_empty():
+		return ["NO JOB", "%d ON THE BOARD ›" % gs.jobs_discovered.size(), Color(0.608, 0.608, 0.608)]
+	var job: Dictionary = gs.active_job()
+	var band: Dictionary = gs.job_pay_range(gs.active_job_id)
+	var rec: Dictionary = gs.job_records.get(gs.active_job_id, {})
+	var rank: int = int(rec.get("rank", 0))
+	var detail := "RANK %d · $%d-%d ›" % [rank, int(band["min"]), int(band["max"])]
+	var missed: int = int(gs.job_missed.get(gs.active_job_id, 0))
+	if missed > 0:
+		detail = "MISSED %d/3 ›" % missed
+		return [str(job["name"]).to_upper(), detail, Color(0.827, 0.161, 0.125)]
+	return [str(job["name"]).to_upper(), detail, Color(0.451, 0.722, 0.404)]
 
 func _bind_curtis() -> void:
 	_set_text("Shell/Scroll/Pad/Content/Rival/V/Head/A", "ATTENTION %d/%d" % [gs.curtis_attention, gs.curtis_attention_max])

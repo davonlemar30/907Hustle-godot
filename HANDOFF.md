@@ -388,6 +388,51 @@ false there. The preset now sets it to `true`. Godot's `LineEdit` calls
 **The preset was written by hand, and defaults copied into it are decisions.** This
 one sat as `false` for two builds because it looked like boilerplate.
 
+## Phase 3c: jobs + obligations  (added 2026-08-20)
+
+The run now has expenses. Rent and the phone bill arrive on their own clocks,
+jobs are the way to cover them, and failing to is the first way to lose.
+
+**Canon differed from the brief on almost every number.** Verified against
+`src/data/jobs.js` and `game-core.js`; the oracle won each time:
+
+| | brief said | canon says |
+| --- | --- | --- |
+| job list | North Star Garage, Gym, Night Owl, Day Labor | the nine in `src/data/jobs.js` — North Star Garage is the player's base, the Gym a training venue, neither is a job |
+| pay | flat rate | a `[min,max]` band, scaled by rank then by approach |
+| firing | 2 misses | **3 CONSECUTIVE** days; working resets the ladder |
+| rent | $75 / 7 days, auto-deduct | **$150** / 7 days, paid deliberately; a due day that passes is a miss |
+| phone | $25 / 5 days, auto-deduct | **$75**, due day 7, past-due counter, line dies after 2 days grace |
+| game over | 3 missed rents | 3 household **warnings**; 2 missed rent weeks earn one |
+
+- **`systems/jobs.gd`** — `apply_job`, `work_shift`, `quit_job`, plus an
+  attendance settle on `day_crossed`. Pay is seeded on day+slot+job, so a run
+  replays identically. `shift_blocker()` is public: the Jobs screen asks it for
+  the button label so the label and the dispatch rejection can never disagree.
+- **`systems/obligations.gd`** — `pay_rent`, `pay_phone_bill`, plus rent and
+  phone settlement on `day_crossed`.
+- **Settlement is scoped to the day that just ENDED**, not the one starting.
+  Canon gates it behind a `dayEndPending` step for exactly this reason: a bill
+  due on day 7 has to be payable *during* day 7. Comparing against `gs.day`
+  marks it missed the instant the day begins. `jobs.gd` does the same with
+  `ended_day`.
+- **`ui/screens/jobs.tscn`** was generated from `hustle.tscn` with the content
+  nodes stripped, so the chrome (top bar, HUD, nav, FAB, atmosphere) is
+  inherited verbatim rather than re-authored. The board and current-job card are
+  built in `jobs.gd` from GameState — the board's length depends on what has been
+  discovered, so it cannot be laid out in the scene.
+- **`ui/screens/game_over.tscn`** is standalone (no chrome), like the title.
+  `screen_base.refresh()` routes to it from one place, so whichever screen is
+  open when the third warning lands is the one that leaves.
+- **Job discovery**: canon seeds a Week Zero shuffle over `STARTER_JOB_IDS`.
+  Here the four starters plus day labour are known from Day 1; `night_owl`,
+  `juan_warehouse` and `ship_creek` exist in the data but are not discoverable
+  yet, and applying to them is correctly refused.
+
+Not ported, each its own feature: coworkers and their relationships, shift
+dialogue, `learn_job` workplace details, Deshawn's rent grace, contraband and
+danger-brought-home as warning sources, Exposure broadcasts, Dre's lending.
+
 ## Working notes / gotchas
 - **Build loop:** `session_activate` → edit scene/theme → `scene_open(force_reload)`
   → `project_run(mode=current)` → `editor_screenshot(source=game)` to verify.

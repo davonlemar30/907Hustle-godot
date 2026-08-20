@@ -17,6 +17,8 @@ const HOME := "res://ui/screens/home.tscn"
 const STREET := "res://ui/screens/street.tscn"
 const MARKET := "res://ui/screens/market.tscn"
 const HUSTLE := "res://ui/screens/hustle.tscn"
+const JOBS := "res://ui/screens/jobs.tscn"
+const GAME_OVER := "res://ui/screens/game_over.tscn"
 
 ## Screens the bottom nav can reach today. Phone and More have no scene yet, so
 ## the nav treats them as no-ops rather than routing into a broken load.

@@ -1,0 +1,124 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
+[ext_resource type="Script" path="res://ui/screens/game_over.gd" id="scr"]
+[ext_resource type="PackedScene" path="res://ui/components/atmosphere.tscn" id="atmo"]
+
+[sub_resource type="Gradient" id="GradGlow"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(0.55, 0.1, 0.08, 1, 0.55, 0.1, 0.08, 0)
+
+[sub_resource type="GradientTexture2D" id="TexGlow"]
+gradient = SubResource("GradGlow")
+width = 128
+height = 128
+fill = 1
+fill_from = Vector2(0.5, 0.05)
+fill_to = Vector2(1, 0.7)
+
+[node name="GameOver" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("theme")
+script = ExtResource("scr")
+
+[node name="BG" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.027, 0.027, 0.027, 1)
+
+[node name="Glow" type="TextureRect" parent="."]
+modulate = Color(1, 1, 1, 0.15)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("TexGlow")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="Pad" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 56
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 36
+
+[node name="V" type="VBoxContainer" parent="Pad"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Kicker" type="Label" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+theme_type_variation = &"Kicker"
+theme_override_colors/font_color = Color(0.83, 0.18, 0.14, 1)
+theme_override_font_sizes/font_size = 11
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "RUN OVER"
+
+[node name="Head" type="Label" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 88)
+layout_mode = 2
+theme_type_variation = &"Brand"
+theme_override_font_sizes/font_size = 40
+theme_override_colors/font_color = Color(0.949, 0.941, 0.922, 1)
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "NOWHERE
+TO GO"
+
+[node name="Reason" type="Label" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+text = ""
+
+[node name="Gap" type="Control" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Stats" type="PanelContainer" parent="Pad/V"]
+layout_mode = 2
+theme_type_variation = &"Card"
+
+[node name="SV" type="VBoxContainer" parent="Pad/V/Stats"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Tail" type="Control" parent="Pad/V"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="NewRun" type="Button" parent="Pad/V"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+focus_mode = 0
+theme_type_variation = &"BtnPrimary"
+theme_override_font_sizes/font_size = 16
+text = ">>  NEW RUN"
+
+[node name="Atmosphere" parent="." instance=ExtResource("atmo")]

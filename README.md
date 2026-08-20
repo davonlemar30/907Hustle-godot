@@ -49,6 +49,11 @@ addons/godot_ai/           # committed MCP bridge (works on any clone)
   re-renders everything (the web-reducer pattern) — no per-field wiring.
 - **`screen_base.gd`** fills the shared chrome and calls a `_bind_content()` hook each
   screen overrides. Home, Market, Street, and Hustle are all fully `GameState`-driven.
+- **Action layer (Phase 3):** UI never mutates state directly — it calls
+  `GameManager.dispatch(action, payload)`, which routes to a system in `systems/`
+  (economy, time). Systems mutate `GameState`; GameManager fires one `notify_changed()`
+  or an `action_failed`. All randomness routes through **`RngManager`** (FNV-1a
+  `string_hash`, golden-verified against the JS oracle) — no `randf()`/`randi()` elsewhere.
 - **Reusable atmosphere** (`atmosphere.tscn`) is a `CanvasLayer` each screen instances;
   one screen-space shader does a `tex-card` material pass + animated film grain + a soft
   vignette. Intensity is a set of shader uniforms.
@@ -66,7 +71,9 @@ Project Settings. Target viewport is 375×812 portrait, mobile renderer. The
 0. **UI scaffold** ✅ — screens, nav, atmosphere, theme
 1. **IA completion** — remaining screens + Hustle sub-screens (static)
 2. **State spine** ✅ — `GameState` + reactive `state_changed`; all existing screens fully data-driven
-3. **Reducer port + RNG parity** — translate `game-core.js` actions to GDScript
+3. **Reducer port + RNG parity** — 🚧 3a done (seeded RNG w/ golden parity, GameManager
+   dispatch, economy buy/sell/evolve, time ticks, Market live); 3b–3d next (Jobs, 907List,
+   Stick/Boost/Shark, Crew, Territory, Events)
 4. **Save/load parity** · 5. **Behavioral test harness vs the JS oracle** · 6. **Cutover**
 
 Full roadmap and design-decision log live in the project's ClickUp master doc.

@@ -28,14 +28,14 @@ func _bind_content() -> void:
 
 func _fill_chrome() -> void:
 	_set_text("Shell/TopBar/HBox/DayBox/V/Day", "DAY %d" % gs.day)
-	_set_text("Shell/TopBar/HBox/DayBox/V/Part", gs.part)
+	_set_text("Shell/TopBar/HBox/DayBox/V/Part", gs.time_slot)
 	_set_text("Shell/TopBar/HBox/Right/LocBox/V/L1", gs.current_district().get("name", "SPENARD"))
 	_set_text("Shell/TopBar/HBox/Right/LocBox/V/L2", gs.city)
 	_set_text("Shell/TopBar/HBox/Right/CashBox/V/C2", "$%s" % _commas(gs.cash))
 	_set_text("Shell/Hud/HudRow/C0/V", "%d/%d" % [gs.heat, gs.heat_max])
 	_set_text("Shell/Hud/HudRow/C1/V", "%d/%d" % [gs.health, gs.health_max])
 	_set_text("Shell/Hud/HudRow/C2/V", "$%s" % _commas(gs.debt))
-	_set_text("Shell/Hud/HudRow/C3/V", "%d/%d" % [gs.cargo, gs.cargo_max])
+	_set_text("Shell/Hud/HudRow/C3/V", "%d/%d" % [gs.cargo_used(), gs.cargo_max])
 	_set_text("Shell/Hud/HudRow/C4/V", str(gs.respect))
 	_set_text("Shell/Hud/HudRow/C5/V", str(gs.crew_power))
 

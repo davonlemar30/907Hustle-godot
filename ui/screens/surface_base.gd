@@ -58,6 +58,9 @@ func note(text: String) -> Control:
 	c.add_child(label(text, "Muted", 12, MUTED))
 	return c
 
+## Buttons on these screens are full-width and sit inside the ScrollContainer,
+## so they must not swallow a scroll drag. `pressed` is deliberately NOT used —
+## see screen_base.tap_connect for why a measured tap is required here.
 func button(text: String, primary: bool, handler: Callable, min_h: int = 44) -> Button:
 	var b := Button.new()
 	b.text = text
@@ -65,7 +68,7 @@ func button(text: String, primary: bool, handler: Callable, min_h: int = 44) -> 
 	b.focus_mode = Control.FOCUS_NONE
 	b.theme_type_variation = &"BtnPrimary" if primary else &"BtnSecondary"
 	b.add_theme_font_size_override("font_size", 13)
-	b.pressed.connect(handler)
+	tap_connect(b, handler)
 	return b
 
 func section(text: String) -> Label:

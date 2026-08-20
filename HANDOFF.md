@@ -433,6 +433,44 @@ Not ported, each its own feature: coworkers and their relationships, shift
 dialogue, `learn_job` workplace details, Deshawn's rent grace, contraband and
 danger-brought-home as warning sources, Exposure broadcasts, Dre's lending.
 
+## Scrolling: nothing inside the scroll may be MOUSE_FILTER_STOP  (2026-08-20)
+
+**Found in playtesting: the screen only scrolled when the finger landed on bare
+background.** Touch a card and the screen was stuck.
+
+`make_tappable()` covered each card with a full-size flat Button at
+`MOUSE_FILTER_STOP`. A STOP control swallows the press, so the ScrollContainer
+never sees the gesture start — and since the cards tile most of every screen,
+almost nowhere was draggable. Measured on Home: content 853px in a 580px
+viewport, with `Tap` Buttons of 145×179, 134×179 and 313×65 sitting over it.
+
+The Phase 3b PR justified that Button with "Buttons already coexist with
+drag-scrolling inside the ScrollContainer — Market's BUY/SELL prove it".
+**That was wrong at the scale it was applied.** Market's buttons are small, so
+there was always background left to drag from; a full-card Button leaves none.
+
+### The rule
+
+Anything inside `Shell/Scroll` that responds to touch must be
+**`MOUSE_FILTER_PASS`** and use `screen_base.tap_connect()`. Never `pressed`, and
+never STOP.
+
+PASS lets the control handle the event *and* lets it continue up to the
+ScrollContainer. Because the gesture still reaches the control on release, a
+plain `pressed` connection would fire at the end of every scroll drag — so
+`tap_connect` measures it: a release more than `TAP_SLOP` (12px) from where the
+finger landed was a scroll, not a tap, and the handler does not run.
+
+Verified: 2px travel fires the handler, 160px travel does not, card taps still
+navigate.
+
+### Where the exceptions are, and why they are fine
+
+`title.gd`, `name_entry.gd` and `game_over.gd` use `pressed` because those
+screens have no ScrollContainer at all. The bottom nav uses `pressed` because
+`Shell/NavBar` is a sibling of `Shell/Scroll`, not inside it. **Check whether a
+control is inside the scroll before choosing.**
+
 ## PROCESS: documentation ships with the PR  (adopted 2026-08-20)
 
 **Standing rule. Not a suggestion.**

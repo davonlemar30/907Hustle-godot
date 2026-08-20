@@ -73,7 +73,7 @@ func _build_current() -> void:
 	work.add_theme_font_size_override("font_size", 15)
 	work.text = "WORK SHIFT" if blocker.is_empty() else blocker.to_upper()
 	work.disabled = not blocker.is_empty()
-	work.pressed.connect(_on_work)
+	tap_connect(work, _on_work)
 	v.add_child(work)
 
 	var quit_btn := Button.new()
@@ -81,7 +81,7 @@ func _build_current() -> void:
 	quit_btn.focus_mode = Control.FOCUS_NONE
 	quit_btn.theme_type_variation = &"BtnSecondary"
 	quit_btn.text = "QUIT"
-	quit_btn.pressed.connect(func() -> void: _gm.dispatch("quit_job", {}))
+	tap_connect(quit_btn, func() -> void: _gm.dispatch("quit_job", {}))
 	v.add_child(quit_btn)
 
 	_current.add_child(card)
@@ -102,7 +102,7 @@ func _approach_row() -> Control:
 		b.add_theme_font_size_override("font_size", 11)
 		b.text = str(a["label"])
 		b.tooltip_text = str(a["desc"])
-		b.pressed.connect(_on_pick_approach.bind(id))
+		tap_connect(b, _on_pick_approach.bind(id))
 		grid.add_child(b)
 	return grid
 
@@ -160,7 +160,7 @@ func _board_row(job: Dictionary) -> Control:
 	apply.add_theme_font_size_override("font_size", 12)
 	apply.text = "APPLY"
 	apply.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	apply.pressed.connect(func() -> void: _gm.dispatch("apply_job", {"job_id": str(job["id"])}))
+	tap_connect(apply, func() -> void: _gm.dispatch("apply_job", {"job_id": str(job["id"])}))
 	h.add_child(apply)
 	return card
 

@@ -22,10 +22,10 @@ func _connect_buttons() -> void:
 		var base := "Shell/Scroll/Pad/Content/Rows/R%d/H/Right/Btns" % i
 		var buy := get_node_or_null(base + "/Buy") as Button
 		if buy:
-			buy.pressed.connect(_on_buy.bind(pid))
+			tap_connect(buy, _on_buy.bind(pid))
 		var sell := get_node_or_null(base + "/Sell") as Button
 		if sell:
-			sell.pressed.connect(_on_sell.bind(pid))
+			tap_connect(sell, _on_sell.bind(pid))
 
 func _on_buy(pid: String) -> void:
 	_gm.dispatch("market_buy", {"product_id": pid, "quantity": 1})

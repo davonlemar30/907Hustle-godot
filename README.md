@@ -1,111 +1,131 @@
 # 907Hustle — Godot
 
 A ground-up **Godot 4.7.2** rebuild of *907Hustle: One Good Run* — a mobile-first
-(375×812, portrait) street-sim set in Anchorage's Spenard district. This repo is the
-UI/UX layer; the shipping **web build (React, v1.35) is the behavioral canon** for all
-game data and logic.
+(375×812, portrait) street-sim set in Anchorage's Spenard district. The shipping
+**web build (React, v1.35) is the behavioral canon** for all game data and logic.
+
+**Play it: https://davonlemar30.github.io/907Hustle-godot/** — rebuilt on every merge
+to `main`. Roughly a 13MB first load, cached after.
 
 > Living build notes with the full detail live in [`HANDOFF.md`](HANDOFF.md).
 
 ## Status
 
-Playable demo with survival pressure: the game opens on a title screen, NEW RUN
-leads through name entry into a fresh Day 1, and every screen responds. Time
-passes, prices shift, travel costs a fare and a slot, jobs pay clean money on a
-schedule, stickups pay fast money and raise Heat, 907List rewards reading a
-listing, Boost trades odds for stock, Shark notes run on a due-day clock, and rent and the phone bill arrive whether or not you earned anything.
-Crew cost wages every night, corners pay out while you sleep, and missing enough
-rent ends the run.
+A playable run with real pressure. You start with a name and $100, and the clock
+does not stop.
 
-| Screen | File | Notes |
-| --- | --- | --- |
-| Title | `ui/screens/title.tscn` | NEW RUN / CONTINUE RUN; standalone, no chrome |
-| Name Entry | `ui/screens/name_entry.tscn` | street name + canon Day 1 preview |
+The run opens on a title screen. NEW RUN leads through name entry into a fresh Day 1
+in Spenard. From there: work a legitimate job or one of five criminal surfaces, move
+between three districts, hire crew and pay their wages, take corners and post soldiers
+on them — while rent, the phone bill and Curtis's attention all advance on their own
+schedule. Miss enough rent and you are evicted, which ends the run.
 
-Beyond the opening, screens still read a largely fixed mid-game snapshot; the
-reducer port is a later phase.
+Every number comes from the web build. Where a written brief and the oracle disagreed,
+the oracle won; those divergences are listed in `HANDOFF.md`.
 
-| Screen | File | Notes |
-| --- | --- | --- |
-| Home | `ui/screens/home.tscn` | HUD, hero photo, Tonight's Operation, market/turf, people, feed |
-| Market | `ui/screens/market.tscn` | 8 products, canon per-district pricing, buy/sell (the "Street Market") |
-| Hustle | `ui/screens/hustle.tscn` | income hub — 6 surfaces, Today's Take, Curtis pressure |
-| Street | `ui/screens/street.tscn` | exploration hub — districts, venues, people (fully `GameState`-driven) |
+### What works
 
-**All four screens are fully `GameState`-driven** — chrome plus content: Street
-(districts/venues), Market (product rows/prices), Home (operation, snapshot, turf +
-mini-map, feed, messages), and Hustle (Today's Take, income surfaces, Curtis). One
-`notify_changed()` re-renders the visible screen (Phase 2 / State Spine complete for
-existing screens).
+| Loop | Where |
+| --- | --- |
+| Start a run, name your character | Title → Name Entry |
+| Buy and sell product at district prices | Market |
+| Travel between districts ($5 fare, one slot) | Street |
+| Work shifts for banded pay, get fired for ghosting | Hustle → Jobs |
+| Flip listings whose true value is hidden by your tier | Hustle → 907List |
+| Lift stock from rooms that may be watching | Hustle → Boost |
+| Rob marks for fast money and real Heat | Hustle → Stickup |
+| Lend at interest and decide what a default costs | Hustle → Shark |
+| Hire crew, pay wages, watch loyalty | Street → People → Crew |
+| Claim corners, post soldiers, collect nightly | Home → Turf |
+| See what each character knows and makes of it | Home → People |
+| Rent, phone bill, eviction | automatic, on day-cross |
 
-**Nav:** `STREET · HUSTLE · HOME · PHONE · MORE` with a raised red center HOME button.
-Each cell is a real Button routed through the `ScreenManager` autoload. Phone and More
-are disabled until those screens exist.
+### Not built yet
 
-Not yet built: Phone, More, Crew/Territory, Travel detail, and the Hustle sub-screens
-(Jobs, 907List, Boost, Stickup, Shark).
+Phone and More screens (their nav cells are disabled), save/load — so `CONTINUE RUN`
+and the LAST RUN line on the title screen stay hidden — venue interiors, combat
+encounters, equipment, attributes, and the behavioral parity harness.
 
 ## Project layout
 
 ```
-autoload/game_state.gd     # GameState singleton — the run's state spine
-autoload/screen_manager.gd # the only thing that swaps top-level screens; also toasts
-systems/*.gd               # economy, time, travel, jobs, obligations — the only writers of GameState
-ui/components/toast.tscn   # brief non-blocking feedback, one instance under /root
-ui/screens/*.tscn|.gd      # one scene per screen (Street is script-driven)
-ui/components/atmosphere.tscn   # reusable screen-space FX layer, instanced everywhere
-ui/theme/hustle_theme.tres      # palette, fonts, SVG 9-slice skins, type variations
-ui/theme/atmosphere.gdshader    # material + film grain + vignette
-assets/                    # icons (SVG), fonts, skins, photos, textures, logos
-addons/godot_ai/           # committed MCP bridge (works on any clone)
+autoload/
+  game_state.gd       # the run's state spine + reactive `state_changed`
+  game_manager.gd     # dispatch(action) → systems; one notify_changed per success
+  rng_manager.gd      # FNV-1a string_hash, golden-verified against the JS oracle
+  screen_manager.gd   # the only thing that swaps screens; also toasts
+  exposure.gd         # observation ledgers, NPC lenses, channels, disposition bands
+  curtis.gd           # rival awareness phases, watchers, quiet-streak decay
+
+systems/              # the ONLY writers of GameState
+  economy.gd          # buy / sell / seeded price evolution
+  time_system.gd      # time slots + day-cross
+  travel.gd           # district change: fare + a slot
+  jobs.gd             # apply / work / quit + attendance
+  obligations.gd      # rent + phone bill, settled nightly
+  stickup.gd          # armed robbery, tiers, the two-a-day cap
+  shark.gd            # lending, terms, defaults
+  nine07list.gd       # the flip board and its tiers
+  boost.gd            # lifting, the technique ladder, the fence
+  crew.gd             # roster, loyalty, the nightly wage clock
+  territory.gd        # corners, soldiers, passive income
+
+ui/screens/*.tscn|.gd # one scene per screen; screen_base.gd holds shared chrome
+ui/components/        # atmosphere.tscn (grain/vignette), toast.tscn
+ui/theme/             # hustle_theme.tres, atmosphere.gdshader
+
+scripts/
+  optimize_assets.py       # 750px cap + WebP + import pinning; re-runnable
+  icon_to_mask.py          # alpha-masks flat icon art for self_modulate tinting
+  check_glyph_coverage.py  # CI gate: fails the build on a glyph no font carries
+  make_surface_screen.py   # derives a new surface screen from hustle.tscn's chrome
 ```
 
 ## Architecture
 
-- **`GameState` autoload** is the single source of truth for the run (stats, districts,
-  venues, contacts, products, turf, operation, feed, messages). It exposes a
-  `state_changed` signal; screens connect `refresh()` to it, so one `notify_changed()`
-  re-renders everything (the web-reducer pattern) — no per-field wiring.
-- **`screen_base.gd`** fills the shared chrome and calls a `_bind_content()` hook each
-  screen overrides. Home, Market, Street, and Hustle are all fully `GameState`-driven.
-- **Action layer (Phase 3):** UI never mutates state directly — it calls
-  `GameManager.dispatch(action, payload)`, which routes to a system in `systems/`
-  (economy, time). Systems mutate `GameState`; GameManager fires one `notify_changed()`
-  or an `action_failed`. All randomness routes through **`RngManager`** (FNV-1a
-  `string_hash`, golden-verified against the JS oracle) — no `randf()`/`randi()` elsewhere.
-- **Reusable atmosphere** (`atmosphere.tscn`) is a `CanvasLayer` each screen instances;
-  one screen-space shader does a `tex-card` material pass + animated film grain + a soft
-  vignette. Intensity is a set of shader uniforms.
-- **Theme-driven UI** — colors, fonts, card/button skins, and type scale live in
+- **`GameState`** is the single source of truth for the run. It exposes a
+  `state_changed` signal; screens connect `refresh()` to it, so one
+  `notify_changed()` re-renders everything — the web-reducer pattern, with no
+  per-field wiring.
+- **UI never mutates state.** It calls `GameManager.dispatch(action, payload)`, which
+  routes to a system in `systems/`. Systems mutate `GameState`; `GameManager` fires one
+  `notify_changed()` or an `action_failed`.
+- **`screen_base.gd`** fills the shared chrome (top bar + HUD), wires the bottom nav
+  once in `_ready()`, and calls a `_bind_content()` hook each screen overrides. Title,
+  Name Entry and Game Over are standalone — no chrome, so they do not extend it.
+- **All randomness routes through `RngManager`**, keyed by a seed plus a per-decision
+  context string. No `randf()`/`randi()` anywhere else. Canon uses two hash
+  normalisations (`/2^32` and `%10000/10000`) and both exist — pick by what canon does
+  at that call site, not by preference.
+- **Day-cross is the heartbeat.** `time_system` emits `day_crossed`; jobs, obligations,
+  crew, territory, shark, curtis and exposure all settle against it. Settlement is
+  scoped to the day that *ended*, so a bill due on day 7 is payable during day 7.
+- **Theme-driven UI** — colors, fonts, skins and type scale live in
   `hustle_theme.tres`; a change there restyles every screen.
 
 ## Running it
 
-Open the project in Godot 4.7.2 and run any screen (`F6`), or set the main scene in
-Project Settings. Target viewport is 375×812 portrait using the **Compatibility**
-renderer (`gl_compatibility`), which is also what the web export requires. The
-`godot_ai` MCP bridge is committed but optional for a plain run.
+Open the project in Godot 4.7.2 and run (`F5`). Target viewport is 375×812 portrait
+using the **Compatibility** renderer (`gl_compatibility`), which is also what the web
+export requires. The `godot_ai` MCP bridge is committed but optional for a plain run.
 
 ### On a phone
 
-Every push to `main` builds a web export and publishes it to GitHub Pages:
-
-**https://davonlemar30.github.io/907Hustle-godot/**
-
-Open it in a mobile browser — roughly a 13MB download, cached after the first load.
-Pull requests build the export too but do not publish, so a broken export gets caught
-before it reaches the live URL.
+Every push to `main` builds a web export and publishes it to GitHub Pages at the URL
+above. Pull requests build the export too but do not publish, so a broken export gets
+caught before it reaches the live URL.
 
 The build runs with thread support off (Godot's default), which avoids
 `SharedArrayBuffer` and therefore the COOP/COEP response headers GitHub Pages cannot
-send. The `godot_ai` addon is stripped during the build — it is editor tooling, and its
-autoload dials a local WebSocket that does not exist in a browser.
+send. `html/experimental_virtual_keyboard` is **on** — that is Godot's own hidden-input
+workaround and it is what makes the name field usable on a phone. The `godot_ai` addon
+is stripped during the build; its autoload dials a local WebSocket that does not exist
+in a browser.
 
 ## Assets
 
 Source art is capped at **750px wide** and stored as WebP. 750 is 2x the 375pt
-viewport, and nothing renders wider than the screen, so it is the ceiling for
-full-width art; nav icons cap at 128px lossless.
+viewport, and nothing renders wider than the screen; nav icons cap at 128px lossless.
 
 ```bash
 scripts/optimize_assets.py --dry-run   # report only
@@ -113,26 +133,35 @@ scripts/optimize_assets.py             # convert, rewrite refs, pin import setti
 ```
 
 Drop new art into `assets/` and re-run it — files already within budget are skipped.
-The script also pins `compress/mode=1` on texture `.import` files: Godot re-encodes
-textures on import, and the default lossless mode re-inflates the shipped `.pck`
-several times over regardless of how small the source file is.
+The script also pins texture `.import` settings: Godot re-encodes textures on import,
+and the default lossless mode re-inflates the shipped `.pck` several times over
+regardless of how small the source file is.
 
-## Roadmap (abridged)
+## Roadmap
 
-0. **UI scaffold** ✅ — screens, nav, atmosphere, theme
-1. **IA completion** — remaining screens + Hustle sub-screens (static)
-2. **State spine** ✅ — `GameState` + reactive `state_changed`; all existing screens fully data-driven
-3. **Reducer port + RNG parity** — 🚧 3a done (seeded RNG w/ golden parity, GameManager
-   dispatch, economy buy/sell/evolve, time ticks, Market live); 3b–3d next (Jobs, 907List,
-   Stick/Boost/Shark, Crew, Territory, Events)
-4. **Save/load parity** · 5. **Behavioral test harness vs the JS oracle** · 6. **Cutover**
+| Phase | Status |
+| --- | --- |
+| 1. UI scaffold — screens, nav, atmosphere, theme | ✅ |
+| 2. State spine — `GameState` + reactive refresh | ✅ |
+| 3a. Reducer foundation + RNG parity | ✅ |
+| 3b. Interactive screens, travel, toasts, mobile keyboard | ✅ |
+| 3c. Jobs, obligations, game over | ✅ |
+| 3d. 907List, Boost, Stickup, Shark | ✅ |
+| 3e. Crew, territory | ✅ |
+| 3f. Exposure, Curtis awareness | ✅ |
+| **4. Save / load** | **next** |
+| 5. Behavioral parity harness vs the JS oracle | — |
+| 6. Cutover | — |
 
-Web deploy to GitHub Pages is live (see [On a phone](#on-a-phone)) and runs independently
-of the phase order.
-
-Full roadmap and design-decision log live in the project's ClickUp master doc.
+Full roadmap and the design-decision log live in the project's ClickUp master doc.
 
 ## Contributing
 
-Feature branches per screen/system, opened as PRs against `main`. Pull game data/logic
-from the web build (`src/data/*`, `game-core.js`) — **never guess canon**.
+Feature branches per screen/system, opened as PRs against `main`. Pull game data and
+logic from the web build (`src/data/*`, `game-core.js`) — **never guess canon**, and
+when a brief disagrees with the oracle, the oracle wins and the divergence goes in the
+PR body.
+
+**Documentation ships with the PR.** A `HANDOFF.md` entry and the relevant ClickUp doc
+section are part of the change, not a follow-up. A PR that introduces a new system
+carries its doc update in the same commit range.

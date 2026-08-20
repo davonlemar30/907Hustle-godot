@@ -138,6 +138,23 @@ func _run(target_id: String) -> Dictionary:
 		if curtis != null:
 			curtis.raise_awareness(2)
 			curtis.mark_criminal_activity()
+			# Canon: a tier-3 job is organized work, and from the second one
+			# Curtis is told about it directly over the network. The count rides
+			# along, so his read gets worse each time rather than once.
+			if int(t["tier"]) == 3:
+				gs.stick_organized_hits += 1
+				if gs.stick_organized_hits >= 2:
+					var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+					if exposure != null:
+						exposure.record_observation("curtis", {
+							"type": "violence", "event": "organized_hit",
+							"count": gs.stick_organized_hits, "source": "network",
+						})
+			# Violence on the block is neighbourhood news either way.
+			curtis.broadcast_tracked({
+				"type": "violence", "event": "stickup",
+				"location": gs.current_district_id, "channel": "neighborhood",
+			})
 		gs.log_activity("%s: +$%d, heat +%.1f." % [str(t["name"]), take, applied], GREEN)
 		result = {"ok": true, "success": true, "take": take, "heat": applied}
 	else:

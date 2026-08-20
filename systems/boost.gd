@@ -153,6 +153,14 @@ func _fence() -> Dictionary:
 	gs.boost_fence_standing = clampi(gs.boost_fence_standing + 1, 0, 5)
 	gs.cash += payout
 	gs.log_activity("Slide takes the lot for $%d." % payout, GREEN)
+	# Canon is specific here: Slide is discreet, so the sale reaches the
+	# household channel and nothing wider. Yalonda and Juan notice money that
+	# has no explanation; the street does not hear about it at all.
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure != null:
+		exposure.broadcast_observation({
+			"type": "financial", "event": "fenced_goods", "channel": "household",
+		})
 	return {"ok": true, "payout": payout}
 
 ## Canon updateBoostTier. Tier 3 also needs field-assignable crew, which does

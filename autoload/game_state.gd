@@ -238,6 +238,7 @@ func reset_to_new_game() -> void:
 	stick_rep = 0
 	stick_attempts = 0
 	stick_successes = 0
+	stick_organized_hits = 0
 	shark_loans = []
 	shark_next_loan_id = 1
 	list_tier = 1
@@ -384,6 +385,8 @@ var stick_daily_count: int = 0
 var stick_rep: int = 0
 var stick_attempts: int = 0
 var stick_successes: int = 0
+## Tier-3 jobs pulled off. Canon starts telling Curtis at two.
+var stick_organized_hits: int = 0
 
 func stick_target_by_id(id: String) -> Dictionary:
 	for t in stick_targets:

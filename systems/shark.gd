@@ -21,8 +21,12 @@ extends RefCounted
 ##   intelligence → ATTRIBUTE_DEFAULTS.intelligence = 1
 ##   Dre bond     → false (no relationship bands yet)
 ##
-## Not ported: ENFORCE's violence and heat consequences beyond the cash, Dre's
-## standing moving with each outcome, Exposure observations.
+## Enforcement is violent, and canon prices it: `heat + 2`, plus what the block
+## and Dre make of it. That was deferred in 3d and is wired now.
+##
+## Still not ported: the recovered-amount curve on enforcement (canon recovers a
+## variable amount and takes Dre's cut off the excess; here the principal comes
+## back flat), and Dre's mission arc.
 
 const GREEN := Color(0.451, 0.722, 0.404)
 const RED := Color(0.827, 0.161, 0.125)
@@ -33,11 +37,19 @@ const INTELLIGENCE_DEFAULT := 1
 
 var gs: Node
 var rng: Node
+var gm: Node
 
-func setup(game_state: Node, rng_manager: Node) -> void:
+func setup(game_state: Node, rng_manager: Node, manager: Node) -> void:
 	gs = game_state
 	rng = rng_manager
+	gm = manager
 	gs.day_crossed.connect(_on_day_crossed)
+
+func _exposure() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+
+func _curtis_node() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
 
 func can_handle(action: String) -> bool:
 	return action in ["fund_shark", "enforce_shark", "extend_shark", "forgive_shark"]
@@ -138,13 +150,34 @@ func _resolve_defaulted(loan_id: int, how: String) -> Dictionary:
 			gs.log_activity("%s gets two more days. The note stays open." % str(b["name"]), AMBER)
 		"forgive":
 			loan["status"] = "forgiven"
+			# Letting a note go is discretion to the block and a write-off to Dre,
+			# who takes a cut of interest that now will not arrive.
+			var exposure: Node = _exposure()
+			if exposure != null:
+				exposure.broadcast_observation({
+					"type": "discretion", "event": "let_it_go", "channel": "neighborhood",
+				})
+				exposure.record_observation("dre", {
+					"type": "financial", "event": "let_them_down", "source": "network",
+				})
 			gs.log_activity("You let %s off the note. Word travels." % str(b["name"]), AMBER)
 		"enforce":
-			# The principal comes back; the interest does not. Canon's violence
-			# and heat consequences are a later feature.
+			# The principal comes back; the interest does not.
 			gs.cash += int(loan["amount"])
 			loan["status"] = "enforced"
-			gs.log_activity("Collected $%d from %s the hard way." % [int(loan["amount"]), str(b["name"])], RED)
+			# Canon charges heat for a violent collection, and the block reads it
+			# as violence. Deshawn damps the heat like any other source.
+			var crew: Object = gm.system("crew") if gm != null else null
+			var mult: float = crew.heat_multiplier() if crew != null else 1.0
+			gs.heat = clampf(gs.heat + 2.0 * mult, 0.0, float(gs.heat_max))
+			var curtis: Node = _curtis_node()
+			if curtis != null:
+				curtis.mark_criminal_activity()
+				curtis.broadcast_tracked({
+					"type": "violence", "event": "collected_hard",
+					"location": gs.current_district_id, "channel": "neighborhood",
+				})
+			gs.log_activity("Collected $%d from %s the hard way. Heat +%.1f." % [int(loan["amount"]), str(b["name"]), 2.0 * mult], RED)
 	return {"ok": true, "interest": interest}
 
 func _on_day_crossed() -> void:
@@ -170,3 +203,11 @@ func _on_day_crossed() -> void:
 			gs.cash += returned
 			loan["status"] = "repaid"
 			gs.log_activity("%s returns $%d after Dre's $%d cut." % [str(b["name"]), returned, dre_cut], GREEN)
+			# Dre gets paid out of this, so he sees it first-hand. His STREET
+			# lens weights financial at 4.0 — lending well is how you build with
+			# him without ever speaking to him.
+			var exposure_ok: Node = _exposure()
+			if exposure_ok != null:
+				exposure_ok.record_observation("dre", {
+					"type": "financial", "event": "note_returned", "source": "witnessed",
+				})

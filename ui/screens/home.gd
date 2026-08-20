@@ -28,6 +28,7 @@ func _wire_taps() -> void:
 			b.pressed.connect(_on_stub.bind(spec[1]))
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Market", _on_market)
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Turf", _on_turf)
+	make_tappable("Shell/Scroll/Pad/Content/People", _on_people)
 
 ## Canon's explore_spenard: cashCost 0, timeCost 1 (game-core.js:358-360).
 func _on_move_product() -> void:
@@ -47,6 +48,9 @@ func _on_market() -> void:
 
 func _on_turf() -> void:
 	nav.go_to(nav.TURF)
+
+func _on_people() -> void:
+	nav.go_to(nav.PEOPLE)
 
 func _bind_content() -> void:
 	_bind_all()

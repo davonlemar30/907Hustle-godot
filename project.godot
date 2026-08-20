@@ -22,6 +22,7 @@ GameState="*res://autoload/game_state.gd"
 RngManager="*res://autoload/rng_manager.gd"
 GameManager="*res://autoload/game_manager.gd"
 ScreenManager="*res://autoload/screen_manager.gd"
+Exposure="*res://autoload/exposure.gd"
 
 [display]
 
@@ -34,11 +35,6 @@ window/handheld/orientation=1
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/godot_ai/plugin.cfg")
-
-[input_devices]
-
-pointing/emulate_mouse_from_touch=true
-pointing/emulate_touch_from_mouse=false
 
 [physics]
 

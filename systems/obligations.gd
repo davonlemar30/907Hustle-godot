@@ -54,6 +54,11 @@ func _pay_rent() -> Dictionary:
 	# nightly check go quiet.
 	gs.rent_due_day = _current_rent_due() + RENT_PERIOD_DAYS
 	gs.log_activity("Rent paid: -$%d." % gs.WEEKLY_RENT, BLUE)
+	# Yalonda's lens gives rent_paid its own event weight of 3.0, well above the
+	# financial category — paying her is the single loudest good thing she sees.
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure != null:
+		exposure.record_observation("yalonda", {"type": "financial", "event": "rent_paid", "source": "household"})
 	return {"ok": true}
 
 func _pay_phone() -> Dictionary:
@@ -114,6 +119,12 @@ func _settle_rent(ended_day: int) -> void:
 	# Roll the due day so the next period is what gets checked from here.
 	gs.rent_due_day = _current_rent_due() + RENT_PERIOD_DAYS
 	gs.log_activity("Yalonda leaves the rent envelope on the table, still empty.", RED)
+	# Canon's ESCALATING_EVENT: the weight is negative and the count grows
+	# linearly, so each additional miss hurts more than the last. Yalonda is the
+	# one who sees it, first-hand, in her own house.
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure != null:
+		exposure.record_observation("yalonda", {"type": "financial", "event": "missed_obligation", "source": "household"})
 	# Canon: two unpaid weeks is what makes the house warning explicit.
 	if gs.rent_missed >= 2:
 		_household_warning("Two rent weeks pass unpaid. Yalonda makes the house warning explicit.")

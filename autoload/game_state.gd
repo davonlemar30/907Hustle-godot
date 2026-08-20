@@ -239,6 +239,8 @@ func reset_to_new_game() -> void:
 	crew_records = {}
 	held_blocks = {}
 	soldiers_idle = 0
+	npc_ledgers = {}
+	observation_queue = []
 	activity_log = []
 	notify_changed()
 
@@ -582,3 +584,11 @@ func soldiers_total() -> int:
 ## Canon: 2, plus 2 for every block held.
 func soldier_capacity() -> int:
 	return SOLDIER_BASE_CAPACITY + held_blocks.size() * SOLDIER_CAPACITY_PER_BLOCK
+
+# --- Exposure ledgers (canon: src/exposure/engine.js) ----------------------
+## npc_id -> Array of observation rows. The Exposure autoload owns the shape;
+## GameState only holds it so a run resets and (later) saves with everything else.
+var npc_ledgers: Dictionary = {}
+## Observations in transit. Channels that take days to carry news queue here and
+## are delivered on day-cross.
+var observation_queue: Array = []

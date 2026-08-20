@@ -433,9 +433,66 @@ Not ported, each its own feature: coworkers and their relationships, shift
 dialogue, `learn_job` workplace details, Deshawn's rent grace, contraband and
 danger-brought-home as warning sources, Exposure broadcasts, Dre's lending.
 
+## Phase 3f (part 1): the Exposure substrate  (added 2026-08-20)
+
+`autoload/exposure.gd` — port of `src/exposure/engine.js` plus `observations.js`,
+`npc-lenses.js`, `propagation.js` and `disposition-bands.js`.
+
+**A typed observation is the only thing an NPC ever knows about the player.**
+Observations land in a per-NPC ledger keyed by category + event + location, so
+the same thing seen twice increments a count rather than growing the ledger. A
+lens turns that ledger into one number, and every character weights the same
+evidence differently.
+
+### Three things that are easy to get wrong
+
+1. **`SHARED_EVENT_WEIGHTS` is not optional.** Skipping it is a real trap and I
+   hit it: `missed_obligation` is category `financial`, which CIVILIAN weights at
+   **+1.5**, so missing rent made Yalonda *like you more* — and the escalating
+   count made it worse the longer you went unpaid. Resolution order is NPC event
+   weight → shared event weight → category weight.
+2. **THREAT is inverted.** For a rival a HIGH score means "no problem to me", so
+   everything that makes you worth noticing drives Curtis's number DOWN. He reads
+   Neutral as invisible and Hostile as confrontation. `is_inverted()` exists so
+   callers can flip their reading; the People screen flips its colours with it.
+3. **`territory` weighs zero in all four archetypes, deliberately.** Every other
+   category is evidence about the player; a warning that Curtis's people are
+   working Motel Row is evidence about *Curtis*. It must never move a number, or
+   being warned a lot would quietly make Mina like you.
+
+### The two curves
+
+`effective_count` is logarithmic by default — the first three repetitions carry
+the weight. Two opt out, and they are not the same rule twice: `betrayal` never
+fades, and `missed_obligation` escalates linearly because its weight is negative.
+The asymmetry is the design, and it shows:
+
+| | day 8 | day 15 | day 22 |
+| --- | --- | --- | --- |
+| paying rent every week | 3.00 WARM | 4.75 WARM | 6.00 TRUSTED |
+| never paying | -2.50 COLD | -5.00 COLD | -7.50 HOSTILE |
+
+Good behaviour has diminishing returns. Missed obligations do not.
+
+### Not ported, named so the gap is legible
+
+Presence gating (`NPC_PRESENCE_SLOTS` / `NPC_PRESENCE_AREAS` — whether an NPC was
+physically somewhere to witness a thing), the Curtis network filter
+(`CURTIS_NETWORK_CATEGORIES` and its volume threshold), and slot-level delivery.
+The queue works in whole days, which is the granularity the rest of this build
+runs on.
+
+### Where to see it
+
+`ui/screens/people.tscn`, from Home's People card. Every score is shown with the
+evidence behind it, because a lens disagreeing with another lens should be
+legible rather than mysterious.
+
 ## OWED: retroactive Exposure wiring  (opened 2026-08-20)
 
-**Do this once 3f lands and the Exposure layer is live.** It is its own small PR.
+**The substrate is live as of 3f part 1.** Two Yalonda observations are already wired
+(`rent_paid`, `missed_obligation`) as proof; the rest of the table below is still owed.
+It is its own small PR.
 
 Every system ported in 3c and 3d skips canon's `Exposure.recordObservation` /
 `Exposure.broadcastObservation` calls and `raiseCurtisAwareness`, because none of

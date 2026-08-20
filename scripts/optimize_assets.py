@@ -145,6 +145,38 @@ def rewrite_refs(renames: dict[str, str], dry_run: bool) -> int:
     return touched
 
 
+# Godot re-encodes every texture on import, so shrinking the source file alone
+# does not shrink the shipped .pck. A lossless import inflates 2.5MB of WebP back
+# into 12MB of .ctex. These params are what actually control download size.
+IMPORT_PARAMS = {
+    "compress/mode": "1",            # 1 = Lossy (WebP). 0 = Lossless, the default.
+    "compress/lossy_quality": "0.9",  # high, because the source is already lossy
+    "detect_3d/compress_to": "0",     # this is a 2D project; never silently switch to VRAM
+}
+
+
+def enforce_import_settings(dry_run: bool) -> int:
+    """Pin texture import params on generated .import files.
+
+    Godot writes these with defaults on first import and then honours whatever is
+    in the file, so committing them is how the setting sticks. SVGs are left
+    lossless -- they rasterise to small textures and lossy blurs their edges.
+    """
+    changed = 0
+    for imp in sorted(ASSETS.rglob("*.webp.import")):
+        text = original = imp.read_text(encoding="utf-8")
+        for key, value in IMPORT_PARAMS.items():
+            pattern = rf"^{re.escape(key)}=.*$"
+            if re.search(pattern, text, flags=re.M):
+                text = re.sub(pattern, f"{key}={value}", text, flags=re.M)
+        if text != original:
+            changed += 1
+            print(f"  imp {imp.relative_to(ROOT)}")
+            if not dry_run:
+                imp.write_text(text, encoding="utf-8")
+    return changed
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry-run", action="store_true", help="report what would change, write nothing")
@@ -212,6 +244,11 @@ def main() -> int:
     if renames and not args.dry_run:
         print("\n  rewriting res:// references")
         rewrite_refs(renames, args.dry_run)
+
+    print("\n  pinning texture import settings")
+    repinned = enforce_import_settings(args.dry_run)
+    if not repinned:
+        print("    (all already pinned)")
 
     print()
     if args.dry_run:

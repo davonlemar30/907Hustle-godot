@@ -200,6 +200,55 @@ Home→`icon-home`, More→`icon-menu` are fine.
   generation spines (portrait 85mm vs environment 35mm) and `ASSET_MANIFEST.md`
   for the full asset list.
 
+## Web build / phone testing  (added 2026-08-20)
+
+Live build, rebuilt on every push to `main`:
+**https://davonlemar30.github.io/907Hustle-godot/**
+
+- Workflow: `.github/workflows/web-deploy.yml`, builds in the `barichello/godot-ci:4.7.2`
+  container, deploys via `actions/deploy-pages`. Pages source is set to **GitHub Actions**
+  (not branch), so do not switch it back to branch/root or the deploy stops publishing.
+- Preset: `export_presets.cfg`, one `Web` preset. **`variant/thread_support=false`** is the
+  load-bearing setting — threads would require `SharedArrayBuffer`, which requires COOP/COEP
+  headers, which GitHub Pages cannot send. Leave it off. (If it ever must be on, turn on
+  `progressive_web_app/enabled` for the service-worker workaround.)
+- Web export requires the **Compatibility** renderer. The project already uses
+  `gl_compatibility` — earlier notes calling this the "mobile renderer" were wrong.
+- The build strips the `godot_ai` autoload and addon (`sed` on `project.godot` plus an
+  `exclude_filter`). Its autoload opens a WebSocket to the local MCP server, which does not
+  exist in a browser.
+- PRs build but do not deploy (`if: github.ref == 'refs/heads/main'`).
+- Measured payload: `index.wasm` 38MB raw / **~9.8MB gzipped** (Pages gzips on the fly),
+  `index.pck` 3.2MB. ~13MB total on first load, cached after.
+- Verified: loads and renders correctly in a 375×812 mobile viewport, console clean,
+  single-threaded WebGL 2.0. Touch input was *not* verified through automation (the tooling
+  could not drive Godot's canvas) — check taps on a real device.
+
+## Assets: the 750px / WebP rule  (added 2026-08-20)
+
+`assets/` went **64MB → 2.5MB (-96%)**. Run `scripts/optimize_assets.py` after adding art.
+
+- Cap is **750px wide** — 2x the 375pt viewport, and nothing renders wider than the screen.
+  Nav icons cap at 128px lossless. Source art was arriving at 1254px+ (one 2.1MB portrait
+  fed a 52pt avatar).
+- **Shrinking source files alone does nothing to the shipped build.** Godot re-encodes every
+  texture on import; the default `compress/mode=0` (Lossless) turned 2.5MB of WebP back into
+  a 12MB `.pck`. The script pins `compress/mode=1` at quality 0.9 on `.webp.import` files —
+  that is the setting that governs download size. SVGs stay lossless (lossy blurs edges).
+- Renaming `.png` → `.webp` invalidates the `uid` in `.tscn` files. The script strips the
+  stale `uid` and leaves `path=`; Godot re-resolves by path and re-adds a uid on next save.
+- The script is idempotent — re-running skips anything already within budget.
+
+## Known issues (not yet fixed)
+
+- **Nav icon PNGs have no transparency.** `icon-street`, `icon-hustl`, `icon-phone` are black
+  art on a solid white background, unlike the existing SVG nav icons which are transparent and
+  get tinted via `self_modulate`. They need alpha before they can be wired into the dark nav
+  bar. (`icon-street` has an alpha channel but it is opaque.)
+- **Missing font glyphs.** `↗` (U+2197, home.tscn:480 "LIVE UPDATE ↗") and `♛` (U+265B,
+  home.tscn:675 "♛  TURF & CREW") render as tofu boxes — the subsetted woff2 fonts lack them.
+  Other symbols in use (`▲ ● ○ • ⚠ ›`) render fine. Either swap the glyphs or add a fallback font.
+
 ## Working notes / gotchas
 - **Build loop:** `session_activate` → edit scene/theme → `scene_open(force_reload)`
   → `project_run(mode=current)` → `editor_screenshot(source=game)` to verify.
@@ -211,3 +260,8 @@ Home→`icon-home`, More→`icon-menu` are fine.
 - **Viewport:** 375×812, stretch `canvas_items`/`expand`, orientation portrait.
 - **The `godot_ai` addon** is committed so the MCP works on any clone.
 - A benign `rp_font is null` error comes from the addon's own panel — not the game.
+- **Stale parse errors after a bulk file change** (e.g. the WebP conversion) report line
+  numbers that no longer match the file — the errors are cached, not real. `project_manage(op=stop)`
+  → `editor_manage(op=logs_clear)` → re-run clears them.
+- **Renderer:** the project uses `gl_compatibility`, *not* the mobile renderer. Web export
+  requires Compatibility, so leave it.

@@ -63,8 +63,40 @@ addons/godot_ai/           # committed MCP bridge (works on any clone)
 ## Running it
 
 Open the project in Godot 4.7.2 and run any screen (`F6`), or set the main scene in
-Project Settings. Target viewport is 375×812 portrait, mobile renderer. The
+Project Settings. Target viewport is 375×812 portrait using the **Compatibility**
+renderer (`gl_compatibility`), which is also what the web export requires. The
 `godot_ai` MCP bridge is committed but optional for a plain run.
+
+### On a phone
+
+Every push to `main` builds a web export and publishes it to GitHub Pages:
+
+**https://davonlemar30.github.io/907Hustle-godot/**
+
+Open it in a mobile browser — roughly a 13MB download, cached after the first load.
+Pull requests build the export too but do not publish, so a broken export gets caught
+before it reaches the live URL.
+
+The build runs with thread support off (Godot's default), which avoids
+`SharedArrayBuffer` and therefore the COOP/COEP response headers GitHub Pages cannot
+send. The `godot_ai` addon is stripped during the build — it is editor tooling, and its
+autoload dials a local WebSocket that does not exist in a browser.
+
+## Assets
+
+Source art is capped at **750px wide** and stored as WebP. 750 is 2x the 375pt
+viewport, and nothing renders wider than the screen, so it is the ceiling for
+full-width art; nav icons cap at 128px lossless.
+
+```bash
+scripts/optimize_assets.py --dry-run   # report only
+scripts/optimize_assets.py             # convert, rewrite refs, pin import settings
+```
+
+Drop new art into `assets/` and re-run it — files already within budget are skipped.
+The script also pins `compress/mode=1` on texture `.import` files: Godot re-encodes
+textures on import, and the default lossless mode re-inflates the shipped `.pck`
+several times over regardless of how small the source file is.
 
 ## Roadmap (abridged)
 
@@ -75,6 +107,9 @@ Project Settings. Target viewport is 375×812 portrait, mobile renderer. The
    dispatch, economy buy/sell/evolve, time ticks, Market live); 3b–3d next (Jobs, 907List,
    Stick/Boost/Shark, Crew, Territory, Events)
 4. **Save/load parity** · 5. **Behavioral test harness vs the JS oracle** · 6. **Cutover**
+
+Web deploy to GitHub Pages is live (see [On a phone](#on-a-phone)) and runs independently
+of the phase order.
 
 Full roadmap and design-decision log live in the project's ClickUp master doc.
 

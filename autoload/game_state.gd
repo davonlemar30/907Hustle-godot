@@ -28,7 +28,11 @@ var current_district_id: String = "north_star_lot"
 
 # --- Player stats (value / max) -------------------------------------------
 var cash: int = 847
-var heat: int = 6
+# Heat is fractional. Canon carries it as a float and logs it to one decimal
+# (`Math.round(addedHeat * 10) / 10`), and it has to stay fractional here or the
+# multipliers that scale it round away to nothing — Deshawn's 0.80 against a
+# base-2 stickup is 1.6, which as an int is just 2 again.
+var heat: float = 6.0
 var heat_max: int = 15
 var health: int = 78
 var health_max: int = 100
@@ -149,6 +153,10 @@ func district_by_id(id: String) -> Dictionary:
 			return d
 	return {}
 
+## Heat rounded for display. The stored value stays fractional.
+func heat_shown() -> int:
+	return int(round(heat))
+
 func current_district() -> Dictionary:
 	return district_by_id(current_district_id)
 
@@ -198,7 +206,7 @@ func reset_to_new_game() -> void:
 	time_slots_today = 0
 	current_district_id = "north_star_lot"
 	cash = 100
-	heat = 0
+	heat = 0.0
 	health = 100
 	debt = 0
 	debt_due_days = 0
@@ -233,6 +241,7 @@ func reset_to_new_game() -> void:
 	boost_merchandise = 0
 	boost_fence_standing = 0
 	boost_daily_hits = {}
+	crew_records = {}
 	activity_log = []
 	notify_changed()
 
@@ -469,3 +478,66 @@ func boost_target_by_id(id: String) -> Dictionary:
 		if t.get("id", "") == id:
 			return t
 	return {}
+
+# --- Crew (canon: src/data/npcs.js CREW, src/data/crew.js) -----------------
+# power feeds crew_power, which the HUD has shown as 0 since the first build.
+# Every one of them canFieldAssign, which is what tier 3 Boost waits on.
+var crew_roster: Array = [
+	{"id": "eli", "name": "Eli 'Shortcut' Ward", "role": "RUNNER", "power": 3, "cost": 120, "wage": 45, "desc": "Moves small bundles and knows service-road exits."},
+	{"id": "deshawn", "name": "Deshawn", "role": "FIXER / RECRUITER", "power": 1, "cost": 100, "wage": 50, "desc": "De-escalates conflicts, recruits through trust, keeps Spenard talking."},
+	{"id": "pherris", "name": "Pherris Dickens", "role": "CONNECTOR", "power": 2, "cost": 180, "wage": 60, "desc": "Turns a Downtown contact list into buyers, rumors, and social control."},
+	{"id": "tone", "name": "Anton 'Tone' Bell", "role": "ENFORCER / LOOKOUT", "power": 5, "cost": 250, "wage": 85, "desc": "Protects the garage and changes confrontation choices."},
+]
+
+## Canon TIER_WAGES. Eli has no curve and keeps his base wage at every tier.
+const TIER_WAGES := {
+	"deshawn": [50, 100, 200],
+	"tone": [85, 150, 250],
+	"pherris": [60, 120, 220],
+}
+## Canon TIER_REQUIREMENTS: loyalty AND days since recruited.
+const CREW_TIER_REQUIREMENTS := {
+	2: {"loyalty": 7, "days": 5},
+	3: {"loyalty": 9, "days": 12},
+}
+const CREW_LOYALTY_MIN := 0
+const CREW_LOYALTY_MAX := 10
+const CREW_LOYALTY_START := 5
+## Two unpaid nights before loyalty starts falling.
+const CREW_WAGE_GRACE_DAYS := 2
+## Canon capacity without base upgrades.
+const CREW_CAPACITY := 2
+
+## Canon effect tables, keyed by tier.
+const TONE_DEFENSE_MULTIPLIER := {1: 1.15, 2: 1.30, 3: 1.50}
+const DESHAWN_HEAT_REDUCTION := {1: 0.80, 2: 0.60, 3: 0.40}
+
+## id -> {recruited, loyalty, tier, wage_due, wage_missed_since, recruited_day, status}
+var crew_records: Dictionary = {}
+
+func crew_member_by_id(id: String) -> Dictionary:
+	for c in crew_roster:
+		if c.get("id", "") == id:
+			return c
+	return {}
+
+func crew_record(id: String) -> Dictionary:
+	return crew_records.get(id, {})
+
+func is_recruited(id: String) -> bool:
+	var r: Dictionary = crew_record(id)
+	return bool(r.get("recruited", false)) and str(r.get("status", "active")) == "active"
+
+func recruited_crew() -> Array:
+	var out: Array = []
+	for c in crew_roster:
+		if is_recruited(str(c["id"])):
+			out.append(c)
+	return out
+
+## Canon wageFor: the tier curve where one exists, otherwise the base wage.
+func crew_wage_for(id: String, tier: int) -> int:
+	if TIER_WAGES.has(id):
+		var curve: Array = TIER_WAGES[id]
+		return int(curve[clampi(tier - 1, 0, curve.size() - 1)])
+	return int(crew_member_by_id(id).get("wage", 0))

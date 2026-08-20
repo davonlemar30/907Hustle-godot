@@ -48,8 +48,10 @@ func _on_district(district_id: String) -> void:
 func _on_venue(venue_name: String) -> void:
 	nav.show_toast("%s — coming soon." % venue_name)
 
+## The People row on Street is where crew lives — it is the same idea as the
+## contacts list it sits under, and there is no other route to it yet.
 func _on_people() -> void:
-	nav.show_toast("Contacts — coming soon.")
+	nav.go_to(nav.CREW)
 
 ## Travel can fail for want of fare; say so rather than swallowing the tap.
 func _on_action_failed(_action: String, reason: String) -> void:
@@ -88,4 +90,8 @@ func _fill_venues() -> void:
 		_set_text(base + "/Mid/Desc", v.desc)
 
 func _fill_people() -> void:
-	_set_text("Shell/Scroll/Pad/Content/People/H/Status", "%d PERSONAL CONTACTS  ›" % gs.personal_contacts)
+	var hired: int = gs.recruited_crew().size()
+	if hired > 0:
+		_set_text("Shell/Scroll/Pad/Content/People/H/Status", "%d ON THE CREW  ·  POWER %d  ›" % [hired, gs.crew_power])
+	else:
+		_set_text("Shell/Scroll/Pad/Content/People/H/Status", "%d PERSONAL CONTACTS  ›" % gs.personal_contacts)

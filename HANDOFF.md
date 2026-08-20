@@ -433,6 +433,64 @@ Not ported, each its own feature: coworkers and their relationships, shift
 dialogue, `learn_job` workplace details, Deshawn's rent grace, contraband and
 danger-brought-home as warning sources, Exposure broadcasts, Dre's lending.
 
+## OWED: retroactive Exposure wiring  (opened 2026-08-20)
+
+**Do this once 3f lands and the Exposure layer is live.** It is its own small PR.
+
+Every system ported in 3c and 3d skips canon's `Exposure.recordObservation` /
+`Exposure.broadcastObservation` calls and `raiseCurtisAwareness`, because none of
+that exists yet. Each skip is noted in its file header under "Not ported", but
+they need collecting and wiring rather than rediscovering one at a time. Known
+call sites in canon that have a Godot counterpart already:
+
+| system | canon call |
+| --- | --- |
+| `jobs.gd` | `job_lost` broadcast on firing (household + neighborhood channels) |
+| `obligations.gd` | `missed_obligation` on yalonda for every missed rent week |
+| `stickup.gd` | `raiseCurtisAwareness(2)` per success; `organized_hit` at 2+ tier-3 hits |
+| `boost.gd` | `recordCriminalActivity` per attempt; Slide's household-channel leak on a fence |
+| `shark.gd` | Dre standing movement per outcome |
+| `crew.gd` | recruitment and departure observations |
+
+## Phase 3e (part 1): Crew  (added 2026-08-20)
+
+**This makes `crew_power` a live stat.** It read 0 in the HUD from the first build
+with nothing able to move it, exactly as Heat did before stickup.
+
+- **`systems/crew.gd`** — the four canon CREW members, loyalty 0-10 starting at 5,
+  `TIER_REQUIREMENTS` (tier 2 at loyalty 7 + 5 days, tier 3 at loyalty 9 + 12
+  days), `TIER_WAGES`, and the nightly wage clock.
+- **The wage clock is the system.** A wage accrues every night whether or not it
+  is paid, two nights are grace, then loyalty falls a point a night, and at zero
+  they walk. Canon's power contribution is
+  `power + clamp(loyalty - 5, 0, 3) - (wageDue > 0 ? 2 : 0)`, so **an unpaid crew
+  member is worth less before they ever leave** — which is why the roster screen
+  puts what is owed next to what they are worth.
+- **Boost tier 3 is reachable now.** Canon gates it on technique 13 AND a
+  field-assignable crew member; all four canon crew qualify. Verified: technique
+  13 with Deshawn on the roster promotes to tier 3.
+- Reached from the **Street → People** row, which now reports crew and power
+  instead of a static contact count.
+
+### Heat became fractional, and had to
+
+Canon carries heat as a float and logs it to one decimal
+(`Math.round(addedHeat * 10) / 10`). Ours was an int, which rounded Deshawn's
+`DESHAWN_HEAT_REDUCTION` of 0.80 straight back to the unreduced value on a base-2
+stickup — 1.6 and 2 are both "2". `GameState.heat` is a float now, with
+`heat_shown()` for display. **Any future multiplier on heat depends on this.**
+
+### Canon gates stubbed, each named in the file header
+
+`base.controlled` / `base.visiting` (no garage, so recruiting happens anywhere),
+`crew.introduced` and `contactStage` (no NPC introduction arcs, so all four are
+recruitable from Day 1), `crewRecruitmentEligible` proof gates, and
+`crewCapacityFor` base upgrades (capacity fixed at canon's floor of 2).
+
+Tone's `TONE_DEFENSE_MULTIPLIER` is stored and surfaced but multiplies nothing
+until combat encounters exist. Deshawn's heat reduction **is** applied — stickup
+and boost both route their heat through `crew.heat_multiplier()`.
+
 ## Phase 3d (part 2): 907List + Boost  (added 2026-08-20)
 
 All six Hustle surfaces are live. No row toasts "coming soon" any more.

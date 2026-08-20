@@ -92,7 +92,7 @@ func _fill_chrome() -> void:
 	_set_text("Shell/TopBar/HBox/Right/LocBox/V/L1", gs.current_district().get("name", "SPENARD"))
 	_set_text("Shell/TopBar/HBox/Right/LocBox/V/L2", gs.city)
 	_set_text("Shell/TopBar/HBox/Right/CashBox/V/C2", "$%s" % _commas(gs.cash))
-	_set_text("Shell/Hud/HudRow/C0/V", "%d/%d" % [gs.heat, gs.heat_max])
+	_set_text("Shell/Hud/HudRow/C0/V", "%d/%d" % [gs.heat_shown(), gs.heat_max])
 	_set_text("Shell/Hud/HudRow/C1/V", "%d/%d" % [gs.health, gs.health_max])
 	_set_text("Shell/Hud/HudRow/C2/V", "$%s" % _commas(gs.debt))
 	# A fresh run owes nobody yet — canon only opens the note once Dre offers

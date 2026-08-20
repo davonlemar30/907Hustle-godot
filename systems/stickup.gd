@@ -34,12 +34,27 @@ const COMBAT_DEFAULT := 1
 var gs: Node
 var rng: Node
 var time_system: RefCounted
+var gm: Node
 
-func setup(game_state: Node, rng_manager: Node, time: RefCounted) -> void:
+func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node) -> void:
 	gs = game_state
 	rng = rng_manager
 	time_system = time
+	gm = manager
 	gs.day_crossed.connect(_on_day_crossed)
+
+## Canon scales generated heat by DESHAWN_HEAT_REDUCTION when he is on the crew.
+## Returns the heat actually applied.
+func _apply_heat(amount: int) -> float:
+	var mult: float = 1.0
+	var crew: Object = gm.system("crew") if gm != null else null
+	if crew != null:
+		mult = crew.heat_multiplier()
+	# Kept fractional deliberately: rounding here is what made the reduction
+	# invisible on small amounts.
+	var scaled: float = float(amount) * mult if amount > 0 else 0.0
+	gs.heat = clampf(gs.heat + scaled, 0.0, float(gs.heat_max))
+	return scaled
 
 func can_handle(action: String) -> bool:
 	return action == "stickup"
@@ -90,7 +105,7 @@ func chance_for(target: Dictionary) -> float:
 	var c: float = base \
 		+ (float(COMBAT_DEFAULT) - 2.0) * 0.08 \
 		- float(target["resistance"]) * gs.DISTRICT_DIFF_STEP \
-		- float(gs.heat) * 0.012
+		- gs.heat * 0.012
 	return clampf(c, 0.15, 0.90)
 
 func _run(target_id: String) -> Dictionary:
@@ -112,17 +127,16 @@ func _run(target_id: String) -> Dictionary:
 		var band: Array = t["take"]
 		var take: int = rng.seeded_int_range(gs.run_seed, key + ":take", int(band[0]), int(band[1]))
 		gs.cash += take
-		gs.heat = clampi(gs.heat + int(t["heat"]), 0, gs.heat_max)
+		var applied: float = _apply_heat(int(t["heat"]))
 		gs.stick_rep += 1
 		gs.stick_successes += 1
-		gs.log_activity("%s: +$%d, heat +%d." % [str(t["name"]), take, int(t["heat"])], GREEN)
-		result = {"ok": true, "success": true, "take": take, "heat": int(t["heat"])}
+		gs.log_activity("%s: +$%d, heat +%.1f." % [str(t["name"]), take, applied], GREEN)
+		result = {"ok": true, "success": true, "take": take, "heat": applied}
 	else:
 		# Canon still charges heat on a bad attempt — being seen is the cost,
 		# whether or not the money moved.
-		var missed_heat: int = maxi(1, int(t["heat"]) - 1)
-		gs.heat = clampi(gs.heat + missed_heat, 0, gs.heat_max)
-		gs.log_activity("%s went wrong. Heat +%d, nothing to show." % [str(t["name"]), missed_heat], RED)
+		var missed_heat: float = _apply_heat(maxi(1, int(t["heat"]) - 1))
+		gs.log_activity("%s went wrong. Heat +%.1f, nothing to show." % [str(t["name"]), missed_heat], RED)
 		result = {"ok": true, "success": false, "take": 0, "heat": missed_heat}
 
 	# A robbery is a slot, the same as any other district action.

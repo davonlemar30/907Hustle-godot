@@ -127,8 +127,29 @@ the prompt's split (jobs 180 / market 87 / stick 45).
 `notify_changed()` re-renders the visible screen. Phase 2 (State Spine) done for existing
 screens; Phase 3 is the reducer/logic port.
 
-**Open / next:** Phone → More screens; the Hustle sub-screens (Jobs, 907List, Boost,
-Stickup, Shark); then Phase 3 (reducer port + RNG parity). Also:
+**DONE — Phase 3a: reducer foundation + Market transactions** (verified via run + eval):
+- `autoload/rng_manager.gd` (RngManager) — FNV-1a `string_hash` ported from web `src/hash.js`,
+  **golden-parity verified against 10 JS values (all match)**. `seeded_random(seed,ctx)`,
+  `seeded_int_range()`. No `randf()/randi()` anywhere else (enforced).
+- `autoload/game_manager.gd` (GameManager) — `dispatch(action, payload)` routes to registered
+  systems; exactly one `GameState.notify_changed()` per success; `action_failed(action,reason)`
+  signal on failure. UI never mutates GameState directly.
+- `systems/economy.gd` — `market_buy`/`market_sell` (price×qty vs cash + inventory, cargo cap 10)
+  + `market_evolve` (seeded ±20% walk off `base`, clamped min/max, keyed `market_evolve_day{d}_{id}`
+  → deterministic). Simplified vs full web trade (no spread/plug/avgCost yet — 3b).
+- `systems/time_system.gd` — MORNING→AFTERNOON→EVENING→NIGHT→(cross)→MORNING; each advance evolves
+  the market; day-cross bumps `day` + emits `day_crossed`.
+- `market.gd` — BUY/SELL buttons dispatch through GameManager; `action_failed` flashes the cash label.
+- GameState: `inventory` (numeric, source of truth) + `cargo_used()`, `cargo_max=10`, `run_seed`,
+  `time_slot`/`time_slots_today`, `day_crossed`; products gained `base/min/max`; pills owned 12→3
+  (cargo-consistent). `bg-market.png` wired as the Market backdrop.
+- **Verified:** buy weed→cash−27/cargo+1; buy at cap→rejected, state unchanged; sell→restored;
+  broke buy→rejected; advance NIGHT→day-cross day 15 MORNING; evolve deterministic (same day→same price).
+- NOTE: market_evolve is the prompt's simplified ±20% model, not the web's xorshift+reversion walk —
+  exact market-walk parity is a Phase 5 harness goal. The `string_hash` primitive IS bit-exact.
+
+**Open / next:** Phase 3b (Jobs / 907List / Stick / Boost / Shark reducers), 3c (Crew/Territory),
+3d (Events/Exposure/Curtis); Phone → More screens; the Hustle sub-screens. Also:
 1. Build **Crew**, **Travel**, **People** screens; wire remaining portraits.
 2. Refresh Home's MARKET SNAPSHOT card to canon prices (currently placeholder:
    WEED $28/METH $61/PILLS $17 — real Spenard anchors are $27/$176/$105).

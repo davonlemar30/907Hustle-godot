@@ -14,10 +14,15 @@ extends Node
 ## everything in one pass (the web-reducer pattern). Call notify_changed() after
 ## mutating fields to trigger a refresh.
 signal state_changed
+## Emitted when the run rolls past NIGHT into a new day.
+signal day_crossed
 
 # --- Run clock -------------------------------------------------------------
 var day: int = 14
-var part: String = "EVENING"
+# Uppercase slot name shown in the top bar; the ordered set lives in TimeSystem.
+var time_slot: String = "EVENING"
+var time_slots_today: int = 2  # 0 MORNING · 1 AFTERNOON · 2 EVENING · 3 NIGHT
+var run_seed: String = "907hustle"
 var city: String = "ANCHORAGE, AK"
 var current_district_id: String = "north_star_lot"
 
@@ -29,10 +34,19 @@ var health: int = 78
 var health_max: int = 100
 var debt: int = 1200
 var debt_due_days: int = 2
-var cargo: int = 9
-var cargo_max: int = 18
+var cargo_max: int = 10  # canon: web cargoCapacity
 var respect: int = 4
 var crew_power: int = 11
+
+# Numeric holdings per product id — the economy's source of truth. cargo_used()
+# is the sum, shown in the HUD as cargo. Buy/sell mutate this via the economy system.
+var inventory: Dictionary = {"weed": 4, "shrooms": 2, "pills": 3}
+
+func cargo_used() -> int:
+	var n := 0
+	for q in inventory.values():
+		n += int(q)
+	return n
 
 # --- Districts (canon: src/data/locations.js NEIGHBORHOODS) ----------------
 # risk/police/rival are the raw 0-4 scores; travel is the how-you-get-there.
@@ -56,14 +70,14 @@ var personal_contacts: int = 3
 # price = the current district's anchor (base x district bias). role folds in the
 # owned quantity for the mid-game snapshot; hint is the route read for this district.
 var products: Array = [
-	{"id": "weed", "name": "WEED", "role": "DEPENDABLE · OWN 4oz", "owned": "4oz", "route": "+$11 Industrial", "color": Color(0.451, 0.722, 0.404), "price": 27, "hint": "▲ SELL INDUSTRIAL  +$11", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
-	{"id": "shrooms", "name": "SHROOMS", "role": "VOLATILE · OWN 2", "owned": "2", "route": "+$36 Downtown", "color": Color(0.373, 0.663, 0.847), "price": 72, "hint": "▲ SELL DOWNTOWN  +$36", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
-	{"id": "pills", "name": "PILLS", "role": "STEADY MARGIN · OWN 12", "owned": "12", "route": "Stable citywide", "color": Color(0.882, 0.651, 0.227), "price": 105, "hint": "— STABLE CITYWIDE", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
-	{"id": "lean", "name": "LEAN", "role": "PREMIUM", "owned": "0", "route": "Downtown margin", "color": Color(0.62, 0.5, 0.85), "price": 155, "hint": "↗ +30% MARGIN DOWNTOWN", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
-	{"id": "molly", "name": "MOLLY", "role": "CLUB DEMAND", "owned": "0", "route": "Downtown margin", "color": Color(1, 0.29, 0.239), "price": 215, "hint": "↗ +30% MARGIN DOWNTOWN", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
-	{"id": "coke", "name": "COKE", "role": "HIGH MARGIN", "owned": "0", "route": "Stable citywide", "color": Color(0.9, 0.89, 0.86), "price": 290, "hint": "— STABLE CITYWIDE", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
-	{"id": "cocaine", "name": "COCAINE", "role": "PREMIUM", "owned": "0", "route": "+$127 Downtown", "color": Color(0.85, 0.72, 0.42), "price": 296, "hint": "▲ SELL DOWNTOWN  +$127", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
-	{"id": "meth", "name": "METH", "role": "EXTREME RISK", "owned": "0", "route": "Locked", "color": Color(0.6, 0.6, 0.6), "price": 176, "hint": "NEEDS INDUSTRIAL TURF", "hint_color": Color(0.827, 0.161, 0.125), "locked": true},
+	{"id": "weed", "name": "WEED", "role": "DEPENDABLE · OWN 4oz", "owned": "4oz", "route": "+$11 Industrial", "color": Color(0.451, 0.722, 0.404), "price": 27, "base": 34, "min": 18, "max": 68, "hint": "▲ SELL INDUSTRIAL  +$11", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "shrooms", "name": "SHROOMS", "role": "VOLATILE · OWN 2", "owned": "2", "route": "+$36 Downtown", "color": Color(0.373, 0.663, 0.847), "price": 72, "base": 82, "min": 35, "max": 180, "hint": "▲ SELL DOWNTOWN  +$36", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "pills", "name": "PILLS", "role": "STEADY MARGIN · OWN 3", "owned": "3", "route": "Stable citywide", "color": Color(0.882, 0.651, 0.227), "price": 105, "base": 105, "min": 55, "max": 220, "hint": "— STABLE CITYWIDE", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
+	{"id": "lean", "name": "LEAN", "role": "PREMIUM", "owned": "0", "route": "Downtown margin", "color": Color(0.62, 0.5, 0.85), "price": 155, "base": 155, "min": 80, "max": 330, "hint": "↗ +30% MARGIN DOWNTOWN", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
+	{"id": "molly", "name": "MOLLY", "role": "CLUB DEMAND", "owned": "0", "route": "Downtown margin", "color": Color(1, 0.29, 0.239), "price": 215, "base": 215, "min": 105, "max": 480, "hint": "↗ +30% MARGIN DOWNTOWN", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
+	{"id": "coke", "name": "COKE", "role": "HIGH MARGIN", "owned": "0", "route": "Stable citywide", "color": Color(0.9, 0.89, 0.86), "price": 290, "base": 290, "min": 145, "max": 690, "hint": "— STABLE CITYWIDE", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
+	{"id": "cocaine", "name": "COCAINE", "role": "PREMIUM", "owned": "0", "route": "+$127 Downtown", "color": Color(0.85, 0.72, 0.42), "price": 296, "base": 290, "min": 145, "max": 690, "hint": "▲ SELL DOWNTOWN  +$127", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "meth", "name": "METH", "role": "EXTREME RISK", "owned": "0", "route": "Locked", "color": Color(0.6, 0.6, 0.6), "price": 176, "base": 185, "min": 70, "max": 560, "hint": "NEEDS INDUSTRIAL TURF", "hint_color": Color(0.827, 0.161, 0.125), "locked": true},
 ]
 
 # Which products the Home "Market Snapshot" summarizes (by id), in display order.

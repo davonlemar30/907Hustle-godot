@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3]
 
 [ext_resource type="Shader" path="res://ui/theme/atmosphere.gdshader" id="sh_atmo"]
-[ext_resource type="Texture2D" uid="uid://bm01mf3ra4ffj" path="res://assets/textures/tex-card.png" id="tex_mat"]
+[ext_resource type="Texture2D" path="res://assets/textures/tex-card.webp" id="tex_mat"]
 
 [sub_resource type="ShaderMaterial" id="MatAtmo"]
 shader = ExtResource("sh_atmo")

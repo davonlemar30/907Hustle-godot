@@ -72,6 +72,12 @@ autoload — no hardcoded game values in the screen. GDScript gotchas learned:
   global `GameState`, so the script compiles before the editor reloads the autoload list.
   (Registered the autoload live via `autoload_manage(op=add)`.)
 
+**DONE — UX pass 2** (`/ux-designer` follow-ups, verified via run):
+- **Touch targets** — Market BUY/SELL bumped 42×26 → **48×44** (WCAG/HIG 44px floor).
+- **Mini territory map** — Home Turf & Crew now has a 6×2 block grid (`.../Turf/V/Map`,
+  12 ColorRects) with the 3 held blocks lit red in a stepped diagonal, matching the concept.
+- Repo now has a root **`README.md`** (front-door doc; `HANDOFF.md` stays the deep log).
+
 **Open / next (build order per user):** retrofit Home/Market/Hustle onto GameState;
 Phone → More; then the Hustle sub-screens (Jobs, 907List, Boost, Stickup, Shark). Also:
 1. Build **Crew**, **Travel**, **People** screens; wire remaining portraits.

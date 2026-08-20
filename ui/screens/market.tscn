@@ -610,14 +610,14 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnPrimary"
 theme_override_font_sizes/font_size = 10
 text = "BUY"
 
 [node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnSecondary"
 theme_override_font_sizes/font_size = 10
@@ -688,14 +688,14 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnPrimary"
 theme_override_font_sizes/font_size = 10
 text = "BUY"
 
 [node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnSecondary"
 theme_override_font_sizes/font_size = 10
@@ -766,14 +766,14 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnPrimary"
 theme_override_font_sizes/font_size = 10
 text = "BUY"
 
 [node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnSecondary"
 theme_override_font_sizes/font_size = 10
@@ -844,14 +844,14 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnPrimary"
 theme_override_font_sizes/font_size = 10
 text = "BUY"
 
 [node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnSecondary"
 theme_override_font_sizes/font_size = 10
@@ -922,14 +922,14 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnPrimary"
 theme_override_font_sizes/font_size = 10
 text = "BUY"
 
 [node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnSecondary"
 theme_override_font_sizes/font_size = 10
@@ -1000,14 +1000,14 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnPrimary"
 theme_override_font_sizes/font_size = 10
 text = "BUY"
 
 [node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnSecondary"
 theme_override_font_sizes/font_size = 10
@@ -1078,14 +1078,14 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="Buy" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnPrimary"
 theme_override_font_sizes/font_size = 10
 text = "BUY"
 
 [node name="Sell" type="Button" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Right/Btns"]
-custom_minimum_size = Vector2(42, 26)
+custom_minimum_size = Vector2(48, 44)
 layout_mode = 2
 theme_type_variation = &"BtnSecondary"
 theme_override_font_sizes/font_size = 10

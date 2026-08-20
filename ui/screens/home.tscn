@@ -688,6 +688,84 @@ theme_type_variation = &"Mono"
 theme_override_font_sizes/font_size = 14
 text = "3"
 
+[node name="Map" type="GridContainer" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
+layout_mode = 2
+theme_override_constants/h_separation = 3
+theme_override_constants/v_separation = 3
+columns = 6
+
+[node name="B0" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(1, 1, 1, 0.06)
+
+[node name="B1" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(1, 1, 1, 0.06)
+
+[node name="B2" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(0.827, 0.161, 0.125, 1)
+
+[node name="B3" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(1, 1, 1, 0.06)
+
+[node name="B4" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(1, 1, 1, 0.06)
+
+[node name="B5" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(1, 1, 1, 0.06)
+
+[node name="B6" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(1, 1, 1, 0.06)
+
+[node name="B7" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(1, 1, 1, 0.06)
+
+[node name="B8" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(1, 1, 1, 0.06)
+
+[node name="B9" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(0.827, 0.161, 0.125, 1)
+
+[node name="B10" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(0.827, 0.161, 0.125, 1)
+
+[node name="B11" type="ColorRect" parent="Shell/Scroll/Pad/Content/Columns/Turf/V/Map"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(1, 1, 1, 0.06)
+
 [node name="List" type="Label" parent="Shell/Scroll/Pad/Content/Columns/Turf/V"]
 layout_mode = 2
 theme_type_variation = &"Muted"

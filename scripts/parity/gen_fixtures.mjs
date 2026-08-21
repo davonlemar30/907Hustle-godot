@@ -903,8 +903,8 @@ console.log(
 // `src/data/crew.js`. Nothing about the checkout changes.
 //
 // Regenerate with FS001_ORACLE_DIR pointing wherever the extracted pair lives:
-//   git show <pr98-sha>:src/systems/requirements.js  > $DIR/requirements.js
-//   git show <pr98-sha>:src/data/crew-progression.js > $DIR/crew-progression.js
+//   git show a7d9534:src/systems/requirements.js  > $DIR/requirements.js
+//   git show a7d9534:src/data/crew-progression.js > $DIR/crew-progression.js
 // When PR #98 lands on the oracle's main, delete this dance and require them
 // directly.
 const fs001Dir = process.env.FS001_ORACLE_DIR
@@ -924,8 +924,8 @@ try {
     `  ${error.message}\n` +
     `  tests/parity/fixtures/requirements/fs001_fixtures.json was NOT regenerated.\n` +
     `  To regenerate it, extract the pair from the oracle and point FS001_ORACLE_DIR at them:\n` +
-    `    git show <pr98-sha>:src/systems/requirements.js  > $DIR/requirements.js\n` +
-    `    git show <pr98-sha>:src/data/crew-progression.js > $DIR/crew-progression.js\n` +
+    `    git show a7d9534:src/systems/requirements.js  > $DIR/requirements.js\n` +
+    `    git show a7d9534:src/data/crew-progression.js > $DIR/crew-progression.js\n` +
     `  then repoint requirements.js's one relative import at the oracle's src/data/crew.js.\n`
   );
   Req = null;
@@ -1135,10 +1135,12 @@ const capabilities = CAPABILITY_CASES.map(([crewId, capabilityId, rank]) => ({
 const fs001Fixtures = {
   oracle_version: core.VERSION,
   oracle_source: "web PR #98 (src/systems/requirements.js, src/data/crew-progression.js)",
+  oracle_commit: "a7d9534",
   generated_note: "run scripts/parity/gen_fixtures.mjs against the web oracle; do not hand-edit",
   max_crew_rank: Prog.MAX_CREW_RANK,
   base_crew_capacity: Prog.BASE_CREW_CAPACITY,
   crew_capacity: Prog.crewCapacity(),
+  displayed_crew_capacity: Prog.crewCapacity(),
   rank_labels,
   curve_lookups,
   curve_empty,

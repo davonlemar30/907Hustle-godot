@@ -10,6 +10,7 @@ signal action_failed(action: String, reason: String)
 
 var _systems: Array = []
 var _gs: Node
+var _dispatch_depth: int = 0
 
 func _ready() -> void:
 	_gs = get_node("/root/GameState")
@@ -109,11 +110,18 @@ func system(sys_name: String) -> Object:
 			return entry["node"]
 	return null
 
+## True while an action and all of its synchronous side effects are running.
+## Persisted mutators on the Exposure/Curtis autoloads use this as their
+## development-time ownership guard.
+func is_dispatching() -> bool:
+	return _dispatch_depth > 0
+
 ## Route an action to the first system that handles it. Returns true on success.
 func dispatch(action: String, payload: Dictionary = {}) -> bool:
 	for entry in _systems:
 		var sys = entry["node"]
 		if sys.can_handle(action):
+			_dispatch_depth += 1
 			var result: Dictionary = sys.handle(action, payload)
 			if result.get("ok", false):
 				# Discovery first: an action may have just qualified an operation
@@ -130,7 +138,9 @@ func dispatch(action: String, payload: Dictionary = {}) -> bool:
 				# autosaves from that signal, before a screen gets to refresh.
 				_gs.reconcile_persistent_invariants()
 				_gs.notify_changed()
+				_dispatch_depth = maxi(0, _dispatch_depth - 1)
 				return true
+			_dispatch_depth = maxi(0, _dispatch_depth - 1)
 			action_failed.emit(action, result.get("reason", "Action failed."))
 			return false
 	action_failed.emit(action, "No handler for '%s'." % action)

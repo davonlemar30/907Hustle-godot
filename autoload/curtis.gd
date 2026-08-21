@@ -71,12 +71,19 @@ const AMBER := Color(0.882, 0.651, 0.227)
 var gs: Node
 var rng: Node
 var exposure: Node
+var game_manager: Node
 
 func _ready() -> void:
 	gs = get_node("/root/GameState")
 	rng = get_node("/root/RngManager")
 	exposure = get_node("/root/Exposure")
+	game_manager = get_node("/root/GameManager")
 	gs.day_crossed.connect(_on_day_crossed)
+
+func _require_dispatch(method_name: String) -> bool:
+	var active: bool = game_manager != null and game_manager.is_dispatching()
+	assert(active, "Curtis.%s() must be called from GameManager.dispatch()." % method_name)
+	return active
 
 # --- phase -----------------------------------------------------------------
 
@@ -109,6 +116,8 @@ func _refresh_phase() -> void:
 		gs.log_activity(str(PHASE_MESSAGES[phase]), RED)
 
 func raise_awareness(amount: int) -> void:
+	if not _require_dispatch("raise_awareness"):
+		return
 	if amount <= 0:
 		return
 	gs.curtis_awareness = clampi(gs.curtis_awareness + amount, 0, gs.AWARENESS_MAX)
@@ -117,6 +126,8 @@ func raise_awareness(amount: int) -> void:
 ## Something loud happened today. Canon tracks this to decide whether the quiet
 ## streak resets, which is what gates decay.
 func mark_criminal_activity() -> void:
+	if not _require_dispatch("mark_criminal_activity"):
+		return
 	gs.curtis_last_criminal_day = gs.day
 
 # --- the join with Exposure ------------------------------------------------
@@ -125,6 +136,8 @@ func mark_criminal_activity() -> void:
 ## through the network channel, count it against ambient visibility. A thing
 ## Curtis never hears about does not make his people look harder.
 func broadcast_tracked(spec: Dictionary) -> Array:
+	if not _require_dispatch("broadcast_tracked"):
+		return []
 	var reached: Array = exposure.broadcast_observation(spec)
 	if str(spec.get("channel", "")) == "network" and "curtis" in reached:
 		raise_awareness(1)

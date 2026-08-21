@@ -1,10 +1,12 @@
 {
  "oracle_version": 11,
  "oracle_source": "web PR #98 (src/systems/requirements.js, src/data/crew-progression.js)",
+ "oracle_commit": "a7d9534",
  "generated_note": "run scripts/parity/gen_fixtures.mjs against the web oracle; do not hand-edit",
  "max_crew_rank": 6,
  "base_crew_capacity": 2,
  "crew_capacity": 2,
+ "displayed_crew_capacity": 2,
  "rank_labels": [
   {
    "rank": 0,

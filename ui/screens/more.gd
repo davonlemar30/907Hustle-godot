@@ -70,7 +70,7 @@ func _build_body() -> void:
 
 	body.add_child(_menu_row(
 		"Crew",
-		"%d/%d active" % [gs.recruited_crew().size(), gs.CREW_CAPACITY],
+		"%d/%d active" % [gs.recruited_crew().size(), gs.crew_capacity()],
 		"Wages, loyalty, tiers, and who answers when it gets loud.",
 		nav.CREW))
 

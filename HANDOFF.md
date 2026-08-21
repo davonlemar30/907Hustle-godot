@@ -24,6 +24,26 @@ driven through the **Godot AI MCP** (dlight plugin; server at
 - **Icons:** 37 monochrome **white** SVGs in `assets/icons/{nav,hud,products,ui}/`. Tint per-state with `modulate`/`self_modulate` (active nav = red2, idle = grey `#6b6b6b`). `coke` & `cocaine` share `icon-coke.svg`.
 
 ## Status
+
+## Cleanup Batch: Post-FS-001.5 deck clearing (added 2026-08-21)
+
+- Baseline was established before edits with Godot 4.7.2 headless import and the
+  parity scene: **7,123 checks / 0 failures**. Glyph coverage also passed. The
+  two checks above the brief's 7,121 baseline were already present on the
+  FS-001.6 worktree changes.
+- `scripts/parity/gen_fixtures.mjs` and the generated FS-001 fixture now pin
+  oracle commit `a7d9534`.
+- Crew and More now read `GameState.crew_capacity()`. The fixture harness also
+  pins the displayed capacity to that function's return value.
+- 907List now uses canon's seeded Fisher-Yates shuffle and slice. This fixes the
+  tier-1 day-3 under-fill and changes board composition for future days in
+  existing saves. This is not save corruption and does not change the save
+  schema; a loaded save will simply see different future boards. Golden boards
+  were re-pinned in `tests/parity/parity_runner.gd`.
+- Exposure and Curtis persisted-data mutators now assert and no-op outside an
+  active `GameManager.dispatch()` context. The wider `seeded_int_range` sweep
+  found no other small-range loop-index call sites requiring this fix: boost,
+  stickup, jobs, and 907List value rolls use event-specific keys.
 **DONE — Home screen** (`ui/screens/home.tscn`), verified via run + screenshot:
 TopBar (DAY/EVENING, two-tone 907HUSTLE brand, SPENARD/AK, CASH), 6-stat HUD
 with icons, real Spenard street photo (`assets/img/assest1home.png`), red

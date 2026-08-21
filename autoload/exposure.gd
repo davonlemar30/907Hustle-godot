@@ -161,10 +161,17 @@ const BAND_LABELS := {
 }
 
 var gs: Node
+var game_manager: Node
 
 func _ready() -> void:
 	gs = get_node("/root/GameState")
+	game_manager = get_node("/root/GameManager")
 	gs.day_crossed.connect(_on_day_crossed)
+
+func _require_dispatch(method_name: String) -> bool:
+	var active: bool = game_manager != null and game_manager.is_dispatching()
+	assert(active, "Exposure.%s() must be called from GameManager.dispatch()." % method_name)
+	return active
 
 # --- recording -------------------------------------------------------------
 
@@ -191,6 +198,8 @@ func _key(spec: Dictionary) -> String:
 ## Something this NPC learns first-hand, right now. No gating: if the code says
 ## Mina was told, Mina was told.
 func record_observation(npc_id: String, spec: Dictionary) -> void:
+	if not _require_dispatch("record_observation"):
+		return
 	if not NPC_LENSES.has(npc_id):
 		return
 	var type_name: String = str(spec.get("type", ""))
@@ -222,6 +231,8 @@ func record_observation(npc_id: String, spec: Dictionary) -> void:
 ## broadcastTracked needs that to decide whether a thing genuinely landed on
 ## Curtis, which is the only way ambient awareness rises.
 func broadcast_observation(spec: Dictionary) -> Array:
+	if not _require_dispatch("broadcast_observation"):
+		return []
 	var reached: Array = []
 	var channel: String = str(spec.get("channel", "neighborhood"))
 	if not CHANNELS.has(channel):

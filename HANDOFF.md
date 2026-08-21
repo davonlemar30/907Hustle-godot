@@ -307,8 +307,8 @@ moves between the four game screens.
   Ind/Ico/L. The raised HOME FAB has a transparent `HomeBtn` over it. Connections are made
   once in `screen_base.gd::_wire_nav()` from `_ready()` — never `_bind_content()`, which
   re-runs on every state change.
-- **Phone and More are `disabled`**, not wired to a missing scene. (Phase 5b
-  part 1 built the Phone's substrate; the screen and its nav route are part 2.)
+- **More is `disabled`**, not wired to a missing scene. Phone is live as of
+  Phase 5b part 2; its nav cell routes to `phone.tscn`.
 - **New-run state is canon.** `GameState.reset_to_new_game()` mirrors the web reducer's
   START_RUN branch: `$100`, heat 0, health 100, debt 0, Spenard, Day 1 MORNING. Not the
   CHOOSE_BACKGROUND branch ($375 + a $620 note from Dre, `run.premise = legacy_established`)
@@ -495,6 +495,114 @@ that reasoning is most of the value. The Build State page can be reconstructed f
 - Any term pinned at a canon neutral is named, with the system that will unpin it.
 - Any deliberate divergence from canon is named with the reason.
 - Any canon oddity found is recorded rather than silently corrected.
+
+## Phase 5b (part 2): the Phone screen  (added 2026-08-20)
+
+The nav cell is live. Thirteen of fifteen screens are built; only More is left.
+`ui/screens/phone.tscn` + `phone.gd`, derived from `hustle.tscn`'s chrome by
+`scripts/make_surface_screen.py`, extending `surface_base.gd`.
+
+### Canon's six sections, in canon's order
+
+Offline card · Texts · Contacts · Bills · Today's Log · Word Around Town
+(ui.built.js:15734). Accordions, as canon's are, and **only Texts starts
+expanded** — `defaultExpanded: true` is on that one alone. Expansion is UI state
+on the script, not in GameState: it is not part of the run, has no business in a
+save, and lives outside the node tree so it survives `_bind_content()`'s
+clear-and-rebuild.
+
+### The offline state is a voice, not a disabled screen
+
+Canon's subtitle for it is the design in one line: **"The phone stays available
+even when the network does not."** Losing service does not lose you the screen,
+it changes what the screen can tell you. Every section has an offline reading:
+
+| section | live | offline |
+|---|---|---|
+| header | PHONE | **NO SERVICE**, with canon's subtitle |
+| Texts | "2 texts" + cards | "1 HELD" -> "1 message is waiting for service." |
+| Bills | PAY $75 | disabled, reading **PAY AT THE PHONE STORE** |
+| Word Around Town | six intel lines | "Word comes back when service does." |
+
+Plus the `card locked` at the top: SIGNAL UNAVAILABLE, days past due, canon's
+copy, and a working **PAY AT NIGHT OWL** button — the store surface, which is
+the one that works with a dead line. Under it, canon's action-copy line:
+*"Free · service restores after the next action."* That sentence is doing real
+work — the restoration is deferred by a slot, and without it the player pays,
+sees nothing change, and reads a bug.
+
+### Blocker reasons live in the system, not the screen
+
+`obligations.pay_phone_blocker(surface)` and `pay_rent_blocker()` return canon's
+own `reason` strings from `phoneBills`' rows. The screen renders the established
+repo pattern (crew.gd's): **the button label becomes the reason, uppercased, and
+the button disables.** So a row reads `DUE DAY 14` or `NEED $75` rather than
+going quiet, and the reason is testable without a screen.
+
+`surface` matters in the blocker in a way it does not in the reducer: canon's
+Bills row sits ON the phone, so it refuses while the line is dead and points at
+the Phone Store. The store's own button has no such check — that is the whole
+point of walking there.
+
+### Four divergences
+
+1. **Contacts links out instead of embedding.** Canon renders the whole
+   `SocialContacts` component here. There is no `state.contacts` ledger in this
+   build (relationship levels, call/text/visit availability), and there IS a
+   People screen showing what each character makes of you — so the section
+   routes there. **The count is the honest one available**: people the run has
+   actually formed a read on (an Exposure ledger with at least one row), not
+   canon's `personalContacts + knownSocialContacts`, which needs the ledger.
+2. **"Pay in People -> Crew" became "Pay on the Crew screen."** Canon's arrow is
+   U+2192, which no theme font carries. This is a place where a sentence beats
+   an icon.
+3. **The rent row's eviction gate is unreachable.** Canon hides the row when
+   `people.household.evicted`; here the third household warning ends the run
+   outright, so there is no evicted-and-still-playing state. Ported anyway as a
+   `game_over` check, so it stays correct if that ever changes.
+4. **The debt row is wired but dormant.** Canon reads `state.lender` (Dre's
+   note); no lender system is ported and `GameState.debt` is 0 on every run this
+   build can start. Gating on `debt > 0` shows nothing today rather than a
+   fabricated bill, and lights up the day the lender lands.
+
+Not ported: the Accept / Turn it down buttons on a job-offer text. The
+descriptor rides through the substrate, but `jobs.gd` hires directly and has no
+application -> offer pipeline, so no message ever arrives carrying one. The
+branch is written and named rather than silently absent.
+
+### The dismiss glyph was checked, not eyeballed
+
+Canon's is `×` (U+00D7). It is in all five theme fonts — verified against the
+cmap tables the way `check_glyph_coverage.py` does, not by looking at it in the
+editor, which lends a macOS system font and will happily draw anything. `✕` and
+`✖` are in none of them. The accordion affordance is `›` closed and `–` open:
+both from the five safe characters, chosen because no safe glyph points down.
+
+### Scroll discipline held
+
+Every tappable thing on this screen is built in code, so the
+nothing-inside-the-scroll-is-STOP rule had to be honoured deliberately. The
+accordion headers use `tap_connect` on the PanelContainer itself (MOUSE_FILTER
+PASS + 12px tap slop), same as `make_tappable`; buttons come from
+`surface_base.button()`, which does the same. **Proven, not assumed:** a
+synthetic press/release 2px apart toggles a section; the same pair 80px apart
+does not, so a drag that starts on a header still scrolls.
+
+### Verified live (editor run, game log clean)
+
+Fresh Day 1 -> all six sections in canon order, Texts open, "No messages yet.",
+Bills quiet (both bills six days out, so `Upcoming`/severity 0, no badge). A
+lived-in Day 7 -> `3 DUE`; phone `Due today` and rent `Due now` both payable
+with "Paid from cash on hand" replacing the where-line; crew wages `Unpaid $45`
+with no button. Paying both -> -$75/-$150, due days roll 7 -> 14, rows fall back
+to `Upcoming` with disabled `DUE DAY 14` buttons, badge drops to the one wage
+row. Dismiss removed one text and the meta went plural -> singular; Clear all
+appears only above one. Offline -> the whole table above. Paying at the store
+from the offline card stamped `reactivate_at_slot` 24 (= `slotNumber(7, 0)`) and
+the header stayed NO SERVICE; one advance flipped it to PHONE with the held text
+flushed to the top of the inbox. Contacts routes to People and back. The PHONE
+nav cell is red and reachable from every screen; More stays disabled. No
+autosave fired and no phantom run was left on the machine.
 
 ## Phase 5b (part 1): the phone substrate  (added 2026-08-20)
 

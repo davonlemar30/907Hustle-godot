@@ -39,14 +39,14 @@ the oracle won; those divergences are listed in `HANDOFF.md`.
 | Claim corners, post soldiers, collect nightly | Home → Turf |
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
-| Texts arrive; miss the bill and the line dies holding them | Home → People card |
+| Read texts, pay bills, hear word around town | Phone |
+| Texts arrive; miss the bill and the line dies holding them | Phone → Texts |
 | Pick up where you left off | automatic autosave · title → CONTINUE RUN |
 
 ### Not built yet
 
-Phone and More screens (their nav cells are disabled — the Phone's substrate is
-built and tested, the screen that surfaces it is next), venue interiors, combat
-encounters, equipment, and attributes.
+The More screen (its nav cell is disabled), venue interiors, combat encounters,
+equipment, and attributes.
 
 ## Project layout
 
@@ -159,7 +159,7 @@ regardless of how small the source file is.
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
 | 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (1442 checks); fixtures grow with each system |
-| 5b. Phone + More screens | 🔨 substrate shipped (inbox, held inbox, deferred restoration); screens next |
+| 5b. Phone + More screens | 🔨 Phone shipped (substrate + screen); More next |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

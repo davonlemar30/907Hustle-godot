@@ -64,7 +64,10 @@ const SAVE_PATH := "user://907hustle_run.save"
 ## attributes 1, all progress 0). That is the right answer rather than a
 ## convenience: a run that predates the attribute system genuinely never trained
 ## anything, so defaults ARE its history.
-const SAVE_VERSION := 4
+## v5 (Phase 5d): adds `recovery_introduced`. Additive; a v4 save defaults to
+## false and the flag re-arms the moment health or heat makes Recovery relevant
+## again, which is the same thing canon's own flag does on a fresh load.
+const SAVE_VERSION := 5
 
 ## Every mutable GameState field, captured and applied by name. products.price
 ## is the one mutable value living inside a canon table; it rides separately as
@@ -85,6 +88,8 @@ const PERSIST_FIELDS: Array[String] = [
 	# Obligations + game over
 	"rent_due_day", "rent_missed", "household_warnings",
 	"phone_due_day", "phone_days_past_due", "phone_active",
+	# Recovery (v5)
+	"recovery_introduced",
 	# Phone inbox (v3)
 	"phone_inbox", "phone_held_inbox", "phone_reactivate_at_slot",
 	"game_over", "game_over_reason",
@@ -242,6 +247,9 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# default in at canon's fresh-run values. A run that predates
 				# the system never trained anything, so the defaults are its
 				# real history, not a fallback.
+				pass
+			4:
+				# v4 → v5: recovery_introduced is additive and defaults false.
 				pass
 			_:
 				return {}

@@ -286,6 +286,7 @@ func reset_to_new_game() -> void:
 	phone_inbox = []
 	phone_held_inbox = []
 	phone_reactivate_at_slot = -1
+	recovery_introduced = false
 	game_over = false
 	game_over_reason = ""
 	stick_tier = 1
@@ -426,6 +427,11 @@ var phone_held_inbox: Array = []
 ## Canon carries `null` here; -1 is the Godot stand-in for "nothing scheduled".
 ## Set when a dead line is paid for, cleared by the next slot advance.
 var phone_reactivate_at_slot: int = -1
+
+## Canon flags.recoveryIntroduced: once Recovery has been relevant it stays on
+## the menu, so a run that heals back to 100 does not lose the screen it just
+## used. Set the first time the feature becomes available, never cleared.
+var recovery_introduced: bool = false
 
 var game_over: bool = false
 var game_over_reason: String = ""

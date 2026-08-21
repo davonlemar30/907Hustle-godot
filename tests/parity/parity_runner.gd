@@ -28,6 +28,8 @@ extends Node
 ##              tiers, the growth curve, and the three shipped chance formulas
 ##              that read them. PURE oracle — `attributeSystem` is exported, so
 ##              there is no formula copy here to prove, only agreement to hold
+##   recovery — the Phase 5d ladder: canon's layLowPreview against every heat
+##              value that changes its answer, and treatmentCost at full price
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -55,6 +57,7 @@ func _ready() -> void:
 		_check_initial_markets(fixtures.get("initial_markets", []))
 		_check_phone(fixtures.get("phone", {}))
 		_check_attributes(fixtures.get("attributes", {}))
+		_check_recovery(fixtures.get("recovery", {}))
 		_check_save_roundtrip()
 	_finish()
 
@@ -193,6 +196,66 @@ func _check_initial_markets(rows: Array) -> void:
 					int(got["availability"][pid]), int(want["availability"][pid]))
 		_expect_int(label + " rng_state", gs.rng_state, int(row["rng_state"]))
 	gs.run_seed = original_seed
+
+## Phase 5d recovery, against canon's two exported selectors.
+##
+## `layLowPreview` is a `min` against current Heat wrapped around a `max(1, …)`,
+## which means it has three regimes — below 1, between 1 and 2, and at or above
+## 2 — and the fixture walks all three plus both boundaries. The treatment
+## ladder's reveal points are checked here too, because "which card is on
+## screen" is the whole design of that screen.
+func _check_recovery(fixture: Dictionary) -> void:
+	if fixture.is_empty():
+		_fail("recovery", "no recovery fixtures")
+		return
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var rec: RefCounted = gm.system("recovery") as RefCounted
+	if rec == null:
+		_fail("recovery", "no recovery system registered")
+		return
+	var original_heat: float = gs.heat
+	var original_health: int = gs.health
+	var original_area: String = gs.current_district_id
+
+	for row in fixture["lay_low"]:
+		gs.heat = float(row["heat"])
+		gs.current_district_id = str(row["area"])
+		_expect_float("lay low preview @heat %s" % str(row["heat"]),
+			float(rec.lay_low_preview()), float(row["heat_reduction"]))
+	for row in fixture["treatment_costs"]:
+		_expect_int("treatment cost %d" % int(row["base"]),
+			rec.treatment_cost(int(row["base"])), int(row["cost"]))
+
+	# The reveal ladder. Canon surfaces first aid always, the clinic at 82 and
+	# the doctor at 55 — the boundary is inclusive on both. The doctor is only
+	# ever a TREATMENT card when the contact is open; canon renders the locked
+	# card instead of it, never as well as it.
+	var original_ledgers: Dictionary = gs.npc_ledgers.duplicate(true)
+	gs.npc_ledgers = {}
+	for spec in [[100, 1], [83, 1], [82, 2], [56, 2], [55, 2], [10, 2]]:
+		gs.health = int(spec[0])
+		_expect_int("recovery cards visible @health %d (doctor closed)" % int(spec[0]),
+			rec.visible_treatments().size(), int(spec[1]))
+	_expect_true("doctor closed on a fresh ledger", not rec.doctor_open())
+
+	# Mina at TRUSTED opens the third rung. Written straight onto the ledger so
+	# the check does not depend on which events happen to carry her weights.
+	var exposure := get_node("/root/Exposure")
+	gs.npc_ledgers = {"mina": [
+		{"key": "k1", "type": "discretion", "event": "quiet", "location": "",
+			"source": "witnessed", "count": 9, "day": gs.day},
+	]}
+	_expect_true("mina reaches trusted", exposure.disposition("mina") >= 6.0)
+	_expect_true("doctor opens at trusted", rec.doctor_open())
+	gs.health = 55
+	_expect_int("recovery cards visible @health 55 (doctor open)",
+		rec.visible_treatments().size(), 3)
+	gs.npc_ledgers = original_ledgers
+
+	gs.heat = original_heat
+	gs.health = original_health
+	gs.current_district_id = original_area
 
 ## Phase 5c attributes, against oracle-recorded truth.
 ##

@@ -5416,5 +5416,131 @@
     "boost_tier1": 0.95
    }
   ]
+ },
+ "recovery": {
+  "lay_low": [
+   {
+    "heat": 0,
+    "area": "north_star_lot",
+    "heat_reduction": 0,
+    "advances": true
+   },
+   {
+    "heat": 0,
+    "area": "downtown",
+    "heat_reduction": 0,
+    "advances": true
+   },
+   {
+    "heat": 0.5,
+    "area": "north_star_lot",
+    "heat_reduction": 0.5,
+    "advances": true
+   },
+   {
+    "heat": 0.5,
+    "area": "downtown",
+    "heat_reduction": 0.5,
+    "advances": true
+   },
+   {
+    "heat": 1,
+    "area": "north_star_lot",
+    "heat_reduction": 1,
+    "advances": true
+   },
+   {
+    "heat": 1,
+    "area": "downtown",
+    "heat_reduction": 1,
+    "advances": true
+   },
+   {
+    "heat": 1.5,
+    "area": "north_star_lot",
+    "heat_reduction": 1.5,
+    "advances": true
+   },
+   {
+    "heat": 1.5,
+    "area": "downtown",
+    "heat_reduction": 1.5,
+    "advances": true
+   },
+   {
+    "heat": 2,
+    "area": "north_star_lot",
+    "heat_reduction": 2,
+    "advances": true
+   },
+   {
+    "heat": 2,
+    "area": "downtown",
+    "heat_reduction": 2,
+    "advances": true
+   },
+   {
+    "heat": 2.4,
+    "area": "north_star_lot",
+    "heat_reduction": 2,
+    "advances": true
+   },
+   {
+    "heat": 2.4,
+    "area": "downtown",
+    "heat_reduction": 2,
+    "advances": true
+   },
+   {
+    "heat": 3,
+    "area": "north_star_lot",
+    "heat_reduction": 2,
+    "advances": true
+   },
+   {
+    "heat": 3,
+    "area": "downtown",
+    "heat_reduction": 2,
+    "advances": true
+   },
+   {
+    "heat": 7.5,
+    "area": "north_star_lot",
+    "heat_reduction": 2,
+    "advances": true
+   },
+   {
+    "heat": 7.5,
+    "area": "downtown",
+    "heat_reduction": 2,
+    "advances": true
+   },
+   {
+    "heat": 15,
+    "area": "north_star_lot",
+    "heat_reduction": 2,
+    "advances": true
+   },
+   {
+    "heat": 15,
+    "area": "downtown",
+    "heat_reduction": 2,
+    "advances": true
+   }
+  ],
+  "treatment_costs": [
+   {
+    "base": 55,
+    "cost": 55
+   },
+   {
+    "base": 135,
+    "cost": 135
+   },
+   {
+    "base": 290,
+    "cost": 290
+   }
+  ]
  }
 }

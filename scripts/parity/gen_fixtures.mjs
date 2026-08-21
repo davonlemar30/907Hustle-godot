@@ -602,6 +602,36 @@ const attributes = {
 };
 
 // ---------------------------------------------------------------------------
+// Recovery — canon's two exported selectors, called directly.
+//
+// `layLowPreview` and `treatmentCost` are both on the exported `selectors`
+// surface, so these are recorded rather than re-derived. The states are built
+// with the base system at its neutral (no security track, not watched), which
+// is what this build has: no base system at all.
+const recoveryState = (heat, area = "north_star_lot") => ({
+  player: { heat },
+  world: { currentNeighborhoodId: area },
+  base: { tracks: { security: 0, recovery: 0 }, watched: false, controlled: false },
+  streetRead: null,
+});
+const lay_low = [];
+for (const heat of [0, 0.5, 1, 1.5, 2, 2.4, 3, 7.5, 15]) {
+  for (const area of ["north_star_lot", "downtown"]) {
+    lay_low.push({
+      heat, area,
+      heat_reduction: core.selectors.layLowPreview(recoveryState(heat, area)).heatReduction,
+      advances: core.selectors.layLowPreview(recoveryState(heat, area)).advances,
+    });
+  }
+}
+// treatmentCost with no Street Read: full price, which is every price here.
+const treatment_costs = [55, 135, 290].map((base) => ({
+  base, cost: core.selectors.treatmentCost(recoveryState(0), base),
+}));
+
+const recovery = { lay_low, treatment_costs };
+
+// ---------------------------------------------------------------------------
 const fixtures = {
   oracle_version: core.VERSION,
   generated_note: "run scripts/parity/gen_fixtures.mjs against the web oracle; do not hand-edit",
@@ -613,6 +643,7 @@ const fixtures = {
   initial_markets,
   phone,
   attributes,
+  recovery,
 };
 
 const outPath = join(here, "..", "..", "tests", "parity", "fixtures", "rng_fixtures.json");
@@ -624,7 +655,8 @@ console.log(
   `${initial_markets.length} oracle initial markets, ` +
   `${phone.clock.frames.length} phone clock frames, ` +
   `${attributes.growth.length} attribute growth rows, ` +
-  `${attributes.identity.length} identity cases (oracle v${core.VERSION}; ` +
+  `${attributes.identity.length} identity cases, ` +
+  `${recovery.lay_low.length} lay-low rows (oracle v${core.VERSION}; ` +
   `initialMarket copy verified at offset ${verifiedAtBurn}, ` +
   `evolveMarkets copy verified at offset ${evolveVerifiedAtBurn}; ` +
   `phone message-id format verified against oracle message ${phone.message.message.id})`

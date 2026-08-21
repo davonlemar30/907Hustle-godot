@@ -43,12 +43,13 @@ the oracle won; those divergences are listed in `HANDOFF.md`.
 | Read texts, pay bills, hear word around town | Phone |
 | Reach everything else, and read the rules | More · More → Help |
 | See what the block calls you, and why | More → Character |
+| Patch yourself up, or go quiet for a night | More → Recovery |
 | Texts arrive; miss the bill and the line dies holding them | Phone → Texts |
 | Pick up where you left off | automatic autosave · title → CONTINUE RUN |
 
 ### Not built yet
 
-Recovery, arrest/jail, venue interiors, combat encounters, and equipment.
+Arrest/jail, venue interiors, combat encounters, and equipment.
 Attributes are live but resolution is still binary — canon's four-tier
 clean/messy/failure/catastrophic outcomes are a build of their own.
 
@@ -72,6 +73,7 @@ systems/              # the ONLY writers of GameState
   obligations.gd      # rent + phone bill, settled nightly
   phone.gd            # the inbox, the held inbox, and the line coming back
   attributes.gd       # combat / charisma / intelligence, and how they grow
+  recovery.gd         # first aid, the clinic ladder, and laying low
   stickup.gd          # armed robbery, tiers, the two-a-day cap
   shark.gd            # lending, terms, defaults
   nine07list.gd       # the flip board and its tiers
@@ -163,9 +165,10 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (1442 checks); fixtures grow with each system |
+| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (2399 checks); fixtures grow with each system |
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
 | 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
+| 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

@@ -497,6 +497,100 @@ that reasoning is most of the value. The Build State page can be reconstructed f
 - Any deliberate divergence from canon is named with the reason.
 - Any canon oddity found is recorded rather than silently corrected.
 
+## Phase 5d: Recovery — health finally goes back up  (added 2026-08-20)
+
+Health has been a HUD stat since the first build with nothing in the game able
+to raise it. Stickup damage spent it and nothing gave it back. This is the other
+half. **Parity 2367 → 2399 checks, 0 failures.** All six of canon's More rows
+now ship.
+
+### The ladder reveals itself as the damage justifies it
+
+Canon's subtitle is the design: *"Essential care first; larger options appear
+when the damage justifies them."*
+
+| treatment | restores | cost | appears at | time |
+|---|---|---|---|---|
+| First aid | 18 | $55 | always | **free** |
+| Clinic visit | 40 | $135 | health <= 82 | one slot |
+| No-Questions Doctor | 75 | $290 | health <= 55 | one slot |
+
+A player at 95 is never shown the $290 option, so **the expensive card arriving
+is itself information** about how bad things have got.
+
+First aid costing no time is the load-bearing detail. It is the one thing you
+can do mid-crisis, which is what makes the other two a real decision rather than
+a formality — and the reason canon has two reducers (`USE_FIRST_AID`, `HEAL`)
+for what is otherwise identical arithmetic.
+
+### Lay Low is a trade, not a pause
+
+Heat down 2, one slot gone, and a `discretion` observation filed on Curtis's
+network — **going quiet is itself something the neighborhood notices**, and
+Curtis is the one lens that reads discretion as information about you. Canon's
+warning is on the card and it is the whole point: debt, wages, markets and
+Curtis keep moving while the lights are off.
+
+### Two bugs the fixtures caught before the screen did
+
+1. **`lay_low_preview()` returned int and truncated.** Canon's `layLowPreview`
+   is `min(heat, max(1, 2 + …))` with no rounding, and heat has been fractional
+   since Phase 3e (Deshawn's 0.80 reduction needs it). The first pass promised a
+   player sitting at 1.6 a drop of "1". The fixture walks heats that are not
+   whole — 0.5, 1.5, 2.4 — which is the only reason it surfaced.
+2. **The doctor rendered twice at health 55.** Canon is
+   `doctorOpen ? treatment(...) : <div className="card locked">` — the treatment
+   card **or** the locked card, never both. `visible_treatments()` returned the
+   doctor regardless of whether the contact was open, so a locked run saw a
+   buyable $290 card sitting directly above a card saying it was locked.
+
+Both were mine, not canon's, and both were found by writing the check before
+trusting the screenshot.
+
+### One named divergence: what opens the doctor
+
+Canon gates it on `base.tracks.recovery >= 2 || npc.mina.trust >= 3`. There is
+no base system, and `npc.mina.trust` is a separate counter this port never
+carried. What it does have is **Mina's Exposure disposition** — the same
+relationship measured a different way — so the gate reads her band reaching
+TRUSTED. Taken because the alternative was porting a card no run could ever
+reach.
+
+### The More row keeps canon's latch
+
+`features.recovery.available` is `health < 100 || heat > 1 ||
+flags.recoveryIntroduced`. The third term is the interesting one: **once
+Recovery has mattered it stays on the menu**, so healing back to 100 does not
+take away the screen you just used. `recovery_introduced` is that flag, set by
+the same read that tests it — which is canon's own arrangement, since
+`featureAvailability` runs on every render.
+
+### Not ported, each named
+
+`treatmentCost`'s 10% Street Read discount (the function exists and returns full
+price, so the discount has one place to land) · `HEAL_AT_BASE`, the garage
+first-aid table · `stats.moneySpent.healing`, which feeds an end-of-run summary
+this build has no screen for · `addStreetReadEntry` on a heal.
+
+### Save schema v5
+
+`recovery_introduced` joins `PERSIST_FIELDS`; the v4→v5 arm is additive and a v4
+save defaults to false — the flag re-arms the moment health or heat makes
+Recovery relevant again, which is what canon's own flag does on a fresh load.
+
+### Verified live (editor run, game log clean)
+
+Fresh full-health run → no Recovery row on More. Health 70 → the row appears;
+healed back to 100 → **it stays** (latched). On the screen: health 90 shows
+first aid only; 82 adds the clinic; 55 adds the doctor, and with the contact
+closed it is the LOCKED card rather than a second buyable one. Four discretion
+observations put Mina at BONDED and the doctor card replaces the locked one.
+First aid at health 45 → 63, −$55, **clock unmoved**. Clinic → 100 (clamped),
+−$135, slot advanced. Doctor while locked → refused. Lay Low → heat 5.0 → 3.0,
+one Curtis ledger row, slot advanced. At full health the button reads NOTHING TO
+TREAT and disables. Fractional heat 1.6 previews as "lower Heat by 1.6". No
+autosave fired and no phantom run was left behind.
+
 ## Phase 5c (part 2): the Character screen  (added 2026-08-20)
 
 Street Identity and the screen that reads it. **Parity 2236 → 2367 checks, 0

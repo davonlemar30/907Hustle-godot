@@ -76,7 +76,12 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## The first arm in this chain that RECONSTRUCTS state rather than defaulting
 ## it, and the first with a limit worth naming — see the v5 → v6 arm in
 ## _migrate for what it can and cannot recover.
-const SAVE_VERSION := 6
+##
+## v7 (FS-001.6): adds `crew_assignments` and `crew_operation_state`, the Named
+## Crew Operations lifecycle. Both additive. The arm also stamps an explicit
+## `source` on every held 907List item, so "who bought this" is never ambiguous
+## once delegated buying lands — see the v6 → v7 arm.
+const SAVE_VERSION := 7
 
 ## Every mutable GameState field, captured and applied by name. products.price
 ## is the one mutable value living inside a canon table; it rides separately as
@@ -112,6 +117,8 @@ const PERSIST_FIELDS: Array[String] = [
 	# Boost
 	"boost_tier", "boost_technique", "boost_merchandise",
 	"boost_fence_standing", "boost_daily_hits",
+	# Named Crew Operations (v7)
+	"crew_assignments", "crew_operation_state",
 	# Crew + territory
 	"crew_records", "held_blocks", "soldiers_idle",
 	# Exposure substrate
@@ -210,6 +217,17 @@ func load_run() -> bool:
 	# A legacy save may predate a persistent latch while already satisfying its
 	# trigger. Reconcile before the loaded state is exposed to screens.
 	gs.reconcile_persistent_invariants()
+	# Qualifying-load unlock. A save written before Named Crew Operations
+	# existed can already satisfy an operation's discovery requirements — a
+	# Broker-tier run with Pherris loyal has met them for days without anything
+	# ever having looked. Reconciling here means the operation is known on the
+	# first frame after CONTINUE RUN rather than after whatever action happens
+	# to dispatch next.
+	var crew_ops: Object = get_node_or_null("/root/GameManager")
+	if crew_ops != null:
+		crew_ops = crew_ops.system("crew_operations")
+		if crew_ops != null:
+			crew_ops.reconcile()
 	# A pre-v2 save carries no markets. Walk a fresh board off the run seed so
 	# the run resumes priced rather than empty; the next day-cross re-walks it.
 	if gs.markets.is_empty():
@@ -309,6 +327,23 @@ func _migrate(payload: Dictionary) -> Dictionary:
 						if not item_id.is_empty() and not item_id in recovered:
 							recovered.append(item_id)
 				state["list_taken"] = {"day": current_day, "ids": recovered}
+			6:
+				# v6 → v7: crew_assignments and crew_operation_state are
+				# additive and default in. A v6 save never ran an operation, so
+				# empty IS its history — the same argument the v3 → v4 attribute
+				# arm makes, and it holds for the same reason.
+				#
+				# The one transform is ownership. Delegated buying (FS-001.7)
+				# will tag holdings with who bought them, and a holding with no
+				# tag would then be ambiguous rather than simply old. Every
+				# holding in a v6 save was bought by the player — there was no
+				# other way to buy one — so that is stamped rather than inferred
+				# later. Cheap to do now, impossible to reconstruct afterwards.
+				var carried: Variant = state.get("list_holdings")
+				if carried is Array:
+					for entry in (carried as Array):
+						if entry is Dictionary and not (entry as Dictionary).has("source"):
+							(entry as Dictionary)["source"] = "player"
 			_:
 				return {}
 		version += 1

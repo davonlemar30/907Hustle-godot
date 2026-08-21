@@ -10,7 +10,23 @@ extends Node
 ## everything in one pass (the web-reducer pattern). Call notify_changed() after
 ## mutating fields to trigger a refresh.
 signal state_changed
-## Emitted when the run rolls past NIGHT into a new day.
+## Emitted while the clock STILL READS the day that is finishing, immediately
+## before it advances. `ended_day` is passed explicitly so a listener never has
+## to reason about whether it sits above or below the increment.
+##
+## This is canon's shape. `confirmDayEnd` (game-core.js:6601) does every piece of
+## night settlement while `run.day` is still `oldDay`, then bumps the clock near
+## the end — and canon's own comment on `applyAttendance(state, oldDay)` says
+## why the day is a parameter rather than a read: *"so the rung does not depend
+## on sitting above the `run.day = oldDay + 1` line further down."*
+##
+## `day_crossed` below fires AFTER the increment and keeps its existing meaning.
+## Two signals rather than one because the port already has listeners written
+## against each answer: jobs and obligations both derive `gs.day - 1` today,
+## which is exactly the compensation this removes the need for in new code.
+signal day_ending(ended_day: int)
+## Emitted when the run rolls past NIGHT into a new day. Listeners see the NEW
+## day on the clock — unchanged semantics, and deliberately so.
 signal day_crossed
 
 # --- Run clock -------------------------------------------------------------
@@ -303,6 +319,8 @@ func reset_to_new_game() -> void:
 	boost_fence_standing = 0
 	boost_daily_hits = {}
 	crew_records = {}
+	crew_assignments = {}
+	crew_operation_state = {"discovered": [], "adapters": {}}
 	held_blocks = {}
 	soldiers_idle = 0
 	npc_ledgers = {}
@@ -755,6 +773,28 @@ func crew_capacity() -> int:
 
 ## id -> {recruited, loyalty, tier, wage_due, wage_missed_since, recruited_day, status}
 var crew_records: Dictionary = {}
+
+# --- Named Crew Operations (FS-001.6) -------------------------------------
+## Delegation state. Substrate only in this build: the lifecycle runs, discovery
+## unlocks, assignments are taken and settled — but no operation has a domain
+## adapter yet, so a settled assignment carries a null result. FS-001.7 plugs
+## Pherris's "Run the Board" in without touching any of this.
+
+## crew_id -> {day, operation_id, settled, result}.
+##
+## Keyed by CREW MEMBER, not by operation: the scarce thing is a person's day,
+## and one person cannot be in two places. An entry whose `day` is not today is
+## stale rather than deleted — a day-scoped read is cheaper than a nightly sweep
+## and cannot leave a half-cleared record behind.
+var crew_assignments: Dictionary = {}
+
+## {discovered: Array[String], adapters: Dictionary}
+##
+## `discovered` is ONE-WAY. Once an operation is known it stays known, even if
+## the state that revealed it goes away — learning that Pherris can work the
+## board is something the player found out, not a buff they are holding.
+## `adapters` is empty until FS-001.7 registers one.
+var crew_operation_state: Dictionary = {"discovered": [], "adapters": {}}
 
 func crew_member_by_id(id: String) -> Dictionary:
 	for c in crew_roster:

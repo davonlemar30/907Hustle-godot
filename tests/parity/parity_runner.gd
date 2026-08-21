@@ -14,9 +14,12 @@ extends Node
 ##   hashes   — string_hash + both normalisations (unit, unit10k)
 ##   seeds    — normalize_seed coercion table
 ##   streams  — xorshift32 draw sequences (values AND the state cursor per draw)
-##   market   — canon market-walk fixtures: PENDING until the part-2 economy
-##              port; counted and reported, not compared, so the fixture format
-##              is locked in now without failing a build on a known gap
+##   market   — ENFORCED since the part-2 economy port: the hand-copied
+##              bias/availability/volatility tables must equal the oracle's
+##              (data parity), the lifecycle walks must replay identically
+##              through economy.gd's own walk statics (formula parity), and
+##              GameState.init_markets() must reproduce createRun's actual
+##              opening market and cursor byte-for-byte (end-to-end parity)
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -39,7 +42,9 @@ func _ready() -> void:
 		_check_hashes(fixtures.get("hashes", []))
 		_check_seeds(fixtures.get("seeds", []))
 		_check_streams(fixtures.get("streams", []))
-		_report_market_pending(fixtures.get("market_walks", []))
+		_check_market_static(fixtures.get("market_static", {}))
+		_check_market_walks(fixtures.get("market_walks", []))
+		_check_initial_markets(fixtures.get("initial_markets", []))
 		_check_save_roundtrip()
 	_finish()
 
@@ -93,11 +98,91 @@ func _check_streams(rows: Array) -> void:
 			_expect_int(label + " state", stream.state, int(draw["state"]))
 			draw_index += 1
 
-func _report_market_pending(walks: Array) -> void:
-	var frames := 0
+## Data parity: the tables the walk runs on. A transcription typo in the
+## hand-copied bias/availability/volatility numbers would corrupt every price
+## while the formula stayed provably correct — so the tables are checked
+## against what the oracle actually carries.
+func _check_market_static(static_data: Dictionary) -> void:
+	var gs := get_node("/root/GameState")
+	for row in static_data.get("products", []):
+		var prod: Dictionary = gs.product_by_id(str(row["id"]))
+		var label := "static product %s" % str(row["id"])
+		_expect_int(label + " base", int(prod.get("base", -1)), int(row["base"]))
+		_expect_int(label + " min", int(prod.get("min", -1)), int(row["min"]))
+		_expect_int(label + " max", int(prod.get("max", -1)), int(row["max"]))
+		_expect_float(label + " volatility", float(prod.get("volatility", -1.0)), float(row["volatility"]))
+	for row in static_data.get("areas", []):
+		var d: Dictionary = gs.district_by_id(str(row["id"]))
+		var label := "static area %s" % str(row["id"])
+		_expect_str(label + " role", str(d.get("market_role", "")), str(row["role"]))
+		var bias: Dictionary = row["bias"]
+		for pid in bias.keys():
+			_expect_float(label + " bias." + str(pid),
+				float(d.get("bias", {}).get(pid, -1.0)), float(bias[pid]))
+		var avail: Dictionary = row["availability"]
+		for pid in avail.keys():
+			_expect_float(label + " availability." + str(pid),
+				float(d.get("availability", {}).get(pid, -1.0)), float(avail[pid]))
+
+## Formula parity: replay each recorded lifecycle (one initial frame + N
+## nightly evolve frames on one stream) through economy.gd's own walk statics.
+func _check_market_walks(walks: Array) -> void:
+	var gs := get_node("/root/GameState")
+	var rng := get_node("/root/RngManager")
+	var economy_script := preload("res://systems/economy.gd")
 	for walk in walks:
-		frames += (walk.get("steps", []) as Array).size()
-	print("parity: market walk fixtures present (%d walks, %d frames) — PENDING the part-2 economy port, not compared" % [walks.size(), frames])
+		var seed_label: String = str(walk["seed"])
+		var stream = rng.make_stream(walk["seed"])
+		var local_markets: Dictionary = {}
+		var frame_index := 0
+		for frame in walk["frames"]:
+			var kind: String = str(frame["kind"])
+			for d in gs.districts:
+				var area_id: String = str(d["id"])
+				if kind == "initial":
+					local_markets[area_id] = economy_script.walk_initial_area(d, gs.products, stream)
+				else:
+					economy_script.walk_evolve_area(d, gs.products, local_markets[area_id], stream)
+				var want: Dictionary = frame["areas"][area_id]
+				var label := "walk(%s) frame %d %s %s" % [seed_label, frame_index, kind, area_id]
+				for pid in want["prices"].keys():
+					_expect_int(label + " price." + str(pid),
+						int(local_markets[area_id]["prices"][pid]), int(want["prices"][pid]))
+					_expect_int(label + " avail." + str(pid),
+						int(local_markets[area_id]["availability"][pid]), int(want["availability"][pid]))
+			_expect_int("walk(%s) frame %d cursor" % [seed_label, frame_index],
+				stream.state, int(frame["state"]))
+			frame_index += 1
+
+## End-to-end parity, pure oracle: GameState.init_markets() against the
+## recorded output of the web build's createRun for the same seed — every
+## price, every availability, and the stream cursor left behind.
+func _check_initial_markets(rows: Array) -> void:
+	var gs := get_node("/root/GameState")
+	var original_seed: String = gs.run_seed
+	for row in rows:
+		var seed_value: Variant = row["seed"]
+		# JSON numbers arrive as float; a whole float renders "907.0", which
+		# normalizes identically but reads badly — use the int form.
+		if seed_value is float and seed_value == floorf(seed_value):
+			gs.run_seed = str(int(seed_value))
+		else:
+			gs.run_seed = str(seed_value)
+		gs.init_markets()
+		var label := "createRun(%s)" % gs.run_seed
+		for area_id in row["areas"].keys():
+			var want: Dictionary = row["areas"][area_id]
+			var got: Dictionary = gs.markets.get(str(area_id), {})
+			if got.is_empty():
+				_fail(label, "no market for area %s" % str(area_id))
+				continue
+			for pid in want["prices"].keys():
+				_expect_int("%s %s price.%s" % [label, str(area_id), str(pid)],
+					int(got["prices"][pid]), int(want["prices"][pid]))
+				_expect_int("%s %s avail.%s" % [label, str(area_id), str(pid)],
+					int(got["availability"][pid]), int(want["availability"][pid]))
+		_expect_int(label + " rng_state", gs.rng_state, int(row["rng_state"]))
+	gs.run_seed = original_seed
 
 ## The Phase 4 acceptance test, automated. Mirrors the manual verification the
 ## save/load PR shipped with: real dispatches, exposure + curtis + crew +
@@ -157,6 +242,8 @@ func _check_save_roundtrip() -> void:
 	gs.job_records = {}
 	gs.curtis_awareness = 0
 	gs.curtis_phase = "invisible"
+	gs.markets = {}
+	gs.rng_state = 0
 
 	_expect_true("load_run", saves.load_run())
 	var after: Dictionary = saves.capture()

@@ -47,6 +47,9 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 	# system rather than reimplemented so the day-cross and the market evolve
 	# stay in one place.
 	time_system.handle("advance_time", {})
+	# The district changed, so the price mirror the screens bind must now show
+	# THIS district's market. (The advance only re-walks prices on a day-cross.)
+	preload("res://systems/economy.gd").sync_display_prices(gs)
 
 	# Watchers appear during ordinary movement, never during the crime itself.
 	var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")

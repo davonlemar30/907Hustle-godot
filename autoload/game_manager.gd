@@ -45,8 +45,15 @@ func _ready() -> void:
 	phone.setup(_gs, rng)
 	register_system("phone", phone)
 
+	# The night sequence, constructed before time because time delegates to it.
+	# It reaches its settlers through `system()` at call time rather than by
+	# construction order, so it does not care that most of them are built below.
+	var day_lifecycle = preload("res://systems/day_lifecycle.gd").new()
+	day_lifecycle.setup(_gs, self, economy)
+	register_system("day_lifecycle", day_lifecycle)
+
 	var time = preload("res://systems/time_system.gd").new()
-	time.setup(_gs, economy, phone)
+	time.setup(_gs, economy, phone, day_lifecycle)
 	register_system("time", time)
 
 	var recovery = preload("res://systems/recovery.gd").new()

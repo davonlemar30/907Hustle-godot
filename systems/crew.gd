@@ -33,7 +33,7 @@ var gs: Node
 
 func setup(game_state: Node) -> void:
 	gs = game_state
-	gs.day_crossed.connect(_on_day_crossed)
+	# Driven by DayLifecycle in declared order. See systems/day_lifecycle.gd.
 
 
 ## The exposure layer, or null before it exists. Every system reaches it the
@@ -255,9 +255,26 @@ func has_field_crew() -> bool:
 
 # --- the nightly wage clock ------------------------------------------------
 
-func _on_day_crossed() -> void:
+## The nightly wage clock, settled FIRST in the declared order: canon settles
+## wages before anything reads whether they were paid, and an unpaid crew is
+## worth less power — which territory income is computed off.
+##
+## **`settling_day` is `ended_day + 1`, and that is deliberate.**
+##
+## Canon's `resolveCrewTracks` runs above the increment and sees the ending day.
+## This port has always run it below, seeing the NEW day, and the wage sentinel
+## it stamps persists in saves and is read by `payroll_not_delinquent`. Moving
+## it now would shift when wages bite by a day and change an eligibility gate
+## that is already shipped.
+##
+## So the arithmetic is explicit rather than positional: the behaviour is
+## byte-identical to before this refactor, and the divergence from canon is
+## named here rather than hidden in signal ordering. Correcting it is a timing
+## change and belongs in its own slice.
+func settle_night(ended_day: int) -> void:
 	if gs.game_over:
 		return
+	var settling_day: int = ended_day + 1
 	for person in gs.crew_roster:
 		var id: String = str(person["id"])
 		if not gs.is_recruited(id):
@@ -267,8 +284,8 @@ func _on_day_crossed() -> void:
 		rec["wage_due"] = int(rec.get("wage_due", 0)) + wage
 
 		if int(rec.get("wage_missed_since", -1)) < 0:
-			rec["wage_missed_since"] = gs.day
-		var missed_for: int = gs.day - int(rec["wage_missed_since"])
+			rec["wage_missed_since"] = settling_day
+		var missed_for: int = settling_day - int(rec["wage_missed_since"])
 		var first_name: String = str(person["name"]).split(" ")[0]
 		if missed_for >= gs.CREW_WAGE_GRACE_DAYS:
 			rec["loyalty"] = clampi(int(rec["loyalty"]) - 1, gs.CREW_LOYALTY_MIN, gs.CREW_LOYALTY_MAX)

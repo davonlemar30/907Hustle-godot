@@ -87,6 +87,7 @@ systems/              # the ONLY writers of GameState
   boost.gd            # lifting, the technique ladder, the fence
   crew.gd             # roster, loyalty, ranks, the nightly wage clock
   crew_operations.gd  # delegation lifecycle — discovery, assignment, settlement
+  day_lifecycle.gd    # the night sequence, in declared order rather than by accident
   list_adapter.gd     # Pherris running the board: what she buys, and why she stops
   requirements.gd     # pure eligibility evaluator — structured blockers, no state
   territory.gd        # corners, soldiers, passive income
@@ -135,6 +136,11 @@ tests/parity/         # CI gate: replays recorded oracle fixtures through the
   are identical. What does *not* transfer is the player's own experience of the
   trade: no slot, no Intelligence, no progress toward Broker standing. Without
   that line a crew member would be strictly better than doing the work yourself.
+- **The night runs in a declared order.** `day_lifecycle.gd` owns the whole
+  transition — settle against the ending day, move the clock, walk the market,
+  start the new one — as a list a test reads, not as five `day_crossed.connect()`
+  calls whose order is a side effect of construction. Reordering a phase is now
+  a deliberate edit that breaks an ordering test.
 - **The day ends before the clock moves.** `day_ending(ended_day)` fires while
   the clock still reads the day that is finishing; `day_crossed` fires after the
   increment. Canon's `confirmDayEnd` has the same shape, and its comment on

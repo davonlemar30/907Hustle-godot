@@ -63,7 +63,7 @@ func setup(game_state: Node, rng_manager: Node, manager: Node,
 	rng = rng_manager
 	gm = manager
 	attributes = attribute_system
-	gs.day_crossed.connect(_on_day_crossed)
+	# Driven by DayLifecycle in declared order. See systems/day_lifecycle.gd.
 
 func _exposure() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
@@ -201,13 +201,21 @@ func _resolve_defaulted(loan_id: int, how: String) -> Dictionary:
 			gs.log_activity("Collected $%d from %s the hard way. Heat +%.1f." % [int(loan["amount"]), str(b["name"]), 2.0 * mult], RED)
 	return {"ok": true, "interest": interest}
 
-func _on_day_crossed() -> void:
+## Notes that have come due.
+##
+## **`settling_day` is `ended_day + 1` for the same reason crew's is** — canon's
+## `resolveSharkLoans` runs above the increment and compares the ending day, this
+## port has always compared the new one, and shifting it would move when every
+## note in a live save comes due. Named here, preserved exactly, filed for its
+## own slice. See systems/day_lifecycle.gd.
+func settle_night(ended_day: int) -> void:
 	if gs.game_over:
 		return
+	var settling_day: int = ended_day + 1
 	for loan in gs.shark_loans:
 		if not str(loan["status"]) in ["active", "extended"]:
 			continue
-		if gs.day < int(loan["due_day"]):
+		if settling_day < int(loan["due_day"]):
 			continue
 		var b: Dictionary = gs.borrower_by_id(str(loan["borrower_id"]))
 		# Canon keys this on seed:shark:loanId:dueDay and normalises with

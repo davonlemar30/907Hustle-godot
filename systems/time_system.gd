@@ -17,11 +17,16 @@ const SLOTS := ["MORNING", "AFTERNOON", "EVENING", "NIGHT"]
 var gs: Node
 var economy: RefCounted
 var phone: RefCounted
+## Owns the whole night sequence. This system owns the CLOCK; what happens when
+## it rolls past NIGHT is a separate contract with a declared order.
+var day_lifecycle: RefCounted
 
-func setup(game_state: Node, economy_system: RefCounted, phone_system: RefCounted) -> void:
+func setup(game_state: Node, economy_system: RefCounted, phone_system: RefCounted,
+		lifecycle: RefCounted) -> void:
 	gs = game_state
 	economy = economy_system
 	phone = phone_system
+	day_lifecycle = lifecycle
 
 func can_handle(action: String) -> bool:
 	return action == "advance_time"
@@ -34,18 +39,11 @@ func handle(action: String, _payload: Dictionary) -> Dictionary:
 	var previous_absolute: int = phone.now_slot_number()
 	var next: int = gs.time_slots_today + 1
 	if next >= SLOTS.size():
-		# Night settlement first, while the clock still reads the day that is
-		# finishing. Canon's confirmDayEnd does all of its settling above the
-		# `run.day = oldDay + 1` line for the same reason; anything that needs
-		# the ending day gets it as a parameter rather than by subtracting one.
-		gs.day_ending.emit(gs.day)
-		gs.day += 1
-		gs.time_slots_today = 0
-		gs.time_slot = SLOTS[0]
-		# Canon order: the settlement systems hang off day_crossed and the
-		# market walk is part of the same overnight settlement.
-		gs.day_crossed.emit()
-		economy.evolve()
+		# The whole night, in one declared sequence: settle against the ending
+		# day, move the clock, walk the market, start the new day. The order
+		# lives in day_lifecycle.gd where it can be read and tested, rather than
+		# here as a run of statements that happen to be in the right order.
+		day_lifecycle.run_night_transition(gs.day)
 	else:
 		gs.time_slots_today = next
 		gs.time_slot = SLOTS[next]

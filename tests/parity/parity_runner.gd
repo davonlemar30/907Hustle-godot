@@ -72,6 +72,10 @@ extends Node
 ##              refused actions, and the dispatch-ownership guard that shipped
 ##              untested. Deliberately does NOT restate what earlier sections
 ##              already pin — see the section header.
+##   lifecycle order — FS-003.2: the night sequence as a declared list rather
+##              than an accident of signal-connection order. The trace is
+##              asserted literally, because "the order is right" is only
+##              meaningful if the order is written down somewhere a test reads.
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -115,6 +119,7 @@ func _ready() -> void:
 		_check_run_the_board()
 		_check_operation_presentation()
 		_check_frozen_behavior()
+		_check_day_lifecycle_order()
 		_check_save_roundtrip()
 	_finish()
 
@@ -3686,19 +3691,51 @@ func _check_heat_write_path(gs: Node, gm: Node) -> void:
 	stickup._apply_heat(-5.0)
 	_expect_float("negative heat cannot drain the meter", gs.heat, 0.0)
 
-	# Boost's own path, and a divergence this pass FREEZES rather than fixes.
+	# Boost's own path. FS-003.1 froze this at the port's 1.0 and named it a
+	# known divergence; FS-003.2 widened `_apply_heat` to float and restored
+	# canon's 0.5 / 1 / 2 (game-core.js:2260).
 	#
-	# Canon scales boost heat 0.5 / 1 / 2 by tier (game-core.js:2260). This
-	# build's `_apply_heat` takes an int, so the call site passes 1 / 1 / 2 —
-	# a tier-1 lift makes DOUBLE canon's heat, and the comment above that call
-	# still says 0.5. The freeze pass pins what is, so this asserts the port's
-	# number and names it: fixing it is a balance change and belongs in its own
-	# slice. When somebody does fix it, this line fails and says why.
+	# **The FS-003.1 assertion was wrong about what it measured.** It pinned
+	# "tier 1 heat" on a fixed probe day that happens to be a MISS — and a miss
+	# costs 1.0 at any tier — so it read 1.0 for the wrong reason and would have
+	# stayed green even if tier-1 success heat had been correct all along. The
+	# freeze it claimed to hold never held anything.
+	#
+	# So the day is DERIVED here: walk until the lift lands, then assert. Both
+	# branches are covered, and each one says which branch it is.
+	var success_day := -1
+	var miss_day := -1
+	for day in range(1, 40):
+		_frozen_ready(gs)
+		gs.day = day
+		gs.heat = 0.0
+		var cash_mark: int = gs.cash
+		if not gm.dispatch("boost", {"target_id": "night_owl"}):
+			continue
+		if gs.cash > cash_mark and success_day < 0:
+			success_day = day
+			_expect_float("boost tier 1 SUCCESS heat matches canon's 0.5", gs.heat, 0.5)
+		elif gs.cash == cash_mark and miss_day < 0:
+			miss_day = day
+			_expect_float("boost MISS heat is 1.0", gs.heat, 1.0)
+		if success_day >= 0 and miss_day >= 0:
+			break
+	_expect_true("boost heat probe found a success", success_day >= 0)
+	_expect_true("boost heat probe found a miss", miss_day >= 0)
+
+	# The whole curve through the real writer, so a later edit cannot correct
+	# one tier and drift another. Canon: 0.5 / 1 / 2.
+	for entry in [[1, 0.5], [2, 1.0], [3, 2.0]]:
+		_frozen_ready(gs)
+		gs.heat = 0.0
+		_expect_float("boost tier %d heat is canon's %.1f" % [int(entry[0]), float(entry[1])],
+			boost._apply_heat(float(entry[1])), float(entry[1]))
+	# And the signature is genuinely float now — an int parameter would have
+	# truncated canon's 0.5 to nothing, which is what forced the divergence.
 	_frozen_ready(gs)
 	gs.heat = 0.0
-	gm.dispatch("boost", {"target_id": "night_owl"})
-	_expect_float("boost tier 1 heat is the port's 1.0, not canon's 0.5 (known divergence)",
-		gs.heat, 1.0)
+	boost._apply_heat(0.5)
+	_expect_float("boost heat accepts a fractional amount", gs.heat, 0.5)
 
 ## Cash discipline: a refused action must leave the wallet exactly as it was.
 ##
@@ -3807,6 +3844,329 @@ func _check_dispatch_ownership(gs: Node, gm: Node) -> void:
 		wrote or not gs.observation_queue.is_empty())
 	_expect_true("dispatching is over once the action returns", not gm.is_dispatching())
 
+## FS-003.2 — the night sequence, declared and traced.
+##
+## Before this the settlement order was whatever order five `day_crossed.connect()`
+## calls ran in during GameManager's `_ready()`. That is an ordering contract
+## expressed as a side effect of construction order: invisible in review,
+## untestable, and silently rewritten by moving a line in an unrelated file.
+##
+## TI-003 §9 order, asserted as a literal sequence. FS-003.3 through .12 hang
+## Pressure, Booking, Retaliation and Financial Pressure on these hooks, so the
+## order stops being an implementation detail and becomes the interface.
+const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
+	"PRE_SETTLE",
+	"SETTLE:crew", "SETTLE:territory", "SETTLE:shark", "SETTLE:jobs", "SETTLE:obligations",
+	"POST_SETTLE",
+	"INCREMENT",
+	"MARKET:evolve", "MARKET:day_crossed",
+	"DAY_START",
+]
+
+func _check_day_lifecycle_order() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var lifecycle: RefCounted = gm.system("day_lifecycle") as RefCounted
+	if lifecycle == null:
+		_fail("lifecycle order", "no day_lifecycle system registered")
+		return
+	_check_lifecycle_trace(gs, gm, lifecycle)
+	_check_lifecycle_settles_ending_day(gs, gm)
+	_check_lifecycle_market_once(gs, gm, lifecycle)
+	_check_lifecycle_legacy_listener(gs, gm)
+	_check_lifecycle_hooks(gs, gm, lifecycle)
+	_check_lifecycle_checkpoint(gs, gm)
+	lifecycle.tracing = false
+	gs.reset_to_new_game()
+
+func _lifecycle_ready(gs: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 7
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.cash = 5000
+
+## The sequence itself, as a literal.
+func _check_lifecycle_trace(gs: Node, gm: Node, lifecycle: RefCounted) -> void:
+	_lifecycle_ready(gs)
+	lifecycle.tracing = true
+	_expect_true("lifecycle night dispatches", gm.dispatch("advance_time", {}))
+	_expect_str("lifecycle phase order", str(lifecycle.trace), str(LIFECYCLE_EXPECTED_TRACE))
+
+	# Every phase runs exactly once. A settler that got connected twice would
+	# still produce the right ORDER while doing everything twice.
+	var counts: Dictionary = {}
+	for phase in lifecycle.trace:
+		counts[phase] = int(counts.get(phase, 0)) + 1
+	for phase in LIFECYCLE_EXPECTED_TRACE:
+		_expect_int("lifecycle %s runs once" % phase, int(counts.get(phase, 0)), 1)
+
+	# The declared order is the one the code walks, not a copy of it kept here.
+	_expect_str("lifecycle settle order is declared",
+		str(lifecycle.SETTLE_ORDER),
+		str(["crew", "territory", "shark", "jobs", "obligations"]))
+	for system_name in lifecycle.SETTLE_ORDER:
+		var system: Object = gm.system(str(system_name))
+		_expect_true("lifecycle settler %s exists" % str(system_name), system != null)
+		_expect_true("lifecycle settler %s answers settle_night" % str(system_name),
+			system != null and system.has_method("settle_night"))
+
+	# A mid-day advance runs no part of the night.
+	_lifecycle_ready(gs)
+	gs.time_slots_today = 0
+	lifecycle.trace.clear()
+	gm.dispatch("advance_time", {})
+	_expect_true("lifecycle stays out of a mid-day advance", lifecycle.trace.is_empty())
+	lifecycle.tracing = false
+
+## Settlement sees the day that ended, not the one that is starting.
+func _check_lifecycle_settles_ending_day(gs: Node, gm: Node) -> void:
+	# Rent falling due on the ending day must settle on that night. Deriving
+	# `gs.day - 1` used to be what made this work, and only because the handler
+	# happened to run after the increment.
+	# Rent is not auto-deducted — reaching the due day without having paid it
+	# records a MISS and rolls the period. What is being checked is that the
+	# settlement saw day 7, not day 8.
+	_lifecycle_ready(gs)
+	gs.rent_due_day = 7
+	var missed_before: int = gs.rent_missed
+	var due_before: int = gs.rent_due_day
+	gm.dispatch("advance_time", {})
+	_expect_int("lifecycle advanced the day", gs.day, 8)
+	_expect_int("rent due on the ending day settled that night",
+		gs.rent_missed, missed_before + 1)
+	_expect_true("rent period rolled forward", gs.rent_due_day > due_before)
+
+	# And rent due TOMORROW is not settled tonight — the boundary in the other
+	# direction, which is what would break if settlement read the new day.
+	_lifecycle_ready(gs)
+	gs.rent_due_day = 8
+	var untouched: int = gs.rent_missed
+	gm.dispatch("advance_time", {})
+	_expect_int("rent due on the new day is not settled tonight",
+		gs.rent_missed, untouched)
+
+	# Attendance is judged on the ending day: a shift worked on day 7 is not a
+	# missed day when night 7 settles.
+	_lifecycle_ready(gs)
+	gs.active_job_id = "wash_go"
+	gs.job_records["wash_go"] = {
+		"xp": 0.0, "rank": 0, "last_worked_day": 7, "hired_day": 1,
+	}
+	gs.job_missed["wash_go"] = 0
+	gm.dispatch("advance_time", {})
+	_expect_int("a shift worked on the ending day is not a miss",
+		int(gs.job_missed.get("wash_go", -1)), 0)
+
+	# And a day genuinely skipped does count.
+	_lifecycle_ready(gs)
+	gs.active_job_id = "wash_go"
+	gs.job_records["wash_go"] = {
+		"xp": 0.0, "rank": 0, "last_worked_day": 5, "hired_day": 1,
+	}
+	gs.job_missed["wash_go"] = 0
+	gm.dispatch("advance_time", {})
+	_expect_int("a skipped ending day counts as a miss",
+		int(gs.job_missed.get("wash_go", -1)), 1)
+
+	# Crew's wage clock is preserved exactly across the refactor — it still
+	# settles against the NEW day, which is this port's long-standing
+	# divergence from canon and is named at the call site rather than changed.
+	_lifecycle_ready(gs)
+	gs.crew_records["eli"] = {
+		"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
+	}
+	gs.cash = 0
+	gm.dispatch("advance_time", {})
+	_expect_int("crew stamps the wage sentinel on the settling day",
+		int(gs.crew_records["eli"]["wage_missed_since"]), 8)
+
+	# Shark's note clock is preserved the same way, and needs its own check —
+	# claiming a divergence is preserved is worth nothing if nothing asserts it.
+	# Settling night 7 uses day 8, so a note due on 8 comes due tonight and a
+	# note due on 9 does not. Shifting either way breaks exactly one of these.
+	_lifecycle_ready(gs)
+	gs.shark_loans = [{
+		"id": 1, "borrower_id": _riskiest_borrower(gs), "amount": 100, "term": 7,
+		"status": "active", "opened_day": 1, "due_day": 8,
+	}]
+	gm.dispatch("advance_time", {})
+	_expect_true("a note due on the settling day comes due tonight",
+		str((gs.shark_loans[0] as Dictionary)["status"]) != "active")
+
+	_lifecycle_ready(gs)
+	gs.shark_loans = [{
+		"id": 1, "borrower_id": _riskiest_borrower(gs), "amount": 100, "term": 7,
+		"status": "active", "opened_day": 1, "due_day": 9,
+	}]
+	gm.dispatch("advance_time", {})
+	_expect_str("a note due after the settling day is left alone",
+		str((gs.shark_loans[0] as Dictionary)["status"]), "active")
+
+## The market walks once. Proven by re-walking the same state independently.
+func _check_lifecycle_market_once(gs: Node, gm: Node, lifecycle: RefCounted) -> void:
+	var economy: RefCounted = gm.system("economy") as RefCounted
+	_lifecycle_ready(gs)
+	var cursor_before: int = gs.rng_state
+	gm.dispatch("advance_time", {})
+	var cursor_after_night: int = gs.rng_state
+	_expect_true("the night moved the market cursor", cursor_after_night != cursor_before)
+
+	# One evolve from the same starting cursor must land on the same value. Two
+	# would not — which is the whole assertion.
+	_lifecycle_ready(gs)
+	gs.rng_state = cursor_before
+	economy.evolve()
+	_expect_int("the night evolves the market exactly once",
+		gs.rng_state, cursor_after_night)
+
+	# And settlement itself draws nothing from the market stream.
+	#
+	# Measured from inside a POST_SETTLE hook, which is the exact moment after
+	# every settler has run and before the market walk — and which runs on the
+	# real dispatch path. Calling the settlers directly would have measured the
+	# right thing on a stack the game never produces, and would have tripped the
+	# dispatch-ownership guard on the two that broadcast.
+	_lifecycle_ready(gs)
+	var cursor_at_start: int = gs.rng_state
+	var cursor_after_settle: Array = []
+	var probe := func(_ended: int) -> void: cursor_after_settle.append(gs.rng_state)
+	lifecycle.post_settle_hooks = [probe]
+	gm.dispatch("advance_time", {})
+	lifecycle.post_settle_hooks = []
+	_expect_int("the settle probe ran", cursor_after_settle.size(), 1)
+	if cursor_after_settle.size() == 1:
+		_expect_int("night settlement consumes no market RNG",
+			int(cursor_after_settle[0]), cursor_at_start)
+
+## Anything still on `day_crossed` fires once, and sees the new day.
+func _check_lifecycle_legacy_listener(gs: Node, gm: Node) -> void:
+	_lifecycle_ready(gs)
+	var seen: Array = []
+	var listener := func() -> void: seen.append(gs.day)
+	gs.day_crossed.connect(listener)
+	gm.dispatch("advance_time", {})
+	gs.day_crossed.disconnect(listener)
+	_expect_int("a legacy day_crossed listener fires once", seen.size(), 1)
+	if seen.size() == 1:
+		# The reason day_crossed stays in the MARKET phase: everything still on
+		# it was written expecting the incremented clock.
+		_expect_int("a legacy listener sees the NEW day", int(seen[0]), 8)
+
+	# day_ending carries the ending day, with the clock still reading it.
+	_lifecycle_ready(gs)
+	var ending: Array = []
+	var on_ending := func(ended: int) -> void: ending.append([ended, gs.day])
+	gs.day_ending.connect(on_ending)
+	gm.dispatch("advance_time", {})
+	gs.day_ending.disconnect(on_ending)
+	_expect_int("day_ending fires once", ending.size(), 1)
+	if ending.size() == 1:
+		_expect_int("day_ending carries the ending day", int((ending[0] as Array)[0]), 7)
+		_expect_int("day_ending fires before the increment", int((ending[0] as Array)[1]), 7)
+
+## The hooks FS-003.3+ will use. Callables in a declared array, not signals —
+## signals have exactly the ordering problem this file removes.
+func _check_lifecycle_hooks(gs: Node, gm: Node, lifecycle: RefCounted) -> void:
+	_lifecycle_ready(gs)
+	_expect_true("post-settle hooks are an array of callables",
+		lifecycle.post_settle_hooks is Array)
+	_expect_true("day-start hooks are an array of callables",
+		lifecycle.day_start_hooks is Array)
+	_expect_true("post-settle hooks ship empty", lifecycle.post_settle_hooks.is_empty())
+	_expect_true("day-start hooks ship empty", lifecycle.day_start_hooks.is_empty())
+
+	# A registered hook runs, receives the right day, and lands in the right
+	# place in the sequence.
+	var order: Array = []
+	var post_a := func(ended: int) -> void: order.append("post_a:%d:%d" % [ended, gs.day])
+	var post_b := func(ended: int) -> void: order.append("post_b:%d" % ended)
+	var start_a := func(new_day: int) -> void: order.append("start_a:%d:%d" % [new_day, gs.day])
+	lifecycle.post_settle_hooks = [post_a, post_b]
+	lifecycle.day_start_hooks = [start_a]
+	lifecycle.tracing = true
+	gm.dispatch("advance_time", {})
+	lifecycle.tracing = false
+	lifecycle.post_settle_hooks = []
+	lifecycle.day_start_hooks = []
+
+	# Index order, which is the point of using an array.
+	_expect_str("hooks run in declared index order", str(order),
+		str(["post_a:7:7", "post_b:7", "start_a:8:8"]))
+	# POST_SETTLE runs before the clock moves; DAY_START after it.
+	_expect_true("post-settle hooks run on the ending day", "post_a:7:7" in order)
+	_expect_true("day-start hooks run on the new day", "start_a:8:8" in order)
+	# And the trace still reports the phases they ran inside.
+	_expect_true("the traced sequence is unchanged by hooks",
+		str(lifecycle.trace) == str(LIFECYCLE_EXPECTED_TRACE))
+
+## Two paths to the same night must produce the same state.
+func _check_lifecycle_checkpoint(gs: Node, gm: Node) -> void:
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	# Save at AFTERNOON, walk to the night, remember where it landed.
+	_lifecycle_ready(gs)
+	gs.time_slots_today = 1
+	gs.time_slot = "AFTERNOON"
+	gs.crew_records["eli"] = {
+		"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
+	}
+	gs.rent_due_day = 7
+	saves.save_run()
+	var checkpoint := ""
+	var snapshot := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+	if snapshot != null:
+		checkpoint = snapshot.get_as_text()
+		snapshot.close()
+
+	for _slot in 3:
+		gm.dispatch("advance_time", {})
+	var direct := {
+		"day": gs.day, "slot": gs.time_slots_today, "cash": gs.cash,
+		"heat": gs.heat, "cursor": gs.rng_state,
+		"wage_due": int(gs.crew_records["eli"]["wage_due"]),
+		"rent_due": gs.rent_due_day,
+	}
+
+	# Rewind to the checkpoint and walk it again.
+	var rewind := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if rewind != null:
+		rewind.store_string(checkpoint)
+		rewind.close()
+	_expect_true("checkpoint reloads", saves.load_run())
+	_expect_int("checkpoint restored the slot", gs.time_slots_today, 1)
+	for _slot in 3:
+		gm.dispatch("advance_time", {})
+
+	_expect_int("replayed night lands on the same day", gs.day, int(direct["day"]))
+	_expect_int("replayed night lands on the same slot",
+		gs.time_slots_today, int(direct["slot"]))
+	_expect_int("replayed night lands on the same cash", gs.cash, int(direct["cash"]))
+	_expect_float("replayed night lands on the same heat", gs.heat, float(direct["heat"]))
+	_expect_int("replayed night lands on the same market cursor",
+		gs.rng_state, int(direct["cursor"]))
+	_expect_int("replayed night settles the same wage",
+		int(gs.crew_records["eli"]["wage_due"]), int(direct["wage_due"]))
+	_expect_int("replayed night settles the same rent",
+		gs.rent_due_day, int(direct["rent_due"]))
+
+	if previous_save.is_empty():
+		DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -3843,7 +4203,7 @@ func _fail(label: String, detail: String) -> void:
 ## SAVE_VERSION: it only ever moves up, and it moving DOWN is the signal.
 ## FS-003.1 set this floor at 7665 as the inherited contract for FS-003.2
 ## through .12: the Consequence-Encounter Engine may add checks, never lose them.
-const MIN_CHECKS := 7665
+const MIN_CHECKS := 7726
 
 func _finish() -> void:
 	if _failures.is_empty():

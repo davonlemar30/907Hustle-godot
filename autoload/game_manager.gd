@@ -88,6 +88,12 @@ func _ready() -> void:
 	crew.setup(_gs)
 	register_system("crew", crew)
 
+	# Crew Operations sits between crew and territory: it reads crew records and
+	# the requirement evaluator, and nothing reads it yet.
+	var crew_operations = preload("res://systems/crew_operations.gd").new()
+	crew_operations.setup(_gs, self, requirements)
+	register_system("crew_operations", crew_operations)
+
 	var territory = preload("res://systems/territory.gd").new()
 	territory.setup(_gs, self)
 	register_system("territory", territory)
@@ -110,6 +116,16 @@ func dispatch(action: String, payload: Dictionary = {}) -> bool:
 		if sys.can_handle(action):
 			var result: Dictionary = sys.handle(action, payload)
 			if result.get("ok", false):
+				# Discovery first: an action may have just qualified an operation
+				# (a tenth clean flip reaching Broker tier, a wage paid), and the
+				# player should see it on the same refresh that caused it.
+				#
+				# This writes state directly and dispatches nothing — a nested
+				# dispatch here would fire a second notify_changed() inside this
+				# one's stack, and the reactive contract is one refresh per action.
+				var crew_ops: Object = system("crew_operations")
+				if crew_ops != null:
+					crew_ops.reconcile()
 				# Persistent latches must settle before state_changed. SaveSystem
 				# autosaves from that signal, before a screen gets to refresh.
 				_gs.reconcile_persistent_invariants()

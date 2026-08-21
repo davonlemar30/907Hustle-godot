@@ -34,6 +34,11 @@ func handle(action: String, _payload: Dictionary) -> Dictionary:
 	var previous_absolute: int = phone.now_slot_number()
 	var next: int = gs.time_slots_today + 1
 	if next >= SLOTS.size():
+		# Night settlement first, while the clock still reads the day that is
+		# finishing. Canon's confirmDayEnd does all of its settling above the
+		# `run.day = oldDay + 1` line for the same reason; anything that needs
+		# the ending day gets it as a parameter rather than by subtracting one.
+		gs.day_ending.emit(gs.day)
 		gs.day += 1
 		gs.time_slots_today = 0
 		gs.time_slot = SLOTS[0]

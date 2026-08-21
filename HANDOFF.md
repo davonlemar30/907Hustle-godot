@@ -524,6 +524,129 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-001.6: the day that ends before the clock moves  (added 2026-08-21)
+
+The delegation lifecycle, with no delegation in it yet. A `day_ending` signal, a
+coordinator that owns discovery / assignment / settlement, and nothing that
+knows what any operation actually does. **Parity 7121 → 7211 checks, 0 failures.
+Save schema v6 → v7.**
+
+### Two signals, because the port already has listeners written against each
+
+`day_ending(ended_day)` fires while the clock still reads the day that is
+finishing. `day_crossed` fires after the increment and keeps its existing
+meaning — listeners still see the NEW day.
+
+This is canon's shape, not an invention. `confirmDayEnd` (game-core.js:6601)
+does every piece of night settlement above the `run.day = oldDay + 1` line, and
+canon's own comment on `applyAttendance(state, oldDay)` says why the day is a
+parameter rather than a read:
+
+> *so the rung does not depend on sitting above the `run.day = oldDay + 1` line
+> further down.*
+
+The port had already discovered this the hard way: `jobs.gd` and
+`obligations.gd` both derive `gs.day - 1` today because `day_crossed` fires on
+the wrong side of the increment for what they need. Rather than re-time
+`day_crossed` and break both, `day_ending` is added beside it. New settlement
+gets the ending day handed to it; nothing existing moves.
+
+**The ordering is recorded, not trusted.** A probe subscribes to both signals
+and writes down what the clock read at each, so the assertion is about observed
+behaviour rather than about reading the source and agreeing with it.
+
+### What the coordinator refuses to know
+
+`crew_operations.gd` knows which operations exist, whether they are discovered,
+whether one can be assigned and why not, who is booked today, and when to hand a
+pending claim to whoever owns its domain.
+
+It does not know what running the board means, what it buys, what it costs, or
+how it decides to stop. **The moment a `if operation_id == "907list_run_board"`
+appears in that file, the substrate has stopped being one.**
+
+### Discovery is one-way; assignment is not
+
+Two requirement lists, not one, because they answer different questions.
+
+`907list_run_board` becomes DISCOVERED at Broker tier with Pherris active and
+loyal — and stays discovered when her loyalty slips. You learned she can do this.
+What you lose is the ability to ASSIGN it, which is evaluated separately.
+Collapsing the two would make forgetting a capability the punishment for a bad
+week.
+
+Assignment order is the authored priority of the blockers: "she is not on the
+crew" outranks "you already used her today", which outranks "it is the
+afternoon". The evaluator short-circuits, so the player is told the most
+fundamental thing that is wrong.
+
+### Settlement closes the claim even with nobody to run it
+
+With no adapter registered, a pending assignment settles to a **null result**
+rather than staying pending. A claim on a day that has ended is finished by
+definition — and leaving it open would block that crew member tomorrow through
+`crew_unassigned_today`. The substrate has to be correct when it is empty.
+
+### The migration's one transform is ownership
+
+`crew_assignments` and `crew_operation_state` are additive and default in. The
+interesting part is `list_holdings`: every holding in a v6 save was bought by
+the player, because there was no other way to buy one. That is stamped now
+rather than inferred once delegated buying makes it ambiguous — **cheap to do
+today, impossible to reconstruct afterwards.**
+
+### The harness could pass by running less of itself
+
+Fourteen sabotages, all eventually confirmed red. Two of them initially reported
+**PASS** — on a smaller check count.
+
+A runtime error inside a check (indexing a null, a bad cast) aborts the
+enclosing function and returns to the caller, which carries on with the next
+section. The run then reports PASS with a smaller total and nothing notices.
+Removing the planning-window gate and removing the settled-guard both did
+exactly that: they broke a check so badly it could not run, and the suite called
+that success.
+
+Two fixes, and the second is the one that generalises:
+
+1. The checks that crashed are null-safe now, so they fail instead.
+2. **`MIN_CHECKS`** — the suite asserts its own completeness. The floor only
+   ever moves up; it moving down is the signal.
+
+This is a harness-level hole that has existed since Phase 5 and would have
+silently weakened any future section. It is worth remembering that *a green
+result is only as trustworthy as the number of checks behind it.*
+
+| # | fault | result |
+|---|---|---|
+| 1 | `day_ending` never emitted | 2 failures |
+| 2 | `day_ending` fires AFTER the increment | 3 |
+| 3 | discovery re-evaluated instead of latched | 3 |
+| 4 | planning window not enforced | 0 → **2** after the null-safety fix |
+| 5 | double assignment allowed | 1 |
+| 6 | reconcile removed from dispatch | 2 |
+| 7 | v6→v7 does not tag holding source | 1 |
+| 8 | settled guard removed | 0 → **2** after the null-safety fix |
+| 9 | `_facts()` hands over stale assignments | 1 |
+| 10 | load-time reconcile removed | 1 |
+| 11 | `crew_assignments` dropped from PERSIST_FIELDS | 3 |
+| 12 | settlement ignores `ended_day` | 1 |
+| 13 | discovery requires only the tier | 2 |
+| 14 | a section forced to abort (tests MIN_CHECKS itself) | 1, at 7182 checks |
+
+### The port seam, checked before it could bite
+
+FS-001.5's finding applied forward. This build represents "no assignment" as an
+**absent** dictionary key and a stale claim as one whose `day` does not match —
+neither of which any oracle-recorded fixture can express. `_facts()` is the one
+place live state becomes evaluator input, so it carries its own checks: absent
+reads as free, live blocks, yesterday's does not, and the `-1` wage sentinel
+survives the trip.
+
+Sabotage 9 is the one that matters there: handing the evaluator the whole
+assignments dictionary instead of only today's would strand a crew member
+permanently on the strength of a booking they already finished.
+
 ## FS-001.5: Crew extensibility — structure without gameplay  (added 2026-08-21)
 
 No new gameplay. Crew members have rank NAMES instead of tier numbers, curves

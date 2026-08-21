@@ -85,6 +85,7 @@ systems/              # the ONLY writers of GameState
   nine07list.gd       # the flip board and its tiers
   boost.gd            # lifting, the technique ladder, the fence
   crew.gd             # roster, loyalty, ranks, the nightly wage clock
+  crew_operations.gd  # delegation lifecycle — discovery, assignment, settlement
   requirements.gd     # pure eligibility evaluator — structured blockers, no state
   territory.gd        # corners, soldiers, passive income
 
@@ -121,6 +122,12 @@ tests/parity/         # CI gate: replays recorded oracle fixtures through the
   context string. No `randf()`/`randi()` anywhere else. Canon uses two hash
   normalisations (`/2^32` and `%10000/10000`) and both exist — pick by what canon does
   at that call site, not by preference.
+- **The day ends before the clock moves.** `day_ending(ended_day)` fires while
+  the clock still reads the day that is finishing; `day_crossed` fires after the
+  increment. Canon's `confirmDayEnd` has the same shape, and its comment on
+  `applyAttendance(state, oldDay)` gives the reason the ending day is a
+  parameter rather than a read: a listener should not depend on which side of
+  the increment it sits.
 - **Day-cross is the heartbeat.** `time_system` emits `day_crossed`; jobs, obligations,
   crew, territory, shark, curtis and exposure all settle against it. Settlement is
   scoped to the day that *ended*, so a bill due on day 7 is payable during day 7.
@@ -196,6 +203,7 @@ regardless of how small the source file is.
 | 5e. Tiered outcomes | ✅ shared resolver + Stickup/Jobs/907List converted; parity 2399 → 6628 checks |
 | FS-001.2. 907List ownership | ✅ same-day opportunity consumption, Curtis volume filter, save v6; parity → 6702 checks |
 | FS-001.5. Crew extensibility | ✅ rank labels, rank-curve clamp, shared requirement evaluator; parity → 7121 checks |
+| FS-001.6. Crew operations | ✅ day-ending lifecycle + delegation substrate, save v7; parity → 7211 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

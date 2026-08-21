@@ -52,6 +52,12 @@ extends Node
 ##              capability table. Followed by a regression block pinning
 ##              recruit/pay/promote/dismiss and the presence effects, so
 ##              "structural only" is a claim the suite actually checks
+##   lifecycle— FS-001.6: the day_ending / day_crossed ordering contract,
+##              proven by recording the actual emission order against the
+##              clock rather than trusting it; then the Named Crew
+##              Operations substrate — discovery latching, the planning
+##              window, one day per person, night settlement, and the
+##              port-seam checks oracle fixtures structurally cannot reach
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -90,6 +96,8 @@ func _ready() -> void:
 		_check_907list_ownership()
 		_check_fs001_foundation(_load_json(FS001_FIXTURES))
 		_check_crew_regression()
+		_check_day_lifecycle()
+		_check_crew_operations()
 		_check_save_roundtrip()
 	_finish()
 
@@ -1593,7 +1601,10 @@ func _check_list_migration(gs: Node, sys: RefCounted) -> void:
 			previous_save = prior.get_as_text()
 			prior.close()
 
-	_expect_int("save version is 6", saves.SAVE_VERSION, 6)
+	# Pinned deliberately, and bumped deliberately: this assertion exists so a
+	# schema change cannot land by accident, which means every real bump edits
+	# it on purpose. 6 → 7 in FS-001.6.
+	_expect_int("save version is 7", saves.SAVE_VERSION, 7)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
 
 	# A v5 save mid-day 4: one listing bought today and still held (recoverable),
@@ -1831,6 +1842,14 @@ func _expect_requirement_result(label: String, got: Dictionary, want: Dictionary
 	_expect_true(label + " current", _variant_matches(got.get("current"), want["current"]))
 	_expect_true(label + " required", _variant_matches(got.get("required"), want["required"]))
 
+## The blocker code from a possibly-null verdict. Null-safe on purpose: a
+## sabotage that removes a gate makes these return null, and the check should
+## report "got <none>" rather than crash and take the rest of the section with it.
+func _blocker_code(verdict: Variant) -> String:
+	if not (verdict is Dictionary):
+		return "<none>"
+	return str((verdict as Dictionary).get("blocker_code", "<none>"))
+
 func _nullable(value: Variant) -> String:
 	return "<null>" if value == null else str(value)
 
@@ -2015,6 +2034,518 @@ func _check_crew_regression() -> void:
 
 	gs.reset_to_new_game()
 
+## FS-001.6 — the day-end lifecycle contract.
+##
+## `day_ending` fires while the clock still reads the day that is finishing;
+## `day_crossed` fires after the increment. Canon's `confirmDayEnd` has the same
+## shape — every piece of night settlement sits above the `run.day = oldDay + 1`
+## line — and canon's comment on `applyAttendance(state, oldDay)` gives the
+## reason the ending day is a PARAMETER rather than a read: so a listener does
+## not depend on which side of the increment it sits.
+##
+## The ordering is RECORDED, not trusted. A probe subscribes to both signals and
+## writes down what the clock said at each, so the assertion is about observed
+## behaviour rather than about reading the source and agreeing with it.
+##
+## The existing listeners are the reason this is delicate: jobs and obligations
+## both derive `gs.day - 1` today. If `day_crossed` ever started firing before
+## the increment, both would silently settle the wrong day.
+func _check_day_lifecycle() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+
+	var trace: Array = []
+	var on_ending := func(ended: int) -> void:
+		trace.append({"signal": "day_ending", "arg": ended, "clock": gs.day})
+	var on_crossed := func() -> void:
+		trace.append({"signal": "day_crossed", "arg": gs.day, "clock": gs.day})
+	gs.day_ending.connect(on_ending)
+	gs.day_crossed.connect(on_crossed)
+	_expect_true("lifecycle night advance dispatches", gm.dispatch("advance_time", {}))
+	gs.day_ending.disconnect(on_ending)
+	gs.day_crossed.disconnect(on_crossed)
+
+	_expect_int("lifecycle emits both signals once", trace.size(), 2)
+	if trace.size() != 2:
+		return
+	# Order, argument, and what the clock read at each — all three, because any
+	# one of them alone would pass a build that got the other two wrong.
+	_expect_str("lifecycle day_ending fires first", str(trace[0]["signal"]), "day_ending")
+	_expect_int("lifecycle day_ending carries the ending day", int(trace[0]["arg"]), 9)
+	_expect_int("lifecycle clock still reads the ending day", int(trace[0]["clock"]), 9)
+	_expect_str("lifecycle day_crossed fires second", str(trace[1]["signal"]), "day_crossed")
+	_expect_int("lifecycle clock reads the new day by then", int(trace[1]["clock"]), 10)
+	_expect_int("lifecycle day advanced exactly one", gs.day, 10)
+	_expect_int("lifecycle slot reset to morning", gs.time_slots_today, 0)
+
+	# ONE refresh per dispatch, discovery reconcile included. The reconcile step
+	# runs inside dispatch and writes state directly; if it ever reached for
+	# GameManager.dispatch() instead, a second state_changed would fire inside
+	# this one's stack and every screen would render twice — the reactive
+	# contract broken in a way nothing else in the suite would notice.
+	var refreshes: Array = []
+	var count_refresh := func() -> void: refreshes.append(1)
+	gs.state_changed.connect(count_refresh)
+	gm.dispatch("advance_time", {})
+	gs.state_changed.disconnect(count_refresh)
+	_expect_int("lifecycle one refresh per dispatch", refreshes.size(), 1)
+
+	# And the same while a discovery is actually latching, which is the case
+	# that would recurse if reconcile dispatched.
+	gs.reset_to_new_game()
+	gs.day = 12
+	gs.time_slots_today = 0
+	gs.list_tier = 3
+	gs.crew_records["pherris"] = {
+		"recruited": true, "status": "active", "loyalty": 8, "tier": 2,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
+	}
+	var latch_refreshes: Array = []
+	var count_latch := func() -> void: latch_refreshes.append(1)
+	gs.state_changed.connect(count_latch)
+	gm.dispatch("advance_time", {})
+	gs.state_changed.disconnect(count_latch)
+	_expect_int("lifecycle one refresh while discovery latches", latch_refreshes.size(), 1)
+	_expect_true("lifecycle discovery did latch on that dispatch",
+		"907list_run_board" in (gs.crew_operation_state["discovered"] as Array))
+
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 0
+
+	# A within-day advance emits neither. Settlement must not run four times.
+	var quiet: Array = []
+	var count_ending := func(_ended: int) -> void: quiet.append("ending")
+	var count_crossed := func() -> void: quiet.append("crossed")
+	gs.day_ending.connect(count_ending)
+	gs.day_crossed.connect(count_crossed)
+	gm.dispatch("advance_time", {})
+	gs.day_ending.disconnect(count_ending)
+	gs.day_crossed.disconnect(count_crossed)
+	_expect_int("lifecycle mid-day advance is silent", quiet.size(), 0)
+	_expect_int("lifecycle mid-day advance moves the slot", gs.time_slots_today, 1)
+
+	# The listeners that already compensate must keep seeing the NEW day, which
+	# is what makes this change additive rather than a re-timing.
+	_check_day_crossed_semantics(gs, gm)
+
+## Jobs and obligations both settle "the day that ended" by subtracting one from
+## the clock. That only works while `day_crossed` fires after the increment, so
+## the compensation is asserted directly rather than assumed.
+func _check_day_crossed_semantics(gs: Node, gm: Node) -> void:
+	gs.reset_to_new_game()
+	gs.day = 5
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	# Rent falls due on the day that is ending. If obligations read the new day
+	# it would miss by one and the rent would settle a day late, every time.
+	gs.rent_due_day = 5
+	gs.cash = 5000
+	var rent_before: int = gs.rent_due_day
+	gm.dispatch("advance_time", {})
+	_expect_int("lifecycle day_crossed listeners see the new day", gs.day, 6)
+	_expect_true("lifecycle rent due on the ended day settled",
+		gs.rent_due_day != rent_before)
+
+## FS-001.6 — the Named Crew Operations substrate.
+##
+## Substrate only: no adapter exists, so a settled assignment carries a null
+## result. What is under test is the lifecycle itself — what unlocks an
+## operation, what blocks it, whose day it claims, and when the claim closes.
+const OPS_OPERATION := "907list_run_board"
+const OPS_CREW := "pherris"
+
+func _check_crew_operations() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var ops: RefCounted = gm.system("crew_operations") as RefCounted
+	if ops == null:
+		_fail("crew operations", "no crew_operations system registered")
+		return
+	_check_ops_discovery(gs, gm, ops)
+	_check_ops_assignment(gs, gm, ops)
+	_check_ops_settlement(gs, gm, ops)
+	_check_ops_port_seam(gs, gm, ops)
+	_check_ops_persistence(gs, gm, ops)
+	gs.reset_to_new_game()
+
+## Put the run in the shape an operation qualifies from: Broker tier, Pherris
+## recruited and loyal, morning, nothing owed.
+func _ops_qualify(gs: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 12
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.cash = 5000
+	gs.list_tier = 3
+	gs.crew_records[OPS_CREW] = {
+		"recruited": true, "status": "active", "loyalty": 8, "tier": 2,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
+	}
+
+func _check_ops_discovery(gs: Node, gm: Node, ops: RefCounted) -> void:
+	# A fresh run knows nothing.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	ops.reconcile()
+	_expect_true("ops fresh run has discovered nothing", ops.discovered().is_empty())
+	_expect_true("ops undiscovered is not available",
+		not bool(ops.operation_summary(OPS_OPERATION)["available"]))
+	# And an undiscovered operation reports that, rather than a requirement.
+	_expect_str("ops undiscovered blocker code",
+		_blocker_code(ops.assignment_blocker(OPS_OPERATION)), "operation_undiscovered")
+
+	# Each requirement withheld in turn keeps it hidden — so discovery is the
+	# conjunction it claims to be, not one condition doing all the work.
+	for missing in ["tier", "recruited", "loyalty"]:
+		_ops_qualify(gs)
+		match missing:
+			"tier": gs.list_tier = 2
+			"recruited": gs.crew_records.erase(OPS_CREW)
+			"loyalty": gs.crew_records[OPS_CREW]["loyalty"] = 5
+		ops.reconcile()
+		_expect_true("ops stays hidden without %s" % missing,
+			not ops.is_discovered(OPS_OPERATION))
+
+	# All three met: it unlocks.
+	_ops_qualify(gs)
+	ops.reconcile()
+	_expect_true("ops discovers at Broker tier with a loyal Pherris",
+		ops.is_discovered(OPS_OPERATION))
+
+	# ONE-WAY. Losing the state that revealed it does not take the knowledge
+	# back — only the ability to assign, which is a separate list.
+	gs.crew_records[OPS_CREW]["loyalty"] = 5
+	ops.reconcile()
+	_expect_true("ops discovery survives a loyalty drop", ops.is_discovered(OPS_OPERATION))
+	_expect_str("ops disloyal crew blocks assignment",
+		_blocker_code(ops.assignment_blocker(OPS_OPERATION)), "crew_loyalty_min")
+	gs.list_tier = 1
+	ops.reconcile()
+	_expect_true("ops discovery survives losing the tier too",
+		ops.is_discovered(OPS_OPERATION))
+
+	# Discovery reaches the player mid-run through dispatch, not only through a
+	# direct reconcile() call — that wiring is the point of the GameManager hook.
+	_ops_qualify(gs)
+	gs.list_tier = 2
+	ops.reconcile()
+	_expect_true("ops not yet discovered below Broker", not ops.is_discovered(OPS_OPERATION))
+	gs.list_tier = 3
+	_expect_true("ops dispatch succeeds", gm.dispatch("advance_time", {}))
+	_expect_true("ops dispatch reconciles discovery", ops.is_discovered(OPS_OPERATION))
+
+func _check_ops_assignment(gs: Node, gm: Node, ops: RefCounted) -> void:
+	_ops_qualify(gs)
+	ops.reconcile()
+	_expect_true("ops assignable in the morning", ops.assignment_blocker(OPS_OPERATION) == null)
+	var summary: Dictionary = ops.operation_summary(OPS_OPERATION)
+	_expect_true("ops summary reports available", bool(summary["available"]))
+	_expect_true("ops summary reports nothing assigned", not bool(summary["assigned_today"]))
+	_expect_str("ops summary names the crew member", str(summary["crew_id"]), OPS_CREW)
+	# The cap comes off the capability curve at their rank, clamped like a wage.
+	_expect_int("ops summary reads the rank cap", int(summary["requested_cap"]), 2)
+	_expect_true("ops spend limit is null without an adapter", summary["spend_limit"] == null)
+
+	_expect_true("ops assignment dispatches",
+		gm.dispatch("assign_crew_operation", {"crew_id": OPS_CREW, "operation_id": OPS_OPERATION}))
+	var assignment: Dictionary = ops.assignment_for(OPS_CREW)
+	_expect_int("ops assignment is dated today", int(assignment["day"]), gs.day)
+	_expect_str("ops assignment names the operation",
+		str(assignment["operation_id"]), OPS_OPERATION)
+	_expect_true("ops assignment starts unsettled", not bool(assignment["settled"]))
+	_expect_true("ops summary reports assigned",
+		bool(ops.operation_summary(OPS_OPERATION)["assigned_today"]))
+
+	# One day per person. The second attempt is refused with the specific
+	# reason, not a generic one.
+	_expect_str("ops double assignment blocked",
+		_blocker_code(ops.assignment_blocker(OPS_OPERATION)), "crew_unassigned_today")
+	_expect_true("ops double assignment dispatch fails",
+		not gm.dispatch("assign_crew_operation",
+			{"crew_id": OPS_CREW, "operation_id": OPS_OPERATION}))
+
+	# The planning window: a slot-consuming action shuts it.
+	_ops_qualify(gs)
+	ops.reconcile()
+	gs.time_slots_today = 1
+	_expect_str("ops afternoon assignment blocked",
+		_blocker_code(ops.assignment_blocker(OPS_OPERATION)), "planning_window_open")
+	gs.time_slots_today = 3
+	_expect_str("ops night assignment blocked",
+		_blocker_code(ops.assignment_blocker(OPS_OPERATION)), "planning_window_open")
+
+	# Unpaid wages block it, and outrank the window in the authored order — the
+	# player is told the fundamental problem, not the incidental one.
+	_ops_qualify(gs)
+	ops.reconcile()
+	gs.crew_records[OPS_CREW]["wage_missed_since"] = gs.day - 5
+	gs.time_slots_today = 2
+	_expect_str("ops delinquent payroll outranks the window",
+		_blocker_code(ops.assignment_blocker(OPS_OPERATION)), "payroll_not_delinquent")
+
+	# The operation belongs to a person; asking somebody else is refused.
+	_ops_qualify(gs)
+	ops.reconcile()
+	var wrong: Dictionary = ops.handle("assign_crew_operation",
+		{"crew_id": "eli", "operation_id": OPS_OPERATION})
+	_expect_true("ops wrong crew refused", not bool(wrong.get("ok", false)))
+	var unknown: Dictionary = ops.handle("assign_crew_operation",
+		{"crew_id": OPS_CREW, "operation_id": "not_an_operation"})
+	_expect_true("ops unknown operation refused", not bool(unknown.get("ok", false)))
+
+func _check_ops_settlement(gs: Node, gm: Node, ops: RefCounted) -> void:
+	_ops_qualify(gs)
+	ops.reconcile()
+	gm.dispatch("assign_crew_operation", {"crew_id": OPS_CREW, "operation_id": OPS_OPERATION})
+	var assigned_day: int = gs.day
+	_expect_true("ops settlement starts pending",
+		not bool(ops.assignment_for(OPS_CREW)["settled"]))
+
+	# Walk to the night cross. Settlement runs on day_ending, so it must have
+	# happened by the time the clock reads the next day.
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	_expect_int("ops settlement crossed the day", gs.day, assigned_day + 1)
+	# The record is stale now (yesterday's), so read it off raw state.
+	var settled: Dictionary = gs.crew_assignments.get(OPS_CREW, {})
+	_expect_int("ops settled record keeps its day", int(settled.get("day", -1)), assigned_day)
+	_expect_true("ops assignment settled at night", bool(settled.get("settled", false)))
+	_expect_true("ops settles to null without an adapter", settled.get("result") == null)
+	# And today's read no longer sees it, which is what frees the crew member.
+	_expect_true("ops stale assignment is not today's",
+		ops.assignment_for(OPS_CREW).is_empty())
+
+	# A new morning: assignable again.
+	gs.time_slots_today = 0
+	_expect_true("ops assignable again next morning",
+		ops.assignment_blocker(OPS_OPERATION) == null)
+	_expect_true("ops next-day assignment dispatches",
+		gm.dispatch("assign_crew_operation", {"crew_id": OPS_CREW, "operation_id": OPS_OPERATION}))
+	_expect_int("ops new assignment overwrites the old",
+		int((gs.crew_assignments.get(OPS_CREW, {}) as Dictionary).get("day", -1)), gs.day)
+
+	# A settled assignment must not settle twice. Re-emitting the signal for a
+	# day already closed is the cheapest way to prove the guard holds.
+	_ops_qualify(gs)
+	ops.reconcile()
+	gm.dispatch("assign_crew_operation", {"crew_id": OPS_CREW, "operation_id": OPS_OPERATION})
+	if gs.crew_assignments.has(OPS_CREW):
+		gs.crew_assignments[OPS_CREW]["settled"] = true
+		gs.crew_assignments[OPS_CREW]["result"] = {"sentinel": true}
+	gs.day_ending.emit(gs.day)
+	_expect_true("ops settled assignment is not re-settled",
+		_sentinel_kept(gs.crew_assignments.get(OPS_CREW)))
+
+	# An assignment for a day that is NOT ending is left alone.
+	_ops_qualify(gs)
+	ops.reconcile()
+	gm.dispatch("assign_crew_operation", {"crew_id": OPS_CREW, "operation_id": OPS_OPERATION})
+	gs.day_ending.emit(gs.day - 1)
+	_expect_true("ops another day's ending does not settle today's",
+		not _is_settled(gs.crew_assignments.get(OPS_CREW)))
+
+## Persistence: the v6 → v7 arm, and that the lifecycle survives a round trip.
+func _check_ops_persistence(gs: Node, gm: Node, ops: RefCounted) -> void:
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	_expect_true("ops assignments persist", "crew_assignments" in saves.PERSIST_FIELDS)
+	_expect_true("ops state persists", "crew_operation_state" in saves.PERSIST_FIELDS)
+
+	# A pending assignment and a latched discovery both survive, and the
+	# assignment is still recognised as TODAY's after the clock is restored.
+	_ops_qualify(gs)
+	ops.reconcile()
+	gm.dispatch("assign_crew_operation", {"crew_id": OPS_CREW, "operation_id": OPS_OPERATION})
+	var saved_day: int = gs.day
+	saves.save_run()
+	# Scramble, so a load that silently no-ops cannot pass.
+	gs.crew_assignments = {}
+	gs.crew_operation_state = {"discovered": [], "adapters": {}}
+	gs.day = 99
+	_expect_true("ops save reloads", saves.load_run())
+	_expect_int("ops day restored", gs.day, saved_day)
+	_expect_true("ops discovery restored", ops.is_discovered(OPS_OPERATION))
+	_expect_true("ops assignment restored as today's",
+		not ops.assignment_for(OPS_CREW).is_empty())
+	_expect_true("ops restored assignment still blocks a second",
+		not requirements_ok(gm, ops))
+
+	# A SETTLED assignment must not re-settle after a reload, and must not
+	# claim the crew member's next day either.
+	if gs.crew_assignments.has(OPS_CREW):
+		gs.crew_assignments[OPS_CREW]["settled"] = true
+		gs.crew_assignments[OPS_CREW]["result"] = {"sentinel": true}
+	saves.save_run()
+	_expect_true("ops settled save reloads", saves.load_run())
+	_expect_true("ops settled result survived",
+		_sentinel_kept(gs.crew_assignments.get(OPS_CREW)))
+	gs.day_ending.emit(gs.day)
+	_expect_true("ops settled assignment does not re-settle after load",
+		_sentinel_kept(gs.crew_assignments.get(OPS_CREW)))
+
+	# --- the v6 → v7 arm ---------------------------------------------------
+	# A v6 save has no operation state and holdings with no ownership tag.
+	gs.reset_to_new_game()
+	var v6_state := {
+		"day": 8, "cash": 400, "street_name": "Legacy",
+		"list_tier": 3, "list_flips": 12,
+		"list_holdings": [
+			{"item_id": "space_heater", "bought_day": 7},
+			{"item_id": "dresser", "bought_day": 8, "source": "already_tagged"},
+		],
+		"crew_records": {OPS_CREW: {
+			"recruited": true, "status": "active", "loyalty": 9, "tier": 2,
+			"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1,
+		}},
+	}
+	var file := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if file == null:
+		_fail("ops migration", "could not write the fixture save")
+		return
+	file.store_string(var_to_str({"save_version": 6, "state": v6_state}))
+	file.close()
+
+	_expect_true("v6 save loads into v7", saves.load_run())
+	_expect_int("v6 migration day", gs.day, 8)
+	_expect_true("v6 migration defaults assignments empty", gs.crew_assignments.is_empty())
+	_expect_true("v6 migration defaults operation state",
+		(gs.crew_operation_state["discovered"] as Array).is_empty()
+			or ops.is_discovered(OPS_OPERATION))
+
+	# Ownership is stamped, not inferred later — an untagged holding could only
+	# ever have been bought by the player, and that stops being knowable once
+	# delegated buying exists.
+	_expect_str("v6 migration tags an untagged holding",
+		str((gs.list_holdings[0] as Dictionary).get("source", "")), "player")
+	_expect_str("v6 migration leaves an already-tagged holding alone",
+		str((gs.list_holdings[1] as Dictionary).get("source", "")), "already_tagged")
+
+	# Qualifying-load unlock: this save has met the discovery requirements for
+	# days without anything ever having looked. It must be known on the first
+	# frame after CONTINUE RUN, not after the next action.
+	_expect_true("v6 qualifying save discovers on load", ops.is_discovered(OPS_OPERATION))
+
+	# A v6 save that does NOT qualify stays hidden — so the load-time reconcile
+	# is evaluating, not blanket-unlocking.
+	gs.reset_to_new_game()
+	var plain_state: Dictionary = v6_state.duplicate(true)
+	plain_state["list_tier"] = 1
+	var plain := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if plain != null:
+		plain.store_string(var_to_str({"save_version": 6, "state": plain_state}))
+		plain.close()
+	_expect_true("v6 non-qualifying save loads", saves.load_run())
+	_expect_true("v6 non-qualifying save stays hidden", not ops.is_discovered(OPS_OPERATION))
+
+	# Malformed holdings must not break the arm.
+	gs.reset_to_new_game()
+	var junk_state: Dictionary = v6_state.duplicate(true)
+	junk_state["list_holdings"] = ["not a dictionary", 7]
+	var junk := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if junk != null:
+		junk.store_string(var_to_str({"save_version": 6, "state": junk_state}))
+		junk.close()
+	_expect_true("v6 malformed holdings still migrates", saves.load_run())
+
+	if previous_save.is_empty():
+		DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+
+## Did the planted sentinel survive? Null-safe, so a sabotage that re-settles
+## or drops the record fails the check instead of crashing the section.
+func _sentinel_kept(entry: Variant) -> bool:
+	if not (entry is Dictionary):
+		return false
+	var result: Variant = (entry as Dictionary).get("result")
+	return (result is Dictionary) and bool((result as Dictionary).get("sentinel", false))
+
+func _is_settled(entry: Variant) -> bool:
+	return (entry is Dictionary) and bool((entry as Dictionary).get("settled", false))
+
+## Small helper: is the operation assignable right now? Used where the check is
+## about the answer rather than about which blocker produced it.
+func requirements_ok(gm: Node, ops: RefCounted) -> bool:
+	return ops.assignment_blocker(OPS_OPERATION) == null
+
+## The port seam — the FS-001.5 lesson applied before it can bite again.
+##
+## Every requirement fixture is recorded from the oracle, and the oracle can
+## only produce the shapes JS has. This build represents "no assignment" as an
+## ABSENT Dictionary key and a stale record as one whose `day` does not match —
+## neither of which any oracle fixture can express. The evaluator is handed
+## those shapes by `_facts()`, so the translation is checked here against live
+## GameState rather than against recorded truth.
+func _check_ops_port_seam(gs: Node, gm: Node, ops: RefCounted) -> void:
+	var requirements: RefCounted = gm.system("requirements") as RefCounted
+	if requirements == null:
+		_fail("ops port seam", "requirements system is missing")
+		return
+	_ops_qualify(gs)
+	ops.reconcile()
+
+	# 1. ABSENT means unassigned. The oracle would write null; this build writes
+	#    nothing at all, and an evaluator that only understood null would read a
+	#    missing key as a live booking.
+	_expect_true("seam no assignment key at all", not gs.crew_assignments.has(OPS_CREW))
+	_expect_true("seam absent assignment reads as free",
+		bool(requirements.evaluate_requirement(
+			{"type": "crew_unassigned_today", "crew_id": OPS_CREW},
+			ops._facts())["ok"]))
+
+	# 2. A live booking blocks — through the real record, not a hand-built one.
+	gm.dispatch("assign_crew_operation", {"crew_id": OPS_CREW, "operation_id": OPS_OPERATION})
+	_expect_true("seam live assignment blocks",
+		not bool(requirements.evaluate_requirement(
+			{"type": "crew_unassigned_today", "crew_id": OPS_CREW},
+			ops._facts())["ok"]))
+
+	# 3. YESTERDAY's booking does not. This is the one that would strand a crew
+	#    member permanently if `_facts()` handed over the whole dictionary.
+	gs.day += 1
+	gs.time_slots_today = 0
+	_expect_true("seam stale assignment is still in raw state",
+		gs.crew_assignments.has(OPS_CREW))
+	_expect_true("seam stale assignment is filtered out of facts",
+		not (ops._facts()["assignments"] as Dictionary).has(OPS_CREW))
+	_expect_true("seam stale assignment does not block",
+		bool(requirements.evaluate_requirement(
+			{"type": "crew_unassigned_today", "crew_id": OPS_CREW},
+			ops._facts())["ok"]))
+
+	# 4. The -1 wage sentinel, again — this time reaching the evaluator through
+	#    the real facts builder rather than a fixture.
+	_expect_int("seam crew record carries the -1 sentinel",
+		int(gs.crew_record(OPS_CREW)["wage_missed_since"]), -1)
+	_expect_true("seam -1 sentinel is not delinquent through _facts()",
+		bool(requirements.evaluate_requirement(
+			{"type": "payroll_not_delinquent", "crew_id": OPS_CREW},
+			ops._facts())["ok"]))
+
+	# 5. A crew member who was never recruited has no record at all, and an
+	#    empty Dictionary is not a crew member with zero loyalty.
+	_expect_true("seam unrecruited crew is absent from facts",
+		not (ops._facts()["crew"] as Dictionary).has("tone"))
+	_expect_true("seam unrecruited crew fails crew_active",
+		not bool(requirements.evaluate_requirement(
+			{"type": "crew_active", "crew_id": "tone"}, ops._facts())["ok"]))
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -2039,6 +2570,17 @@ func _expect_true(label: String, got: bool) -> void:
 
 func _fail(label: String, detail: String) -> void:
 	_failures.append("%s: %s" % [label, detail])
+
+## The suite must not be able to pass by running less of itself.
+##
+## A runtime error inside a check — indexing a null, a bad cast — aborts the
+## enclosing function and returns to the caller, which carries on with the next
+## section. The run then reports PASS with a smaller total, and nothing notices.
+## Two sabotages in FS-001.6 did exactly that before this existed.
+##
+## Bumped deliberately whenever checks are added, the same discipline as
+## SAVE_VERSION: it only ever moves up, and it moving DOWN is the signal.
+const MIN_CHECKS := 7211
 
 func _finish() -> void:
 	if _failures.is_empty():

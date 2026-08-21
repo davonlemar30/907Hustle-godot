@@ -307,8 +307,9 @@ moves between the four game screens.
   Ind/Ico/L. The raised HOME FAB has a transparent `HomeBtn` over it. Connections are made
   once in `screen_base.gd::_wire_nav()` from `_ready()` — never `_bind_content()`, which
   re-runs on every state change.
-- **More is `disabled`**, not wired to a missing scene. Phone is live as of
-  Phase 5b part 2; its nav cell routes to `phone.tscn`.
+- **Every nav cell has a screen** as of Phase 5b part 3. The empty-route branch
+  in `_wire_nav()` stays: a cell added ahead of its screen must be inert, never
+  a failed load.
 - **New-run state is canon.** `GameState.reset_to_new_game()` mirrors the web reducer's
   START_RUN branch: `$100`, heat 0, health 100, debt 0, Spenard, Day 1 MORNING. Not the
   CHOOSE_BACKGROUND branch ($375 + a $620 note from Dre, `run.premise = legacy_established`)
@@ -495,6 +496,114 @@ that reasoning is most of the value. The Build State page can be reconstructed f
 - Any term pinned at a canon neutral is named, with the system that will unpin it.
 - Any deliberate divergence from canon is named with the reason.
 - Any canon oddity found is recorded rather than silently corrected.
+
+## Phase 5b (part 3): More + Help — the nav is complete  (added 2026-08-20)
+
+**Every bottom-nav cell has a screen.** `screen_base::_wire_nav()` no longer
+disables anything. Fifteen screens built; plan-Phase 4 ("Translate Screens")
+closes here.
+
+### More is a signpost, not a system
+
+Canon's `More` root (ui.built.js:15809) is a list of `MenuRow`s — title,
+description, a right-aligned status, a `›`. Nothing on it computes anything its
+destination does not already own; the statuses are one-line reads of live state
+so the menu can be scanned instead of walked.
+
+Canon has six rows. Four ship:
+
+| row | status | goes to |
+|---|---|---|
+| Finances | `$100` / `Debt Day 4` / `Debt due` | Shark |
+| Operations | `1 block · 3 soldiers` | Turf |
+| Crew | `1/2 active` | Crew |
+| Help | `Available` | Help (new) |
+
+### Two rows are dropped, not stubbed
+
+- **Recovery** — no recovery system (treat injuries, lay low to shed Heat).
+  Canon itself hides this row until the feature is relevant
+  (`features.recovery.available`), so an absent row is the shape canon already
+  uses for it.
+- **Character** — needs `streetIdentity`, `attributeLabels`, `arrestRecord` and
+  the behavior history, none ported. **Attributes are still pinned at canon's
+  neutral defaults across every system**, so a Character screen today would be
+  five rows of "1" and an empty record. That is the honest reason, and it is
+  the same reason the stickup/boost/shark headers already give.
+
+### Routing divergences
+
+1. **Finances → Shark.** Canon's Finances page is cash, debt, Shark notes and
+   financial risk, and it opens the Safehouse. No lender system, no safehouse;
+   Shark is where this build's money decisions actually live, and cash/debt are
+   in the HUD on every screen anyway.
+2. **Operations → Turf.** Canon's Operations is a sub-menu: safehouse,
+   territory, soldiers, gear, Rob. Territory and soldiers are Turf; Rob is
+   Stickup and is already on the Hustle hub; safehouse and gear do not exist.
+   **Turf is the only one of the five with no other entrance**, which is what
+   makes the row worth having.
+3. **Operations is never locked.** Canon gates it on `state.base.controlled` —
+   leasing North Star Garage for a deposit. There is no base system to lease,
+   and gating on nothing while calling it locked would be a lie. Canon's hint
+   copy is recorded in the file header for when the gate returns.
+4. **Crew always shows.** Canon reveals it once a crew member is introduced OR
+   recruited; "introduced" is not tracked. Gating on recruited alone would hide
+   the entry precisely when the player has no crew and most needs to find the
+   screen.
+
+### What is deliberately NOT on More
+
+**A People row.** Canon's More does not have one, People is already reachable
+from Street and from the Phone's Contacts section, and using it to paper over
+the missing Character row would be inventing IA rather than porting it. The
+first draft had it; it came out.
+
+**Canon's disabled-row state.** `MenuRow` takes a `disabled` flag that greys the
+row and swaps its description for the feature's hint. Not ported, because **no
+row in this build has a gate it can fail** — every destination exists and is
+always reachable. Adding it back with the first gated row is four lines;
+shipping an untested branch with no caller is worse than shipping neither.
+
+### Help is canon's copy, verbatim, including the parts that are not true yet
+
+`ui/screens/help.tscn` ports the web `Help` component (15716): four cards, no
+state, no actions. The copy is canon's word for word, because this screen is the
+game explaining its own contract and paraphrasing it would be a rules change
+written as an edit.
+
+Two lines describe systems this build does not have — *"Week Zero establishes
+your life in Spenard"* and *"when you decide to call the final score"* (there is
+no voluntary exit; this build's run ends on eviction). **Both are kept.** They
+are canon's description of 907Hustle, not of this port, and they will be true
+here. Rewriting them to match today's feature set would make the screen wrong
+twice: wrong now about the game, and wrong later about itself.
+
+Canon gates the "Market visits" card on `state.market.visible`. This build has
+no market-discovery gate — the Street Market is on the Hustle hub from Day 1 —
+so the card always shows. Named so the gate has somewhere to go back to.
+
+### A canon oddity, corrected and recorded
+
+Canon's `opsSummary` is `${blocks} blocks · ${soldiers} soldiers`, unpluralised
+— it renders **"1 blocks"**. Canon pluralises elsewhere (the Phone's text count
+does `text${n === 1 ? "" : "s"}`), so this is an inconsistency rather than a
+house style, and at this size the status reads as a stat line where "1 BLOCKS"
+looks like a defect. **Pluralised here.** Recorded rather than silently
+corrected, which is the standing rule — the correction is presentational and
+touches no behaviour.
+
+### Verified live (editor run, game log clean)
+
+Fresh Day 1 → four rows, `$100` / `0 blocks · 0 soldiers` / `0/2 active` /
+`Available`. All four routes land on the right scene and Help's BACK TO MORE
+returns. Statuses track live state: debt 620 due in 3 → `DEBT DAY 4`, due in 0 →
+`DEBT DUE`; one block one soldier → `1 BLOCK · 1 SOLDIER`, two of each →
+`2 BLOCKS · 2 SOLDIERS`; recruiting Eli → `1/2 ACTIVE`. **Scroll discipline
+proven the same way the Phone's was**: a synthetic press/release 2px apart
+navigates, the same pair 80px apart does not. Every nav cell across Home,
+Street, Hustle, Phone and More is enabled with the right cell lit — **no
+`disabled` left anywhere in the bar**. No autosave fired and no phantom run was
+left on the machine.
 
 ## Phase 5b (part 2): the Phone screen  (added 2026-08-20)
 

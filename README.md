@@ -40,13 +40,15 @@ the oracle won; those divergences are listed in `HANDOFF.md`.
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
 | Read texts, pay bills, hear word around town | Phone |
+| Reach everything else, and read the rules | More · More → Help |
 | Texts arrive; miss the bill and the line dies holding them | Phone → Texts |
 | Pick up where you left off | automatic autosave · title → CONTINUE RUN |
 
 ### Not built yet
 
-The More screen (its nav cell is disabled), venue interiors, combat encounters,
-equipment, and attributes.
+Character (street identity, attributes, arrest record), Recovery, venue
+interiors, combat encounters, and equipment. Attributes remain pinned at canon's
+neutral defaults across every system.
 
 ## Project layout
 
@@ -159,7 +161,7 @@ regardless of how small the source file is.
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
 | 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (1442 checks); fixtures grow with each system |
-| 5b. Phone + More screens | 🔨 Phone shipped (substrate + screen); More next |
+| 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

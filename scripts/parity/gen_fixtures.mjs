@@ -909,8 +909,29 @@ console.log(
 // directly.
 const fs001Dir = process.env.FS001_ORACLE_DIR
   ?? "/private/tmp/claude-501/-Users-damusthadon-Documents-907HustleGodot/6d9a4a40-7c5c-4e5a-ae64-894f354d24bd/scratchpad/fs001-oracle";
-const Req = require(join(fs001Dir, "requirements.js"));
-const Prog = require(join(fs001Dir, "crew-progression.js"));
+let Req;
+let Prog;
+try {
+  Req = require(join(fs001Dir, "requirements.js"));
+  Prog = require(join(fs001Dir, "crew-progression.js"));
+} catch (error) {
+  // Fail SOFT and loudly. The two fixture files above are already written by
+  // this point, and losing them to an exception here would be a worse outcome
+  // than skipping the section — especially since the committed
+  // fs001_fixtures.json stays valid until the oracle actually changes.
+  console.error(
+    `\n[fs-001.5] SKIPPED: could not load the PR #98 oracle pair from ${fs001Dir}\n` +
+    `  ${error.message}\n` +
+    `  tests/parity/fixtures/requirements/fs001_fixtures.json was NOT regenerated.\n` +
+    `  To regenerate it, extract the pair from the oracle and point FS001_ORACLE_DIR at them:\n` +
+    `    git show <pr98-sha>:src/systems/requirements.js  > $DIR/requirements.js\n` +
+    `    git show <pr98-sha>:src/data/crew-progression.js > $DIR/crew-progression.js\n` +
+    `  then repoint requirements.js's one relative import at the oracle's src/data/crew.js.\n`
+  );
+  Req = null;
+}
+
+if (Req && Prog) {
 
 // Infinity is a real value here — `crew_tenure_days_min` reports it for a
 // record with no recruited day — and JSON.stringify flattens it to null. It is
@@ -1135,3 +1156,4 @@ console.log(
   `${requirement_lists.length} list cases, ${rank_labels.length} rank labels, ` +
   `${curve_lookups.length} curve lookups, ${capabilities.length} capability reads`
 );
+}

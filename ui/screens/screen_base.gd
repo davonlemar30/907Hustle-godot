@@ -38,8 +38,8 @@ func _wire_nav() -> void:
 		if button == null:
 			continue
 		var route: String = nav.NAV_ROUTES[cell]
-		# More has no scene yet. Leave it inert rather than routing into a
-		# load that fails.
+		# Every cell has a scene as of Phase 5b, but the branch stays: a nav
+		# cell added ahead of its screen must be inert, never a failed load.
 		if route.is_empty():
 			button.disabled = true
 			continue

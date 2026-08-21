@@ -26,16 +26,18 @@ const CREW := "res://ui/screens/crew.tscn"
 const TURF := "res://ui/screens/turf.tscn"
 const PEOPLE := "res://ui/screens/people.tscn"
 const PHONE := "res://ui/screens/phone.tscn"
+const MORE := "res://ui/screens/more.tscn"
+const HELP := "res://ui/screens/help.tscn"
 const GAME_OVER := "res://ui/screens/game_over.tscn"
 
-## Screens the bottom nav can reach today. More has no scene yet, so the nav
-## treats it as a no-op rather than routing into a broken load.
+## Every bottom-nav cell has a scene now. The empty-route branch in
+## screen_base::_wire_nav() is kept for the next cell that does not.
 const NAV_ROUTES := {
 	"Street": STREET,
 	"Hustle": HUSTLE,
 	"Home": HOME,
 	"Phone": PHONE,
-	"More": "",
+	"More": MORE,
 }
 
 ## Emitted after a successful screen change, with the path that was loaded.

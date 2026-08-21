@@ -497,6 +497,82 @@ that reasoning is most of the value. The Build State page can be reconstructed f
 - Any deliberate divergence from canon is named with the reason.
 - Any canon oddity found is recorded rather than silently corrected.
 
+## Phase 5c (part 2): the Character screen  (added 2026-08-20)
+
+Street Identity and the screen that reads it. **Parity 2236 → 2367 checks, 0
+failures.** More's Character row is live, so five of canon's six rows ship.
+
+### The player is never shown the number
+
+Canon is emphatic and it is the reason the screen exists: an attribute is a
+**label** — Green, Capable, Solid, Dangerous, Elite — and the line under the
+list says so out loud ("Nobody in Spenard reads you as a number"). Showing 3/12
+here would turn a character sheet into a stat block and undo the design. The raw
+value lives behind canon's debug flag and nowhere else, so it lives in
+`attributes.gd` and nowhere else here.
+
+### Street Identity is cosmetic, derived, and never stored
+
+Canon's own rule: it gates no content, modifies no roll, touches no disposition.
+It is your strongest attribute crossed with what you have actually been seen
+doing in the last seven days. Canon *retired* a nightly assignment loop with
+two-night hysteresis and a stored label to get here, so `identity_profile()` is
+pure and writes nothing — **do not cache it back into GameState.**
+
+Two rules in it are easy to get subtly wrong, and both have fixtures on both
+sides of the boundary:
+
+1. **A lead of MORE than the balance margin (2) is a lane.** An exact margin is
+   still Balanced. Combat 4 / charisma 2 reads "New Face"; combat 5 / charisma 2
+   reads "Muscle".
+2. **A tie between behaviour columns is not a signal** and falls through to the
+   attribute's default label rather than picking one. One violence row and one
+   presence row on a Combat 6 player reads "Muscle", not "Shooter" — and giving
+   the violence row a count of 2 makes it "Shooter".
+
+`recent_observations()` reaches into the Exposure ledgers, which is the same
+reach-across canon makes (`ledgerOf` imported straight into the attributes
+system) and for the same reason: identity is a read of what the neighborhood has
+seen. Exposure grew a public `ledger_of()` / `npc_ids()` for it rather than
+having the caller poke at `gs.npc_ledgers`.
+
+### Three things canon shows here that this build cannot
+
+Each is named on the screen rather than faked:
+
+- **Prior arrests.** Canon's `arrestRecord` reads an arrest/jail system this
+  build has never had. The card ships canon's own no-record copy, which is the
+  true state of every run here — and the interesting half anyway, because it
+  explains what getting booked would cost. It goes live the day an arrest system
+  lands with no change to this screen.
+- **Recent reputation.** Canon lists the last five `player.behavior.history`
+  entries, written by `recordBehavior`. **This is not the People screen**, which
+  is what each character makes of you; this would be what *you have done*. Not
+  ported; the section shows canon's empty-state line.
+- **Legacy background / "Formerly".** Both are save-compatibility cards for runs
+  that predate systems this port never had. Nothing they could describe.
+
+### The fixtures cover every arm of the matrix
+
+Fourteen identity cases, all driven through canon's exported `identityProfile` /
+`getStreetIdentity` with a hand-built state — the input is supplied, every bit
+of the deriving is the oracle's. They cover each lane, each behaviour column,
+both sides of the balance margin, the tie rule and the count that breaks it, a
+row that has aged out of the 7-day window, the boundary day that has not, and an
+unmapped category that must be ignored. The static tables (matrix, descriptions,
+behaviour columns) are compared entry for entry so a transcription typo cannot
+hide behind correct logic.
+
+### Verified live (editor run, game log clean)
+
+Fresh run → "New Face", all three attributes "Green", the record card empty.
+Combat 6 with nothing seen → "Muscle"; add one witnessed violence observation →
+**"Shooter"**, and the card's description changes with it. The combat row reads
+"DANGEROUS" and never a number. Advance to day 20 so the observation ages out of
+the window → back to "Muscle". More's Character row shows the same identity
+("SHOOTER") and routes to the screen; BACK TO MORE returns. No autosave fired
+and no phantom run was left behind.
+
 ## Phase 5c (part 1): attributes — and the bug the pin was hiding  (added 2026-08-20)
 
 The three numbers behind every outcome are real. `systems/attributes.gd` ports

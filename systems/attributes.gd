@@ -50,8 +50,8 @@ extends RefCounted
 ##     Three consecutive days at the Spenard Gym or The Nile are worth +1
 ##     effective level on the next check. Neither venue exists, so the bonus is
 ##     always 0 and `effectiveAttribute` would be `value` with extra steps.
-##   - **Street Identity** (`IDENTITY_MATRIX`, `getStreetIdentity`). Its only
-##     caller is the Character screen, which is part 2.
+##   - **Street Identity** is ported as of part 2, below — the Character screen
+##     is its caller.
 ##   - **Six of nine growth sources.** `GROWTH_RATES` is ported whole because it
 ##     is one table and canon's design is that a new growth source is a row
 ##     rather than a code path — but only `list_flip` has a surface today. The
@@ -107,6 +107,61 @@ const GROWTH_ATTRIBUTES := {
 ## Growth past Dangerous needs real experience, not another session on the bag.
 const GROWTH_CAP_PENALTY_FLOOR := 6
 const GROWTH_CAP_PENALTY := 0.5
+
+# --- Street Identity (canon: src/data/attributes.js) -----------------------
+## **Identity is cosmetic.** It never gates content, never modifies a roll and
+## never touches disposition — canon is explicit about this. It is the
+## neighborhood's shorthand for you, derived on read from your strongest
+## attribute and what you have actually been seen doing.
+##
+## Canon retired a nightly assignment loop with two-night hysteresis and a stored
+## label to get here. `street_identity()` is pure: same state in, same label out,
+## and it writes nothing. That is the whole point of the rewrite, so do not cache
+## it back into GameState.
+
+## Which matrix column an observation category counts toward.
+const IDENTITY_BEHAVIOR_COLUMNS := {
+	"violence": "violence", "defiance": "violence", "betrayal": "violence",
+	"heat_exposure": "violence",
+	"presence": "presence", "discretion": "presence", "loyalty": "presence",
+	"submission": "presence", "honesty": "presence",
+	"financial": "financial", "growth": "financial",
+}
+
+## No attribute leads by more than this and you read as Balanced.
+const IDENTITY_BALANCE_MARGIN := 2
+## How far back the behaviour read looks.
+const IDENTITY_RECENT_DAYS := 7
+
+const IDENTITY_MATRIX := {
+	"combat": {"violence": "Shooter", "presence": "Enforcer",
+		"financial": "Collector", "default": "Muscle"},
+	"charisma": {"violence": "Smooth Talker", "presence": "Connected",
+		"financial": "Broker", "default": "People Person"},
+	"intelligence": {"violence": "Ghost", "presence": "Observer",
+		"financial": "Quiet Money", "default": "Calculator"},
+	"balanced": {"violence": "Unpredictable", "presence": "Hustler",
+		"financial": "Adaptable", "default": "New Face"},
+}
+
+const IDENTITY_DESCRIPTIONS := {
+	"Shooter": "People step back when you come up the block, and they are not wrong to.",
+	"Enforcer": "You are the one somebody sends. Everyone knows which somebody.",
+	"Collector": "What you are owed, you collect. The block has watched it happen.",
+	"Muscle": "Nobody has decided what you want yet. They have decided what you can do.",
+	"Smooth Talker": "You have talked your way out of rooms other people got carried out of.",
+	"Connected": "Your name comes up in conversations you were not in.",
+	"Broker": "Two people who needed each other met through you, and both of them paid.",
+	"People Person": "You know everybody. It has not cost you anything yet.",
+	"Ghost": "Things happen near you and nobody can say you were there.",
+	"Observer": "You are always at the edge of it, and you are always still there after.",
+	"Quiet Money": "No jewelry, no noise, and somehow never short.",
+	"Calculator": "You think two moves out. It reads as patience, which suits you.",
+	"Unpredictable": "Nobody can guess your next move, which is its own kind of protection.",
+	"Hustler": "Whatever the week needs, you are already doing it.",
+	"Adaptable": "You have no lane, and that has never once slowed you down.",
+	"New Face": "The block is still deciding.",
+}
 
 const GREEN := Color(0.451, 0.722, 0.404)
 
@@ -211,3 +266,74 @@ func train(activity: String, session_count: int) -> bool:
 	if read.is_empty():
 		return false
 	return improve(str(read["attribute"]), float(read["growth"]))
+
+# --- Street Identity -------------------------------------------------------
+
+## Canon getRecentObservations: every row any NPC is carrying from the last
+## `days` days. A row keeps its most recent sighting in `day` (record_observation
+## refreshes it on a repeat), which is exactly what a recency read wants.
+func recent_observations(days: int = IDENTITY_RECENT_DAYS) -> Array:
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure == null:
+		return []
+	var window: int = maxi(1, days)
+	var floor_day: int = gs.day - window + 1
+	var out: Array = []
+	for npc_id in exposure.npc_ids():
+		for row in exposure.ledger_of(str(npc_id)):
+			if int(row.get("day", 0)) >= floor_day:
+				out.append(row)
+	return out
+
+## Canon getDominantAttribute. A lead of more than IDENTITY_BALANCE_MARGIN is a
+## lane; anything tighter reads as balanced.
+func dominant_attribute() -> String:
+	var n: Dictionary = normalized()
+	var ranked: Array = [
+		["combat", int(n["combat"])],
+		["charisma", int(n["charisma"])],
+		["intelligence", int(n["intelligence"])],
+	]
+	# Stable sort by value, descending. Canon's Array.sort is not guaranteed
+	# stable either, but the ties it produces fall through to "balanced" anyway.
+	ranked.sort_custom(func(a, b): return int(a[1]) > int(b[1]))
+	if int(ranked[0][1]) - int(ranked[1][1]) > IDENTITY_BALANCE_MARGIN:
+		return str(ranked[0][0])
+	return "balanced"
+
+## Canon getDominantCategory. **A tie is not a signal** — it falls through to the
+## attribute's default label rather than picking one arbitrarily.
+func dominant_category(observations: Array) -> String:
+	var totals: Dictionary = {}
+	for row in observations:
+		var column: String = str(IDENTITY_BEHAVIOR_COLUMNS.get(str(row.get("type", "")), ""))
+		if column.is_empty():
+			continue
+		totals[column] = int(totals.get(column, 0)) + maxi(1, int(row.get("count", 1)))
+	if totals.is_empty():
+		return "default"
+	var ranked: Array = []
+	for key in totals.keys():
+		ranked.append([str(key), int(totals[key])])
+	ranked.sort_custom(func(a, b): return int(a[1]) > int(b[1]))
+	if ranked.size() > 1 and int(ranked[0][1]) == int(ranked[1][1]):
+		return "default"
+	return str(ranked[0][0])
+
+## Canon identityProfile: the label plus the two reads behind it, so a caller can
+## vary copy by what kind of person you are rather than by the exact name for it.
+func identity_profile() -> Dictionary:
+	var dominant: String = dominant_attribute()
+	var behavior: String = dominant_category(recent_observations())
+	var row: Dictionary = IDENTITY_MATRIX.get(dominant, IDENTITY_MATRIX["balanced"])
+	var label_text: String = str(row.get(behavior, row["default"]))
+	return {
+		"dominant": dominant,
+		"behavior": behavior,
+		"label": label_text,
+		"description": str(IDENTITY_DESCRIPTIONS.get(label_text, IDENTITY_DESCRIPTIONS["New Face"])),
+	}
+
+## Canon getStreetIdentity — pure, and never written back anywhere.
+func street_identity() -> String:
+	return str(identity_profile()["label"])

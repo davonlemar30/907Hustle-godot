@@ -268,6 +268,7 @@ func _check_attributes(fixture: Dictionary) -> void:
 	_expect_true("attrs unknown read is empty", attrs.growth_for("not_a_real_activity", 0).is_empty())
 
 	_check_attribute_formulas(gs, gm, attrs, fixture["formulas"])
+	_check_street_identity(gs, attrs, fixture)
 
 	gs.attributes = original_attrs
 	gs.street_name = original_name
@@ -315,6 +316,56 @@ func _check_attribute_formulas(gs: Node, gm: Node, attrs: RefCounted, rows: Arra
 		_expect_float("shark default prob @%d" % stored,
 			shark.default_probability(loan), expected)
 	gs.heat = original_heat
+
+## Street Identity, against canon's own getStreetIdentity / identityProfile.
+##
+## Identity is cosmetic — it gates nothing and modifies no roll — but it is
+## derived from two rules that are easy to get subtly wrong: a lead of MORE than
+## the balance margin is a lane (an exact margin is not), and a tie between
+## behaviour columns is not a signal and must fall through to the default label.
+## The fixtures cover both boundaries in each direction.
+func _check_street_identity(gs: Node, attrs: RefCounted, fixture: Dictionary) -> void:
+	_expect_int("identity balance margin", attrs.IDENTITY_BALANCE_MARGIN,
+		int(fixture["identity_balance_margin"]))
+	_expect_int("identity recent days", attrs.IDENTITY_RECENT_DAYS,
+		int(fixture["identity_recent_days"]))
+	var want_columns: Dictionary = fixture["identity_behavior_columns"]
+	for key in want_columns.keys():
+		_expect_str("identity column %s" % str(key),
+			str(attrs.IDENTITY_BEHAVIOR_COLUMNS.get(str(key), "")), str(want_columns[key]))
+	_expect_int("identity column count", attrs.IDENTITY_BEHAVIOR_COLUMNS.size(), want_columns.size())
+	var want_matrix: Dictionary = fixture["identity_matrix"]
+	for lane in want_matrix.keys():
+		var want_row: Dictionary = want_matrix[lane]
+		var got_row: Dictionary = attrs.IDENTITY_MATRIX.get(str(lane), {})
+		for column in want_row.keys():
+			_expect_str("identity matrix %s.%s" % [str(lane), str(column)],
+				str(got_row.get(str(column), "")), str(want_row[column]))
+	var want_desc: Dictionary = fixture["identity_descriptions"]
+	for key in want_desc.keys():
+		_expect_str("identity description %s" % str(key),
+			str(attrs.IDENTITY_DESCRIPTIONS.get(str(key), "")), str(want_desc[key]))
+	_expect_int("identity description count", attrs.IDENTITY_DESCRIPTIONS.size(), want_desc.size())
+
+	var original_day: int = gs.day
+	var original_ledgers: Dictionary = gs.npc_ledgers.duplicate(true)
+	for row in fixture["identity"]:
+		var name: String = str(row["name"])
+		gs.attributes = (row["attrs"] as Dictionary).duplicate(true)
+		gs.day = int(row["day"])
+		gs.npc_ledgers = (row["ledgers"] as Dictionary).duplicate(true)
+		_expect_int("identity[%s] recent rows" % name,
+			attrs.recent_observations().size(), int(row["recent_count"]))
+		var profile: Dictionary = attrs.identity_profile()
+		_expect_str("identity[%s] dominant" % name, str(profile["dominant"]), str(row["dominant"]))
+		_expect_str("identity[%s] behavior" % name, str(profile["behavior"]), str(row["behavior"]))
+		_expect_str("identity[%s] label" % name, str(profile["label"]), str(row["label"]))
+		_expect_str("identity[%s] description" % name,
+			str(profile["description"]), str(row["description"]))
+		_expect_str("identity[%s] street_identity" % name,
+			attrs.street_identity(), str(row["identity"]))
+	gs.day = original_day
+	gs.npc_ledgers = original_ledgers
 
 func _riskiest_borrower(gs: Node) -> String:
 	var best := ""

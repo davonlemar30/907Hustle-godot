@@ -364,7 +364,52 @@ func operation_summary(operation_id: String) -> Dictionary:
 		"spend_limit": assignment.get("spend_limit") if assigned_here else null,
 		"stop_reason": _selection_field(assignment, "stop_reason") if assigned_here else null,
 		"selection": assignment.get("selection") if assigned_here else null,
+		# What she WOULD do if asked right now, straight from the adapter — the
+		# cash exposure and the storage it needs, so a screen can show the cost
+		# of a decision before it is made. Null once she is already out working,
+		# because a preview of an assignment that exists is a different question.
+		#
+		# FS-001.6 declared this slot and left it empty; the adapter that could
+		# answer it did not exist yet. FS-001.8 is where it gets filled, and it
+		# is filled by ASKING rather than by the screen working it out.
+		"preview": _preview(operation_id, crew_id) if known and not assigned_here else null,
 	}
+
+## The adapter's own read of what it would do. The coordinator does not compute
+## it — that is the rule this whole file exists to keep.
+func _preview(operation_id: String, crew_id: String, spend_limit: int = -1) -> Variant:
+	var adapter: Variant = _adapter_for(operation_id)
+	if adapter == null or not (adapter as Object).has_method("preview"):
+		return null
+	return adapter.preview(crew_id, spend_limit)
+
+## A preview at a chosen budget, for a screen offering the player a choice of
+## how far to let her go.
+func preview_at(operation_id: String, spend_limit: int) -> Variant:
+	var expected: Dictionary = OPERATION_CAPABILITY.get(operation_id, {})
+	if expected.is_empty():
+		return null
+	return _preview(operation_id, str(expected["crew_id"]), spend_limit)
+
+## The spends worth offering, from the adapter, derived off the real board.
+func spend_options(operation_id: String) -> Array:
+	var expected: Dictionary = OPERATION_CAPABILITY.get(operation_id, {})
+	if expected.is_empty():
+		return []
+	var adapter: Variant = _adapter_for(operation_id)
+	if adapter == null or not (adapter as Object).has_method("spend_options"):
+		return []
+	return adapter.spend_options(str(expected["crew_id"]))
+
+## The last claim on this person's day, settled or not, whatever day it was for.
+##
+## `assignment_for()` is deliberately day-scoped — a stale record is not a claim
+## on today. But "what did she bring back last night" is a real question a
+## screen needs to answer, and the record is right there. Separate reader rather
+## than relaxing the day scope, because the day scope is load-bearing.
+func last_assignment(crew_id: String) -> Dictionary:
+	var entry: Variant = gs.crew_assignments.get(crew_id)
+	return entry if entry is Dictionary else {}
 
 ## One field out of the morning's selection, or null when she has not shopped.
 func _selection_field(assignment: Dictionary, field: String) -> Variant:

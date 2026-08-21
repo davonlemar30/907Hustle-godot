@@ -124,6 +124,11 @@ tests/parity/         # CI gate: replays recorded oracle fixtures through the
   context string. No `randf()`/`randi()` anywhere else. Canon uses two hash
   normalisations (`/2^32` and `%10000/10000`) and both exist — pick by what canon does
   at that call site, not by preference.
+- **The UI owns no gameplay rules.** Everything the 907List and Crew screens show
+  about a delegated operation is read from `operation_summary()`, the adapter's
+  `preview()`, and canonical blocker codes. The preview is not a second opinion:
+  `preview()` and `select()` run the same `plan()`, so what the player is shown
+  is what happens.
 - **Delegation costs her day, not yours.** A crew member running an operation
   buys in the morning and settles at night through the same value and
   consequence path a personal sale uses — the money and the Exposure footprint
@@ -213,6 +218,7 @@ regardless of how small the source file is.
 | FS-001.5. Crew extensibility | ✅ rank labels, rank-curve clamp, shared requirement evaluator; parity → 7121 checks |
 | FS-001.6. Crew operations | ✅ day-ending lifecycle + delegation substrate, save v7; parity → 7211 checks |
 | FS-001.7. Run the Board | ✅ Pherris buys and settles on her own day; parity → 7308 checks |
+| FS-001.8. Player experience | ✅ the delegation slice is playable from the existing screens; parity → 7400 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

@@ -544,6 +544,120 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-001.8: the slice becomes playable  (added 2026-08-21)
+
+Presentation only — no new mechanic, no new screen. What changed is that the
+delegation slice can now be reached, understood and used from the screens that
+already existed. **Parity 7308 → 7400 checks, 0 failures.**
+
+### A preview that cannot lie
+
+FS-001.6 declared `spend_limit` / `stop_reason` on `operation_summary()` and left
+them null; FS-001.7 filled two of them and left cash/storage preview open,
+because the substrate had no business knowing what "storage" meant. This is where
+it gets answered, and it is answered by **asking the adapter** rather than by the
+screen working it out.
+
+The mechanism matters more than the fields. `select()` used to decide and buy in
+one pass. It is now split: `plan()` decides, `select()` executes what `plan()`
+returned, and `preview()` is `plan()` with the cash context attached. **The
+preview and the purchase are the same code path**, so they cannot drift. A
+preview that re-derives its answer is a second implementation, and the day it
+disagrees the player is shown a number the game does not honour.
+
+The suite holds them to each other directly, at every budget the player can pick.
+
+### The spend control is derived, not authored
+
+Rather than offering round numbers, the screen asks the adapter for
+`spend_options()` — the running total of taking 1, 2, … up to her rank cap,
+computed off the real board. Every button shows a budget that buys exactly what
+it says, and the fixtures check the boundary in both directions: a dollar less
+buys one fewer.
+
+That also keeps the rule intact. The UI is choosing between answers the systems
+layer produced; it is not inventing prices.
+
+### Consumption had made itself invisible
+
+FS-001.2 filters consumed listings out of the POOL before generation, which is
+canon. The consequence nobody had looked at until there was a second buyer: a
+taken listing does not grey out, it *vanishes*, and the board reshuffles around
+it. Two people working one board would have watched items evaporate.
+
+The screen now renders an `ALREADY GONE TODAY` section from the consumption
+record — the board cannot answer this, because as far as it is concerned those
+items were never generated. Each row is attributed: **PHERRIS PICKED THIS UP** or
+**YOU PICKED THIS UP**, derived by matching `taken_today()` against her selection.
+
+### Her holdings show no sell button at all
+
+Not a disabled one. A greyed-out SELL implies something you could do if a
+condition changed; nothing changes this before tonight and the system refuses it
+outright. The row reads **WITH PHERRIS · SETTLES AT NIGHT** and offers nothing.
+Same rule the Crew screen already follows at the top of the rank ladder.
+
+### The night result was disappearing
+
+Once the day rolls over the assignment is yesterday's, the panel correctly goes
+back to offering her, and the settlement existed only as two lines in an activity
+feed that was already scrolling away. **The money arrived while the player was
+asleep and they had no way to see what it was.** `last_assignment()` is a
+separate reader — deliberately not a relaxation of the day-scoped
+`assignment_for()`, because the day scope is load-bearing — and the panel now
+carries a `LAST RUN · 2 moved for $128 · +$68` line.
+
+### A live bug on `main`, found by rendering a screen
+
+PR #40 split Exposure's private ledger accessor into `_ledger_for_write` as part
+of making Exposure read-only during observation. `ui/screens/people.gd` kept
+calling `_ledger`. **Every NPC row on the People screen has been erroring since
+that merge** — ten script errors per render — and the screen silently fell
+through to "Knows nothing about you yet." for everyone.
+
+Nothing caught it because nothing in the suite had ever rendered a screen. Every
+check tested the reads a screen is built on; none tested that a screen could
+consume them.
+
+So the suite renders one now. It is not a layout test — the interactive pass at
+375×812 covers that — but it asserts that a screen fed real state produces the
+content that state implies. Sabotage 11 puts the old accessor back and it fails.
+
+### Sabotage log
+
+Eleven faults, all confirmed red. **Three passed on the first attempt**, and all
+three were weak checks rather than working code:
+
+- **The cash test only covered "cannot afford anything".** That passes whether or
+  not the plan tracks what it has already committed. The case that bites is
+  *enough for the first item, not for both* — a plan that forgets its running
+  total promises a spend the player cannot make.
+- **The undiscovered-preview test cleared discovery after assigning her**, so the
+  preview was already null for the other reason and discovery was never tested.
+- **The People screen was not covered at all**, which is how the bug above
+  reached `main`.
+
+| # | fault | result |
+|---|---|---|
+| 1 | preview re-derives instead of using `plan()` | 7 failures |
+| 2 | `select()` re-decides instead of executing the plan | 13 |
+| 3 | preview ignores stock already held | 5 |
+| 4 | preview ignores cash spent so far | 0 → **4** |
+| 5 | `storage_free` reports raw capacity | 2 |
+| 6 | `spend_options` offers budgets past the cap | 1 |
+| 7 | summary previews even once she is out | 1 |
+| 8 | summary previews an undiscovered operation | 0 → **1** |
+| 9 | `last_assignment` day-scoped like `assignment_for` | 1 |
+| 10 | preview mutates (spends cash) | 1 |
+| 11 | `people.gd` back to the removed accessor | 0 → **2** |
+
+### Verified at 375×812
+
+Every operation state rendered and read back: available (with the storage/cash
+line and both spend buttons), assigned, settled, blocked by the afternoon,
+blocked by unpaid wages, undiscovered (panel absent entirely), low cash, and full
+storage. Widest laid-out element 375px in every state; no tap target under 44px.
+
 ## FS-001.7: Pherris runs the board  (added 2026-08-21)
 
 The first thing a crew member does that you can measure in dollars. She picks

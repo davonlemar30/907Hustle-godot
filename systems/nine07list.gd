@@ -66,6 +66,14 @@ const PROFITABLE_FLIP_MARGIN := 1.3
 ## constant canon passes at the call site, frozen with the rest of the port.
 const MEETUP_CHANCE := 0.75
 
+## Who is executing a settlement. See `settle_holding` for what differs.
+const PERSONAL := "personal"
+const DELEGATED := "delegated"
+## The `source` stamp a delegated pickup carries. Personal holdings carry
+## "player" (stamped for existing saves by the v6 → v7 migration).
+const SOURCE_PLAYER := "player"
+const SOURCE_PHERRIS := "pherris"
+
 var gs: Node
 var rng: Node
 var time_system: RefCounted
@@ -188,7 +196,8 @@ func _buy(item_id: String) -> Dictionary:
 		return {"ok": false, "reason": blocked}
 	var item: Dictionary = gs.listing_item_by_id(item_id)
 	gs.cash -= int(item["buy"])
-	gs.list_holdings.append({"item_id": item_id, "bought_day": gs.day})
+	gs.list_holdings.append({
+		"item_id": item_id, "bought_day": gs.day, "source": SOURCE_PLAYER})
 	# The opportunity is spent whether or not the flip ever pays off.
 	_mark_taken(item_id)
 	gs.log_activity("Picked up %s for $%d." % [str(item["name"]), int(item["buy"])], AMBER)
@@ -210,8 +219,14 @@ func sell_blocker(index: int) -> String:
 		return "The run is over."
 	if index < 0 or index >= gs.list_holdings.size():
 		return "Nothing there."
-	var delay: int = int(gs.market_tier()["sell_delay"])
 	var held: Dictionary = gs.list_holdings[index]
+	# Checked BEFORE the delay: a delegated pickup is never the player's to sell,
+	# at any age. Pherris made the buy and Pherris closes it — selling it out
+	# from under her would hand the player her cycle for free, and would credit
+	# the flip to their standing.
+	if str(held.get("source", SOURCE_PLAYER)) == SOURCE_PHERRIS:
+		return "That's Pherris's pickup. It settles tonight."
+	var delay: int = int(gs.market_tier()["sell_delay"])
 	if gs.day - int(held["bought_day"]) < delay:
 		return "The meet is tomorrow."
 	return ""
@@ -220,6 +235,45 @@ func _sell(index: int) -> Dictionary:
 	var blocked := sell_blocker(index)
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked}
+	return settle_holding(index, PERSONAL)
+
+## Turn one held item into money. **The single settlement path**, used by the
+## player selling at the counter and by Pherris settling a delegated pickup at
+## night. Returns `{ok, got, delta, tier}`.
+##
+## ## What the two modes share, and why
+##
+## The MONEY is identical: `realised_value` keys on the item and the day it was
+## bought, so the same object fetches the same price whoever is holding it. So
+## is the CONSEQUENCE — the `financial / 907list_profit` rows and the
+## `market_meetup` outcome fire the same way in both modes.
+##
+## That last part is the one worth defending. It would be easy to treat a
+## delegated sale as quieter because the player was not there, but the money
+## still moved and the block still counts it — canon's rule is that what reaches
+## Curtis is decided by the VALUE through his volume filter, not by whose hands
+## carried it. Making delegation launder visibility would turn a crew member
+## into a way to hide income, which is a different game.
+##
+## ## What only the player gets, and why
+##
+## Time, Intelligence, and tier progression. All three are the player's own
+## experience of the trade:
+##
+##   - **A slot** is spent by the person who went to the meet. Pherris going
+##     costs her day, not yours — that is the entire point of delegating.
+##   - **Intelligence** trains on reading value well. Pherris reading it well
+##     teaches you nothing.
+##   - **`list_flips`** is the count that earns Broker standing, which is *your*
+##     reputation on the board. Her flips are not your reputation.
+##
+## Those three are the leak this build must not spring: delegation that fed
+## progression would make the crew member strictly better than doing it
+## yourself, and the tier ladder would climb while the player learned nothing.
+func settle_holding(index: int, execution_mode: String) -> Dictionary:
+	if index < 0 or index >= gs.list_holdings.size():
+		return {"ok": false, "reason": "Nothing there."}
+	var delegated: bool = execution_mode == DELEGATED
 	var held: Dictionary = gs.list_holdings[index]
 	var item: Dictionary = gs.listing_item_by_id(str(held["item_id"]))
 	var got: int = realised_value(held)
@@ -228,18 +282,21 @@ func _sell(index: int) -> Dictionary:
 	gs.cash += got
 	gs.list_holdings.remove_at(index)
 
-	# Canon counts a clean flip, not a sale — a loss does not advance the tier.
-	if got > paid:
-		gs.list_flips += 1
-	_update_tier()
+	if not delegated:
+		# Canon counts a clean flip, not a sale — a loss does not advance the
+		# tier. Her flips are not the player's standing, so this is skipped
+		# whole rather than counted and discounted.
+		if got > paid:
+			gs.list_flips += 1
+		_update_tier()
 
-	# Canon (game-core.js:3164): a flip that clears 30% was a good READ, not a
-	# lucky one, and reading value is exactly what Intelligence is for. Breaking
-	# even teaches nothing, which is why the gate is a margin and not a sale.
-	# `list_flips - 1` is canon's session count: how many came before this one,
-	# which is what makes the first flips the valuable ones.
-	if paid > 0 and float(got) > float(paid) * PROFITABLE_FLIP_MARGIN:
-		attributes.train("list_flip", maxi(0, gs.list_flips - 1))
+		# Canon (game-core.js:3164): a flip that clears 30% was a good READ, not
+		# a lucky one, and reading value is exactly what Intelligence is for.
+		# Breaking even teaches nothing, which is why the gate is a margin and
+		# not a sale. `list_flips - 1` is canon's session count: how many came
+		# before this one, which is what makes the first flips the valuable ones.
+		if paid > 0 and float(got) > float(paid) * PROFITABLE_FLIP_MARGIN:
+			attributes.train("list_flip", maxi(0, gs.list_flips - 1))
 
 	# Canon recordMarketFlip: the money itself is news, on both channels that
 	# trade in it.
@@ -247,9 +304,9 @@ func _sell(index: int) -> Dictionary:
 	# `value` carries the payout because that is what Curtis's network filter
 	# reads — a big 907List day is exactly how a flip is meant to reach him, and
 	# a $40 space heater is exactly how it is meant not to. Without the filter
-	# (ported in this build, see Exposure.clears_curtis_filter) this observation
-	# would raise his awareness on every trivial flip, which is the opposite of
-	# canon's design for his attention.
+	# (see Exposure.clears_curtis_filter) this observation would raise his
+	# awareness on every trivial flip, which is the opposite of canon's design
+	# for his attention.
 	#
 	# Household AND network: until canon's v1.19 the only financial channel was
 	# the one the player lives on, so the people who trade in money for a living
@@ -258,6 +315,9 @@ func _sell(index: int) -> Dictionary:
 	#
 	# No Heat. A flip is legitimate commerce as far as anyone watching is
 	# concerned; what it costs is visibility, not police attention.
+	#
+	# Identical in both modes — see the header on why delegation must not
+	# launder visibility.
 	var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
 	if curtis != null:
 		for channel in ["household", "network"]:
@@ -278,7 +338,12 @@ func _sell(index: int) -> Dictionary:
 		resolver.broadcast_outcome("market_meetup", tier, gs.current_district_id, got)
 
 	var delta: int = got - paid
-	if delta >= 0:
+	if delegated:
+		if delta >= 0:
+			gs.log_activity("Pherris moved %s for $%d (+$%d)." % [str(item["name"]), got, delta], GREEN)
+		else:
+			gs.log_activity("Pherris moved %s for $%d. Down $%d." % [str(item["name"]), got, -delta], RED)
+	elif delta >= 0:
 		gs.log_activity("Flipped %s for $%d (+$%d)." % [str(item["name"]), got, delta], GREEN)
 	else:
 		gs.log_activity("%s moved for $%d. Down $%d." % [str(item["name"]), got, -delta], RED)
@@ -287,8 +352,10 @@ func _sell(index: int) -> Dictionary:
 	if tier == "messy":
 		gs.log_activity("Somebody was paying attention to that meet.", AMBER)
 
-	# A meet is a slot.
-	time_system.handle("advance_time", {})
+	if not delegated:
+		# A meet is a slot — for whoever went to it. Pherris going costs her day,
+		# which is the whole point of asking her.
+		time_system.handle("advance_time", {})
 	return {"ok": true, "got": got, "delta": delta, "tier": tier}
 
 func _update_tier() -> void:

@@ -41,6 +41,7 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Have it go clean, messy, wrong, or badly wrong | automatic, on any risky action |
 | Lend at interest and decide what a default costs | Hustle → Shark |
 | Hire crew, pay wages, watch loyalty, move them up the ranks | Street → People → Crew |
+| Give Pherris the day to work the board, and get the money back at night | automatic, once she is Trusted enough |
 | Claim corners, post soldiers, collect nightly | Home → Turf |
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
@@ -86,6 +87,7 @@ systems/              # the ONLY writers of GameState
   boost.gd            # lifting, the technique ladder, the fence
   crew.gd             # roster, loyalty, ranks, the nightly wage clock
   crew_operations.gd  # delegation lifecycle — discovery, assignment, settlement
+  list_adapter.gd     # Pherris running the board: what she buys, and why she stops
   requirements.gd     # pure eligibility evaluator — structured blockers, no state
   territory.gd        # corners, soldiers, passive income
 
@@ -122,6 +124,12 @@ tests/parity/         # CI gate: replays recorded oracle fixtures through the
   context string. No `randf()`/`randi()` anywhere else. Canon uses two hash
   normalisations (`/2^32` and `%10000/10000`) and both exist — pick by what canon does
   at that call site, not by preference.
+- **Delegation costs her day, not yours.** A crew member running an operation
+  buys in the morning and settles at night through the same value and
+  consequence path a personal sale uses — the money and the Exposure footprint
+  are identical. What does *not* transfer is the player's own experience of the
+  trade: no slot, no Intelligence, no progress toward Broker standing. Without
+  that line a crew member would be strictly better than doing the work yourself.
 - **The day ends before the clock moves.** `day_ending(ended_day)` fires while
   the clock still reads the day that is finishing; `day_crossed` fires after the
   increment. Canon's `confirmDayEnd` has the same shape, and its comment on
@@ -204,6 +212,7 @@ regardless of how small the source file is.
 | FS-001.2. 907List ownership | ✅ same-day opportunity consumption, Curtis volume filter, save v6; parity → 6702 checks |
 | FS-001.5. Crew extensibility | ✅ rank labels, rank-curve clamp, shared requirement evaluator; parity → 7121 checks |
 | FS-001.6. Crew operations | ✅ day-ending lifecycle + delegation substrate, save v7; parity → 7211 checks |
+| FS-001.7. Run the Board | ✅ Pherris buys and settles on her own day; parity → 7308 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

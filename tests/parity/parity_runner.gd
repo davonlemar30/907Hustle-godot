@@ -58,6 +58,11 @@ extends Node
 ##              Operations substrate — discovery latching, the planning
 ##              window, one day per person, night settlement, and the
 ##              port-seam checks oracle fixtures structurally cannot reach
+##   runboard — FS-001.7: the 907List domain adapter. Selection order and every
+##              stop reason on controlled boards, shared consumption across the
+##              player/Pherris seam, settlement through the same path a personal
+##              sale uses, and the three-way leak check that keeps delegation
+##              from being strictly better than doing it yourself
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -98,6 +103,7 @@ func _ready() -> void:
 		_check_crew_regression()
 		_check_day_lifecycle()
 		_check_crew_operations()
+		_check_run_the_board()
 		_check_save_roundtrip()
 	_finish()
 
@@ -2318,7 +2324,21 @@ func _check_ops_settlement(gs: Node, gm: Node, ops: RefCounted) -> void:
 	var settled: Dictionary = gs.crew_assignments.get(OPS_CREW, {})
 	_expect_int("ops settled record keeps its day", int(settled.get("day", -1)), assigned_day)
 	_expect_true("ops assignment settled at night", bool(settled.get("settled", false)))
-	_expect_true("ops settles to null without an adapter", settled.get("result") == null)
+	# FS-001.6 asserted this settled to NULL, because no adapter existed. One
+	# does now, so the truth changed: settlement returns the adapter's
+	# aggregate. The property that mattered — a claim on an ended day always
+	# closes — is unchanged and still checked on the line above.
+	var settled_result: Variant = settled.get("result")
+	_expect_true("ops settles through the adapter", settled_result is Dictionary)
+	if settled_result is Dictionary:
+		for field in ["settled_count", "gross", "profit_or_loss", "individual_results"]:
+			_expect_true("ops settlement result carries %s" % field,
+				(settled_result as Dictionary).has(field))
+	# The no-adapter path still exists and is still null — an operation nobody
+	# owns must close rather than hang, which is what keeps the substrate
+	# correct when it is empty.
+	_expect_true("ops with no registered adapter still settles to null",
+		ops._settle(OPS_CREW, {"operation_id": "unowned_operation"}, gs.day) == null)
 	# And today's read no longer sees it, which is what frees the crew member.
 	_expect_true("ops stale assignment is not today's",
 		ops.assignment_for(OPS_CREW).is_empty())
@@ -2547,6 +2567,481 @@ func _check_ops_port_seam(gs: Node, gm: Node, ops: RefCounted) -> void:
 		not bool(requirements.evaluate_requirement(
 			{"type": "crew_active", "crew_id": "tone"}, ops._facts())["ok"]))
 
+## FS-001.7 — Pherris running the board.
+##
+## No web oracle exists for this (FS-001.3/.4 were never implemented in web), so
+## the acceptance matrix is the contract and these are behavioural checks against
+## it. What that means in practice: they have to be more explicit than a fixture
+## replay, because there is no recorded truth to fall back on.
+##
+## Most cases run on a CONTROLLED item table rather than a real day's board.
+## Finding a real day that happens to offer two items at the same price, or
+## nothing but rough stock, would make the test depend on the shuffle — and then
+## a board-generator change would break tests that are not about generation.
+## The table is swapped in and restored around each case.
+const RB_OPERATION := "907list_run_board"
+const RB_CREW := "pherris"
+
+func _check_run_the_board() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var ops: RefCounted = gm.system("crew_operations") as RefCounted
+	var adapter: RefCounted = gm.system("list_adapter") as RefCounted
+	var lst: RefCounted = gm.system("list") as RefCounted
+	if ops == null or adapter == null or lst == null:
+		_fail("run the board", "a required system is missing")
+		return
+	var original_items: Array = gs.listing_items.duplicate(true)
+	_check_rb_selection(gs, gm, ops, adapter, lst)
+	_check_rb_stop_reasons(gs, gm, ops, adapter, lst)
+	_check_rb_cycle_caps(gs, gm, ops, adapter, lst)
+	gs.listing_items = original_items
+	_check_rb_shared_consumption(gs, gm, ops, lst)
+	_check_rb_settlement(gs, gm, ops, lst)
+	_check_rb_leakage(gs, gm, ops, lst)
+	_check_rb_reload(gs, gm, ops, lst)
+	gs.listing_items = original_items
+	gs.reset_to_new_game()
+
+## Broker tier, Pherris loyal, morning, money in hand.
+func _rb_ready(gs: Node, cash: int = 5000) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 12
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.cash = cash
+	gs.list_tier = 3
+	gs.crew_records[RB_CREW] = {
+		"recruited": true, "status": "active", "loyalty": 8, "tier": 2,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
+	}
+
+func _rb_item(id: String, buy: int, condition: String, low: int, high: int) -> Dictionary:
+	return {"id": id, "name": id.capitalize(), "category": "household", "tier": 1,
+		"buy": buy, "true_value": [low, high], "condition": condition}
+
+## Assign her and hand back the morning's selection record.
+func _rb_assign(gs: Node, gm: Node, ops: RefCounted, payload: Dictionary = {}) -> Dictionary:
+	ops.reconcile()
+	var full: Dictionary = {"crew_id": RB_CREW, "operation_id": RB_OPERATION}
+	for key in payload.keys():
+		full[key] = payload[key]
+	gm.dispatch("assign_crew_operation", full)
+	var assignment: Variant = gs.crew_assignments.get(RB_CREW)
+	if not (assignment is Dictionary):
+		return {}
+	var selection: Variant = (assignment as Dictionary).get("selection")
+	return selection if selection is Dictionary else {}
+
+func _rb_purchased_ids(selection: Dictionary) -> Array:
+	var out: Array = []
+	for row in selection.get("purchased", []):
+		out.append(str((row as Dictionary)["item_id"]))
+	return out
+
+## What she takes, and in what order.
+func _check_rb_selection(gs: Node, gm: Node, ops: RefCounted, adapter: RefCounted,
+		lst: RefCounted) -> void:
+	# Rough stock is the one thing she refuses. A board of nothing else leaves
+	# her with a committed day and no purchases.
+	_rb_ready(gs)
+	gs.listing_items = [
+		_rb_item("rough_a", 20, "rough", 30, 40),
+		_rb_item("rough_b", 30, "rough", 45, 60),
+	]
+	var rough_only: Dictionary = _rb_assign(gs, gm, ops)
+	_expect_int("rb rough-only buys nothing", int(rough_only.get("cycles_used", -1)), 0)
+	_expect_str("rb rough-only stop reason",
+		str(rough_only.get("stop_reason", "")), "no_acceptable")
+	_expect_true("rb rough-only still commits the day",
+		not ops.assignment_for(RB_CREW).is_empty())
+	_expect_true("rb rough-only reports ok false", not bool(rough_only.get("ok", true)))
+	_expect_int("rb rough-only spends nothing", int(rough_only.get("total_spent", -1)), 0)
+
+	# A rough item mixed in is skipped even when it is the cheapest thing there —
+	# the filter is taste, not budget.
+	_rb_ready(gs)
+	gs.listing_items = [
+		_rb_item("cheap_rough", 10, "rough", 20, 30),
+		_rb_item("mid_good", 60, "good", 90, 120),
+		_rb_item("high_mint", 125, "mint", 180, 240),
+	]
+	var mixed: Dictionary = _rb_assign(gs, gm, ops)
+	var mixed_ids: Array = _rb_purchased_ids(mixed)
+	_expect_true("rb never buys rough", not "cheap_rough" in mixed_ids)
+	_expect_str("rb buys cheapest acceptable first", str(mixed_ids), str(["mid_good", "high_mint"]))
+
+	# Ties break on the item's position on the board, not on table order.
+	#
+	# This needs a WIDE tied group to test anything. A first pass used three
+	# items and passed with the tie-break removed — GDScript's sort happens to
+	# leave a 3-element array alone, so the check could not tell the two
+	# implementations apart. Introsort only permutes equal keys once the array is
+	# big enough, so the board is widened for this case and the assertion is the
+	# rule stated directly: every equal-priced item keeps its board order.
+	_rb_ready(gs)
+	var tied_table: Array = []
+	for i in 20:
+		tied_table.append(_rb_item("tie_%02d" % i, 60, "good", 90, 120))
+	gs.listing_items = tied_table
+	var listings_config: int = int(gs.market_tiers[3]["listings"])
+	gs.market_tiers[3]["listings"] = 20
+	ops.reconcile()
+	var board_order: Array = []
+	for listing in lst.todays_listings():
+		board_order.append(str((listing as Dictionary)["id"]))
+	var acceptable_order: Array = []
+	for listing in adapter.acceptable_board():
+		acceptable_order.append(str((listing as Dictionary)["id"]))
+	gs.market_tiers[3]["listings"] = listings_config
+	_expect_int("rb wide tied board is wide enough to permute", board_order.size(), 20)
+	_expect_str("rb equal prices keep board order", str(acceptable_order), str(board_order))
+
+## Every stop reason, and the order they are checked in.
+func _check_rb_stop_reasons(gs: Node, gm: Node, ops: RefCounted, adapter: RefCounted,
+		lst: RefCounted) -> void:
+	var board := [
+		_rb_item("cheap", 60, "good", 90, 120),
+		_rb_item("dearer", 65, "good", 95, 130),
+		_rb_item("dearest", 125, "good", 180, 240),
+	]
+
+	# Spend limit: $100 against $60 and $65 buys the $60 and stops, because the
+	# next one would cross the line rather than land on it.
+	_rb_ready(gs)
+	gs.listing_items = board.duplicate(true)
+	var limited: Dictionary = _rb_assign(gs, gm, ops, {"spend_limit": 100})
+	_expect_str("rb spend limit buys what fits",
+		str(_rb_purchased_ids(limited)), str(["cheap"]))
+	_expect_int("rb spend limit total", int(limited.get("total_spent", -1)), 60)
+	_expect_str("rb spend limit stop reason",
+		str(limited.get("stop_reason", "")), "spend_limit")
+
+	# Exactly on the line is affordable — the check is "would exceed", not
+	# "would reach".
+	_rb_ready(gs)
+	gs.listing_items = board.duplicate(true)
+	var exact: Dictionary = _rb_assign(gs, gm, ops, {"spend_limit": 125})
+	_expect_int("rb spend limit spends up to the line exactly",
+		int(exact.get("total_spent", -1)), 125)
+
+	# A $0 limit commits her day for nothing. That is a real choice, not an error.
+	_rb_ready(gs)
+	gs.listing_items = board.duplicate(true)
+	var zero: Dictionary = _rb_assign(gs, gm, ops, {"spend_limit": 0})
+	_expect_int("rb zero limit buys nothing", int(zero.get("cycles_used", -1)), 0)
+	_expect_str("rb zero limit stop reason", str(zero.get("stop_reason", "")), "spend_limit")
+	_expect_true("rb zero limit still commits the day",
+		not ops.assignment_for(RB_CREW).is_empty())
+
+	# Cash runs out before the board does.
+	_rb_ready(gs, 50)
+	gs.listing_items = board.duplicate(true)
+	var broke: Dictionary = _rb_assign(gs, gm, ops)
+	_expect_int("rb no cash buys nothing", int(broke.get("cycles_used", -1)), 0)
+	_expect_str("rb no cash stop reason", str(broke.get("stop_reason", "")), "cash")
+	_expect_int("rb no cash leaves the wallet alone", gs.cash, 50)
+
+	# Storage full outranks everything — she has nowhere to put it.
+	_rb_ready(gs)
+	gs.listing_items = board.duplicate(true)
+	gs.list_tier = 1  # capacity 3
+	for i in 3:
+		gs.list_holdings.append({"item_id": "cheap", "bought_day": 1, "source": "player"})
+	gs.list_tier = 3
+	gs.list_holdings.resize(int(gs.market_tier()["capacity"]))
+	for i in gs.list_holdings.size():
+		gs.list_holdings[i] = {"item_id": "cheap", "bought_day": 1, "source": "player"}
+	var full: Dictionary = _rb_assign(gs, gm, ops)
+	_expect_int("rb full storage buys nothing", int(full.get("cycles_used", -1)), 0)
+	_expect_str("rb full storage stop reason", str(full.get("stop_reason", "")), "capacity")
+
+	# Priority: with BOTH the wallet and the shelf against her, the shelf is
+	# reported — it is the more fundamental problem.
+	_rb_ready(gs, 10)
+	gs.listing_items = board.duplicate(true)
+	gs.list_holdings.resize(int(gs.market_tier()["capacity"]))
+	for i in gs.list_holdings.size():
+		gs.list_holdings[i] = {"item_id": "cheap", "bought_day": 1, "source": "player"}
+	var both: Dictionary = _rb_assign(gs, gm, ops)
+	_expect_str("rb capacity outranks cash", str(both.get("stop_reason", "")), "capacity")
+
+## The cycle cap comes off the capability curve at her rank.
+func _check_rb_cycle_caps(gs: Node, gm: Node, ops: RefCounted, adapter: RefCounted,
+		lst: RefCounted) -> void:
+	var deep_board: Array = []
+	for i in 6:
+		deep_board.append(_rb_item("item_%d" % i, 20 + i * 5, "good", 60, 90))
+	for entry in [[1, 1], [2, 2], [3, 3], [6, 3]]:
+		var rank: int = int(entry[0])
+		var want: int = int(entry[1])
+		_rb_ready(gs)
+		gs.listing_items = deep_board.duplicate(true)
+		gs.crew_records[RB_CREW]["tier"] = rank
+		_expect_int("rb cycle cap at rank %d" % rank, adapter.cycle_cap(RB_CREW), want)
+		var picked: Dictionary = _rb_assign(gs, gm, ops)
+		_expect_int("rb buys up to the cap at rank %d" % rank,
+			int(picked.get("cycles_used", -1)), want)
+		_expect_str("rb stops on the cap at rank %d" % rank,
+			str(picked.get("stop_reason", "")), "cycle_cap")
+		_expect_int("rb summary reports the cap at rank %d" % rank,
+			int(ops.operation_summary(RB_OPERATION)["requested_cap"]), want)
+
+## The board is shared. What one of them takes, the other cannot.
+func _check_rb_shared_consumption(gs: Node, gm: Node, ops: RefCounted, lst: RefCounted) -> void:
+	_rb_ready(gs)
+	ops.reconcile()
+	var board: Array = []
+	for listing in lst.todays_listings():
+		board.append(str((listing as Dictionary)["id"]))
+	if board.is_empty():
+		_fail("rb shared consumption", "the probe day offers no listings")
+		return
+
+	# Player first: her board must not contain what he already took.
+	var taken := str(board[0])
+	_expect_true("rb player buys first", gm.dispatch("list_buy", {"item_id": taken}))
+	var selection: Dictionary = _rb_assign(gs, gm, ops)
+	_expect_true("rb she cannot take what the player took",
+		not taken in _rb_purchased_ids(selection))
+
+	# Her turn first: the player's board must not contain what she took.
+	_rb_ready(gs)
+	var hers: Dictionary = _rb_assign(gs, gm, ops)
+	var her_ids: Array = _rb_purchased_ids(hers)
+	_expect_true("rb she bought something to contest", not her_ids.is_empty())
+	if not her_ids.is_empty():
+		var contested := str(her_ids[0])
+		_expect_true("rb her pickup is marked consumed", contested in lst.taken_today())
+		var still_listed := false
+		for listing in lst.todays_listings():
+			if str((listing as Dictionary)["id"]) == contested:
+				still_listed = true
+		_expect_true("rb her pickup leaves the board", not still_listed)
+		var refused: Dictionary = lst.handle("list_buy", {"item_id": contested})
+		_expect_true("rb player cannot rebuy her pickup", not bool(refused.get("ok", false)))
+
+## Settlement: her money is the player's money, through the same path.
+func _check_rb_settlement(gs: Node, gm: Node, ops: RefCounted, lst: RefCounted) -> void:
+	var exposure := get_node("/root/Exposure")
+	_rb_ready(gs)
+	var selection: Dictionary = _rb_assign(gs, gm, ops)
+	var bought: Array = _rb_purchased_ids(selection)
+	if bought.is_empty():
+		_fail("rb settlement", "she bought nothing to settle")
+		return
+
+	# Her holdings are hers, and the player cannot sell them out from under her.
+	for i in gs.list_holdings.size():
+		var held: Dictionary = gs.list_holdings[i]
+		if str(held.get("source", "")) == "pherris":
+			_expect_str("rb delegated holding is not manually sellable",
+				lst.sell_blocker(i), "That's Pherris's pickup. It settles tonight.")
+
+	# The realised value is the item's, not the seller's: same key, same money.
+	var expected_gross: int = 0
+	for held in gs.list_holdings:
+		if str((held as Dictionary).get("source", "")) == "pherris":
+			expected_gross += lst.realised_value(held)
+
+	for npc_id in exposure.npc_ids():
+		exposure.ledger_of(str(npc_id)).clear()
+	gs.observation_queue.clear()
+	var cash_before: int = gs.cash
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+
+	var result: Variant = (gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("result")
+	_expect_true("rb settlement produced a result", result is Dictionary)
+	if not (result is Dictionary):
+		return
+	var settled: Dictionary = result
+	_expect_int("rb settled every holding", int(settled["settled_count"]), bought.size())
+	_expect_int("rb gross matches the shared value path", int(settled["gross"]), expected_gross)
+	_expect_int("rb cash credited by the gross", gs.cash, cash_before + expected_gross)
+	_expect_true("rb her holdings are gone", _rb_pherris_holdings(gs) == 0)
+
+	# The Exposure consequence is IDENTICAL to a personal sale — delegation is
+	# not a way to launder visibility.
+	var household := 0
+	for npc_id in exposure.npc_ids():
+		for row in exposure.ledger_of(str(npc_id)):
+			if str(row["event"]) == "907list_profit":
+				household += 1
+	_expect_true("rb delegated sale still tells the household", household > 0)
+
+func _rb_pherris_holdings(gs: Node) -> int:
+	var count := 0
+	for held in gs.list_holdings:
+		if str((held as Dictionary).get("source", "")) == "pherris":
+			count += 1
+	return count
+
+## The three things delegation must NOT give the player. This is the check that
+## keeps a crew member from being strictly better than doing the work yourself.
+func _check_rb_leakage(gs: Node, gm: Node, ops: RefCounted, lst: RefCounted) -> void:
+	_rb_ready(gs)
+	var selection: Dictionary = _rb_assign(gs, gm, ops)
+	if _rb_purchased_ids(selection).is_empty():
+		_fail("rb leakage", "she bought nothing to settle")
+		return
+	var flips_before: int = gs.list_flips
+	var tier_before: int = gs.list_tier
+	var progress_before: float = float(gs.attribute_progress.get("intelligence", 0.0))
+	var intelligence_before: int = int(gs.attributes.get("intelligence", 1))
+	var day_before: int = gs.day
+
+	# Cross the night through the real dispatch path. Emitting `day_ending` by
+	# hand would settle without a dispatch on the stack, which trips the
+	# ownership guard on Curtis's mutators — a path the game never takes, and
+	# exactly the false signal that guard exists to raise.
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	_expect_true("rb night cross dispatches", gm.dispatch("advance_time", {}))
+
+	_expect_int("rb delegated settlement trains no Intelligence progress",
+		int(round(float(gs.attribute_progress.get("intelligence", 0.0)) * 1000.0)),
+		int(round(progress_before * 1000.0)))
+	_expect_int("rb delegated settlement raises no attribute",
+		int(gs.attributes.get("intelligence", 1)), intelligence_before)
+	_expect_int("rb delegated settlement counts no flip", gs.list_flips, flips_before)
+	_expect_int("rb delegated settlement advances no tier", gs.list_tier, tier_before)
+	# The night cross itself moves the clock by exactly one day and resets the
+	# slot. What is being checked is that settling her pickups adds NOTHING on
+	# top of that — the control below is the same cross with nothing pending.
+	_expect_int("rb settling costs only the night cross itself", gs.day, day_before + 1)
+	_expect_int("rb settling leaves the slot where the cross put it",
+		gs.time_slots_today, 0)
+	_expect_true("rb delegated settlement did happen",
+		bool((gs.crew_assignments[RB_CREW] as Dictionary)["settled"]))
+
+	# Control: an identical night cross with no assignment pending moves the
+	# clock the same amount, which is what makes the two assertions above a
+	# statement about settlement rather than about the cross.
+	_rb_ready(gs)
+	var quiet_day: int = gs.day
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	_expect_int("rb an empty night cross moves the clock identically",
+		gs.day, quiet_day + 1)
+	_expect_int("rb an empty night cross resets the slot identically",
+		gs.time_slots_today, 0)
+
+	# The same sale by the player DOES move all three, which is what makes the
+	# assertions above mean something rather than testing an inert path.
+	_rb_ready(gs)
+	var board: Array = lst.todays_listings()
+	if board.is_empty():
+		_fail("rb leakage control", "no board to buy from")
+		return
+	var personal_flips: int = gs.list_flips
+	var personal_slot: int = gs.time_slots_today
+	gm.dispatch("list_buy", {"item_id": str((board[0] as Dictionary)["id"])})
+	var index: int = gs.list_holdings.size() - 1
+	var paid: int = int(gs.listing_item_by_id(str(gs.list_holdings[index]["item_id"]))["buy"])
+	var value: int = lst.realised_value(gs.list_holdings[index])
+	gm.dispatch("list_sell", {"index": index})
+	_expect_int("rb personal sale costs a slot", gs.time_slots_today, personal_slot + 1)
+	if value > paid:
+		_expect_int("rb personal sale counts a flip", gs.list_flips, personal_flips + 1)
+
+## Save before the night, load, settle: the same money either way.
+func _check_rb_reload(gs: Node, gm: Node, ops: RefCounted, lst: RefCounted) -> void:
+	# `adapter` is fetched inside where it is needed — see the idempotency block.
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	_rb_ready(gs)
+	var selection: Dictionary = _rb_assign(gs, gm, ops)
+	var bought: Array = _rb_purchased_ids(selection)
+	saves.save_run()
+	# Snapshot the bytes. Settling below goes through dispatch, and dispatch
+	# autosaves on state_changed — so the file on disk is overwritten by the
+	# post-night state before the reload can read the pre-night one. Holding the
+	# bytes is what makes "load the save from before the night" mean that.
+	var pre_night := ""
+	var snapshot := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+	if snapshot != null:
+		pre_night = snapshot.get_as_text()
+		snapshot.close()
+	_expect_true("rb pre-night save captured", not pre_night.is_empty())
+
+	# Settle without a reload, and remember the money. Through dispatch, so the
+	# ownership guard sees the same stack the game produces.
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	var direct: Dictionary = (gs.crew_assignments[RB_CREW] as Dictionary)["result"]
+	var direct_cash: int = gs.cash
+
+	# Now the same night, from disk — the pre-night bytes put back first.
+	var rewind := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if rewind != null:
+		rewind.store_string(pre_night)
+		rewind.close()
+	_expect_true("rb reload loads", saves.load_run())
+	_expect_str("rb reload restored her selection",
+		str(_rb_purchased_ids(
+			((gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("selection", {})
+				as Dictionary))),
+		str(bought))
+	_expect_true("rb reload restored her holdings", _rb_pherris_holdings(gs) == bought.size())
+	# The adapter is runtime wiring; a load must not lose it. Before FS-001.7 the
+	# registry lived in persisted state, which meant exactly that.
+	_expect_true("rb adapter survives a load",
+		ops._adapter_for(RB_OPERATION) != null)
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	var reloaded: Dictionary = (gs.crew_assignments[RB_CREW] as Dictionary)["result"]
+	_expect_int("rb reload settles the same count",
+		int(reloaded["settled_count"]), int(direct["settled_count"]))
+	_expect_int("rb reload settles for the same gross",
+		int(reloaded["gross"]), int(direct["gross"]))
+	_expect_int("rb reload leaves the same cash", gs.cash, direct_cash)
+
+	# And a settled assignment does not pay out twice — checked at BOTH guards.
+	#
+	# Through the signal, the coordinator's `settled` check stops it before the
+	# adapter is consulted, so that path alone never exercises the adapter's own
+	# guard. A first pass tested only this and passed with the adapter's guard
+	# deleted. Paying a day out twice is the kind of bug that shows up as a
+	# number nobody can account for, so both layers are held to it.
+	var cash_after: int = gs.cash
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	_expect_int("rb settled assignment does not re-settle on a later night",
+		gs.cash, cash_after)
+
+	var adapter: Object = ops._adapter_for(RB_OPERATION)
+	if adapter == null:
+		_fail("rb idempotency", "no adapter registered")
+	else:
+		var assignment: Dictionary = gs.crew_assignments[RB_CREW]
+		var stored: Dictionary = assignment["result"]
+		var again: Variant = adapter.settle(RB_CREW, assignment, gs.day)
+		_expect_int("rb adapter re-settle pays nothing", gs.cash, cash_after)
+		_expect_true("rb adapter re-settle returns the stored result",
+			again is Dictionary
+				and int((again as Dictionary)["gross"]) == int(stored["gross"])
+				and int((again as Dictionary)["settled_count"]) == int(stored["settled_count"]))
+
+	if previous_save.is_empty():
+		DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -2581,7 +3076,7 @@ func _fail(label: String, detail: String) -> void:
 ##
 ## Bumped deliberately whenever checks are added, the same discipline as
 ## SAVE_VERSION: it only ever moves up, and it moving DOWN is the signal.
-const MIN_CHECKS := 7211
+const MIN_CHECKS := 7308
 
 func _finish() -> void:
 	if _failures.is_empty():

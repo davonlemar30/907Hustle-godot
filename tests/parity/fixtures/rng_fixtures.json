@@ -2457,5 +2457,2549 @@
     ]
    }
   ]
+ },
+ "attributes": {
+  "ids": [
+   "combat",
+   "charisma",
+   "intelligence"
+  ],
+  "defaults": {
+   "combat": 1,
+   "charisma": 1,
+   "intelligence": 1
+  },
+  "min": 0,
+  "max": 12,
+  "growth_rates": {
+   "bag_work": 0.3,
+   "cardio": 0.2,
+   "sparring": 0.5,
+   "nile_social": 0.25,
+   "tonk_game": 0.4,
+   "night_owl_social": 0.15,
+   "celo_game": 0.4,
+   "list_flip": 0.2,
+   "coffee_ceremony": 0.15
+  },
+  "growth_attributes": {
+   "bag_work": "combat",
+   "cardio": "combat",
+   "sparring": "combat",
+   "nile_social": "charisma",
+   "tonk_game": "charisma",
+   "night_owl_social": "charisma",
+   "celo_game": "intelligence",
+   "list_flip": "intelligence",
+   "coffee_ceremony": "intelligence"
+  },
+  "growth_cap_penalty_floor": 6,
+  "growth_cap_penalty": 0.5,
+  "compat": [
+   {
+    "stored": -2,
+    "normalized": 0,
+    "compat": 1,
+    "label": "Green"
+   },
+   {
+    "stored": -1,
+    "normalized": 0,
+    "compat": 1,
+    "label": "Green"
+   },
+   {
+    "stored": 0,
+    "normalized": 0,
+    "compat": 1,
+    "label": "Green"
+   },
+   {
+    "stored": 1,
+    "normalized": 1,
+    "compat": 2,
+    "label": "Green"
+   },
+   {
+    "stored": 2,
+    "normalized": 2,
+    "compat": 3,
+    "label": "Capable"
+   },
+   {
+    "stored": 3,
+    "normalized": 3,
+    "compat": 4,
+    "label": "Capable"
+   },
+   {
+    "stored": 4,
+    "normalized": 4,
+    "compat": 5,
+    "label": "Solid"
+   },
+   {
+    "stored": 5,
+    "normalized": 5,
+    "compat": 5,
+    "label": "Solid"
+   },
+   {
+    "stored": 6,
+    "normalized": 6,
+    "compat": 5,
+    "label": "Dangerous"
+   },
+   {
+    "stored": 7,
+    "normalized": 7,
+    "compat": 5,
+    "label": "Dangerous"
+   },
+   {
+    "stored": 8,
+    "normalized": 8,
+    "compat": 5,
+    "label": "Elite"
+   },
+   {
+    "stored": 9,
+    "normalized": 9,
+    "compat": 5,
+    "label": "Elite"
+   },
+   {
+    "stored": 10,
+    "normalized": 10,
+    "compat": 5,
+    "label": "Elite"
+   },
+   {
+    "stored": 11,
+    "normalized": 11,
+    "compat": 5,
+    "label": "Elite"
+   },
+   {
+    "stored": 12,
+    "normalized": 12,
+    "compat": 5,
+    "label": "Elite"
+   },
+   {
+    "stored": 13,
+    "normalized": 12,
+    "compat": 5,
+    "label": "Elite"
+   },
+   {
+    "stored": 14,
+    "normalized": 12,
+    "compat": 5,
+    "label": "Elite"
+   }
+  ],
+  "normalize_edge": [
+   {
+    "input": 2.7,
+    "normalized": 2
+   },
+   {
+    "input": -0.5,
+    "normalized": 0
+   },
+   {
+    "input": 99,
+    "normalized": 12
+   },
+   {
+    "input": null,
+    "normalized": 1
+   }
+  ],
+  "labels": [
+   {
+    "value": 0,
+    "label": "Green"
+   },
+   {
+    "value": 1,
+    "label": "Green"
+   },
+   {
+    "value": 2,
+    "label": "Capable"
+   },
+   {
+    "value": 3,
+    "label": "Capable"
+   },
+   {
+    "value": 4,
+    "label": "Solid"
+   },
+   {
+    "value": 5,
+    "label": "Solid"
+   },
+   {
+    "value": 6,
+    "label": "Dangerous"
+   },
+   {
+    "value": 7,
+    "label": "Dangerous"
+   },
+   {
+    "value": 8,
+    "label": "Elite"
+   },
+   {
+    "value": 9,
+    "label": "Elite"
+   },
+   {
+    "value": 10,
+    "label": "Elite"
+   },
+   {
+    "value": 11,
+    "label": "Elite"
+   },
+   {
+    "value": 12,
+    "label": "Elite"
+   }
+  ],
+  "growth": [
+   {
+    "activity": "bag_work",
+    "sessions": 0,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.3
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 0,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.3
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 0,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.3
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 0,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.15
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 0,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.15
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 1,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.18927892607143726
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 1,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.18927892607143726
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 1,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.18927892607143726
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 1,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.09463946303571863
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 1,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.09463946303571863
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 2,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.15
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 2,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.15
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 2,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.15
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 2,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.075
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 2,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.075
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 3,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.12920296742201792
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 3,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.12920296742201792
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 3,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.12920296742201792
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 3,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.06460148371100896
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 3,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.06460148371100896
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 7,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.09463946303571863
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 7,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.09463946303571863
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 7,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.09463946303571863
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 7,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 7,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 15,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.0733951626354678
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 15,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.0733951626354678
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 15,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.0733951626354678
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 15,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.0366975813177339
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 15,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.0366975813177339
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 40,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.055634707024610666
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 40,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.055634707024610666
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 40,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.055634707024610666
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 40,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.027817353512305333
+   },
+   {
+    "activity": "bag_work",
+    "sessions": 40,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.027817353512305333
+   },
+   {
+    "activity": "cardio",
+    "sessions": 0,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.2
+   },
+   {
+    "activity": "cardio",
+    "sessions": 0,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.2
+   },
+   {
+    "activity": "cardio",
+    "sessions": 0,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.2
+   },
+   {
+    "activity": "cardio",
+    "sessions": 0,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.1
+   },
+   {
+    "activity": "cardio",
+    "sessions": 0,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.1
+   },
+   {
+    "activity": "cardio",
+    "sessions": 1,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "cardio",
+    "sessions": 1,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "cardio",
+    "sessions": 1,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "cardio",
+    "sessions": 1,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "cardio",
+    "sessions": 1,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "cardio",
+    "sessions": 2,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.1
+   },
+   {
+    "activity": "cardio",
+    "sessions": 2,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.1
+   },
+   {
+    "activity": "cardio",
+    "sessions": 2,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.1
+   },
+   {
+    "activity": "cardio",
+    "sessions": 2,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.05
+   },
+   {
+    "activity": "cardio",
+    "sessions": 2,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.05
+   },
+   {
+    "activity": "cardio",
+    "sessions": 3,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.08613531161467862
+   },
+   {
+    "activity": "cardio",
+    "sessions": 3,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.08613531161467862
+   },
+   {
+    "activity": "cardio",
+    "sessions": 3,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.08613531161467862
+   },
+   {
+    "activity": "cardio",
+    "sessions": 3,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.04306765580733931
+   },
+   {
+    "activity": "cardio",
+    "sessions": 3,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.04306765580733931
+   },
+   {
+    "activity": "cardio",
+    "sessions": 7,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "cardio",
+    "sessions": 7,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "cardio",
+    "sessions": 7,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "cardio",
+    "sessions": 7,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.031546487678572877
+   },
+   {
+    "activity": "cardio",
+    "sessions": 7,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.031546487678572877
+   },
+   {
+    "activity": "cardio",
+    "sessions": 15,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.04893010842364521
+   },
+   {
+    "activity": "cardio",
+    "sessions": 15,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.04893010842364521
+   },
+   {
+    "activity": "cardio",
+    "sessions": 15,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.04893010842364521
+   },
+   {
+    "activity": "cardio",
+    "sessions": 15,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.024465054211822605
+   },
+   {
+    "activity": "cardio",
+    "sessions": 15,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.024465054211822605
+   },
+   {
+    "activity": "cardio",
+    "sessions": 40,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.03708980468307378
+   },
+   {
+    "activity": "cardio",
+    "sessions": 40,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.03708980468307378
+   },
+   {
+    "activity": "cardio",
+    "sessions": 40,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.03708980468307378
+   },
+   {
+    "activity": "cardio",
+    "sessions": 40,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.01854490234153689
+   },
+   {
+    "activity": "cardio",
+    "sessions": 40,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.01854490234153689
+   },
+   {
+    "activity": "sparring",
+    "sessions": 0,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.5
+   },
+   {
+    "activity": "sparring",
+    "sessions": 0,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.5
+   },
+   {
+    "activity": "sparring",
+    "sessions": 0,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.5
+   },
+   {
+    "activity": "sparring",
+    "sessions": 0,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.25
+   },
+   {
+    "activity": "sparring",
+    "sessions": 0,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.25
+   },
+   {
+    "activity": "sparring",
+    "sessions": 1,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.31546487678572877
+   },
+   {
+    "activity": "sparring",
+    "sessions": 1,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.31546487678572877
+   },
+   {
+    "activity": "sparring",
+    "sessions": 1,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.31546487678572877
+   },
+   {
+    "activity": "sparring",
+    "sessions": 1,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.15773243839286438
+   },
+   {
+    "activity": "sparring",
+    "sessions": 1,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.15773243839286438
+   },
+   {
+    "activity": "sparring",
+    "sessions": 2,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.25
+   },
+   {
+    "activity": "sparring",
+    "sessions": 2,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.25
+   },
+   {
+    "activity": "sparring",
+    "sessions": 2,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.25
+   },
+   {
+    "activity": "sparring",
+    "sessions": 2,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.125
+   },
+   {
+    "activity": "sparring",
+    "sessions": 2,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.125
+   },
+   {
+    "activity": "sparring",
+    "sessions": 3,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.21533827903669653
+   },
+   {
+    "activity": "sparring",
+    "sessions": 3,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.21533827903669653
+   },
+   {
+    "activity": "sparring",
+    "sessions": 3,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.21533827903669653
+   },
+   {
+    "activity": "sparring",
+    "sessions": 3,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.10766913951834826
+   },
+   {
+    "activity": "sparring",
+    "sessions": 3,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.10766913951834826
+   },
+   {
+    "activity": "sparring",
+    "sessions": 7,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.15773243839286438
+   },
+   {
+    "activity": "sparring",
+    "sessions": 7,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.15773243839286438
+   },
+   {
+    "activity": "sparring",
+    "sessions": 7,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.15773243839286438
+   },
+   {
+    "activity": "sparring",
+    "sessions": 7,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.07886621919643219
+   },
+   {
+    "activity": "sparring",
+    "sessions": 7,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.07886621919643219
+   },
+   {
+    "activity": "sparring",
+    "sessions": 15,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.12232527105911302
+   },
+   {
+    "activity": "sparring",
+    "sessions": 15,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.12232527105911302
+   },
+   {
+    "activity": "sparring",
+    "sessions": 15,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.12232527105911302
+   },
+   {
+    "activity": "sparring",
+    "sessions": 15,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.06116263552955651
+   },
+   {
+    "activity": "sparring",
+    "sessions": 15,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.06116263552955651
+   },
+   {
+    "activity": "sparring",
+    "sessions": 40,
+    "current": 0,
+    "attribute": "combat",
+    "growth": 0.09272451170768445
+   },
+   {
+    "activity": "sparring",
+    "sessions": 40,
+    "current": 1,
+    "attribute": "combat",
+    "growth": 0.09272451170768445
+   },
+   {
+    "activity": "sparring",
+    "sessions": 40,
+    "current": 5,
+    "attribute": "combat",
+    "growth": 0.09272451170768445
+   },
+   {
+    "activity": "sparring",
+    "sessions": 40,
+    "current": 6,
+    "attribute": "combat",
+    "growth": 0.046362255853842224
+   },
+   {
+    "activity": "sparring",
+    "sessions": 40,
+    "current": 8,
+    "attribute": "combat",
+    "growth": 0.046362255853842224
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 0,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.25
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 0,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.25
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 0,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.25
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 0,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.125
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 0,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.125
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 1,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.15773243839286438
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 1,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.15773243839286438
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 1,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.15773243839286438
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 1,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.07886621919643219
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 1,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.07886621919643219
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 2,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.125
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 2,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.125
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 2,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.125
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 2,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.0625
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 2,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.0625
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 3,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.10766913951834826
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 3,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.10766913951834826
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 3,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.10766913951834826
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 3,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.05383456975917413
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 3,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.05383456975917413
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 7,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.07886621919643219
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 7,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.07886621919643219
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 7,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.07886621919643219
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 7,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.039433109598216096
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 7,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.039433109598216096
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 15,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.06116263552955651
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 15,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.06116263552955651
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 15,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.06116263552955651
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 15,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.030581317764778255
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 15,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.030581317764778255
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 40,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.046362255853842224
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 40,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.046362255853842224
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 40,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.046362255853842224
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 40,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.023181127926921112
+   },
+   {
+    "activity": "nile_social",
+    "sessions": 40,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.023181127926921112
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 0,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.4
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 0,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.4
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 0,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.4
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 0,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.2
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 0,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.2
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 1,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.252371901428583
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 1,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.252371901428583
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 1,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.252371901428583
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 1,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 1,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 2,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.2
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 2,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.2
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 2,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.2
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 2,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.1
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 2,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.1
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 3,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.17227062322935724
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 3,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.17227062322935724
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 3,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.17227062322935724
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 3,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.08613531161467862
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 3,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.08613531161467862
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 7,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 7,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 7,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 7,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 7,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 15,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.09786021684729042
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 15,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.09786021684729042
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 15,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.09786021684729042
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 15,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.04893010842364521
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 15,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.04893010842364521
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 40,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.07417960936614756
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 40,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.07417960936614756
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 40,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.07417960936614756
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 40,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.03708980468307378
+   },
+   {
+    "activity": "tonk_game",
+    "sessions": 40,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.03708980468307378
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 0,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.15
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 0,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.15
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 0,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.15
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 0,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.075
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 0,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.075
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 1,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.09463946303571863
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 1,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.09463946303571863
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 1,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.09463946303571863
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 1,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 1,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 2,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.075
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 2,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.075
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 2,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.075
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 2,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.0375
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 2,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.0375
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 3,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.06460148371100896
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 3,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.06460148371100896
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 3,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.06460148371100896
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 3,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.03230074185550448
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 3,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.03230074185550448
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 7,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 7,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 7,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 7,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.023659865758929657
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 7,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.023659865758929657
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 15,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.0366975813177339
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 15,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.0366975813177339
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 15,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.0366975813177339
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 15,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.01834879065886695
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 15,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.01834879065886695
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 40,
+    "current": 0,
+    "attribute": "charisma",
+    "growth": 0.027817353512305333
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 40,
+    "current": 1,
+    "attribute": "charisma",
+    "growth": 0.027817353512305333
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 40,
+    "current": 5,
+    "attribute": "charisma",
+    "growth": 0.027817353512305333
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 40,
+    "current": 6,
+    "attribute": "charisma",
+    "growth": 0.013908676756152667
+   },
+   {
+    "activity": "night_owl_social",
+    "sessions": 40,
+    "current": 8,
+    "attribute": "charisma",
+    "growth": 0.013908676756152667
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 0,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.4
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 0,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.4
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 0,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.4
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 0,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.2
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 0,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.2
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 1,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.252371901428583
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 1,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.252371901428583
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 1,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.252371901428583
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 1,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 1,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 2,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.2
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 2,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.2
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 2,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.2
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 2,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.1
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 2,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.1
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 3,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.17227062322935724
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 3,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.17227062322935724
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 3,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.17227062322935724
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 3,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.08613531161467862
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 3,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.08613531161467862
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 7,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 7,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 7,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 7,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 7,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 15,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.09786021684729042
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 15,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.09786021684729042
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 15,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.09786021684729042
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 15,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.04893010842364521
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 15,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.04893010842364521
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 40,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.07417960936614756
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 40,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.07417960936614756
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 40,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.07417960936614756
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 40,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.03708980468307378
+   },
+   {
+    "activity": "celo_game",
+    "sessions": 40,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.03708980468307378
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 0,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.2
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 0,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.2
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 0,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.2
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 0,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.1
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 0,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.1
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 1,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 1,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 1,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.1261859507142915
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 1,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 1,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 2,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.1
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 2,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.1
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 2,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.1
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 2,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.05
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 2,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.05
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 3,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.08613531161467862
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 3,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.08613531161467862
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 3,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.08613531161467862
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 3,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.04306765580733931
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 3,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.04306765580733931
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 7,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 7,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 7,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.06309297535714575
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 7,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.031546487678572877
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 7,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.031546487678572877
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 15,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.04893010842364521
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 15,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.04893010842364521
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 15,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.04893010842364521
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 15,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.024465054211822605
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 15,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.024465054211822605
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 40,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.03708980468307378
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 40,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.03708980468307378
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 40,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.03708980468307378
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 40,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.01854490234153689
+   },
+   {
+    "activity": "list_flip",
+    "sessions": 40,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.01854490234153689
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 0,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.15
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 0,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.15
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 0,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.15
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 0,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.075
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 0,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.075
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 1,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.09463946303571863
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 1,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.09463946303571863
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 1,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.09463946303571863
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 1,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 1,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 2,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.075
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 2,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.075
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 2,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.075
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 2,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.0375
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 2,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.0375
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 3,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.06460148371100896
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 3,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.06460148371100896
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 3,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.06460148371100896
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 3,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.03230074185550448
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 3,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.03230074185550448
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 7,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 7,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 7,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.047319731517859315
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 7,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.023659865758929657
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 7,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.023659865758929657
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 15,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.0366975813177339
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 15,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.0366975813177339
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 15,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.0366975813177339
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 15,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.01834879065886695
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 15,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.01834879065886695
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 40,
+    "current": 0,
+    "attribute": "intelligence",
+    "growth": 0.027817353512305333
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 40,
+    "current": 1,
+    "attribute": "intelligence",
+    "growth": 0.027817353512305333
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 40,
+    "current": 5,
+    "attribute": "intelligence",
+    "growth": 0.027817353512305333
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 40,
+    "current": 6,
+    "attribute": "intelligence",
+    "growth": 0.013908676756152667
+   },
+   {
+    "activity": "coffee_ceremony",
+    "sessions": 40,
+    "current": 8,
+    "attribute": "intelligence",
+    "growth": 0.013908676756152667
+   }
+  ],
+  "growth_unknown": {
+   "growth": 0,
+   "attribute": null
+  },
+  "formulas": [
+   {
+    "stored": 0,
+    "combat_compat": 1,
+    "intelligence_compat": 1,
+    "charisma_compat": 1,
+    "stick_term": -0.08,
+    "boost_skill_low": 1,
+    "boost_skill_tier3": 1,
+    "boost_term_low": -0.1,
+    "shark_term": -0.025,
+    "stick_tier1_clean": 0.54,
+    "boost_tier1": 0.7000000000000001
+   },
+   {
+    "stored": 1,
+    "combat_compat": 2,
+    "intelligence_compat": 2,
+    "charisma_compat": 2,
+    "stick_term": 0,
+    "boost_skill_low": 2,
+    "boost_skill_tier3": 2,
+    "boost_term_low": 0,
+    "shark_term": -0.05,
+    "stick_tier1_clean": 0.62,
+    "boost_tier1": 0.8
+   },
+   {
+    "stored": 2,
+    "combat_compat": 3,
+    "intelligence_compat": 3,
+    "charisma_compat": 3,
+    "stick_term": 0.08,
+    "boost_skill_low": 3,
+    "boost_skill_tier3": 3,
+    "boost_term_low": 0.1,
+    "shark_term": -0.07500000000000001,
+    "stick_tier1_clean": 0.7,
+    "boost_tier1": 0.9
+   },
+   {
+    "stored": 3,
+    "combat_compat": 4,
+    "intelligence_compat": 4,
+    "charisma_compat": 4,
+    "stick_term": 0.16,
+    "boost_skill_low": 4,
+    "boost_skill_tier3": 4,
+    "boost_term_low": 0.2,
+    "shark_term": -0.1,
+    "stick_tier1_clean": 0.78,
+    "boost_tier1": 0.95
+   },
+   {
+    "stored": 4,
+    "combat_compat": 5,
+    "intelligence_compat": 5,
+    "charisma_compat": 5,
+    "stick_term": 0.24,
+    "boost_skill_low": 5,
+    "boost_skill_tier3": 5,
+    "boost_term_low": 0.30000000000000004,
+    "shark_term": -0.125,
+    "stick_tier1_clean": 0.86,
+    "boost_tier1": 0.95
+   },
+   {
+    "stored": 5,
+    "combat_compat": 5,
+    "intelligence_compat": 5,
+    "charisma_compat": 5,
+    "stick_term": 0.24,
+    "boost_skill_low": 5,
+    "boost_skill_tier3": 5,
+    "boost_term_low": 0.30000000000000004,
+    "shark_term": -0.125,
+    "stick_tier1_clean": 0.86,
+    "boost_tier1": 0.95
+   },
+   {
+    "stored": 6,
+    "combat_compat": 5,
+    "intelligence_compat": 5,
+    "charisma_compat": 5,
+    "stick_term": 0.24,
+    "boost_skill_low": 5,
+    "boost_skill_tier3": 5,
+    "boost_term_low": 0.30000000000000004,
+    "shark_term": -0.125,
+    "stick_tier1_clean": 0.86,
+    "boost_tier1": 0.95
+   },
+   {
+    "stored": 7,
+    "combat_compat": 5,
+    "intelligence_compat": 5,
+    "charisma_compat": 5,
+    "stick_term": 0.24,
+    "boost_skill_low": 5,
+    "boost_skill_tier3": 5,
+    "boost_term_low": 0.30000000000000004,
+    "shark_term": -0.125,
+    "stick_tier1_clean": 0.86,
+    "boost_tier1": 0.95
+   },
+   {
+    "stored": 8,
+    "combat_compat": 5,
+    "intelligence_compat": 5,
+    "charisma_compat": 5,
+    "stick_term": 0.24,
+    "boost_skill_low": 5,
+    "boost_skill_tier3": 5,
+    "boost_term_low": 0.30000000000000004,
+    "shark_term": -0.125,
+    "stick_tier1_clean": 0.86,
+    "boost_tier1": 0.95
+   }
+  ]
  }
 }

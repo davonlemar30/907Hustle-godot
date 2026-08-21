@@ -24,6 +24,10 @@ extends Node
 ##              restoration a payment schedules, the message-id format (proven
 ##              in the generator against a message canon actually minted), the
 ##              held-inbox flush and its order, and the Word Around Town pool
+##   attrs    — the Phase 5c substrate: the compatibility offset, the label
+##              tiers, the growth curve, and the three shipped chance formulas
+##              that read them. PURE oracle — `attributeSystem` is exported, so
+##              there is no formula copy here to prove, only agreement to hold
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -50,6 +54,7 @@ func _ready() -> void:
 		_check_market_walks(fixtures.get("market_walks", []))
 		_check_initial_markets(fixtures.get("initial_markets", []))
 		_check_phone(fixtures.get("phone", {}))
+		_check_attributes(fixtures.get("attributes", {}))
 		_check_save_roundtrip()
 	_finish()
 
@@ -188,6 +193,137 @@ func _check_initial_markets(rows: Array) -> void:
 					int(got["availability"][pid]), int(want["availability"][pid]))
 		_expect_int(label + " rng_state", gs.rng_state, int(row["rng_state"]))
 	gs.run_seed = original_seed
+
+## Phase 5c attributes, against oracle-recorded truth.
+##
+## Every fixture in this section came out of canon's own exported
+## `attributeSystem`, so there is no copied formula to verify — only agreement.
+## The formula rows are the important ones: they pin the compatibility offset
+## that three shipped surfaces read, and that this port had wrong from Phase 3d
+## until 5c.
+func _check_attributes(fixture: Dictionary) -> void:
+	if fixture.is_empty():
+		_fail("attributes", "no attribute fixtures")
+		return
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var attrs: RefCounted = gm.system("attributes") as RefCounted
+	if attrs == null:
+		_fail("attributes", "no attributes system registered")
+		return
+	var original_name: String = gs.street_name
+	var original_attrs: Dictionary = gs.attributes.duplicate(true)
+	gs.street_name = ""
+
+	# Static tables — a transcription typo cannot hide behind a correct formula.
+	_expect_str("attrs ids", str(attrs.IDS), str(fixture["ids"]))
+	_expect_int("attrs min", attrs.MIN, int(fixture["min"]))
+	_expect_int("attrs max", attrs.MAX, int(fixture["max"]))
+	_expect_int("attrs cap floor", attrs.GROWTH_CAP_PENALTY_FLOOR,
+		int(fixture["growth_cap_penalty_floor"]))
+	_expect_float("attrs cap penalty", attrs.GROWTH_CAP_PENALTY,
+		float(fixture["growth_cap_penalty"]))
+	var want_rates: Dictionary = fixture["growth_rates"]
+	for key in want_rates.keys():
+		_expect_float("attrs rate %s" % str(key),
+			float(attrs.GROWTH_RATES.get(str(key), -1.0)), float(want_rates[key]))
+	_expect_int("attrs rate count", attrs.GROWTH_RATES.size(), want_rates.size())
+	var want_map: Dictionary = fixture["growth_attributes"]
+	for key in want_map.keys():
+		_expect_str("attrs trains %s" % str(key),
+			str(attrs.GROWTH_ATTRIBUTES.get(str(key), "")), str(want_map[key]))
+
+	# The compatibility offset, across the whole clamp range.
+	for row in fixture["compat"]:
+		var stored: int = int(row["stored"])
+		gs.attributes = {"combat": stored, "charisma": stored, "intelligence": stored}
+		_expect_int("attrs normalized(%d)" % stored, attrs.value("combat"), int(row["normalized"]))
+		_expect_int("attrs compat(%d)" % stored, attrs.compat("combat"), int(row["compat"]))
+		_expect_str("attrs label(%d)" % stored, attrs.label_for("combat"), str(row["label"]))
+
+	# A hand-edited save can carry a float, a negative, or nothing at all.
+	for row in fixture["normalize_edge"]:
+		var raw: Variant = row["input"]
+		if raw == null:
+			gs.attributes = {}
+		else:
+			gs.attributes = {"combat": raw, "charisma": 1, "intelligence": 1}
+		_expect_int("attrs normalize(%s)" % str(raw), attrs.value("combat"), int(row["normalized"]))
+
+	for row in fixture["labels"]:
+		_expect_str("attrs label tier %d" % int(row["value"]),
+			attrs.label(int(row["value"])), str(row["label"]))
+
+	# Growth: the log2 taper and the cap penalty, per activity.
+	for row in fixture["growth"]:
+		var activity: String = str(row["activity"])
+		var label := "attrs growth %s s%d c%d" % [activity, int(row["sessions"]), int(row["current"])]
+		_expect_float(label, attrs.growth(int(row["current"]), int(row["sessions"]), activity),
+			float(row["growth"]))
+		_expect_str(label + " trains", attrs.growth_attribute(activity), str(row["attribute"]))
+	var unknown: Dictionary = fixture["growth_unknown"]
+	_expect_float("attrs unknown growth", attrs.growth(1, 0, "not_a_real_activity"),
+		float(unknown["growth"]))
+	_expect_true("attrs unknown trains nothing", attrs.growth_attribute("not_a_real_activity").is_empty())
+	_expect_true("attrs unknown read is empty", attrs.growth_for("not_a_real_activity", 0).is_empty())
+
+	_check_attribute_formulas(gs, gm, attrs, fixture["formulas"])
+
+	gs.attributes = original_attrs
+	gs.street_name = original_name
+
+## The three shipped surfaces, driven through their real `chance_for` /
+## `default_probability`, at every attribute value the fixture records. This is
+## the check that would have caught the pinning bug: at a stored 1 the stickup
+## term is 0 and tier 1 reads 0.62, not the 0.54 this port shipped for two
+## phases.
+func _check_attribute_formulas(gs: Node, gm: Node, attrs: RefCounted, rows: Array) -> void:
+	var stickup: RefCounted = gm.system("stickup") as RefCounted
+	var boost: RefCounted = gm.system("boost") as RefCounted
+	var shark: RefCounted = gm.system("shark") as RefCounted
+	if stickup == null or boost == null or shark == null:
+		_fail("attrs formulas", "a surface system is missing")
+		return
+	# A tier-1 stickup target with no resistance, and zero heat, so the recorded
+	# term is the only thing moving the number.
+	var target := {"tier": 1, "resistance": 0}
+	var original_heat: float = gs.heat
+	gs.heat = 0.0
+	for row in rows:
+		var stored: int = int(row["stored"])
+		gs.attributes = {"combat": stored, "charisma": stored, "intelligence": stored}
+		_expect_int("attrs compat combat @%d" % stored,
+			attrs.compat("combat"), int(row["combat_compat"]))
+		_expect_int("attrs compat intel @%d" % stored,
+			attrs.compat("intelligence"), int(row["intelligence_compat"]))
+		_expect_int("attrs compat charisma @%d" % stored,
+			attrs.compat("charisma"), int(row["charisma_compat"]))
+		_expect_float("stickup tier1 chance @%d" % stored,
+			stickup.chance_for(target), float(row["stick_tier1_clean"]))
+		# Boost tier 1 has no window bonus, so the skill blend is all of it.
+		_expect_float("boost tier1 chance @%d" % stored,
+			boost.chance_for({"tier": 1, "window": -1}), float(row["boost_tier1"]))
+		# Shark: the highest-risk borrower on a $500 note, deliberately — a
+		# low-risk borrower clamps to the 0.03 floor at every attribute value,
+		# which would make this row agree for the wrong reason.
+		var loan := {"borrower_id": _riskiest_borrower(gs), "amount": 500, "term": 7}
+		var borrower: Dictionary = gs.borrower_by_id(str(loan["borrower_id"]))
+		var expected: float = clampf(
+			float(borrower["risk"]) + 0.18 - 0.04 + float(row["shark_term"]), 0.03, 0.82)
+		_expect_true("shark prob @%d is off the clamp" % stored,
+			expected > 0.03 and expected < 0.82)
+		_expect_float("shark default prob @%d" % stored,
+			shark.default_probability(loan), expected)
+	gs.heat = original_heat
+
+func _riskiest_borrower(gs: Node) -> String:
+	var best := ""
+	var best_risk := -1.0
+	for b in gs.shark_borrowers:
+		if float(b["risk"]) > best_risk:
+			best_risk = float(b["risk"])
+			best = str(b["id"])
+	return best
 
 ## Phase 6 phone substrate, against oracle-recorded truth.
 ##
@@ -403,6 +539,10 @@ func _check_save_roundtrip() -> void:
 	gs.phone_reactivate_at_slot = 9
 	gs.log_activity("Parity entry", Color(1, 0.29, 0.239))
 	gs.heat = 1.6
+	# Attributes (v4): a raised value AND banked sub-point progress, because the
+	# progress float is the half that a coercion bug would silently round away.
+	gs.attributes["intelligence"] = 3
+	gs.attribute_progress["intelligence"] = 0.45
 	gs.notify_changed()
 
 	var before: Dictionary = saves.capture()
@@ -429,6 +569,8 @@ func _check_save_roundtrip() -> void:
 	gs.phone_inbox = []
 	gs.phone_held_inbox = []
 	gs.phone_reactivate_at_slot = -1
+	gs.attributes = {"combat": 9, "charisma": 9, "intelligence": 9}
+	gs.attribute_progress = {"combat": 0.0, "charisma": 0.0, "intelligence": 0.0}
 
 	_expect_true("load_run", saves.load_run())
 	var after: Dictionary = saves.capture()
@@ -440,6 +582,8 @@ func _check_save_roundtrip() -> void:
 			_fail("saveload", "field '%s' drifted across save→load" % key)
 	_expect_int("restored price[0]", int(gs.products[0].price), int(before["product_prices"]["weed"]))
 	_expect_true("heat restored as float", gs.heat is float)
+	_expect_int("attribute restored", int(gs.attributes["intelligence"]), 3)
+	_expect_float("attribute progress restored", float(gs.attribute_progress["intelligence"]), 0.45)
 	_expect_true("day restored as int", gs.day is int)
 
 	_check_v2_migration(gs, saves)
@@ -486,6 +630,10 @@ func _check_v2_migration(gs: Node, saves: Node) -> void:
 	_expect_int("v2 migration dated row kept", int(gs.activity_log[1].get("day", 0)), 4)
 	_expect_true("v2 migration inbox defaults empty", gs.phone_inbox.is_empty())
 	_expect_int("v2 migration reactivate defaults", gs.phone_reactivate_at_slot, -1)
+	# v3 → v4 is additive: a save that predates the attribute system never
+	# trained anything, so canon's fresh-run defaults ARE its history.
+	_expect_int("v2 migration attributes default", int(gs.attributes["combat"]), 1)
+	_expect_float("v2 migration progress default", float(gs.attribute_progress["combat"]), 0.0)
 	# A version this build has never heard of stays invalid, arm or no arm.
 	var future := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
 	if future != null:

@@ -58,7 +58,13 @@ const SAVE_PATH := "user://907hustle_run.save"
 ## which now carry the day they were logged on. The inbox fields are additive
 ## and default in; the log rows are not, so the v2→v3 arm walks them and stamps
 ## the ones that predate the field. See _migrate for what it stamps and why.
-const SAVE_VERSION := 3
+##
+## v4 (Phase 5c): adds `attributes` and `attribute_progress`. Purely additive —
+## a v3 save has neither, and both default in at canon's fresh-run values (all
+## attributes 1, all progress 0). That is the right answer rather than a
+## convenience: a run that predates the attribute system genuinely never trained
+## anything, so defaults ARE its history.
+const SAVE_VERSION := 4
 
 ## Every mutable GameState field, captured and applied by name. products.price
 ## is the one mutable value living inside a canon table; it rides separately as
@@ -72,6 +78,8 @@ const PERSIST_FIELDS: Array[String] = [
 	# Player stats
 	"cash", "heat", "health", "debt", "debt_due_days", "respect", "crew_power",
 	"inventory",
+	# Attributes (v4)
+	"attributes", "attribute_progress",
 	# Jobs
 	"active_job_id", "job_records", "job_missed", "jobs_discovered",
 	# Obligations + game over
@@ -229,6 +237,12 @@ func _migrate(payload: Dictionary) -> Dictionary:
 					for row in (feed as Array):
 						if row is Dictionary and not (row as Dictionary).has("day"):
 							(row as Dictionary)["day"] = -1
+			3:
+				# v3 → v4: attributes + attribute_progress are additive and
+				# default in at canon's fresh-run values. A run that predates
+				# the system never trained anything, so the defaults are its
+				# real history, not a fallback.
+				pass
 			_:
 				return {}
 		version += 1

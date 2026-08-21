@@ -18,14 +18,21 @@ const GREEN := Color(0.451, 0.722, 0.404)
 const RED := Color(0.827, 0.161, 0.125)
 const AMBER := Color(0.882, 0.651, 0.227)
 
+## Canon PROFITABLE_FLIP_MARGIN (game-core.js:354). Clearing 30% is the line
+## between reading the board and getting lucky.
+const PROFITABLE_FLIP_MARGIN := 1.3
+
 var gs: Node
 var rng: Node
 var time_system: RefCounted
+var attributes: RefCounted
 
-func setup(game_state: Node, rng_manager: Node, time: RefCounted) -> void:
+func setup(game_state: Node, rng_manager: Node, time: RefCounted,
+		attribute_system: RefCounted) -> void:
 	gs = game_state
 	rng = rng_manager
 	time_system = time
+	attributes = attribute_system
 
 func can_handle(action: String) -> bool:
 	return action in ["list_buy", "list_sell"]
@@ -125,6 +132,14 @@ func _sell(index: int) -> Dictionary:
 	if got > paid:
 		gs.list_flips += 1
 	_update_tier()
+
+	# Canon (game-core.js:3164): a flip that clears 30% was a good READ, not a
+	# lucky one, and reading value is exactly what Intelligence is for. Breaking
+	# even teaches nothing, which is why the gate is a margin and not a sale.
+	# `list_flips - 1` is canon's session count: how many came before this one,
+	# which is what makes the first flips the valuable ones.
+	if paid > 0 and float(got) > float(paid) * PROFITABLE_FLIP_MARGIN:
+		attributes.train("list_flip", maxi(0, gs.list_flips - 1))
 
 	var delta: int = got - paid
 	if delta >= 0:

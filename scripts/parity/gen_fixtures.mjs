@@ -427,6 +427,115 @@ const phone = {
 };
 
 // ---------------------------------------------------------------------------
+// Attributes — PURE oracle, no copies anywhere.
+//
+// `attributeSystem` and the `ATTRIBUTES` data module are both exported, so
+// every value below is produced by canon's own functions called directly. There
+// is no formula copy here to prove, which is the strongest parity position the
+// harness has had: the Godot side simply has to agree with the oracle's output.
+const A = core.attributeSystem;
+const AD = core.ATTRIBUTES;
+
+// A state shaped the way normalizedAttributes reads it. Only player.attributes
+// is consulted, so this is the whole surface.
+const attrState = (combat, charisma, intelligence) => ({
+  player: { attributes: { combat, charisma, intelligence } },
+});
+
+// (a) The compatibility scale — the offset this port got wrong from Phase 3d
+// until 5c. Every stored value across the clamp range, and the compat value
+// canon derives from it.
+const attribute_compat = [];
+for (let v = -2; v <= 14; v += 1) {
+  const state = attrState(v, v, v);
+  attribute_compat.push({
+    stored: v,
+    normalized: A.normalizedAttributes(state).combat,
+    compat: A.compatibilityRating(state, "combat"),
+    label: A.attributeLabel(A.normalizedAttributes(state).combat),
+  });
+}
+// Non-integer and missing values, because a hand-edited save can carry them.
+const attribute_normalize_edge = [
+  { input: 2.7, normalized: A.normalizedAttributes(attrState(2.7, 1, 1)).combat },
+  { input: -0.5, normalized: A.normalizedAttributes(attrState(-0.5, 1, 1)).combat },
+  { input: 99, normalized: A.normalizedAttributes(attrState(99, 1, 1)).combat },
+  { input: null, normalized: A.normalizedAttributes({ player: { attributes: {} } }).combat },
+];
+
+// (b) The label tiers, read straight off canon's own function.
+const attribute_labels = [];
+for (let v = 0; v <= 12; v += 1) attribute_labels.push({ value: v, label: A.attributeLabel(v) });
+
+// (c) Growth — the log2 taper, and the cap penalty that kicks in at Dangerous.
+// Recorded per activity across a session range so a wrong base rate, a wrong
+// diminishing curve and a wrong cap floor each fail distinctly.
+const attribute_growth = [];
+for (const activity of Object.keys(AD.GROWTH_RATES)) {
+  for (const sessions of [0, 1, 2, 3, 7, 15, 40]) {
+    for (const current of [0, 1, 5, 6, 8]) {
+      attribute_growth.push({
+        activity, sessions, current,
+        attribute: A.growthAttribute(activity),
+        growth: A.attributeGrowth(current, sessions, activity),
+      });
+    }
+  }
+}
+// An unknown source trains nothing and names nothing — canon's loud failure.
+const attribute_growth_unknown = {
+  growth: A.attributeGrowth(1, 0, "not_a_real_activity"),
+  attribute: A.growthAttribute("not_a_real_activity"),
+};
+
+// (d) The three chance formulas at every compat value, computed from canon's
+// own compatibilityRating. These are the call sites the pinning got wrong; the
+// runner drives the real Godot systems and requires the same numbers.
+const clampChance = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+const attribute_formulas = [];
+for (let stored = 0; stored <= 8; stored += 1) {
+  const state = attrState(stored, stored, stored);
+  const combat = A.compatibilityRating(state, "combat");
+  const intel = A.compatibilityRating(state, "intelligence");
+  const chari = A.compatibilityRating(state, "charisma");
+  attribute_formulas.push({
+    stored,
+    combat_compat: combat,
+    intelligence_compat: intel,
+    charisma_compat: chari,
+    // stickChance's attribute term (game-core.js:2402), isolated.
+    stick_term: (combat - 2) * 0.08,
+    // boostChance's skill blends (2228-2230), isolated.
+    boost_skill_low: (combat + intel) / 2,
+    boost_skill_tier3: (intel + chari) / 2,
+    boost_term_low: ((combat + intel) / 2 - 2) * 0.1,
+    // The shark default-probability term (6560), isolated.
+    shark_term: -intel * 0.025,
+    // One fully-assembled example of each, so an error in how the port
+    // assembles the formula cannot hide behind correct isolated terms.
+    stick_tier1_clean: clampChance(0.62 + (combat - 2) * 0.08, 0.15, 0.9),
+    boost_tier1: clampChance(0.8 + ((combat + intel) / 2 - 2) * 0.1, 0.1, 0.95),
+  });
+}
+
+const attributes = {
+  ids: AD.ATTRIBUTE_IDS,
+  defaults: AD.ATTRIBUTE_DEFAULTS,
+  min: AD.ATTRIBUTE_MIN,
+  max: AD.ATTRIBUTE_MAX,
+  growth_rates: AD.GROWTH_RATES,
+  growth_attributes: AD.GROWTH_ATTRIBUTES,
+  growth_cap_penalty_floor: AD.GROWTH_CAP_PENALTY_FLOOR,
+  growth_cap_penalty: AD.GROWTH_CAP_PENALTY,
+  compat: attribute_compat,
+  normalize_edge: attribute_normalize_edge,
+  labels: attribute_labels,
+  growth: attribute_growth,
+  growth_unknown: attribute_growth_unknown,
+  formulas: attribute_formulas,
+};
+
+// ---------------------------------------------------------------------------
 const fixtures = {
   oracle_version: core.VERSION,
   generated_note: "run scripts/parity/gen_fixtures.mjs against the web oracle; do not hand-edit",
@@ -437,6 +546,7 @@ const fixtures = {
   market_walks,
   initial_markets,
   phone,
+  attributes,
 };
 
 const outPath = join(here, "..", "..", "tests", "parity", "fixtures", "rng_fixtures.json");
@@ -446,7 +556,8 @@ console.log(
   `wrote ${outPath}: ${hashes.length} hashes, ${seeds.length} seeds, ` +
   `${streams.length} streams, ${market_walks.length} lifecycle walks, ` +
   `${initial_markets.length} oracle initial markets, ` +
-  `${phone.clock.frames.length} phone clock frames (oracle v${core.VERSION}; ` +
+  `${phone.clock.frames.length} phone clock frames, ` +
+  `${attributes.growth.length} attribute growth rows (oracle v${core.VERSION}; ` +
   `initialMarket copy verified at offset ${verifiedAtBurn}, ` +
   `evolveMarkets copy verified at offset ${evolveVerifiedAtBurn}; ` +
   `phone message-id format verified against oracle message ${phone.message.message.id})`

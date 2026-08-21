@@ -18,29 +18,36 @@ extends RefCounted
 ## Three of those terms need systems that do not exist yet. Rather than invent
 ## values, each is pinned at its canon neutral and named here so the gap is
 ## legible when those systems land:
-##   combat        → ATTRIBUTE_DEFAULTS.combat = 1, so the term is a flat -0.08
+##   combat        → LIVE as of Phase 5c (was pinned, and pinned WRONG — see below)
 ##   weaponBonus   → 0 (no equipment system; tier 2+ gating is relaxed to suit)
 ##   planning      → 0 (no casing, no crew)
 ##   districtDelta → 0 (no district heat/attention tracking)
+##
+## The combat term reads canon's `combatCompat` (game-core.js:2402), which is
+## `Attributes.compatibilityRating` — the stored value offset onto the 1-5 scale
+## this formula was tuned against. The pin was `ATTRIBUTE_DEFAULTS.combat = 1`,
+## the STORED default, where canon reads the COMPATIBILITY value of 2. That made
+## the term -0.08 instead of 0, and every robbery in this build 8 points harder
+## than canon from Phase 3d until Phase 5c.
 ##
 ## Heat is the real cost and it IS ported: canon clamps 0-15 and this does too.
 
 const RED := Color(0.827, 0.161, 0.125)
 const GREEN := Color(0.451, 0.722, 0.404)
 
-## Canon ATTRIBUTE_DEFAULTS.combat for a fresh run (src/data/attributes.js).
-const COMBAT_DEFAULT := 1
-
 var gs: Node
 var rng: Node
 var time_system: RefCounted
 var gm: Node
+var attributes: RefCounted
 
-func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node) -> void:
+func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node,
+		attribute_system: RefCounted) -> void:
 	gs = game_state
 	rng = rng_manager
 	time_system = time
 	gm = manager
+	attributes = attribute_system
 	gs.day_crossed.connect(_on_day_crossed)
 
 ## Canon scales generated heat by DESHAWN_HEAT_REDUCTION when he is on the crew.
@@ -106,7 +113,7 @@ func chance_for(target: Dictionary) -> float:
 	var tier: int = int(target["tier"])
 	var base: float = 0.62 if tier == 1 else (0.52 if tier == 2 else 0.40)
 	var c: float = base \
-		+ (float(COMBAT_DEFAULT) - 2.0) * 0.08 \
+		+ (float(attributes.compat("combat")) - 2.0) * 0.08 \
 		- float(target["resistance"]) * gs.DISTRICT_DIFF_STEP \
 		- gs.heat * 0.012
 	return clampf(c, 0.15, 0.90)

@@ -15,6 +15,12 @@ func _ready() -> void:
 	_gs = get_node("/root/GameState")
 	var rng := get_node("/root/RngManager")
 
+	# Attributes is constructed first: stickup, boost, shark and 907List all
+	# read it, and none of them can be built without it.
+	var attributes = preload("res://systems/attributes.gd").new()
+	attributes.setup(_gs)
+	register_system("attributes", attributes)
+
 	var economy = preload("res://systems/economy.gd").new()
 	economy.setup(_gs, rng)
 	register_system("economy", economy)
@@ -43,19 +49,19 @@ func _ready() -> void:
 	register_system("obligations", obligations)
 
 	var stickup = preload("res://systems/stickup.gd").new()
-	stickup.setup(_gs, rng, time, self)
+	stickup.setup(_gs, rng, time, self, attributes)
 	register_system("stickup", stickup)
 
 	var shark = preload("res://systems/shark.gd").new()
-	shark.setup(_gs, rng, self)
+	shark.setup(_gs, rng, self, attributes)
 	register_system("shark", shark)
 
 	var nine07list = preload("res://systems/nine07list.gd").new()
-	nine07list.setup(_gs, rng, time)
+	nine07list.setup(_gs, rng, time, attributes)
 	register_system("list", nine07list)
 
 	var boost = preload("res://systems/boost.gd").new()
-	boost.setup(_gs, rng, time, self)
+	boost.setup(_gs, rng, time, self, attributes)
 	register_system("boost", boost)
 
 	# Crew is registered after the surfaces that consult it, but registration

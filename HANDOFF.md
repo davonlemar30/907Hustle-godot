@@ -497,6 +497,114 @@ that reasoning is most of the value. The Build State page can be reconstructed f
 - Any deliberate divergence from canon is named with the reason.
 - Any canon oddity found is recorded rather than silently corrected.
 
+## Phase 5c (part 1): attributes — and the bug the pin was hiding  (added 2026-08-20)
+
+The three numbers behind every outcome are real. `systems/attributes.gd` ports
+canon's `src/data/attributes.js` + `src/systems/attributes.js`, and the three
+surfaces that had been reading a hardcoded constant now read the player.
+**Parity 1442 → 2236 checks, 0 failures.**
+
+### The bug: the pin was faithful to the wrong function
+
+Canon's action formulas do NOT read the stored attribute. They read
+`compatibilityRating` — `clamp(value + 1, 1, 5)` — and canon says why in its own
+comment: those formulas were tuned against a pre-v1.10 attribute that ran 1-5
+from a base of **2**, and the v1.10 consolidation moved the stored value onto a
+0-12 scale starting at **1**. Reading the stored value directly docks every one
+of them a point on day one, which canon measured at roughly **40% of the run
+economy**.
+
+Phase 3d pinned `ATTRIBUTE_DEFAULTS` — the STORED default of 1 — where canon
+reads the COMPATIBILITY value of 2. Three shipped surfaces have been wrong since:
+
+| surface | canon at default | port had | drift |
+|---|---|---|---|
+| stickup `(combatCompat - 2) * 0.08` | 0 | -0.08 | tier 1 was **0.54, canon 0.62** |
+| boost `(skill - 2) * 0.10` | 0 | -0.10 | tier 1 was **0.70, canon 0.80** |
+| shark `- intelligenceCompat * 0.025` | -0.05 | -0.025 | notes 2.5 points likelier to default |
+
+Every robbery was 8 points harder than canon, every lift 10 points harder, and
+every note riskier, for two phases. **The pin was not sloppy — it was carefully
+wrong.** The header said `ATTRIBUTE_DEFAULTS.combat = 1` and that value is
+correct; it just is not the value the formula wanted. Pinning a term at "canon
+neutral" means pinning it at what the CALL SITE reads, not at what the data file
+declares.
+
+### What is ported
+
+Data tables, the reads (`value` / `compat` / `label`), and growth. `compat()`
+carries the offset with a header warning attached to it, because it is the kind
+of function that looks redundant right up until someone deletes it.
+
+Growth is canon's log2 taper — `base / log2(sessions + 2)`, halved once the
+attribute reaches Dangerous (6). Progress banks as a float and spends a whole
+point at 1.0, so **the player is told they got better and never by how much**;
+canon keeps the number behind a debug flag and so does this.
+
+`list_flip` is wired: a 907List flip that clears canon's 30% margin
+(`PROFITABLE_FLIP_MARGIN`) trains Intelligence, because clearing 30% was a good
+READ rather than a lucky sale. It is the only one of canon's nine growth sources
+whose venue exists here — the gym's three and The Nile's five wait on their
+buildings. **The whole `GROWTH_RATES` table is ported anyway**, because canon's
+design is that a new growth source is a row rather than a code path.
+
+### Not ported, each absent rather than stubbed
+
+- **Tiered outcome resolution** (`OUTCOME_SHAPES`, `buildOutcomePool`,
+  `resolveWithAttribute`, `resolveAction`). Canon resolves an action into one of
+  four tiers — clean / messy / failure / catastrophic — with the attribute
+  granting *tabletop advantage* (a second roll at 3, catastrophe immunity at 6)
+  rather than a percentage bonus. Every surface here still resolves binary
+  `roll < chance`. Converting them also rewrites the Exposure footprint, because
+  canon keys `OUTCOME_OBSERVATIONS` off the tier: a clean robbery writes its
+  financial row but travels `direct` instead of reaching the network. That is a
+  build of its own.
+- **Streaks** (`gymStreakBonus`, `nileStreakBonus`, `effectiveAttribute`). Three
+  consecutive days at the gym or The Nile are worth +1 effective level. Neither
+  venue exists, so the bonus is always 0 and `effectiveAttribute` would be
+  `value` with extra steps.
+- **Street Identity.** Its only caller is the Character screen — part 2.
+
+### The fixtures are pure oracle, with nothing to prove
+
+`attributeSystem` and the `ATTRIBUTES` data module are **both exported**, so
+every fixture value is produced by canon's own functions called directly. There
+is no formula copy in this section to verify — the strongest position the
+harness has had. What the runner checks: the static tables, the compatibility
+offset across the whole clamp range (including floats, negatives and a missing
+key), all thirteen label tiers, 315 growth rows (nine activities x seven session
+counts x five current values), and **the three real surfaces driven through
+their own `chance_for` / `default_probability` at every attribute value**. That
+last group is the one that would have caught this bug on the day it shipped.
+
+One fixture note worth keeping: the shark row deliberately uses the
+highest-risk borrower on a $500 note. A low-risk borrower clamps to the 0.03
+floor at every attribute value, so the check would have agreed for the wrong
+reason. The runner asserts the expected value is off both clamps before
+comparing.
+
+### Save schema v4
+
+`attributes` and `attribute_progress` join `PERSIST_FIELDS`; the v3→v4 arm is
+additive. A save that predates the system defaults to all-1s and zero progress —
+and that is the right answer rather than a convenience, because **a run that
+predates the attribute system genuinely never trained anything**. The defaults
+are its real history.
+
+### Verified live (editor run, game log clean)
+
+Fresh run → all three at 1, compat 2, label "Green". The three formulas read
+0.62 / 0.80 / 0.51 where they used to read 0.54 / 0.70 / 0.485. Raising combat
+and intelligence to 4 → compat 5, stickup 0.86, boost 0.95, label "Solid".
+Growth banked across twelve sessions with the exact canon taper
+(0.2000, 0.1262, 0.1000, 0.0861, …) and spent a point on the twelfth, logging
+"People read you as Capable now." The cap penalty halves growth at 6 (0.2 →
+0.1). An unknown source trains nothing and returns an empty read. **Driven for
+real through the dispatch layer**: fourteen days of 907List buys and sells, four
+flips sold, three cleared the 30% margin and trained Intelligence with the
+correct per-session taper — the fourth did not clear it and correctly trained
+nothing. No autosave fired and no phantom run was left behind.
+
 ## Phase 5b (part 3): More + Help — the nav is complete  (added 2026-08-20)
 
 **Every bottom-nav cell has a screen.** `screen_base::_wire_nav()` no longer

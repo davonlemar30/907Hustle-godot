@@ -40,6 +40,19 @@ var debt: int = 1200
 var debt_due_days: int = 2
 var cargo_max: int = 10  # canon: web cargoCapacity
 var respect: int = 4
+
+# --- Attributes (canon: src/data/attributes.js) ----------------------------
+## Canon's three: combat, charisma, intelligence. Stored 0..12, starting at 1.
+## **Formulas do not read these directly** — they read `attributes.compat()`,
+## which offsets onto the pre-v1.10 1-5 scale those formulas were tuned against.
+## See systems/attributes.gd's header; getting this wrong is worth ~40% of the
+## run economy by canon's own measurement, and this port had it wrong from
+## Phase 3d until Phase 5c.
+var attributes: Dictionary = {"combat": 1, "charisma": 1, "intelligence": 1}
+## Fractional progress toward the next whole point, per attribute. Canon banks
+## growth here and spends 1.0 at a time, so the player crosses a threshold
+## rather than watching a decimal climb.
+var attribute_progress: Dictionary = {"combat": 0.0, "charisma": 0.0, "intelligence": 0.0}
 var crew_power: int = 11
 
 # Numeric holdings per product id — the economy's source of truth. cargo_used()
@@ -255,6 +268,8 @@ func reset_to_new_game() -> void:
 	debt = 0
 	debt_due_days = 0
 	respect = 0
+	attributes = {"combat": 1, "charisma": 1, "intelligence": 1}
+	attribute_progress = {"combat": 0.0, "charisma": 0.0, "intelligence": 0.0}
 	crew_power = 0
 	inventory = {}
 	# Jobs and obligations reset with the run.

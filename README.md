@@ -32,6 +32,7 @@ the oracle won; those divergences are listed in `HANDOFF.md`.
 | Travel between districts ($5 fare, one slot) | Street |
 | Work shifts for banded pay, get fired for ghosting | Hustle → Jobs |
 | Flip listings whose true value is hidden by your tier | Hustle → 907List |
+| Get better at reading value, and watch the odds move | automatic, on a clean flip |
 | Lift stock from rooms that may be watching | Hustle → Boost |
 | Rob marks for fast money and real Heat | Hustle → Stickup |
 | Lend at interest and decide what a default costs | Hustle → Shark |
@@ -46,9 +47,10 @@ the oracle won; those divergences are listed in `HANDOFF.md`.
 
 ### Not built yet
 
-Character (street identity, attributes, arrest record), Recovery, venue
-interiors, combat encounters, and equipment. Attributes remain pinned at canon's
-neutral defaults across every system.
+Character (street identity, arrest record), Recovery, venue interiors, combat
+encounters, and equipment. Attributes are live but resolution is still binary —
+canon's four-tier clean/messy/failure/catastrophic outcomes are a build of their
+own.
 
 ## Project layout
 
@@ -69,6 +71,7 @@ systems/              # the ONLY writers of GameState
   jobs.gd             # apply / work / quit + attendance
   obligations.gd      # rent + phone bill, settled nightly
   phone.gd            # the inbox, the held inbox, and the line coming back
+  attributes.gd       # combat / charisma / intelligence, and how they grow
   stickup.gd          # armed robbery, tiers, the two-a-day cap
   shark.gd            # lending, terms, defaults
   nine07list.gd       # the flip board and its tiers
@@ -162,6 +165,7 @@ regardless of how small the source file is.
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
 | 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (1442 checks); fixtures grow with each system |
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
+| 5c. Attributes | 🔨 substrate shipped — three surfaces unpinned, growth live; Character screen next |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

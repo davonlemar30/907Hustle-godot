@@ -18,8 +18,14 @@ extends RefCounted
 ## interest. Defaulted: the note sits open until the player decides.
 ##
 ## Pinned at canon neutral because their systems do not exist yet:
-##   intelligence → ATTRIBUTE_DEFAULTS.intelligence = 1
 ##   Dre bond     → false (no relationship bands yet)
+##
+## Intelligence is LIVE as of Phase 5c. It was pinned at
+## `ATTRIBUTE_DEFAULTS.intelligence = 1`, but canon reads `intelligenceCompat`
+## (game-core.js:6560) — the stored value offset onto the 1-5 scale — which is 2
+## on a fresh run. The term was -0.025 where canon has -0.05, so every note this
+## build wrote was 2.5 points likelier to default than canon from Phase 3d until
+## Phase 5c.
 ##
 ## Enforcement is violent, and canon prices it: `heat + 2`, plus what the block
 ## and Dre make of it. That was deferred in 3d and is wired now.
@@ -32,17 +38,17 @@ const GREEN := Color(0.451, 0.722, 0.404)
 const RED := Color(0.827, 0.161, 0.125)
 const AMBER := Color(0.882, 0.651, 0.227)
 
-## Canon ATTRIBUTE_DEFAULTS.intelligence for a fresh run.
-const INTELLIGENCE_DEFAULT := 1
-
 var gs: Node
 var rng: Node
 var gm: Node
+var attributes: RefCounted
 
-func setup(game_state: Node, rng_manager: Node, manager: Node) -> void:
+func setup(game_state: Node, rng_manager: Node, manager: Node,
+		attribute_system: RefCounted) -> void:
 	gs = game_state
 	rng = rng_manager
 	gm = manager
+	attributes = attribute_system
 	gs.day_crossed.connect(_on_day_crossed)
 
 func _exposure() -> Node:
@@ -129,7 +135,8 @@ func default_probability(loan: Dictionary) -> float:
 	var term: int = int(loan["term"])
 	var amount_bump: float = 0.18 if amount >= 500 else (0.08 if amount >= 250 else 0.0)
 	var term_bump: float = 0.12 if term == 2 else (0.04 if term == 4 else -0.04)
-	var p: float = float(b["risk"]) + amount_bump + term_bump - float(INTELLIGENCE_DEFAULT) * 0.025
+	var p: float = float(b["risk"]) + amount_bump + term_bump \
+		- float(attributes.compat("intelligence")) * 0.025
 	return clampf(p, 0.03, 0.82)
 
 func interest_for(loan: Dictionary) -> int:

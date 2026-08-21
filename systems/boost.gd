@@ -9,9 +9,15 @@ extends RefCounted
 ##   base   = tier 1 → 0.80 · tier 2 → 0.55 · tier 3 → 0.40
 ##   chance = clamp(base + (skill - 2) * 0.10 + windowBonus + districtDelta, 0.10, 0.95)
 ##
-## Attributes are pinned at ATTRIBUTE_DEFAULTS (all 1) and districtDelta at 0,
-## the same treatment stickup.gd documents. So tier 1 reads 0.70, tier 2 reads
-## 0.45 and 0.65 inside its window.
+## Attributes are LIVE as of Phase 5c; districtDelta is still 0.
+##
+## They were pinned at `ATTRIBUTE_DEFAULTS` (all 1), which was the wrong number:
+## canon blends `combatCompat` / `intelligenceCompat` / `charismaCompat`
+## (game-core.js:2228-2230), the stored value offset onto the 1-5 scale. Skill
+## was therefore 1 where canon has 2, making `(skill - 2) * 0.10` read -0.10
+## instead of 0 — every lift 10 points harder than canon from Phase 3d until
+## Phase 5c. At the fresh-run default tier 1 now reads 0.80 and tier 2 reads
+## 0.55, or 0.75 inside its window.
 ##
 ## Tier 2 targets each have a window slot worth +0.20. Canon only reveals a
 ## window once you have hit that target, which is what ASK_BOOST_WINDOW is for;
@@ -30,12 +36,15 @@ var gs: Node
 var rng: Node
 var time_system: RefCounted
 var gm: Node
+var attributes: RefCounted
 
-func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node) -> void:
+func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node,
+		attribute_system: RefCounted) -> void:
 	gs = game_state
 	rng = rng_manager
 	time_system = time
 	gm = manager
+	attributes = attribute_system
 
 func _apply_heat(amount: int) -> float:
 	var mult: float = 1.0
@@ -69,13 +78,13 @@ func visible_targets() -> Array:
 		out.append(t)
 	return out
 
-## Canon boostChance with attributes pinned at their defaults (see header).
+## Canon boostChance. Tiers 1 and 2 blend combat+intelligence; tier 3 swaps
+## combat for charisma, because a tier-3 lift is talked through, not walked out.
 func chance_for(target: Dictionary) -> float:
 	var tier: int = int(target["tier"])
 	var base: float = 0.80 if tier == 1 else (0.55 if tier == 2 else 0.40)
-	# All three compat scores are 1 on a fresh run, so skill is 1 whichever
-	# pair the tier blends.
-	var skill: float = 1.0
+	var skill: float = float(attributes.compat("intelligence") + attributes.compat(
+		"charisma" if tier == 3 else "combat")) / 2.0
 	var window_bonus: float = 0.20 if tier == 2 and int(target["window"]) == gs.time_slots_today else 0.0
 	return clampf(base + (skill - 2.0) * 0.10 + window_bonus, 0.10, 0.95)
 

@@ -42,15 +42,15 @@ the oracle won; those divergences are listed in `HANDOFF.md`.
 | Rent, phone bill, eviction | automatic, on day-cross |
 | Read texts, pay bills, hear word around town | Phone |
 | Reach everything else, and read the rules | More · More → Help |
+| See what the block calls you, and why | More → Character |
 | Texts arrive; miss the bill and the line dies holding them | Phone → Texts |
 | Pick up where you left off | automatic autosave · title → CONTINUE RUN |
 
 ### Not built yet
 
-Character (street identity, arrest record), Recovery, venue interiors, combat
-encounters, and equipment. Attributes are live but resolution is still binary —
-canon's four-tier clean/messy/failure/catastrophic outcomes are a build of their
-own.
+Recovery, arrest/jail, venue interiors, combat encounters, and equipment.
+Attributes are live but resolution is still binary — canon's four-tier
+clean/messy/failure/catastrophic outcomes are a build of their own.
 
 ## Project layout
 
@@ -165,7 +165,7 @@ regardless of how small the source file is.
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
 | 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (1442 checks); fixtures grow with each system |
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
-| 5c. Attributes | 🔨 substrate shipped — three surfaces unpinned, growth live; Character screen next |
+| 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

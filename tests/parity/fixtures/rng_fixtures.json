@@ -2464,6 +2464,421 @@
    "charisma",
    "intelligence"
   ],
+  "identity_balance_margin": 2,
+  "identity_recent_days": 7,
+  "identity_matrix": {
+   "combat": {
+    "violence": "Shooter",
+    "presence": "Enforcer",
+    "financial": "Collector",
+    "default": "Muscle"
+   },
+   "charisma": {
+    "violence": "Smooth Talker",
+    "presence": "Connected",
+    "financial": "Broker",
+    "default": "People Person"
+   },
+   "intelligence": {
+    "violence": "Ghost",
+    "presence": "Observer",
+    "financial": "Quiet Money",
+    "default": "Calculator"
+   },
+   "balanced": {
+    "violence": "Unpredictable",
+    "presence": "Hustler",
+    "financial": "Adaptable",
+    "default": "New Face"
+   }
+  },
+  "identity_descriptions": {
+   "Shooter": "People step back when you come up the block, and they are not wrong to.",
+   "Enforcer": "You are the one somebody sends. Everyone knows which somebody.",
+   "Collector": "What you are owed, you collect. The block has watched it happen.",
+   "Muscle": "Nobody has decided what you want yet. They have decided what you can do.",
+   "Smooth Talker": "You have talked your way out of rooms other people got carried out of.",
+   "Connected": "Your name comes up in conversations you were not in.",
+   "Broker": "Two people who needed each other met through you, and both of them paid.",
+   "People Person": "You know everybody. It has not cost you anything yet.",
+   "Ghost": "Things happen near you and nobody can say you were there.",
+   "Observer": "You are always at the edge of it, and you are always still there after.",
+   "Quiet Money": "No jewelry, no noise, and somehow never short.",
+   "Calculator": "You think two moves out. It reads as patience, which suits you.",
+   "Unpredictable": "Nobody can guess your next move, which is its own kind of protection.",
+   "Hustler": "Whatever the week needs, you are already doing it.",
+   "Adaptable": "You have no lane, and that has never once slowed you down.",
+   "New Face": "The block is still deciding."
+  },
+  "identity_behavior_columns": {
+   "violence": "violence",
+   "defiance": "violence",
+   "betrayal": "violence",
+   "heat_exposure": "violence",
+   "presence": "presence",
+   "discretion": "presence",
+   "loyalty": "presence",
+   "submission": "presence",
+   "honesty": "presence",
+   "financial": "financial",
+   "growth": "financial"
+  },
+  "identity": [
+   {
+    "name": "fresh run",
+    "attrs": {
+     "combat": 1,
+     "charisma": 1,
+     "intelligence": 1
+    },
+    "day": 1,
+    "ledgers": {},
+    "recent_count": 0,
+    "dominant": "balanced",
+    "behavior": "default",
+    "label": "New Face",
+    "description": "The block is still deciding.",
+    "identity": "New Face"
+   },
+   {
+    "name": "combat lane, no behaviour",
+    "attrs": {
+     "combat": 5,
+     "charisma": 1,
+     "intelligence": 1
+    },
+    "day": 10,
+    "ledgers": {},
+    "recent_count": 0,
+    "dominant": "combat",
+    "behavior": "default",
+    "label": "Muscle",
+    "description": "Nobody has decided what you want yet. They have decided what you can do.",
+    "identity": "Muscle"
+   },
+   {
+    "name": "combat lane, violence seen",
+    "attrs": {
+     "combat": 5,
+     "charisma": 1,
+     "intelligence": 1
+    },
+    "day": 10,
+    "ledgers": {
+     "yalonda": [
+      {
+       "type": "violence",
+       "day": 9,
+       "count": 1,
+       "key": "violence:9",
+       "event": "",
+       "source": "witnessed"
+      }
+     ]
+    },
+    "recent_count": 1,
+    "dominant": "combat",
+    "behavior": "violence",
+    "label": "Shooter",
+    "description": "People step back when you come up the block, and they are not wrong to.",
+    "identity": "Shooter"
+   },
+   {
+    "name": "combat lane, presence seen",
+    "attrs": {
+     "combat": 6,
+     "charisma": 2,
+     "intelligence": 1
+    },
+    "day": 10,
+    "ledgers": {
+     "mina": [
+      {
+       "type": "discretion",
+       "day": 8,
+       "count": 1,
+       "key": "discretion:8",
+       "event": "",
+       "source": "witnessed"
+      }
+     ]
+    },
+    "recent_count": 1,
+    "dominant": "combat",
+    "behavior": "presence",
+    "label": "Enforcer",
+    "description": "You are the one somebody sends. Everyone knows which somebody.",
+    "identity": "Enforcer"
+   },
+   {
+    "name": "charisma lane, financial seen",
+    "attrs": {
+     "combat": 1,
+     "charisma": 6,
+     "intelligence": 2
+    },
+    "day": 12,
+    "ledgers": {
+     "dre": [
+      {
+       "type": "financial",
+       "day": 11,
+       "count": 3,
+       "key": "financial:11",
+       "event": "",
+       "source": "witnessed"
+      }
+     ]
+    },
+    "recent_count": 1,
+    "dominant": "charisma",
+    "behavior": "financial",
+    "label": "Broker",
+    "description": "Two people who needed each other met through you, and both of them paid.",
+    "identity": "Broker"
+   },
+   {
+    "name": "intelligence lane, growth seen",
+    "attrs": {
+     "combat": 1,
+     "charisma": 1,
+     "intelligence": 4
+    },
+    "day": 6,
+    "ledgers": {
+     "juan": [
+      {
+       "type": "growth",
+       "day": 5,
+       "count": 1,
+       "key": "growth:5",
+       "event": "",
+       "source": "witnessed"
+      }
+     ]
+    },
+    "recent_count": 1,
+    "dominant": "intelligence",
+    "behavior": "financial",
+    "label": "Quiet Money",
+    "description": "No jewelry, no noise, and somehow never short.",
+    "identity": "Quiet Money"
+   },
+   {
+    "name": "inside the balance margin",
+    "attrs": {
+     "combat": 4,
+     "charisma": 3,
+     "intelligence": 2
+    },
+    "day": 8,
+    "ledgers": {
+     "curtis": [
+      {
+       "type": "heat_exposure",
+       "day": 7,
+       "count": 1,
+       "key": "heat_exposure:7",
+       "event": "",
+       "source": "witnessed"
+      }
+     ]
+    },
+    "recent_count": 1,
+    "dominant": "balanced",
+    "behavior": "violence",
+    "label": "Unpredictable",
+    "description": "Nobody can guess your next move, which is its own kind of protection.",
+    "identity": "Unpredictable"
+   },
+   {
+    "name": "exact margin is still balanced",
+    "attrs": {
+     "combat": 4,
+     "charisma": 2,
+     "intelligence": 1
+    },
+    "day": 8,
+    "ledgers": {},
+    "recent_count": 0,
+    "dominant": "balanced",
+    "behavior": "default",
+    "label": "New Face",
+    "description": "The block is still deciding.",
+    "identity": "New Face"
+   },
+   {
+    "name": "one over the margin is a lane",
+    "attrs": {
+     "combat": 5,
+     "charisma": 2,
+     "intelligence": 1
+    },
+    "day": 8,
+    "ledgers": {},
+    "recent_count": 0,
+    "dominant": "combat",
+    "behavior": "default",
+    "label": "Muscle",
+    "description": "Nobody has decided what you want yet. They have decided what you can do.",
+    "identity": "Muscle"
+   },
+   {
+    "name": "behaviour tie falls through to default",
+    "attrs": {
+     "combat": 6,
+     "charisma": 1,
+     "intelligence": 1
+    },
+    "day": 10,
+    "ledgers": {
+     "yalonda": [
+      {
+       "type": "violence",
+       "day": 9,
+       "count": 1,
+       "key": "violence:9",
+       "event": "",
+       "source": "witnessed"
+      }
+     ],
+     "mina": [
+      {
+       "type": "presence",
+       "day": 9,
+       "count": 1,
+       "key": "presence:9",
+       "event": "",
+       "source": "witnessed"
+      }
+     ]
+    },
+    "recent_count": 2,
+    "dominant": "combat",
+    "behavior": "default",
+    "label": "Muscle",
+    "description": "Nobody has decided what you want yet. They have decided what you can do.",
+    "identity": "Muscle"
+   },
+   {
+    "name": "count breaks what would be a tie",
+    "attrs": {
+     "combat": 6,
+     "charisma": 1,
+     "intelligence": 1
+    },
+    "day": 10,
+    "ledgers": {
+     "yalonda": [
+      {
+       "type": "violence",
+       "day": 9,
+       "count": 2,
+       "key": "violence:9",
+       "event": "",
+       "source": "witnessed"
+      }
+     ],
+     "mina": [
+      {
+       "type": "presence",
+       "day": 9,
+       "count": 1,
+       "key": "presence:9",
+       "event": "",
+       "source": "witnessed"
+      }
+     ]
+    },
+    "recent_count": 2,
+    "dominant": "combat",
+    "behavior": "violence",
+    "label": "Shooter",
+    "description": "People step back when you come up the block, and they are not wrong to.",
+    "identity": "Shooter"
+   },
+   {
+    "name": "rows outside the window do not count",
+    "attrs": {
+     "combat": 6,
+     "charisma": 1,
+     "intelligence": 1
+    },
+    "day": 20,
+    "ledgers": {
+     "yalonda": [
+      {
+       "type": "violence",
+       "day": 3,
+       "count": 1,
+       "key": "violence:3",
+       "event": "",
+       "source": "witnessed"
+      }
+     ]
+    },
+    "recent_count": 0,
+    "dominant": "combat",
+    "behavior": "default",
+    "label": "Muscle",
+    "description": "Nobody has decided what you want yet. They have decided what you can do.",
+    "identity": "Muscle"
+   },
+   {
+    "name": "boundary day is inside the window",
+    "attrs": {
+     "combat": 6,
+     "charisma": 1,
+     "intelligence": 1
+    },
+    "day": 10,
+    "ledgers": {
+     "yalonda": [
+      {
+       "type": "violence",
+       "day": 4,
+       "count": 1,
+       "key": "violence:4",
+       "event": "",
+       "source": "witnessed"
+      }
+     ]
+    },
+    "recent_count": 1,
+    "dominant": "combat",
+    "behavior": "violence",
+    "label": "Shooter",
+    "description": "People step back when you come up the block, and they are not wrong to.",
+    "identity": "Shooter"
+   },
+   {
+    "name": "unmapped category is ignored",
+    "attrs": {
+     "combat": 6,
+     "charisma": 1,
+     "intelligence": 1
+    },
+    "day": 10,
+    "ledgers": {
+     "yalonda": [
+      {
+       "type": "not_a_category",
+       "day": 9,
+       "count": 1,
+       "key": "not_a_category:9",
+       "event": "",
+       "source": "witnessed"
+      }
+     ]
+    },
+    "recent_count": 1,
+    "dominant": "combat",
+    "behavior": "default",
+    "label": "Muscle",
+    "description": "Nobody has decided what you want yet. They have decided what you can do.",
+    "identity": "Muscle"
+   }
+  ],
   "defaults": {
    "combat": 1,
    "charisma": 1,

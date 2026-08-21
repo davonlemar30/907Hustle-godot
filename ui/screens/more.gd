@@ -11,18 +11,16 @@ extends "res://ui/screens/surface_base.gd"
 ## already own. The statuses are one-line reads of live state so the menu can be
 ## scanned instead of walked.
 ##
-## Canon has six rows. This build ships four, and the two it drops are dropped
-## rather than stubbed:
+## Canon has six rows. This build ships five; the one it drops is dropped rather
+## than stubbed:
 ##
 ##   - **Recovery** (canon: treat injuries, lay low to shed Heat) — there is no
 ##     recovery system. Canon itself hides this row until the feature is
 ##     relevant (`features.recovery.available`), so an absent row is the shape
 ##     canon already uses for it.
-##   - **Character** (canon: street identity, attributes, arrest record, recent
-##     reputation) — needs `streetIdentity`, `attributeLabels`, `arrestRecord`
-##     and the behavior history, none of which are ported. Attributes are still
-##     pinned at canon's neutral defaults across every system, so a Character
-##     screen today would be five rows of "1" and an empty record.
+##   - ~~Character~~ — **shipped in Phase 5c part 2**, once attributes were real
+##     enough for it to say anything. Its arrest record and reputation history
+##     are still absent, and the screen names both.
 ##
 ## Routing divergences, each because canon's destination is a page this build
 ## does not have:
@@ -77,6 +75,12 @@ func _build_body() -> void:
 		nav.CREW))
 
 	body.add_child(_menu_row(
+		"Character",
+		_identity_label(),
+		"Rank, what you are good at, and what the block remembers.",
+		nav.CHARACTER))
+
+	body.add_child(_menu_row(
 		"Help",
 		"Available",
 		"Time, trading, major actions, and how a run ends.",
@@ -103,6 +107,12 @@ func _finance_summary() -> String:
 	if gs.debt_due_days <= 0:
 		return "Debt due"
 	return "Debt Day %d" % (gs.day + gs.debt_due_days)
+
+## Canon's More shows the Street Identity as this row's status, which is the
+## only place in the build it appears outside the Character screen itself.
+func _identity_label() -> String:
+	var attrs: Object = _gm.system("attributes")
+	return "New Face" if attrs == null else str(attrs.street_identity())
 
 ## Canon's MenuRow: title and description on the left, status and a chevron on
 ## the right.

@@ -518,8 +518,74 @@ for (let stored = 0; stored <= 8; stored += 1) {
   });
 }
 
+// (e) Street Identity — canon's getStreetIdentity / identityProfile, driven
+// directly. The state shape they read is small: player.attributes, run.day, and
+// npc.<id>.ledger, which `ledgerOf` walks. Building it by hand supplies the
+// input; canon's own functions do every bit of the deriving.
+const identityState = (attrs, day, ledgers) => ({
+  player: { attributes: attrs },
+  run: { day },
+  npc: Object.fromEntries(
+    core.EXPOSURE_NPC_IDS.map((id) => [id, { ledger: ledgers[id] || [] }])
+  ),
+});
+const obs = (type, day, count = 1) => ({ type, day, count, key: `${type}:${day}`, event: "", source: "witnessed" });
+
+// Cases chosen so each arm of the matrix and each tie rule is exercised:
+// a clear lane, a lane inside the balance margin, an empty ledger, a tie
+// between two behaviour columns, a count-weighted winner, and rows that have
+// aged out of the 7-day window.
+const IDENTITY_CASES = [
+  { name: "fresh run", attrs: { combat: 1, charisma: 1, intelligence: 1 }, day: 1, ledgers: {} },
+  { name: "combat lane, no behaviour", attrs: { combat: 5, charisma: 1, intelligence: 1 }, day: 10, ledgers: {} },
+  { name: "combat lane, violence seen", attrs: { combat: 5, charisma: 1, intelligence: 1 }, day: 10,
+    ledgers: { yalonda: [obs("violence", 9)] } },
+  { name: "combat lane, presence seen", attrs: { combat: 6, charisma: 2, intelligence: 1 }, day: 10,
+    ledgers: { mina: [obs("discretion", 8)] } },
+  { name: "charisma lane, financial seen", attrs: { combat: 1, charisma: 6, intelligence: 2 }, day: 12,
+    ledgers: { dre: [obs("financial", 11, 3)] } },
+  { name: "intelligence lane, growth seen", attrs: { combat: 1, charisma: 1, intelligence: 4 }, day: 6,
+    ledgers: { juan: [obs("growth", 5)] } },
+  { name: "inside the balance margin", attrs: { combat: 4, charisma: 3, intelligence: 2 }, day: 8,
+    ledgers: { curtis: [obs("heat_exposure", 7)] } },
+  { name: "exact margin is still balanced", attrs: { combat: 4, charisma: 2, intelligence: 1 }, day: 8, ledgers: {} },
+  { name: "one over the margin is a lane", attrs: { combat: 5, charisma: 2, intelligence: 1 }, day: 8, ledgers: {} },
+  { name: "behaviour tie falls through to default", attrs: { combat: 6, charisma: 1, intelligence: 1 }, day: 10,
+    ledgers: { yalonda: [obs("violence", 9)], mina: [obs("presence", 9)] } },
+  { name: "count breaks what would be a tie", attrs: { combat: 6, charisma: 1, intelligence: 1 }, day: 10,
+    ledgers: { yalonda: [obs("violence", 9, 2)], mina: [obs("presence", 9)] } },
+  { name: "rows outside the window do not count", attrs: { combat: 6, charisma: 1, intelligence: 1 }, day: 20,
+    ledgers: { yalonda: [obs("violence", 3)] } },
+  { name: "boundary day is inside the window", attrs: { combat: 6, charisma: 1, intelligence: 1 }, day: 10,
+    ledgers: { yalonda: [obs("violence", 4)] } },
+  { name: "unmapped category is ignored", attrs: { combat: 6, charisma: 1, intelligence: 1 }, day: 10,
+    ledgers: { yalonda: [obs("not_a_category", 9)] } },
+];
+const attribute_identity = IDENTITY_CASES.map((testCase) => {
+  const state = identityState(testCase.attrs, testCase.day, testCase.ledgers);
+  const profile = A.identityProfile(state);
+  return {
+    name: testCase.name,
+    attrs: testCase.attrs,
+    day: testCase.day,
+    ledgers: testCase.ledgers,
+    recent_count: A.getRecentObservations(state, AD.IDENTITY_RECENT_DAYS).length,
+    dominant: profile.dominant,
+    behavior: profile.behavior,
+    label: profile.label,
+    description: profile.description,
+    identity: A.getStreetIdentity(state),
+  };
+});
+
 const attributes = {
   ids: AD.ATTRIBUTE_IDS,
+  identity_balance_margin: AD.IDENTITY_BALANCE_MARGIN,
+  identity_recent_days: AD.IDENTITY_RECENT_DAYS,
+  identity_matrix: AD.IDENTITY_MATRIX,
+  identity_descriptions: AD.IDENTITY_DESCRIPTIONS,
+  identity_behavior_columns: AD.IDENTITY_BEHAVIOR_COLUMNS,
+  identity: attribute_identity,
   defaults: AD.ATTRIBUTE_DEFAULTS,
   min: AD.ATTRIBUTE_MIN,
   max: AD.ATTRIBUTE_MAX,
@@ -557,7 +623,8 @@ console.log(
   `${streams.length} streams, ${market_walks.length} lifecycle walks, ` +
   `${initial_markets.length} oracle initial markets, ` +
   `${phone.clock.frames.length} phone clock frames, ` +
-  `${attributes.growth.length} attribute growth rows (oracle v${core.VERSION}; ` +
+  `${attributes.growth.length} attribute growth rows, ` +
+  `${attributes.identity.length} identity cases (oracle v${core.VERSION}; ` +
   `initialMarket copy verified at offset ${verifiedAtBurn}, ` +
   `evolveMarkets copy verified at offset ${evolveVerifiedAtBurn}; ` +
   `phone message-id format verified against oracle message ${phone.message.message.id})`

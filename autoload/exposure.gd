@@ -155,6 +155,16 @@ func _ready() -> void:
 
 # --- recording -------------------------------------------------------------
 
+## Public read of one NPC's ledger. Canon's `ledgerOf` (src/exposure/engine.js),
+## which the attributes system calls directly to derive Street Identity — the
+## same reach-across canon makes, for the same reason: identity is a read of
+## what the neighborhood has actually seen.
+func ledger_of(npc_id: String) -> Array:
+	return _ledger(npc_id)
+
+func npc_ids() -> Array:
+	return NPC_LENSES.keys()
+
 func _ledger(npc_id: String) -> Array:
 	if not gs.npc_ledgers.has(npc_id):
 		gs.npc_ledgers[npc_id] = []

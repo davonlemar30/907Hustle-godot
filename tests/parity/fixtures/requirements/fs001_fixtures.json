@@ -1,0 +1,2616 @@
+{
+ "oracle_version": 11,
+ "oracle_source": "web PR #98 (src/systems/requirements.js, src/data/crew-progression.js)",
+ "generated_note": "run scripts/parity/gen_fixtures.mjs against the web oracle; do not hand-edit",
+ "max_crew_rank": 6,
+ "base_crew_capacity": 2,
+ "crew_capacity": 2,
+ "rank_labels": [
+  {
+   "rank": 0,
+   "label": "RECRUIT"
+  },
+  {
+   "rank": 1,
+   "label": "RECRUIT"
+  },
+  {
+   "rank": 2,
+   "label": "PROVEN"
+  },
+  {
+   "rank": 3,
+   "label": "TRUSTED"
+  },
+  {
+   "rank": 4,
+   "label": "SPECIALIST LEAD"
+  },
+  {
+   "rank": 5,
+   "label": "LIEUTENANT"
+  },
+  {
+   "rank": 6,
+   "label": "INNER CIRCLE"
+  },
+  {
+   "rank": 7,
+   "label": "INNER CIRCLE"
+  },
+  {
+   "rank": 99,
+   "label": "INNER CIRCLE"
+  }
+ ],
+ "curve_lookups": [
+  {
+   "curve": "wage_deshawn",
+   "rank": 0,
+   "value": 50
+  },
+  {
+   "curve": "wage_deshawn",
+   "rank": 1,
+   "value": 50
+  },
+  {
+   "curve": "wage_deshawn",
+   "rank": 2,
+   "value": 100
+  },
+  {
+   "curve": "wage_deshawn",
+   "rank": 3,
+   "value": 200
+  },
+  {
+   "curve": "wage_deshawn",
+   "rank": 4,
+   "value": 200
+  },
+  {
+   "curve": "wage_deshawn",
+   "rank": 5,
+   "value": 200
+  },
+  {
+   "curve": "wage_deshawn",
+   "rank": 6,
+   "value": 200
+  },
+  {
+   "curve": "wage_deshawn",
+   "rank": 12,
+   "value": 200
+  },
+  {
+   "curve": "wage_tone",
+   "rank": 0,
+   "value": 85
+  },
+  {
+   "curve": "wage_tone",
+   "rank": 1,
+   "value": 85
+  },
+  {
+   "curve": "wage_tone",
+   "rank": 2,
+   "value": 150
+  },
+  {
+   "curve": "wage_tone",
+   "rank": 3,
+   "value": 250
+  },
+  {
+   "curve": "wage_tone",
+   "rank": 4,
+   "value": 250
+  },
+  {
+   "curve": "wage_tone",
+   "rank": 5,
+   "value": 250
+  },
+  {
+   "curve": "wage_tone",
+   "rank": 6,
+   "value": 250
+  },
+  {
+   "curve": "wage_tone",
+   "rank": 12,
+   "value": 250
+  },
+  {
+   "curve": "wage_pherris",
+   "rank": 0,
+   "value": 60
+  },
+  {
+   "curve": "wage_pherris",
+   "rank": 1,
+   "value": 60
+  },
+  {
+   "curve": "wage_pherris",
+   "rank": 2,
+   "value": 120
+  },
+  {
+   "curve": "wage_pherris",
+   "rank": 3,
+   "value": 220
+  },
+  {
+   "curve": "wage_pherris",
+   "rank": 4,
+   "value": 220
+  },
+  {
+   "curve": "wage_pherris",
+   "rank": 5,
+   "value": 220
+  },
+  {
+   "curve": "wage_pherris",
+   "rank": 6,
+   "value": 220
+  },
+  {
+   "curve": "wage_pherris",
+   "rank": 12,
+   "value": 220
+  },
+  {
+   "curve": "tone_defense",
+   "rank": 0,
+   "value": 1.15
+  },
+  {
+   "curve": "tone_defense",
+   "rank": 1,
+   "value": 1.15
+  },
+  {
+   "curve": "tone_defense",
+   "rank": 2,
+   "value": 1.3
+  },
+  {
+   "curve": "tone_defense",
+   "rank": 3,
+   "value": 1.5
+  },
+  {
+   "curve": "tone_defense",
+   "rank": 4,
+   "value": 1.5
+  },
+  {
+   "curve": "tone_defense",
+   "rank": 5,
+   "value": 1.5
+  },
+  {
+   "curve": "tone_defense",
+   "rank": 6,
+   "value": 1.5
+  },
+  {
+   "curve": "tone_defense",
+   "rank": 12,
+   "value": 1.5
+  },
+  {
+   "curve": "deshawn_heat",
+   "rank": 0,
+   "value": 0.8
+  },
+  {
+   "curve": "deshawn_heat",
+   "rank": 1,
+   "value": 0.8
+  },
+  {
+   "curve": "deshawn_heat",
+   "rank": 2,
+   "value": 0.6
+  },
+  {
+   "curve": "deshawn_heat",
+   "rank": 3,
+   "value": 0.4
+  },
+  {
+   "curve": "deshawn_heat",
+   "rank": 4,
+   "value": 0.4
+  },
+  {
+   "curve": "deshawn_heat",
+   "rank": 5,
+   "value": 0.4
+  },
+  {
+   "curve": "deshawn_heat",
+   "rank": 6,
+   "value": 0.4
+  },
+  {
+   "curve": "deshawn_heat",
+   "rank": 12,
+   "value": 0.4
+  }
+ ],
+ "curve_empty": {
+  "array": 7,
+  "object": 7
+ },
+ "capabilities": [
+  {
+   "crew_id": "pherris",
+   "capability_id": "907list_run_board",
+   "rank": 1,
+   "has": true,
+   "summary": {
+    "crewId": "pherris",
+    "capabilityId": "907list_run_board",
+    "available": true,
+    "maxCycles": 1
+   }
+  },
+  {
+   "crew_id": "pherris",
+   "capability_id": "907list_run_board",
+   "rank": 2,
+   "has": true,
+   "summary": {
+    "crewId": "pherris",
+    "capabilityId": "907list_run_board",
+    "available": true,
+    "maxCycles": 2
+   }
+  },
+  {
+   "crew_id": "pherris",
+   "capability_id": "907list_run_board",
+   "rank": 3,
+   "has": true,
+   "summary": {
+    "crewId": "pherris",
+    "capabilityId": "907list_run_board",
+    "available": true,
+    "maxCycles": 3
+   }
+  },
+  {
+   "crew_id": "pherris",
+   "capability_id": "907list_run_board",
+   "rank": 6,
+   "has": true,
+   "summary": {
+    "crewId": "pherris",
+    "capabilityId": "907list_run_board",
+    "available": true,
+    "maxCycles": 3
+   }
+  },
+  {
+   "crew_id": "pherris",
+   "capability_id": "907list_run_board",
+   "rank": 0,
+   "has": false,
+   "summary": {
+    "crewId": "pherris",
+    "capabilityId": "907list_run_board",
+    "available": false,
+    "maxCycles": 0
+   }
+  },
+  {
+   "crew_id": "pherris",
+   "capability_id": "unknown_capability",
+   "rank": 3,
+   "has": false,
+   "summary": {
+    "crewId": "pherris",
+    "capabilityId": "unknown_capability",
+    "available": false,
+    "maxCycles": 0
+   }
+  },
+  {
+   "crew_id": "tone",
+   "capability_id": "907list_run_board",
+   "rank": 3,
+   "has": false,
+   "summary": {
+    "crewId": "tone",
+    "capabilityId": "907list_run_board",
+    "available": false,
+    "maxCycles": 0
+   }
+  },
+  {
+   "crew_id": "eli",
+   "capability_id": "territory_operations",
+   "rank": 3,
+   "has": false,
+   "summary": {
+    "crewId": "eli",
+    "capabilityId": "territory_operations",
+    "available": false,
+    "maxCycles": 0
+   }
+  },
+  {
+   "crew_id": "deshawn",
+   "capability_id": "network_operations",
+   "rank": 3,
+   "has": false,
+   "summary": {
+    "crewId": "deshawn",
+    "capabilityId": "network_operations",
+    "available": false,
+    "maxCycles": 0
+   }
+  },
+  {
+   "crew_id": "nobody",
+   "capability_id": "907list_run_board",
+   "rank": 3,
+   "has": false,
+   "summary": {
+    "crewId": "nobody",
+    "capabilityId": "907list_run_board",
+    "available": false,
+    "maxCycles": 0
+   }
+  }
+ ],
+ "requirement_cases": [
+  {
+   "name": "crew_active pass",
+   "requirement": {
+    "type": "crew_active",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "crew_active",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": true,
+    "required": true
+   }
+  },
+  {
+   "name": "crew_active not recruited",
+   "requirement": {
+    "type": "crew_active",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "crew_active",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": false,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_active",
+    "blocker_copy_key": "requirements.crew_active",
+    "current": false,
+    "required": true
+   }
+  },
+  {
+   "name": "crew_active departed",
+   "requirement": {
+    "type": "crew_active",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "crew_active",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "departed",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_active",
+    "blocker_copy_key": "requirements.crew_active",
+    "current": false,
+    "required": true
+   }
+  },
+  {
+   "name": "crew_active unknown id",
+   "requirement": {
+    "type": "crew_active",
+    "crewId": "nobody"
+   },
+   "godot_requirement": {
+    "type": "crew_active",
+    "crew_id": "nobody"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_active",
+    "blocker_copy_key": "requirements.crew_active",
+    "current": false,
+    "required": true
+   }
+  },
+  {
+   "name": "crew_active no crew facts",
+   "requirement": {
+    "type": "crew_active",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "crew_active",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {},
+    "current_day": 4
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_active",
+    "blocker_copy_key": "requirements.crew_active",
+    "current": false,
+    "required": true
+   }
+  },
+  {
+   "name": "crew_loyalty_min exactly at min",
+   "requirement": {
+    "type": "crew_loyalty_min",
+    "crewId": "pherris",
+    "min": 8
+   },
+   "godot_requirement": {
+    "type": "crew_loyalty_min",
+    "crew_id": "pherris",
+    "min": 8
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 8,
+    "required": 8
+   }
+  },
+  {
+   "name": "crew_loyalty_min one below",
+   "requirement": {
+    "type": "crew_loyalty_min",
+    "crewId": "pherris",
+    "min": 9
+   },
+   "godot_requirement": {
+    "type": "crew_loyalty_min",
+    "crew_id": "pherris",
+    "min": 9
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_loyalty_min",
+    "blocker_copy_key": "requirements.crew_loyalty_min",
+    "current": 8,
+    "required": 9
+   }
+  },
+  {
+   "name": "crew_loyalty_min well under",
+   "requirement": {
+    "type": "crew_loyalty_min",
+    "crewId": "pherris",
+    "min": 10
+   },
+   "godot_requirement": {
+    "type": "crew_loyalty_min",
+    "crew_id": "pherris",
+    "min": 10
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 2,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_loyalty_min",
+    "blocker_copy_key": "requirements.crew_loyalty_min",
+    "current": 2,
+    "required": 10
+   }
+  },
+  {
+   "name": "crew_loyalty_min zero min",
+   "requirement": {
+    "type": "crew_loyalty_min",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "crew_loyalty_min",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 0,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 0,
+    "required": 0
+   }
+  },
+  {
+   "name": "crew_rank_min at rank",
+   "requirement": {
+    "type": "crew_rank_min",
+    "crewId": "pherris",
+    "min": 2
+   },
+   "godot_requirement": {
+    "type": "crew_rank_min",
+    "crew_id": "pherris",
+    "min": 2
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 2,
+    "required": 2
+   }
+  },
+  {
+   "name": "crew_rank_min one above rank",
+   "requirement": {
+    "type": "crew_rank_min",
+    "crewId": "pherris",
+    "min": 3
+   },
+   "godot_requirement": {
+    "type": "crew_rank_min",
+    "crew_id": "pherris",
+    "min": 3
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_rank_min",
+    "blocker_copy_key": "requirements.crew_rank_min",
+    "current": 2,
+    "required": 3
+   }
+  },
+  {
+   "name": "crew_rank_min rank 6",
+   "requirement": {
+    "type": "crew_rank_min",
+    "crewId": "pherris",
+    "min": 6
+   },
+   "godot_requirement": {
+    "type": "crew_rank_min",
+    "crew_id": "pherris",
+    "min": 6
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 6,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 6,
+    "required": 6
+   }
+  },
+  {
+   "name": "crew_tenure exactly at threshold",
+   "requirement": {
+    "type": "crew_tenure_days_min",
+    "crewId": "pherris",
+    "min": 13
+   },
+   "godot_requirement": {
+    "type": "crew_tenure_days_min",
+    "crew_id": "pherris",
+    "min": 13
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 13,
+    "required": 13
+   }
+  },
+  {
+   "name": "crew_tenure one short",
+   "requirement": {
+    "type": "crew_tenure_days_min",
+    "crewId": "pherris",
+    "min": 14
+   },
+   "godot_requirement": {
+    "type": "crew_tenure_days_min",
+    "crew_id": "pherris",
+    "min": 14
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_tenure_days_min",
+    "blocker_copy_key": "requirements.crew_tenure_days_min",
+    "current": 13,
+    "required": 14
+   }
+  },
+  {
+   "name": "crew_tenure recruited today",
+   "requirement": {
+    "type": "crew_tenure_days_min",
+    "crewId": "pherris",
+    "min": 1
+   },
+   "godot_requirement": {
+    "type": "crew_tenure_days_min",
+    "crew_id": "pherris",
+    "min": 1
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 14,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_tenure_days_min",
+    "blocker_copy_key": "requirements.crew_tenure_days_min",
+    "current": 0,
+    "required": 1
+   }
+  },
+  {
+   "name": "crew_tenure missing recruited day is infinite",
+   "requirement": {
+    "type": "crew_tenure_days_min",
+    "crewId": "pherris",
+    "min": 99
+   },
+   "godot_requirement": {
+    "type": "crew_tenure_days_min",
+    "crew_id": "pherris",
+    "min": 99
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": null,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": "@Infinity",
+    "required": 99
+   }
+  },
+  {
+   "name": "crew_tenure negative window clamps to zero",
+   "requirement": {
+    "type": "crew_tenure_days_min",
+    "crewId": "pherris",
+    "min": 1
+   },
+   "godot_requirement": {
+    "type": "crew_tenure_days_min",
+    "crew_id": "pherris",
+    "min": 1
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 20,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_tenure_days_min",
+    "blocker_copy_key": "requirements.crew_tenure_days_min",
+    "current": 0,
+    "required": 1
+   }
+  },
+  {
+   "name": "hustle_tier_min at tier",
+   "requirement": {
+    "type": "hustle_tier_min",
+    "hustleId": "907list",
+    "min": 3
+   },
+   "godot_requirement": {
+    "type": "hustle_tier_min",
+    "hustle_id": "907list",
+    "min": 3
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 3,
+    "required": 3
+   }
+  },
+  {
+   "name": "hustle_tier_min above tier",
+   "requirement": {
+    "type": "hustle_tier_min",
+    "hustleId": "907list",
+    "min": 4
+   },
+   "godot_requirement": {
+    "type": "hustle_tier_min",
+    "hustle_id": "907list",
+    "min": 4
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "hustle_tier_min",
+    "blocker_copy_key": "requirements.hustle_tier_min",
+    "current": 3,
+    "required": 4
+   }
+  },
+  {
+   "name": "hustle_tier_min unknown hustle",
+   "requirement": {
+    "type": "hustle_tier_min",
+    "hustleId": "nope",
+    "min": 1
+   },
+   "godot_requirement": {
+    "type": "hustle_tier_min",
+    "hustle_id": "nope",
+    "min": 1
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "hustle_tier_min",
+    "blocker_copy_key": "requirements.hustle_tier_min",
+    "current": 0,
+    "required": 1
+   }
+  },
+  {
+   "name": "hustle_tier_min no hustle facts",
+   "requirement": {
+    "type": "hustle_tier_min",
+    "hustleId": "907list",
+    "min": 1
+   },
+   "godot_requirement": {
+    "type": "hustle_tier_min",
+    "hustle_id": "907list",
+    "min": 1
+   },
+   "godot_facts": {
+    "crew": {},
+    "current_day": 2
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "hustle_tier_min",
+    "blocker_copy_key": "requirements.hustle_tier_min",
+    "current": 0,
+    "required": 1
+   }
+  },
+  {
+   "name": "payroll nothing owed",
+   "requirement": {
+    "type": "payroll_not_delinquent",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "payroll_not_delinquent",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 0,
+    "required": "within_grace"
+   }
+  },
+  {
+   "name": "payroll within grace",
+   "requirement": {
+    "type": "payroll_not_delinquent",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "payroll_not_delinquent",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": 12,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 2,
+    "required": 2
+   }
+  },
+  {
+   "name": "payroll one past grace",
+   "requirement": {
+    "type": "payroll_not_delinquent",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "payroll_not_delinquent",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": 11,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "payroll_not_delinquent",
+    "blocker_copy_key": "requirements.payroll_not_delinquent",
+    "current": 3,
+    "required": 2
+   }
+  },
+  {
+   "name": "payroll far past grace",
+   "requirement": {
+    "type": "payroll_not_delinquent",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "payroll_not_delinquent",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": 4,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "payroll_not_delinquent",
+    "blocker_copy_key": "requirements.payroll_not_delinquent",
+    "current": 10,
+    "required": 2
+   }
+  },
+  {
+   "name": "payroll unknown crew",
+   "requirement": {
+    "type": "payroll_not_delinquent",
+    "crewId": "nobody"
+   },
+   "godot_requirement": {
+    "type": "payroll_not_delinquent",
+    "crew_id": "nobody"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 0,
+    "required": "within_grace"
+   }
+  },
+  {
+   "name": "payroll custom grace",
+   "requirement": {
+    "type": "payroll_not_delinquent",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "payroll_not_delinquent",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": 10,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 5,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 4,
+    "required": 5
+   }
+  },
+  {
+   "name": "unassigned when nothing booked",
+   "requirement": {
+    "type": "crew_unassigned_today",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "crew_unassigned_today",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": false,
+    "required": false
+   }
+  },
+  {
+   "name": "unassigned blocked by today",
+   "requirement": {
+    "type": "crew_unassigned_today",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "crew_unassigned_today",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {
+     "pherris": {
+      "day": 14,
+      "operationId": "other"
+     }
+    }
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_unassigned_today",
+    "blocker_copy_key": "requirements.crew_unassigned_today",
+    "current": true,
+    "required": false
+   }
+  },
+  {
+   "name": "unassigned ignores yesterday",
+   "requirement": {
+    "type": "crew_unassigned_today",
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "type": "crew_unassigned_today",
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {
+     "pherris": {
+      "day": 13
+     }
+    }
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": false,
+    "required": false
+   }
+  },
+  {
+   "name": "planning window open at slot 0",
+   "requirement": {
+    "type": "planning_window_open"
+   },
+   "godot_requirement": {
+    "type": "planning_window_open"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 0,
+    "required": 0
+   }
+  },
+  {
+   "name": "planning window shut at slot 1",
+   "requirement": {
+    "type": "planning_window_open"
+   },
+   "godot_requirement": {
+    "type": "planning_window_open"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 1,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "planning_window_open",
+    "blocker_copy_key": "requirements.planning_window_open",
+    "current": 1,
+    "required": 0
+   }
+  },
+  {
+   "name": "planning window shut at slot 3",
+   "requirement": {
+    "type": "planning_window_open"
+   },
+   "godot_requirement": {
+    "type": "planning_window_open"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 3,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "planning_window_open",
+    "blocker_copy_key": "requirements.planning_window_open",
+    "current": 3,
+    "required": 0
+   }
+  },
+  {
+   "name": "proof_flag set",
+   "requirement": {
+    "type": "proof_flag",
+    "crewId": "pherris",
+    "key": "first_route"
+   },
+   "godot_requirement": {
+    "type": "proof_flag",
+    "crew_id": "pherris",
+    "key": "first_route"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": true,
+    "required": true
+   }
+  },
+  {
+   "name": "proof_flag unset",
+   "requirement": {
+    "type": "proof_flag",
+    "crewId": "pherris",
+    "key": "never_happened"
+   },
+   "godot_requirement": {
+    "type": "proof_flag",
+    "crew_id": "pherris",
+    "key": "never_happened"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "proof_flag",
+    "blocker_copy_key": "requirements.proof_flag",
+    "current": false,
+    "required": true
+   }
+  },
+  {
+   "name": "proof_flag no proofs at all",
+   "requirement": {
+    "type": "proof_flag",
+    "crewId": "pherris",
+    "key": "first_route"
+   },
+   "godot_requirement": {
+    "type": "proof_flag",
+    "crew_id": "pherris",
+    "key": "first_route"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {}
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "proof_flag",
+    "blocker_copy_key": "requirements.proof_flag",
+    "current": false,
+    "required": true
+   }
+  },
+  {
+   "name": "proof_counter at min",
+   "requirement": {
+    "type": "proof_counter_min",
+    "crewId": "pherris",
+    "key": "completed_routes",
+    "min": 4
+   },
+   "godot_requirement": {
+    "type": "proof_counter_min",
+    "crew_id": "pherris",
+    "key": "completed_routes",
+    "min": 4
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": 4,
+    "required": 4
+   }
+  },
+  {
+   "name": "proof_counter one below",
+   "requirement": {
+    "type": "proof_counter_min",
+    "crewId": "pherris",
+    "key": "completed_routes",
+    "min": 5
+   },
+   "godot_requirement": {
+    "type": "proof_counter_min",
+    "crew_id": "pherris",
+    "key": "completed_routes",
+    "min": 5
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "proof_counter_min",
+    "blocker_copy_key": "requirements.proof_counter_min",
+    "current": 4,
+    "required": 5
+   }
+  },
+  {
+   "name": "proof_counter missing key",
+   "requirement": {
+    "type": "proof_counter_min",
+    "crewId": "pherris",
+    "key": "absent",
+    "min": 1
+   },
+   "godot_requirement": {
+    "type": "proof_counter_min",
+    "crew_id": "pherris",
+    "key": "absent",
+    "min": 1
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "proof_counter_min",
+    "blocker_copy_key": "requirements.proof_counter_min",
+    "current": 0,
+    "required": 1
+   }
+  },
+  {
+   "name": "custom blocker code",
+   "requirement": {
+    "type": "crew_loyalty_min",
+    "crewId": "pherris",
+    "min": 9,
+    "blockerCode": "pherris_not_ready"
+   },
+   "godot_requirement": {
+    "type": "crew_loyalty_min",
+    "crew_id": "pherris",
+    "min": 9,
+    "blocker_code": "pherris_not_ready"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "pherris_not_ready",
+    "blocker_copy_key": "requirements.crew_loyalty_min",
+    "current": 8,
+    "required": 9
+   }
+  },
+  {
+   "name": "custom copy key",
+   "requirement": {
+    "type": "crew_loyalty_min",
+    "crewId": "pherris",
+    "min": 9,
+    "blockerCopyKey": "crew.pherris.loyalty"
+   },
+   "godot_requirement": {
+    "type": "crew_loyalty_min",
+    "crew_id": "pherris",
+    "min": 9,
+    "blocker_copy_key": "crew.pherris.loyalty"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_loyalty_min",
+    "blocker_copy_key": "crew.pherris.loyalty",
+    "current": 8,
+    "required": 9
+   }
+  },
+  {
+   "name": "unsupported type",
+   "requirement": {
+    "type": "future_magic_gate"
+   },
+   "godot_requirement": {
+    "type": "future_magic_gate"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "unsupported_requirement",
+    "blocker_copy_key": "requirements.unsupported_requirement",
+    "current": "future_magic_gate",
+    "required": "supported_requirement_type"
+   }
+  },
+  {
+   "name": "missing type",
+   "requirement": {
+    "crewId": "pherris"
+   },
+   "godot_requirement": {
+    "crew_id": "pherris"
+   },
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "unsupported_requirement",
+    "blocker_copy_key": "requirements.unsupported_requirement",
+    "current": null,
+    "required": "supported_requirement_type"
+   }
+  },
+  {
+   "name": "null requirement",
+   "requirement": null,
+   "godot_requirement": null,
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "invalid_requirement",
+    "blocker_copy_key": "requirements.invalid_requirement",
+    "current": null,
+    "required": "requirement_record"
+   }
+  },
+  {
+   "name": "string requirement",
+   "requirement": "crew_active",
+   "godot_requirement": "crew_active",
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "invalid_requirement",
+    "blocker_copy_key": "requirements.invalid_requirement",
+    "current": null,
+    "required": "requirement_record"
+   }
+  },
+  {
+   "name": "number requirement",
+   "requirement": 7,
+   "godot_requirement": 7,
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "invalid_requirement",
+    "blocker_copy_key": "requirements.invalid_requirement",
+    "current": null,
+    "required": "requirement_record"
+   }
+  }
+ ],
+ "requirement_lists": [
+  {
+   "name": "all pass",
+   "requirements": [
+    {
+     "type": "crew_active",
+     "crewId": "pherris"
+    },
+    {
+     "type": "crew_loyalty_min",
+     "crewId": "pherris",
+     "min": 6
+    },
+    {
+     "type": "crew_rank_min",
+     "crewId": "pherris",
+     "min": 1
+    },
+    {
+     "type": "crew_tenure_days_min",
+     "crewId": "pherris",
+     "min": 5
+    },
+    {
+     "type": "hustle_tier_min",
+     "hustleId": "907list",
+     "min": 3
+    },
+    {
+     "type": "payroll_not_delinquent",
+     "crewId": "pherris"
+    },
+    {
+     "type": "crew_unassigned_today",
+     "crewId": "pherris"
+    },
+    {
+     "type": "planning_window_open"
+    },
+    {
+     "type": "proof_flag",
+     "crewId": "pherris",
+     "key": "first_route"
+    },
+    {
+     "type": "proof_counter_min",
+     "crewId": "pherris",
+     "key": "completed_routes",
+     "min": 3
+    }
+   ],
+   "godot_requirements": [
+    {
+     "type": "crew_active",
+     "crew_id": "pherris"
+    },
+    {
+     "type": "crew_loyalty_min",
+     "crew_id": "pherris",
+     "min": 6
+    },
+    {
+     "type": "crew_rank_min",
+     "crew_id": "pherris",
+     "min": 1
+    },
+    {
+     "type": "crew_tenure_days_min",
+     "crew_id": "pherris",
+     "min": 5
+    },
+    {
+     "type": "hustle_tier_min",
+     "hustle_id": "907list",
+     "min": 3
+    },
+    {
+     "type": "payroll_not_delinquent",
+     "crew_id": "pherris"
+    },
+    {
+     "type": "crew_unassigned_today",
+     "crew_id": "pherris"
+    },
+    {
+     "type": "planning_window_open"
+    },
+    {
+     "type": "proof_flag",
+     "crew_id": "pherris",
+     "key": "first_route"
+    },
+    {
+     "type": "proof_counter_min",
+     "crew_id": "pherris",
+     "key": "completed_routes",
+     "min": 3
+    }
+   ],
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": null,
+    "required": null
+   }
+  },
+  {
+   "name": "first of two failures wins",
+   "requirements": [
+    {
+     "type": "crew_loyalty_min",
+     "crewId": "pherris",
+     "min": 9
+    },
+    {
+     "type": "planning_window_open"
+    }
+   ],
+   "godot_requirements": [
+    {
+     "type": "crew_loyalty_min",
+     "crew_id": "pherris",
+     "min": 9
+    },
+    {
+     "type": "planning_window_open"
+    }
+   ],
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 2,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "crew_loyalty_min",
+    "blocker_copy_key": "requirements.crew_loyalty_min",
+    "current": 8,
+    "required": 9
+   }
+  },
+  {
+   "name": "order decides the reason",
+   "requirements": [
+    {
+     "type": "planning_window_open"
+    },
+    {
+     "type": "crew_loyalty_min",
+     "crewId": "pherris",
+     "min": 9
+    }
+   ],
+   "godot_requirements": [
+    {
+     "type": "planning_window_open"
+    },
+    {
+     "type": "crew_loyalty_min",
+     "crew_id": "pherris",
+     "min": 9
+    }
+   ],
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 2,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "planning_window_open",
+    "blocker_copy_key": "requirements.planning_window_open",
+    "current": 2,
+    "required": 0
+   }
+  },
+  {
+   "name": "empty list passes",
+   "requirements": [],
+   "godot_requirements": [],
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": null,
+    "required": null
+   }
+  },
+  {
+   "name": "null list passes",
+   "requirements": null,
+   "godot_requirements": null,
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": true,
+    "blocker_code": null,
+    "blocker_copy_key": null,
+    "current": null,
+    "required": null
+   }
+  },
+  {
+   "name": "an unsupported gate blocks the rest",
+   "requirements": [
+    {
+     "type": "future_magic_gate"
+    },
+    {
+     "type": "crew_active",
+     "crewId": "pherris"
+    }
+   ],
+   "godot_requirements": [
+    {
+     "type": "future_magic_gate"
+    },
+    {
+     "type": "crew_active",
+     "crew_id": "pherris"
+    }
+   ],
+   "godot_facts": {
+    "crew": {
+     "pherris": {
+      "recruited": true,
+      "status": "active",
+      "loyalty": 8,
+      "tier": 2,
+      "recruited_day": 1,
+      "wage_missed_since": null,
+      "proofs": {
+       "first_route": true,
+       "completed_routes": 4
+      }
+     }
+    },
+    "current_day": 14,
+    "time_slots_today": 0,
+    "wage_grace_days": 2,
+    "hustle_tiers": {
+     "907list": 3
+    },
+    "assignments": {}
+   },
+   "expected": {
+    "ok": false,
+    "blocker_code": "unsupported_requirement",
+    "blocker_copy_key": "requirements.unsupported_requirement",
+    "current": "future_magic_gate",
+    "required": "supported_requirement_type"
+   }
+  }
+ ]
+}

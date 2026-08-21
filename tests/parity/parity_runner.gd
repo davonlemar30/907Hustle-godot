@@ -46,6 +46,12 @@ extends Node
 ##              migration including the history it cannot recover, and the
 ##              completed-flip financial observation on both channels with
 ##              Curtis filtered by volume
+##   fs001    — the shared Requirement Evaluator against web PR #98, every
+##              type with a pass, a fail and both sides of its boundary;
+##              plus the rank labels, the rank-curve clamp, and the crew
+##              capability table. Followed by a regression block pinning
+##              recruit/pay/promote/dismiss and the presence effects, so
+##              "structural only" is a claim the suite actually checks
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -58,6 +64,8 @@ const FIXTURES := "res://tests/parity/fixtures/rng_fixtures.json"
 ## Build 5e keeps its fixtures in their own file: rng_fixtures.json records
 ## primitives and system reads, this one records whole actions resolving.
 const OUTCOME_FIXTURES := "res://tests/parity/fixtures/outcome_resolver/outcome_fixtures.json"
+## FS-001.5: the requirement evaluator and the crew rank/capability tables.
+const FS001_FIXTURES := "res://tests/parity/fixtures/requirements/fs001_fixtures.json"
 const EPS := 1e-12
 
 var _failures: Array[String] = []
@@ -80,6 +88,8 @@ func _ready() -> void:
 		_check_outcome_resolver(_load_json(OUTCOME_FIXTURES))
 		_check_stickup_tiers()
 		_check_907list_ownership()
+		_check_fs001_foundation(_load_json(FS001_FIXTURES))
+		_check_crew_regression()
 		_check_save_roundtrip()
 	_finish()
 
@@ -1724,6 +1734,286 @@ func _run_flip(gs: Node, gm: Node, sys: RefCounted, item_id: String, tier: int) 
 		"awareness_delta": gs.curtis_awareness - awareness_before,
 		"heat_delta": gs.heat - heat_before,
 	}
+
+## FS-001.5 — the Requirement Evaluator and the Crew rank/capability foundation.
+##
+## Recorded from web PR #98's own exported functions, so there is no formula
+## copy on this side to prove — only agreement to hold.
+##
+## The one translation: the oracle reads camelCase facts (`currentDay`,
+## `recruitedDay`), this build reads snake_case because its crew records already
+## carry `recruited_day` and `wage_missed_since`. The generator records BOTH
+## shapes per case, so the translation is data rather than something this runner
+## performs and could get wrong.
+func _check_fs001_foundation(fixture: Dictionary) -> void:
+	if fixture.is_empty():
+		_fail("fs001", "could not read %s" % FS001_FIXTURES)
+		return
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var requirements: RefCounted = gm.system("requirements") as RefCounted
+	if requirements == null:
+		_fail("fs001", "no requirements system registered")
+		return
+	_check_fs001_ranks(gs, fixture)
+	_check_fs001_capabilities(gs, fixture)
+	_check_fs001_requirements(requirements, fixture)
+
+## Rank labels and the curve clamp — the half of this build that stops a future
+## promotion from silently REMOVING a benefit.
+func _check_fs001_ranks(gs: Node, fixture: Dictionary) -> void:
+	_expect_int("fs001 max rank", gs.MAX_CREW_RANK, int(fixture["max_crew_rank"]))
+	_expect_int("fs001 base capacity", gs.CREW_CAPACITY, int(fixture["base_crew_capacity"]))
+	_expect_int("fs001 crew_capacity()", gs.crew_capacity(), int(fixture["crew_capacity"]))
+	for row in fixture["rank_labels"]:
+		_expect_str("fs001 rank label %d" % int(row["rank"]),
+			gs.rank_label(int(row["rank"])), str(row["label"]))
+
+	# The curves this build actually ships, read through the shared helper at
+	# every rank including the unauthored ones above the top of each curve.
+	var curves := {
+		"wage_deshawn": gs.TIER_WAGES["deshawn"],
+		"wage_tone": gs.TIER_WAGES["tone"],
+		"wage_pherris": gs.TIER_WAGES["pherris"],
+		"tone_defense": gs.TONE_DEFENSE_MULTIPLIER,
+		"deshawn_heat": gs.DESHAWN_HEAT_REDUCTION,
+	}
+	for row in fixture["curve_lookups"]:
+		var name: String = str(row["curve"])
+		_expect_float("fs001 curve %s @%d" % [name, int(row["rank"])],
+			float(gs.curve_value_for_rank(curves[name], int(row["rank"]), 1.0)),
+			float(row["value"]))
+	# The fallback is reachable only when a curve is empty, which is the one
+	# path that must NOT clamp to something the player never earned.
+	var empty: Dictionary = fixture["curve_empty"]
+	_expect_float("fs001 empty array curve falls back",
+		float(gs.curve_value_for_rank([], 3, 7)), float(empty["array"]))
+	_expect_float("fs001 empty dict curve falls back",
+		float(gs.curve_value_for_rank({}, 6, 7)), float(empty["object"]))
+
+## The capability table. Inert data with no caller yet, so what is checked is
+## that it says exactly what canon says — including who has nothing.
+func _check_fs001_capabilities(gs: Node, fixture: Dictionary) -> void:
+	for row in fixture["capabilities"]:
+		var crew_id: String = str(row["crew_id"])
+		var capability: String = str(row["capability_id"])
+		var rank: int = int(row["rank"])
+		var label := "fs001 capability %s/%s @%d" % [crew_id, capability, rank]
+		_expect_true(label, gs.crew_has_capability(crew_id, capability, rank) == bool(row["has"]))
+		var want: Dictionary = row["summary"]
+		var got: Dictionary = gs.crew_capability_summary(crew_id, capability, rank)
+		_expect_str(label + " summary crew", str(got["crew_id"]), str(want["crewId"]))
+		_expect_str(label + " summary capability", str(got["capability_id"]), str(want["capabilityId"]))
+		_expect_true(label + " summary available", bool(got["available"]) == bool(want["available"]))
+		_expect_float(label + " summary max cycles",
+			float(got["max_cycles"]), float(want["maxCycles"]))
+
+## Every requirement type, field by field against the oracle's own output.
+func _check_fs001_requirements(requirements: RefCounted, fixture: Dictionary) -> void:
+	for row in fixture["requirement_cases"]:
+		var got: Dictionary = requirements.evaluate_requirement(
+			row["godot_requirement"], row["godot_facts"])
+		_expect_requirement_result("fs001 req [%s]" % str(row["name"]), got, row["expected"])
+	for row in fixture["requirement_lists"]:
+		var got: Dictionary = requirements.evaluate_requirements(
+			row["godot_requirements"], row["godot_facts"])
+		_expect_requirement_result("fs001 list [%s]" % str(row["name"]), got, row["expected"])
+
+## Compare the whole result record. All five fields, every time — a blocker that
+## reports the right code with the wrong `current` is still a wrong answer, and
+## the copy key is the field a UI will actually translate against.
+func _expect_requirement_result(label: String, got: Dictionary, want: Dictionary) -> void:
+	_expect_true(label + " ok", bool(got.get("ok")) == bool(want["ok"]))
+	_expect_str(label + " blocker_code",
+		_nullable(got.get("blocker_code")), _nullable(want["blocker_code"]))
+	_expect_str(label + " blocker_copy_key",
+		_nullable(got.get("blocker_copy_key")), _nullable(want["blocker_copy_key"]))
+	_expect_true(label + " current", _variant_matches(got.get("current"), want["current"]))
+	_expect_true(label + " required", _variant_matches(got.get("required"), want["required"]))
+
+func _nullable(value: Variant) -> String:
+	return "<null>" if value == null else str(value)
+
+## Type-aware equality for the `current` / `required` fields, which legitimately
+## hold a bool, a number, a string, INF, or null depending on the requirement.
+##
+## The type CLASS has to match, not just the value: GDScript would happily call
+## `true == 1`, and a requirement that started reporting 1 where canon reports
+## `true` is exactly the drift this is here to catch. `@Infinity` is the
+## generator's tag for a value JSON cannot carry.
+func _variant_matches(got: Variant, want: Variant) -> bool:
+	if want is String and str(want) == "@Infinity":
+		return (got is float) and is_inf(float(got)) and float(got) > 0.0
+	if want == null:
+		return got == null
+	if want is bool:
+		return (got is bool) and bool(got) == bool(want)
+	if want is int or want is float:
+		if got is bool or not (got is int or got is float):
+			return false
+		return absf(float(got) - float(want)) <= EPS
+	if want is String:
+		return (got is String) and str(got) == str(want)
+	return false
+
+## Regression cover for the Crew behaviour this build promised NOT to change.
+##
+## "Structural only, no gameplay change" is a claim, and a claim in a PR body is
+## worth less than a check. These pin recruit / pay / promote / dismiss, the
+## wage clock, the presence effects, and Boost's field-crew gate at the values
+## they had before FS-001.5 — plus the one value that DID change on purpose:
+## the rank-4 clamp that used to fall off to a neutral 1.0.
+func _check_crew_regression() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var crew: RefCounted = gm.system("crew") as RefCounted
+	var boost: RefCounted = gm.system("boost") as RefCounted
+	if crew == null or boost == null:
+		_fail("crew regression", "crew or boost system is missing")
+		return
+
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.cash = 5000
+
+	# Recruiting: cost, roster, the new proofs field, and the rank label.
+	_expect_true("crew recruit dispatches", gm.dispatch("recruit_crew", {"crew_id": "eli"}))
+	_expect_int("crew recruit charges cost", gs.cash, 5000 - int(gs.crew_member_by_id("eli")["cost"]))
+	_expect_true("crew recruit is active", gs.is_recruited("eli"))
+	_expect_int("crew recruit starts at loyalty start",
+		int(gs.crew_record("eli")["loyalty"]), gs.CREW_LOYALTY_START)
+	_expect_int("crew recruit starts at rank 1", int(gs.crew_record("eli")["tier"]), 1)
+	_expect_str("crew recruit reads as RECRUIT", crew.rank_label("eli"), "RECRUIT")
+	_expect_true("crew recruit gains an empty proofs map",
+		crew.crew_proofs("eli").is_empty() and gs.crew_record("eli").has("proofs"))
+	_expect_true("boost sees field crew", boost != null and crew.has_field_crew())
+
+	# Capacity is two, and it is read through the function now.
+	_expect_true("crew second recruit fits", gm.dispatch("recruit_crew", {"crew_id": "deshawn"}))
+	_expect_str("crew third recruit is refused by capacity",
+		crew.recruit_blocker("tone"), "No room. %d is all you can carry." % gs.crew_capacity())
+
+	# Presence effects, pinned at every authored rank AND above it. The tier-4
+	# rows are the fix: `.get(tier, 1.0)` used to return the neutral 1.0 there,
+	# so a promotion would have taken Deshawn's heat reduction away.
+	for rank in [1, 2, 3]:
+		gs.crew_records["deshawn"]["tier"] = rank
+		_expect_float("crew deshawn heat multiplier rank %d" % rank,
+			crew.heat_multiplier(), float(gs.DESHAWN_HEAT_REDUCTION[rank]))
+	for rank in [4, 6, 12]:
+		gs.crew_records["deshawn"]["tier"] = rank
+		_expect_float("crew deshawn heat multiplier clamps at rank %d" % rank,
+			crew.heat_multiplier(), 0.40)
+	gs.crew_records["deshawn"]["tier"] = 1
+	_expect_float("crew heat multiplier is neutral without Deshawn", 1.0, 1.0)
+
+	gs.crew_records["tone"] = {
+		"recruited": true, "status": "active", "loyalty": 10, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": gs.day, "proofs": {},
+	}
+	for rank in [1, 2, 3]:
+		gs.crew_records["tone"]["tier"] = rank
+		_expect_float("crew tone defense multiplier rank %d" % rank,
+			crew.defense_multiplier(), float(gs.TONE_DEFENSE_MULTIPLIER[rank]))
+	for rank in [4, 6, 12]:
+		gs.crew_records["tone"]["tier"] = rank
+		_expect_float("crew tone defense multiplier clamps at rank %d" % rank,
+			crew.defense_multiplier(), 1.50)
+	gs.crew_records.erase("tone")
+
+	# Wages: the curve at every rank, unchanged, including above the curve.
+	for entry in [["deshawn", 1, 50], ["deshawn", 2, 100], ["deshawn", 3, 200],
+			["deshawn", 4, 200], ["tone", 3, 250], ["pherris", 2, 120], ["eli", 3, 45]]:
+		_expect_int("crew wage %s rank %d" % [str(entry[0]), int(entry[1])],
+			gs.crew_wage_for(str(entry[0]), int(entry[1])), int(entry[2]))
+
+	# Promotion gates: unchanged requirements, and the top of the authored
+	# ladder is reported as a fact rather than only as a message.
+	gs.crew_records["eli"]["tier"] = 1
+	gs.crew_records["eli"]["loyalty"] = 6
+	gs.crew_records["eli"]["recruited_day"] = gs.day
+	_expect_str("crew promote needs loyalty", crew.promote_blocker("eli"), "Needs loyalty 7.")
+	gs.crew_records["eli"]["loyalty"] = 7
+	_expect_str("crew promote needs days", crew.promote_blocker("eli"), "Needs 5 more days.")
+	gs.day += 5
+	_expect_str("crew promote clears", crew.promote_blocker("eli"), "")
+	_expect_true("crew rank 1 is not the top", not crew.at_top_rank("eli"))
+	_expect_true("crew promote dispatches", gm.dispatch("promote_crew", {"crew_id": "eli"}))
+	_expect_int("crew promote raises the rank", int(gs.crew_record("eli")["tier"]), 2)
+	_expect_str("crew rank 2 reads as PROVEN", crew.rank_label("eli"), "PROVEN")
+	_expect_true("crew promote keeps proofs", gs.crew_record("eli").has("proofs"))
+
+	# At the top of the AUTHORED ladder there is nowhere to go, even though
+	# ranks 4-6 have labels. That gap is the whole shape of this build.
+	gs.crew_records["eli"]["tier"] = 3
+	_expect_true("crew rank 3 is the top of the authored ladder", crew.at_top_rank("eli"))
+	_expect_str("crew promote at the top", crew.promote_blocker("eli"), "Nowhere higher to go.")
+	_expect_str("crew rank 3 reads as TRUSTED", crew.rank_label("eli"), "TRUSTED")
+
+	# A record saved before `proofs` existed reads as {} rather than erroring —
+	# which is why this needed no save schema bump.
+	gs.crew_records["eli"].erase("proofs")
+	_expect_true("crew legacy record has no proofs key", not gs.crew_record("eli").has("proofs"))
+	_expect_true("crew legacy proofs read as empty", crew.crew_proofs("eli").is_empty())
+	_expect_true("crew legacy record still promotes cleanly", crew.at_top_rank("eli"))
+	# `crew_proofs()` also type-guards the value, but that guard is deliberately
+	# NOT asserted here: the function returns a typed Dictionary, so a guarded
+	# read and an unguarded one both yield {} — the engine recovers the type
+	# error either way. A check that cannot be made to fail is not coverage, so
+	# rather than bank one, the guard is documented at its definition and the
+	# falsifiable half (an ABSENT key) is what the two checks above pin.
+	gs.crew_records["eli"]["proofs"] = {}
+
+	# The payroll sentinel, checked against the shape THIS build writes.
+	#
+	# Every requirement fixture above comes from the oracle, and the oracle
+	# records "nothing missed" as `null`. GameState records it as `-1`. That gap
+	# is the one divergence in requirements.gd, and it went uncovered until a
+	# sabotage run proved it: removing the negative-value guard broke nothing,
+	# because no fixture could ever produce a -1. Fed a real crew record, an
+	# unguarded evaluator computes `current_day - (-1)` days delinquent and
+	# silently blocks every gate — so this drives the real record directly.
+	var requirements: RefCounted = gm.system("requirements") as RefCounted
+	if requirements == null:
+		_fail("crew regression", "requirements system is missing")
+	else:
+		var live_facts := {
+			"crew": {"eli": gs.crew_record("eli")},
+			"current_day": gs.day,
+			"wage_grace_days": gs.CREW_WAGE_GRACE_DAYS,
+		}
+		var sentinel: Dictionary = requirements.evaluate_requirement(
+			{"type": "payroll_not_delinquent", "crew_id": "eli"}, live_facts)
+		_expect_true("crew -1 wage sentinel is not delinquent", bool(sentinel["ok"]))
+		_expect_str("crew -1 wage sentinel reports within_grace",
+			str(sentinel["required"]), "within_grace")
+		_expect_int("crew record really carries the -1 sentinel",
+			int(gs.crew_record("eli")["wage_missed_since"]), -1)
+		# And a genuinely delinquent record still blocks, so the guard above did
+		# not simply turn the whole requirement off.
+		var delinquent: Dictionary = gs.crew_record("eli").duplicate(true)
+		delinquent["wage_missed_since"] = gs.day - 5
+		var blocked: Dictionary = requirements.evaluate_requirement(
+			{"type": "payroll_not_delinquent", "crew_id": "eli"},
+			{"crew": {"eli": delinquent}, "current_day": gs.day,
+				"wage_grace_days": gs.CREW_WAGE_GRACE_DAYS})
+		_expect_true("crew real delinquency still blocks", not bool(blocked["ok"]))
+		_expect_float("crew real delinquency reports the days",
+			float(blocked["current"]), 5.0)
+
+	# Paying clears the debt and the wage clock; dismissing ends the record.
+	gs.crew_records["eli"]["wage_due"] = 45
+	gs.crew_records["eli"]["wage_missed_since"] = gs.day
+	var cash_before: int = gs.cash
+	_expect_true("crew pay dispatches", gm.dispatch("pay_crew", {"crew_id": "eli"}))
+	_expect_int("crew pay charges the wage", gs.cash, cash_before - 45)
+	_expect_int("crew pay clears the debt", int(gs.crew_record("eli")["wage_due"]), 0)
+	_expect_int("crew pay clears the missed clock",
+		int(gs.crew_record("eli")["wage_missed_since"]), -1)
+	_expect_true("crew dismiss dispatches", gm.dispatch("dismiss_crew", {"crew_id": "eli"}))
+	_expect_true("crew dismiss ends the run with them", not gs.is_recruited("eli"))
+
+	gs.reset_to_new_game()
 
 # --- plumbing ---------------------------------------------------------------
 

@@ -79,7 +79,11 @@ func _member_row(sys: Object, person: Dictionary, hired: bool) -> Control:
 	var tier: int = int(rec.get("tier", 1))
 	var loyalty: int = int(rec.get("loyalty", 0))
 	var due: int = int(rec.get("wage_due", 0))
-	v.add_child(label("TIER %d  ·  LOYALTY %d/%d  ·  $%d a night" % [tier, loyalty, gs.CREW_LOYALTY_MAX, gs.crew_wage_for(id, tier)], "Muted", 11, MUTED))
+	# The rank name, never the tier number — the player is told what somebody is,
+	# the same way attribute labels work.
+	v.add_child(label("%s  ·  LOYALTY %d/%d  ·  $%d a night"
+		% [gs.rank_label(tier), loyalty, gs.CREW_LOYALTY_MAX, gs.crew_wage_for(id, tier)],
+		"Muted", 11, MUTED))
 	if due > 0:
 		v.add_child(label("$%d OWED" % due, "Mono", 12, RED))
 
@@ -91,11 +95,17 @@ func _member_row(sys: Object, person: Dictionary, hired: bool) -> Control:
 	pay.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(pay)
 
+	# Promotion is offered only where an authored next rank exists. Ranks 4-6
+	# have labels but no requirements, so at the top of the authored ladder the
+	# control is HIDDEN rather than disabled: a greyed-out PROMOTE reading
+	# "NOWHERE HIGHER TO GO" tells the player there is a ladder they cannot
+	# climb, which is a promise this build does not keep. Pay then fills the row.
 	var promo_blocked: String = sys.promote_blocker(id)
-	var promo := button("PROMOTE" if promo_blocked.is_empty() else promo_blocked.to_upper(), false, _on_promote.bind(id))
-	promo.disabled = not promo_blocked.is_empty()
-	promo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(promo)
+	if not sys.at_top_rank(id):
+		var promo := button("PROMOTE" if promo_blocked.is_empty() else promo_blocked.to_upper(), false, _on_promote.bind(id))
+		promo.disabled = not promo_blocked.is_empty()
+		promo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(promo)
 	v.add_child(row)
 	return c
 

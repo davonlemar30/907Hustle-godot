@@ -126,7 +126,7 @@ func _fund(borrower_id: String, amount: int, term: int) -> Dictionary:
 		return {"ok": false, "reason": "Terms are 2, 4 or 7 days."}
 	var b: Dictionary = gs.borrower_by_id(borrower_id)
 
-	gs.cash -= amount
+	_wallet().spend(amount, _wallet().ROUTINE_DIRTY_FIRST, {"source_id": "shark_fund"})
 	var loan := {
 		"id": gs.shark_next_loan_id,
 		"borrower_id": borrower_id,
@@ -184,13 +184,19 @@ func _resolve_defaulted(loan_id: int, how: String) -> Dictionary:
 			gs.log_activity("You let %s off the note. Word travels." % str(b["name"]), AMBER)
 		"enforce":
 			# The principal comes back; the interest does not.
-			gs.cash += int(loan["amount"])
+			_wallet().credit(int(loan["amount"]), _wallet().DIRTY,
+				{"source_id": "shark_enforce"})
 			loan["status"] = "enforced"
 			# Canon charges heat for a violent collection, and the block reads it
-			# as violence. Deshawn damps the heat like any other source.
-			var crew: Object = gm.system("crew") if gm != null else null
-			var mult: float = crew.heat_multiplier() if crew != null else 1.0
-			gs.heat = clampf(gs.heat + 2.0 * mult, 0.0, float(gs.heat_max))
+			# as violence. Deshawn damps the heat like any other source — through
+			# HeatSystem now, which fetches his multiplier so this does not.
+			#
+			# No family is passed: TI-003 §7's district table covers Market,
+			# Boost and Stick, and enforcement is none of the three. An unlisted
+			# family scales by 1.0, which is exactly the scaling this line had
+			# before the migration.
+			var applied_heat: float = _heat().apply_gain(2.0, "", gs.current_district_id,
+				{"source_id": "shark_enforce"})
 			var curtis: Node = _curtis_node()
 			if curtis != null:
 				curtis.mark_criminal_activity()
@@ -198,8 +204,16 @@ func _resolve_defaulted(loan_id: int, how: String) -> Dictionary:
 					"type": "violence", "event": "collected_hard",
 					"location": gs.current_district_id, "channel": "neighborhood",
 				})
-			gs.log_activity("Collected $%d from %s the hard way. Heat +%.1f." % [int(loan["amount"]), str(b["name"]), 2.0 * mult], RED)
+			gs.log_activity("Collected $%d from %s the hard way. Heat +%.1f." % [int(loan["amount"]), str(b["name"]), applied_heat], RED)
 	return {"ok": true, "interest": interest}
+
+## The shared owners. Lending out is a routine spend; principal and interest
+## coming back off the street is dirty money.
+func _wallet() -> Object:
+	return gm.system("wallet")
+
+func _heat() -> Object:
+	return gm.system("heat")
 
 ## Notes that have come due.
 ##
@@ -229,7 +243,7 @@ func settle_night(ended_day: int) -> void:
 			var interest: int = interest_for(loan)
 			var dre_cut: int = int(round(float(interest) * gs.SHARK_DRE_CUT))
 			var returned: int = int(loan["amount"]) + interest - dre_cut
-			gs.cash += returned
+			_wallet().credit(returned, _wallet().DIRTY, {"source_id": "shark_repaid"})
 			loan["status"] = "repaid"
 			gs.log_activity("%s returns $%d after Dre's $%d cut." % [str(b["name"]), returned, dre_cut], GREEN)
 			# Dre gets paid out of this, so he sees it first-hand. His STREET

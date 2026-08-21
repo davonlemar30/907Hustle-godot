@@ -17,10 +17,13 @@ const FARE := 5
 
 var gs: Node
 var time_system: RefCounted
+## Reached for the wallet. Fare is a spend like any other.
+var gm: Node
 
-func setup(game_state: Node, time: RefCounted) -> void:
+func setup(game_state: Node, time: RefCounted, manager: Node) -> void:
 	gs = game_state
 	time_system = time
+	gm = manager
 
 func can_handle(action: String) -> bool:
 	return action == "travel"
@@ -41,7 +44,8 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 	if gs.cash < FARE:
 		return {"ok": false, "reason": "Need $%d fare." % FARE}
 
-	gs.cash -= FARE
+	var wallet: Object = gm.system("wallet")
+	wallet.spend(FARE, wallet.ROUTINE_DIRTY_FIRST, {"source_id": "travel_fare"})
 	gs.current_district_id = target
 	# One slot, the same as any other district action. Routed through the time
 	# system rather than reimplemented so the day-cross and the market evolve

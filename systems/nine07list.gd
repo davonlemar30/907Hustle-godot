@@ -195,7 +195,9 @@ func _buy(item_id: String) -> Dictionary:
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked}
 	var item: Dictionary = gs.listing_item_by_id(item_id)
-	gs.cash -= int(item["buy"])
+	var wallet: Object = gm.system("wallet")
+	wallet.spend(int(item["buy"]), wallet.ROUTINE_DIRTY_FIRST,
+		{"source_id": "list_buy_%s" % item_id})
 	gs.list_holdings.append({
 		"item_id": item_id, "bought_day": gs.day, "source": SOURCE_PLAYER})
 	# The opportunity is spent whether or not the flip ever pays off.
@@ -279,7 +281,11 @@ func settle_holding(index: int, execution_mode: String) -> Dictionary:
 	var got: int = realised_value(held)
 	var paid: int = int(item["buy"])
 
-	gs.cash += got
+	# TI-003 §6 Clean. Canon agrees: `recordMarketFlip` is the other of the two
+	# `addCleanCash` call sites in the whole build (game-core.js:3160). A resale
+	# on a public listings board is legitimate income even when the seller is not.
+	var wallet: Object = gm.system("wallet")
+	wallet.credit(got, wallet.CLEAN, {"source_id": "list_sell"})
 	gs.list_holdings.remove_at(index)
 
 	if not delegated:

@@ -62,16 +62,19 @@ func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node,
 	gm = manager
 	attributes = attribute_system
 
+## Heat this lift generated. Was a character-for-character duplicate of
+## stickup.gd's helper; both now route through the one owner (TI-003 §7), which
+## is what keeps Deshawn applying exactly once.
 func _apply_heat(amount: float) -> float:
-	var mult: float = 1.0
-	var crew: Object = gm.system("crew") if gm != null else null
-	if crew != null:
-		mult = crew.heat_multiplier()
-	# Kept fractional deliberately: rounding here is what made the reduction
-	# invisible on small amounts.
-	var scaled: float = amount * mult if amount > 0.0 else 0.0
-	gs.heat = clampf(gs.heat + scaled, 0.0, float(gs.heat_max))
-	return scaled
+	var heat: Object = gm.system("heat") if gm != null else null
+	if heat == null:
+		return 0.0
+	return heat.apply_gain(amount, heat.FAMILY_BOOST, gs.current_district_id,
+		{"source_id": "boost"})
+
+## The shared cash owner. Boost take and the fence payout are both dirty.
+func _wallet() -> Object:
+	return gm.system("wallet")
 
 func can_handle(action: String) -> bool:
 	return action in ["boost", "fence_goods"]
@@ -148,7 +151,7 @@ func _run(target_id: String) -> Dictionary:
 			gs.boost_merchandise += take
 			gs.log_activity("%s lands. $%d in merchandise waiting for the fence." % [str(t["name"]), take], GREEN)
 		else:
-			gs.cash += take
+			_wallet().credit(take, _wallet().DIRTY, {"source_id": "boost_take"})
 			gs.log_activity("Left %s with goods worth $%d." % [str(t["name"]), take], GREEN)
 		result = {"ok": true, "success": true, "take": take, "tier": tier}
 	else:
@@ -181,7 +184,7 @@ func _fence() -> Dictionary:
 	var payout: int = int(round(float(gs.boost_merchandise) * fence_rate()))
 	gs.boost_merchandise = 0
 	gs.boost_fence_standing = clampi(gs.boost_fence_standing + 1, 0, 5)
-	gs.cash += payout
+	_wallet().credit(payout, _wallet().DIRTY, {"source_id": "boost_fence"})
 	gs.log_activity("Slide takes the lot for $%d." % payout, GREEN)
 	# Canon is specific here: Slide is discreet, so the sale reaches the
 	# household channel and nothing wider. Yalonda and Juan notice money that

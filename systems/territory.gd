@@ -75,12 +75,21 @@ func claim_blocker(block_id: String) -> String:
 		return "Need $%d." % int(b["claim_cost"])
 	return ""
 
+## The shared owners. Claiming and recruiting are routine spends; corner
+## income is dirty and the nightly heat is a criminal gain.
+func _wallet() -> Object:
+	return gm.system("wallet")
+
+func _heat() -> Object:
+	return gm.system("heat")
+
 func _claim(block_id: String) -> Dictionary:
 	var blocked := claim_blocker(block_id)
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked}
 	var b: Dictionary = gs.block_by_id(block_id)
-	gs.cash -= int(b["claim_cost"])
+	_wallet().spend(int(b["claim_cost"]), _wallet().ROUTINE_DIRTY_FIRST,
+		{"source_id": "territory_claim"})
 	gs.soldiers_idle -= 1
 	gs.held_blocks[block_id] = {"soldiers": 1, "claimed_day": gs.day, "income_collected": 0}
 	gs.log_activity("%s is yours." % str(b["name"]), GREEN)
@@ -111,7 +120,8 @@ func _recruit_soldier() -> Dictionary:
 	var blocked := recruit_soldier_blocker()
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked}
-	gs.cash -= gs.SOLDIER_RECRUIT_COST
+	_wallet().spend(gs.SOLDIER_RECRUIT_COST, _wallet().ROUTINE_DIRTY_FIRST,
+		{"source_id": "territory_soldier"})
 	gs.soldiers_idle += 1
 	gs.log_activity("Another soldier goes on the payroll.", GREEN)
 	return {"ok": true}
@@ -177,16 +187,21 @@ func settle_night(_ended_day: int) -> void:
 
 	var income: int = nightly_income()
 	if income > 0:
-		gs.cash += income
+		# TI-003 §6 classifies territory income as criminal: "current criminal
+		# Territory income once its payout caller migrates". This is that caller.
+		_wallet().credit(income, _wallet().DIRTY, {"source_id": "territory_income"})
 		gs.log_activity("The corners brought in $%d." % income, GREEN)
 
 	# Deshawn damps this the same way he damps a stickup — it is heat the
-	# operation generates, and it routes through the same multiplier.
+	# operation generates, and it routes through the same multiplier. HeatSystem
+	# fetches him now, so this no longer does.
+	#
+	# No family: holding corners is not one of TI-003 §7's three, so it scales
+	# by 1.0 — the scaling this line already had.
 	var raw: float = nightly_heat()
 	if raw > 0.0:
-		var crew: Object = gm.system("crew") if gm != null else null
-		var mult: float = crew.heat_multiplier() if crew != null else 1.0
-		gs.heat = clampf(gs.heat + raw * mult, 0.0, float(gs.heat_max))
+		_heat().apply_gain(raw, "", gs.current_district_id,
+			{"source_id": "territory_nightly"})
 
 	var unstaffed: Array = []
 	for id in gs.held_blocks.keys():

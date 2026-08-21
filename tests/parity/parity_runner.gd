@@ -120,6 +120,7 @@ func _ready() -> void:
 		_check_operation_presentation()
 		_check_frozen_behavior()
 		_check_day_lifecycle_order()
+		_check_wallet_and_heat()
 		_check_save_roundtrip()
 	_finish()
 
@@ -4033,9 +4034,9 @@ func _check_lifecycle_market_once(gs: Node, gm: Node, lifecycle: RefCounted) -> 
 	var cursor_at_start: int = gs.rng_state
 	var cursor_after_settle: Array = []
 	var probe := func(_ended: int) -> void: cursor_after_settle.append(gs.rng_state)
-	lifecycle.post_settle_hooks = [probe]
+	lifecycle.add_post_settle_hook(probe)
 	gm.dispatch("advance_time", {})
-	lifecycle.post_settle_hooks = []
+	lifecycle.clear_hooks()
 	_expect_int("the settle probe ran", cursor_after_settle.size(), 1)
 	if cursor_after_settle.size() == 1:
 		_expect_int("night settlement consumes no market RNG",
@@ -4084,13 +4085,13 @@ func _check_lifecycle_hooks(gs: Node, gm: Node, lifecycle: RefCounted) -> void:
 	var post_a := func(ended: int) -> void: order.append("post_a:%d:%d" % [ended, gs.day])
 	var post_b := func(ended: int) -> void: order.append("post_b:%d" % ended)
 	var start_a := func(new_day: int) -> void: order.append("start_a:%d:%d" % [new_day, gs.day])
-	lifecycle.post_settle_hooks = [post_a, post_b]
-	lifecycle.day_start_hooks = [start_a]
+	lifecycle.add_post_settle_hook(post_a)
+	lifecycle.add_post_settle_hook(post_b)
+	lifecycle.add_day_start_hook(start_a)
 	lifecycle.tracing = true
 	gm.dispatch("advance_time", {})
 	lifecycle.tracing = false
-	lifecycle.post_settle_hooks = []
-	lifecycle.day_start_hooks = []
+	lifecycle.clear_hooks()
 
 	# Index order, which is the point of using an array.
 	_expect_str("hooks run in declared index order", str(order),
@@ -4167,6 +4168,785 @@ func _check_lifecycle_checkpoint(gs: Node, gm: Node) -> void:
 			restore.store_string(previous_save)
 			restore.close()
 
+## FS-003.3 — the two shared mutation owners.
+##
+## ## What this section deliberately does NOT re-cover
+##
+## Every source's PAYOUT and SPEND figure is already pinned elsewhere and is not
+## re-asserted here:
+##
+##   - stickup take bands and per-tier heat — `_check_stickup_tiers`
+##   - boost take, fence rate and tier heat — `_check_boost_behavior` /
+##     `_check_boost_fence` (FS-003.1)
+##   - the heat WRITE path's fractional/clamp/multiplier behaviour —
+##     `_check_heat_write_path` (FS-003.1)
+##   - refused actions leaving cash alone — `_check_cash_discipline` (FS-003.1)
+##   - job/907List/recovery/obligation amounts — the FS-001 fixture sections
+##
+## Those are the regression net that lets this migration claim it changed
+## nothing, and duplicating them here would inflate the count while protecting
+## exactly what they already protect.
+##
+## What is new, and only new:
+##
+##   1. the direct-writer audits (nothing could have caught a new raw write);
+##   2. provenance — which bucket each source's money lands in;
+##   3. the two spend policies and the invariant that ties buckets to the total;
+##   4. Financial Pressure's gain side;
+##   5. Deshawn applied exactly once, across ranks 1-3 AND above the curve;
+##   6. relief bypassing the gain multipliers;
+##   7. neither owner touching the market RNG stream.
+func _check_wallet_and_heat() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var wallet: RefCounted = gm.system("wallet") as RefCounted
+	var heat: RefCounted = gm.system("heat") as RefCounted
+	if wallet == null or heat == null:
+		_fail("wallet/heat", "owners not registered")
+		return
+	_check_direct_writer_audit()
+	_check_deshawn_single_application_audit()
+	_check_wallet_policies(gs, wallet)
+	_check_wallet_financial_pressure(gs, wallet)
+	_check_wallet_reconcile(gs, wallet)
+	_check_wallet_legacy_classification(gs, wallet)
+	_check_heat_api(gs, gm, heat)
+	_check_heat_district_table(heat)
+	_check_heat_district_scaling_inert(gs, heat)
+	_check_source_provenance(gs, gm)
+	_check_owner_rng_non_drift(gs, gm, wallet, heat)
+	gs.reset_to_new_game()
+
+# --- the audits -------------------------------------------------------------
+
+## Directories the audit walks. `tests/` is excluded on purpose: a focused test
+## setting `gs.cash` to stage a scenario is one of TI-003 §6's named exceptions.
+const AUDIT_ROOTS: Array[String] = [
+	"res://systems", "res://autoload", "res://ui",
+]
+
+## The only two files allowed to write the fields they own.
+const CASH_WRITE_OWNERS: Array[String] = ["res://systems/wallet.gd"]
+const HEAT_WRITE_OWNERS: Array[String] = ["res://systems/heat.gd"]
+
+## TI-003 §6/§7: "Automated implementation checks should reject direct runtime
+## Cash mutations outside WalletSystem" — and the same for Heat.
+##
+## This is the check that has to exist for the migration to STAY done. Every
+## other check here proves the code is right today; this one is the only thing
+## that notices when a later slice adds `gs.cash += payout` to a new surface,
+## which is exactly how the twenty-one writers accumulated in the first place.
+func _check_direct_writer_audit() -> void:
+	var cash_offenders: Array = _scan_for_writes("cash", CASH_WRITE_OWNERS)
+	var heat_offenders: Array = _scan_for_writes("heat", HEAT_WRITE_OWNERS)
+	_expect_int("no direct gs.cash writers outside WalletSystem",
+		cash_offenders.size(), 0)
+	if not cash_offenders.is_empty():
+		_fail("cash writer audit", ", ".join(cash_offenders))
+	_expect_int("no direct gs.heat writers outside HeatSystem",
+		heat_offenders.size(), 0)
+	if not heat_offenders.is_empty():
+		_fail("heat writer audit", ", ".join(heat_offenders))
+
+	# The audit must be able to FAIL. A scanner that matches nothing reports a
+	# clean codebase and a broken regex identically, and "0 offenders" is the
+	# passing answer to both — so the matcher is run against text that is known
+	# to contain each shape it hunts for.
+	#
+	# Not a tautology: these strings are written here by hand, in the form a
+	# careless future edit would actually take, and the matcher is the shipped
+	# one rather than a copy.
+	var planted := [
+		"\tgs.cash += payout",
+		"\tgs.cash -= cost",
+		"\tgs.cash = 0",
+		"\tgs.heat = clampf(gs.heat + 1.0, 0.0, 15.0)",
+		"\tgs.heat += 2.0",
+	]
+	for line in planted:
+		var field: String = "cash" if "cash" in line else "heat"
+		_expect_true("the writer audit detects `%s`" % line.strip_edges(),
+			_line_writes_field(line, field))
+
+	# And must NOT fire on the reads and lookalikes that are everywhere. A
+	# scanner that flags `if gs.cash < cost` would be turned off within a week.
+	var innocent := [
+		"\tif gs.cash < cost:",
+		"\t\t- gs.heat * 0.012",
+		"\tvar owed: int = gs.cash",
+		"\treturn gs.heat >= 10.0",
+		"\t_expect_int(\"x\", gs.cash, 100)",
+		"\tgs.cash_display_only = 1",
+		"\tgs.heat_max = 15",
+	]
+	for line in innocent:
+		var field: String = "cash" if "cash" in line else "heat"
+		_expect_true("the writer audit ignores `%s`" % line.strip_edges(),
+			not _line_writes_field(line, field))
+
+## True when this line assigns to `gs.<field>`.
+##
+## Deliberately narrow: it matches the `gs.` handle every system uses, and the
+## compound operators as well as plain `=`. `gs.heat_max = 15` must not match,
+## which is why the field name has to be followed by whitespace-then-operator
+## rather than by any character at all.
+func _line_writes_field(line: String, field: String) -> bool:
+	var code: String = line.split("#")[0]
+	var needle := "gs.%s" % field
+	var from: int = 0
+	while true:
+		var at: int = code.find(needle, from)
+		if at < 0:
+			return false
+		from = at + needle.length()
+		var rest: String = code.substr(from).strip_edges(true, false)
+		if rest.begins_with("==") or rest.begins_with("!=") \
+			or rest.begins_with("<=") or rest.begins_with(">="):
+			continue
+		if rest.begins_with("+=") or rest.begins_with("-=") \
+			or rest.begins_with("*=") or rest.begins_with("/=") \
+			or rest.begins_with("="):
+			return true
+	return false
+
+func _scan_for_writes(field: String, owners: Array[String]) -> Array:
+	var offenders: Array = []
+	for root in AUDIT_ROOTS:
+		for path in _gd_files_under(root):
+			if path in owners:
+				continue
+			var file := FileAccess.open(path, FileAccess.READ)
+			if file == null:
+				continue
+			var number: int = 0
+			while not file.eof_reached():
+				number += 1
+				var line: String = file.get_line()
+				if _line_writes_field(line, field):
+					offenders.append("%s:%d" % [path, number])
+			file.close()
+	return offenders
+
+func _gd_files_under(root: String) -> Array:
+	var found: Array = []
+	var dir := DirAccess.open(root)
+	if dir == null:
+		return found
+	dir.list_dir_begin()
+	var entry: String = dir.get_next()
+	while entry != "":
+		if entry.begins_with("."):
+			entry = dir.get_next()
+			continue
+		var full: String = "%s/%s" % [root, entry]
+		if dir.current_is_dir():
+			found.append_array(_gd_files_under(full))
+		elif entry.ends_with(".gd"):
+			found.append(full)
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return found
+
+## The acceptance criterion, made structural rather than behavioural.
+##
+## "Deshawn applies once" can be proven numerically (and is, below), but a
+## numeric proof only covers the paths the test happens to walk. The stronger
+## statement is that there is exactly ONE place in the codebase that can apply
+## him at all — so a new surface cannot reintroduce the double by copying the
+## helper that used to exist in two files.
+##
+## Allowed: crew.gd owns and defines it, heat.gd is the single consumer, and the
+## crew SCREEN displays it as a number without applying anything.
+const HEAT_MULTIPLIER_CALLERS: Array[String] = [
+	"res://systems/crew.gd", "res://systems/heat.gd", "res://ui/screens/crew.gd",
+]
+
+func _check_deshawn_single_application_audit() -> void:
+	var callers: Array = []
+	for root in AUDIT_ROOTS:
+		for path in _gd_files_under(root):
+			var file := FileAccess.open(path, FileAccess.READ)
+			if file == null:
+				continue
+			while not file.eof_reached():
+				var line: String = file.get_line()
+				if "#" in line:
+					line = line.split("#")[0]
+				if "heat_multiplier(" in line and not path in callers:
+					callers.append(path)
+			file.close()
+	callers.sort()
+	var expected: Array = HEAT_MULTIPLIER_CALLERS.duplicate()
+	expected.sort()
+	_expect_str("heat_multiplier() has exactly one applying consumer",
+		str(callers), str(expected))
+
+# --- wallet -----------------------------------------------------------------
+
+## Put the wallet in a known, balanced state. Writes the fields directly, which
+## is the "focused tests" exception TI-003 §6 names — and writes all three
+## together so the invariant is true before the check starts rather than after
+## the first reconcile.
+func _wallet_ready(gs: Node, dirty: int, clean: int) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.current_district_id = "north_star_lot"
+	gs.dirty_cash = dirty
+	gs.clean_cash = clean
+	gs.cash = dirty + clean
+	gs.financial_pressure = 0
+	gs.heat = 0.0
+
+## TI-003 §6's two policies, as a matrix over the cases that distinguish them.
+##
+## Every row states the buckets before, the move, and all three numbers after.
+## The `after` figures are written out rather than computed, so the check pins
+## behaviour instead of re-deriving it.
+func _check_wallet_policies(gs: Node, wallet: RefCounted) -> void:
+	# --- credit, by provenance ---
+	_wallet_ready(gs, 100, 200)
+	var tx: Dictionary = wallet.credit(50, wallet.DIRTY, {"source_id": "t"})
+	_expect_true("a dirty credit reports ok", bool(tx["ok"]))
+	_expect_int("a dirty credit raises dirty", int(gs.dirty_cash), 150)
+	_expect_int("a dirty credit leaves clean alone", int(gs.clean_cash), 200)
+	_expect_int("a dirty credit raises the visible total", int(gs.cash), 350)
+	_expect_int("a dirty credit reports the dirty side", int(tx["dirty_used"]), 50)
+
+	_wallet_ready(gs, 100, 200)
+	tx = wallet.credit(50, wallet.CLEAN, {"source_id": "t"})
+	_expect_int("a clean credit raises clean", int(gs.clean_cash), 250)
+	_expect_int("a clean credit leaves dirty alone", int(gs.dirty_cash), 100)
+	_expect_int("a clean credit raises the visible total", int(gs.cash), 350)
+
+	# Canon's default: money the game cannot vouch for is dirty.
+	_wallet_ready(gs, 100, 200)
+	wallet.credit(50, "not_a_provenance", {})
+	_expect_int("an unknown provenance credits dirty", int(gs.dirty_cash), 150)
+	_expect_int("an unknown provenance does not credit clean", int(gs.clean_cash), 200)
+
+	# A negative credit is a caller bug, not a spend spelled differently.
+	_wallet_ready(gs, 100, 200)
+	wallet.credit(-500, wallet.DIRTY, {})
+	_expect_int("a negative credit moves no dirty", int(gs.dirty_cash), 100)
+	_expect_int("a negative credit moves no clean", int(gs.clean_cash), 200)
+	_expect_int("a negative credit moves no cash", int(gs.cash), 300)
+
+	# --- ROUTINE: dirty first ---
+	_wallet_ready(gs, 500, 500)
+	tx = wallet.spend(300, wallet.ROUTINE_DIRTY_FIRST, {})
+	_expect_true("a routine spend reports ok", bool(tx["ok"]))
+	_expect_int("routine spending takes dirty first", int(gs.dirty_cash), 200)
+	_expect_int("routine spending leaves clean untouched while dirty covers it",
+		int(gs.clean_cash), 500)
+	_expect_int("routine spending lowers the visible total", int(gs.cash), 700)
+	_expect_int("the transaction reports the dirty side", int(tx["dirty_used"]), 300)
+	_expect_int("the transaction reports no clean side", int(tx["clean_used"]), 0)
+
+	# Dirty runs out mid-transaction and clean covers the remainder.
+	_wallet_ready(gs, 100, 500)
+	tx = wallet.spend(300, wallet.ROUTINE_DIRTY_FIRST, {})
+	_expect_int("routine spending drains dirty to zero", int(gs.dirty_cash), 0)
+	_expect_int("routine spending then takes clean", int(gs.clean_cash), 300)
+	_expect_int("a split routine spend reports its dirty half", int(tx["dirty_used"]), 100)
+	_expect_int("a split routine spend reports its clean half", int(tx["clean_used"]), 200)
+
+	# --- HIGH VISIBILITY: clean first. TI-003 regression #23. ---
+	_wallet_ready(gs, 500, 500)
+	tx = wallet.spend(300, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("high-visibility spending takes clean first", int(gs.clean_cash), 200)
+	_expect_int("high-visibility spending leaves dirty untouched while clean covers it",
+		int(gs.dirty_cash), 500)
+	_expect_int("a high-visibility spend reports its clean side", int(tx["clean_used"]), 300)
+	_expect_int("a high-visibility spend reports no dirty side", int(tx["dirty_used"]), 0)
+
+	_wallet_ready(gs, 500, 100)
+	tx = wallet.spend(300, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("high-visibility spending drains clean to zero", int(gs.clean_cash), 0)
+	_expect_int("high-visibility spending then reaches for dirty", int(gs.dirty_cash), 300)
+	_expect_int("a split high-visibility spend reports its dirty half",
+		int(tx["dirty_used"]), 200)
+
+	# An unrecognised policy must behave as routine, not as high-visibility: a
+	# typo that silently turned a purchase into a laundering signal would be
+	# invisible until Financial Pressure moved for no reason.
+	_wallet_ready(gs, 500, 500)
+	wallet.spend(300, "not_a_policy", {})
+	_expect_int("an unknown policy spends dirty first", int(gs.dirty_cash), 200)
+	_expect_int("an unknown policy leaves clean alone", int(gs.clean_cash), 500)
+
+	# --- refusal ---
+	#
+	# "Nothing moved" is only meaningful alongside "and the attempt was made and
+	# rejected" — a spend that silently succeeded and one that was refused both
+	# leave the buckets alone if the amount was zero.
+	_wallet_ready(gs, 100, 100)
+	tx = wallet.spend(500, wallet.ROUTINE_DIRTY_FIRST, {})
+	_expect_true("an unaffordable spend is refused", not bool(tx["ok"]))
+	_expect_str("an unaffordable spend says why", str(tx.get("reason", "")),
+		"Not enough cash.")
+	_expect_int("a refused spend moves no dirty", int(gs.dirty_cash), 100)
+	_expect_int("a refused spend moves no clean", int(gs.clean_cash), 100)
+	_expect_int("a refused spend moves no cash", int(gs.cash), 200)
+	_expect_true("can_spend agrees with the refusal", not wallet.can_spend(500))
+	_expect_true("can_spend allows exactly the balance", wallet.can_spend(200))
+
+	# Spending the whole balance is allowed and lands on zero, not on a refusal.
+	_wallet_ready(gs, 100, 100)
+	tx = wallet.spend(200, wallet.ROUTINE_DIRTY_FIRST, {})
+	_expect_true("spending the exact balance succeeds", bool(tx["ok"]))
+	_expect_int("spending the exact balance empties dirty", int(gs.dirty_cash), 0)
+	_expect_int("spending the exact balance empties clean", int(gs.clean_cash), 0)
+	_expect_int("spending the exact balance empties the total", int(gs.cash), 0)
+
+	# --- the invariant, after everything above ---
+	_expect_true("cash equals dirty plus clean", wallet.is_balanced())
+
+## TI-003 §6: financial_pressure_gain = round((dirty_used - 400) * 0.01), cap 10.
+##
+## The figures below are the formula's output at the boundaries, written out.
+func _check_wallet_financial_pressure(gs: Node, wallet: RefCounted) -> void:
+	# Under the free band: no Pressure at all.
+	_wallet_ready(gs, 5000, 0)
+	var tx: Dictionary = wallet.spend(400, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("400 dirty in the open is free", int(tx["financial_pressure_gain"]), 0)
+	_expect_int("a free-band spend stores no Pressure", int(gs.financial_pressure), 0)
+
+	# Just above it — and rounding to zero is still zero.
+	_wallet_ready(gs, 5000, 0)
+	tx = wallet.spend(440, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("40 dirty over the band rounds to no Pressure",
+		int(tx["financial_pressure_gain"]), 0)
+
+	_wallet_ready(gs, 5000, 0)
+	tx = wallet.spend(450, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("50 dirty over the band rounds to 1 Pressure",
+		int(tx["financial_pressure_gain"]), 1)
+	_expect_int("the gain is stored", int(gs.financial_pressure), 1)
+
+	_wallet_ready(gs, 5000, 0)
+	tx = wallet.spend(900, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("500 dirty over the band is 5 Pressure",
+		int(tx["financial_pressure_gain"]), 5)
+
+	# Clean money in the open is invisible however much of it there is.
+	_wallet_ready(gs, 0, 5000)
+	tx = wallet.spend(3000, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("clean money in the open makes no Pressure",
+		int(tx["financial_pressure_gain"]), 0)
+	_expect_int("a clean high-visibility spend really happened", int(gs.cash), 2000)
+
+	# TI-003 regression #24: routine spending must not create Pressure.
+	_wallet_ready(gs, 5000, 0)
+	tx = wallet.spend(3000, wallet.ROUTINE_DIRTY_FIRST, {})
+	_expect_int("routine spending creates no Pressure",
+		int(tx["financial_pressure_gain"]), 0)
+	_expect_int("routine spending stores no Pressure", int(gs.financial_pressure), 0)
+	_expect_int("the routine spend really happened", int(gs.dirty_cash), 2000)
+
+	# The cap holds across repeated transactions.
+	_wallet_ready(gs, 100000, 0)
+	for _i in range(6):
+		wallet.spend(1000, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("Financial Pressure caps at 10", int(gs.financial_pressure), 10)
+
+## Canon's `reconcileCash`, which is the safety net under an unmigrated writer.
+func _check_wallet_reconcile(gs: Node, wallet: RefCounted) -> void:
+	# Untracked income defaults to dirty.
+	_wallet_ready(gs, 100, 100)
+	gs.cash = 500
+	wallet.reconcile()
+	_expect_int("untracked income folds into dirty", int(gs.dirty_cash), 400)
+	_expect_int("untracked income leaves clean alone", int(gs.clean_cash), 100)
+	_expect_true("reconcile restores the invariant", wallet.is_balanced())
+
+	# Untracked spending drains dirty first.
+	_wallet_ready(gs, 300, 300)
+	gs.cash = 400
+	wallet.reconcile()
+	_expect_int("untracked spending drains dirty first", int(gs.dirty_cash), 100)
+	_expect_int("untracked spending spares clean while dirty covers it",
+		int(gs.clean_cash), 300)
+
+	# And reaches clean once dirty is gone.
+	_wallet_ready(gs, 100, 300)
+	gs.cash = 200
+	wallet.reconcile()
+	_expect_int("untracked spending empties dirty", int(gs.dirty_cash), 0)
+	_expect_int("untracked spending then drains clean", int(gs.clean_cash), 200)
+
+	# Reconcile does not charge Financial Pressure: the port's spends declare
+	# their own policy, so charging here as well would double-count.
+	_wallet_ready(gs, 5000, 0)
+	gs.cash = 1000
+	wallet.reconcile()
+	_expect_int("reconcile charges no Financial Pressure", int(gs.financial_pressure), 0)
+
+	# A balanced wallet is left exactly alone.
+	_wallet_ready(gs, 250, 250)
+	wallet.reconcile()
+	_expect_int("reconcile leaves a balanced dirty bucket alone", int(gs.dirty_cash), 250)
+	_expect_int("reconcile leaves a balanced clean bucket alone", int(gs.clean_cash), 250)
+
+## TI-003 §20 step 2-3 / §26. Note this is the OPPOSITE of canon's own pre-split
+## migration, which classifies legacy wealth dirty (game-core.js:2060-2066); the
+## divergence is deliberate and lives in `classify_legacy_total()`.
+func _check_wallet_legacy_classification(gs: Node, wallet: RefCounted) -> void:
+	_wallet_ready(gs, 400, 400)
+	gs.cash = 1234
+	wallet.classify_legacy_total()
+	_expect_int("a legacy total classifies clean", int(gs.clean_cash), 1234)
+	_expect_int("a legacy total leaves nothing dirty", int(gs.dirty_cash), 0)
+	_expect_int("a legacy total does not change the visible cash", int(gs.cash), 1234)
+	_expect_true("a classified legacy total is balanced", wallet.is_balanced())
+
+	# It is idempotent, which is what makes it safe to run on every load.
+	wallet.classify_legacy_total()
+	_expect_int("classifying twice is the same as once", int(gs.clean_cash), 1234)
+	_expect_int("classifying twice leaves nothing dirty", int(gs.dirty_cash), 0)
+
+# --- heat -------------------------------------------------------------------
+
+## Deshawn's authored curve, recorded as literals rather than read from
+## `DESHAWN_HEAT_REDUCTION` — deriving the expectation from the same table the
+## code reads would pass no matter what the table said.
+const DESHAWN_RANK_MULTIPLIERS := {1: 0.80, 2: 0.60, 3: 0.40}
+
+func _deshawn_at(gs: Node, tier: int) -> void:
+	gs.crew_records["deshawn"] = {
+		"recruited": true, "status": "active",
+		"loyalty": gs.CREW_LOYALTY_START, "tier": tier,
+		"wage_due": 0, "wage_missed_since": -1,
+	}
+
+## TI-003 §7's three entry points, and the rule that separates them.
+func _check_heat_api(gs: Node, gm: Node, heat: RefCounted) -> void:
+	# --- gain, with nobody on the crew ---
+	_wallet_ready(gs, 0, 100)
+	var applied: float = heat.apply_gain(2.0, heat.FAMILY_STICK, "north_star_lot", {})
+	_expect_float("an unscaled gain applies its raw amount", applied, 2.0)
+	_expect_float("an unscaled gain lands on the meter", float(gs.heat), 2.0)
+
+	# Heat is fractional and stays that way. Rounding it is a shipped bug this
+	# port has already had once — see systems/heat.gd.
+	_wallet_ready(gs, 0, 100)
+	heat.apply_gain(0.5, heat.FAMILY_BOOST, "north_star_lot", {})
+	_expect_float("a fractional gain stays fractional", float(gs.heat), 0.5)
+
+	# A non-positive gain is a caller reaching for relief by the wrong name.
+	_wallet_ready(gs, 0, 100)
+	gs.heat = 5.0
+	_expect_float("a zero gain applies nothing", heat.apply_gain(0.0, "", "", {}), 0.0)
+	_expect_float("a negative gain applies nothing", heat.apply_gain(-3.0, "", "", {}), 0.0)
+	_expect_float("a refused gain leaves the meter alone", float(gs.heat), 5.0)
+
+	# --- Deshawn, applied exactly ONCE, across the authored ranks ---
+	#
+	# The double-application this migration risks is arithmetically distinct at
+	# every rank: 10 raw at rank 1 is 8.0 applied once and 6.4 applied twice, so
+	# a single pinned figure per rank catches it. Both numbers are named in the
+	# label so a failure reads as the diagnosis.
+	for tier in [1, 2, 3]:
+		_wallet_ready(gs, 0, 100)
+		_deshawn_at(gs, tier)
+		var mult: float = float(DESHAWN_RANK_MULTIPLIERS[tier])
+		var once: float = 10.0 * mult
+		var twice: float = 10.0 * mult * mult
+		applied = heat.apply_gain(10.0, heat.FAMILY_STICK, "north_star_lot", {})
+		_expect_float("Deshawn rank %d applies once (%.2f, not %.2f)"
+			% [tier, once, twice], applied, once)
+		_expect_float("Deshawn rank %d lands once on the meter" % tier,
+			float(gs.heat), once)
+
+	# Above the authored curve. `curve_value_for_rank` holds the highest
+	# authored rank rather than falling back to neutral — a promotion must not
+	# silently REMOVE the reduction he already earned, which is a bug this
+	# codebase has already fixed once in crew.gd.
+	for tier in [4, 7]:
+		_wallet_ready(gs, 0, 100)
+		_deshawn_at(gs, tier)
+		applied = heat.apply_gain(10.0, heat.FAMILY_STICK, "north_star_lot", {})
+		_expect_float("Deshawn above the curve holds rank 3's reduction (rank %d)"
+			% tier, applied, 4.0)
+
+	# Not recruited, and recruited-but-inactive, both scale by 1.0.
+	_wallet_ready(gs, 0, 100)
+	gs.crew_records["deshawn"] = {
+		"recruited": true, "status": "gone", "tier": 3,
+		"loyalty": gs.CREW_LOYALTY_START, "wage_due": 0, "wage_missed_since": -1,
+	}
+	_expect_float("a departed Deshawn damps nothing",
+		heat.apply_gain(10.0, heat.FAMILY_STICK, "north_star_lot", {}), 10.0)
+
+	# --- relief bypasses the gain multipliers. TI-003 regression #15. ---
+	#
+	# This is the one that would invert Deshawn: if relief went through his
+	# multiplier, having him on the crew would make Lay Low work LESS well.
+	# Measured against the identical relief with him absent — same number, and
+	# the number is the full requested amount rather than a scaled one.
+	_wallet_ready(gs, 0, 100)
+	gs.heat = 10.0
+	var relief_without: float = heat.apply_relief(2.0, {})
+	var heat_without: float = float(gs.heat)
+
+	_wallet_ready(gs, 0, 100)
+	gs.heat = 10.0
+	_deshawn_at(gs, 3)
+	var relief_with: float = heat.apply_relief(2.0, {})
+	_expect_float("relief is the same with Deshawn as without",
+		relief_with, relief_without)
+	_expect_float("relief leaves the same meter with Deshawn as without",
+		float(gs.heat), heat_without)
+	_expect_float("relief applies its full requested amount", relief_with, -2.0)
+	_expect_float("relief lands in full on the meter", float(gs.heat), 8.0)
+
+	# Relief takes a positive amount and subtracts it. A negative "relief" is
+	# the same caller confusion as a negative gain, in the other direction.
+	_wallet_ready(gs, 0, 100)
+	gs.heat = 5.0
+	_expect_float("a negative relief applies nothing", heat.apply_relief(-2.0, {}), 0.0)
+	_expect_float("a refused relief leaves the meter alone", float(gs.heat), 5.0)
+
+	# --- direct also bypasses the gain multipliers ---
+	_wallet_ready(gs, 0, 100)
+	gs.heat = 5.0
+	_deshawn_at(gs, 3)
+	_expect_float("a direct change ignores Deshawn",
+		heat.apply_direct(1.0, {}), 1.0)
+	_expect_float("a direct change lands in full", float(gs.heat), 6.0)
+	_expect_float("a direct change carries its sign",
+		heat.apply_direct(-2.0, {}), -2.0)
+	_expect_float("a signed direct change lands in full", float(gs.heat), 4.0)
+
+	# --- the clamp, at both ends, reported honestly ---
+	#
+	# The returned delta is what LANDED, not what was asked for. Stickup logs
+	# this number, so a clamped gain must not claim the full amount.
+	_wallet_ready(gs, 0, 100)
+	gs.heat = 14.5
+	applied = heat.apply_gain(3.0, "", "", {})
+	_expect_float("a gain clamps at the ceiling", float(gs.heat), 15.0)
+	_expect_float("a clamped gain reports only what landed", applied, 0.5)
+
+	_wallet_ready(gs, 0, 100)
+	gs.heat = 1.0
+	applied = heat.apply_relief(4.0, {})
+	_expect_float("relief clamps at the floor", float(gs.heat), 0.0)
+	_expect_float("clamped relief reports only what landed", applied, -1.0)
+
+	# The ceiling is read from GameState rather than hardcoded at 15 in the
+	# owner — the scale is 0-15 and the owner must not be the second place that
+	# knows it.
+	_expect_float("the owner reads the ceiling from state",
+		heat.ceiling(), float(gs.heat_max))
+
+## TI-003 §7's authored district x family table, pinned as data.
+##
+## `apply_gain` does NOT consult it this slice — see systems/heat.gd for why —
+## so this covers the values and the neutral fallback, and then proves the
+## wiring really is inert. FS-003.9 flips it on and inverts the last two checks.
+func _check_heat_district_table(heat: RefCounted) -> void:
+	var rows := [
+		["north_star_lot", heat.FAMILY_MARKET, 0.8],
+		["north_star_lot", heat.FAMILY_BOOST, 0.9],
+		["north_star_lot", heat.FAMILY_STICK, 1.3],
+		["downtown", heat.FAMILY_MARKET, 1.2],
+		["downtown", heat.FAMILY_BOOST, 1.1],
+		["downtown", heat.FAMILY_STICK, 1.0],
+		["airport_industrial", heat.FAMILY_MARKET, 1.1],
+		["airport_industrial", heat.FAMILY_BOOST, 1.2],
+		["airport_industrial", heat.FAMILY_STICK, 1.2],
+	]
+	for row in rows:
+		_expect_float("TI-003 heat multiplier %s/%s" % [row[0], row[1]],
+			heat.district_multiplier(str(row[0]), str(row[1])), float(row[2]))
+
+	# Anything unlisted scales by 1.0 — which is what carries shark enforcement
+	# and territory's nightly heat at exactly the scaling they had before.
+	_expect_float("an unknown district scales neutrally",
+		heat.district_multiplier("nowhere", heat.FAMILY_STICK), 1.0)
+	_expect_float("an unknown family scales neutrally",
+		heat.district_multiplier("downtown", "arson"), 1.0)
+	_expect_float("an empty family scales neutrally",
+		heat.district_multiplier("downtown", ""), 1.0)
+
+## The table is authored but not wired, so the same raw gain costs the same in
+## every district this slice. Spenard/stick is 1.3 — the largest divergence in
+## the table — so if the wiring were live this would read 2.6 rather than 2.0.
+func _check_heat_district_scaling_inert(gs: Node, heat: RefCounted) -> void:
+	var seen: Array = []
+	for district in ["north_star_lot", "downtown", "airport_industrial"]:
+		_wallet_ready(gs, 0, 100)
+		gs.current_district_id = district
+		heat.apply_gain(2.0, heat.FAMILY_STICK, district, {})
+		seen.append(float(gs.heat))
+	_expect_str("district scaling is not wired this slice", str(seen),
+		str([2.0, 2.0, 2.0]))
+
+# --- provenance through the real dispatch path ------------------------------
+
+## Which bucket each source's money lands in, driven through `gm.dispatch` so
+## the check walks the stack the game produces.
+##
+## Amounts are not re-asserted here (the fixture sections own those); what is
+## asserted is that money moved AND which bucket it moved through. A source
+## whose take silently stopped arriving would pass a bucket-only check.
+func _check_source_provenance(gs: Node, gm: Node) -> void:
+	# --- legal wages are clean. TI-003 §6, and canon's `addCleanCash`. ---
+	_wallet_ready(gs, 0, 0)
+	gs.active_job_id = "wash_go"
+	gs.job_records["wash_go"] = {"xp": 0.0, "rank": 0, "shifts": 0,
+		"last_worked_day": -1, "relationship": 0.0}
+	var before_cash: int = int(gs.cash)
+	var worked: bool = gm.dispatch("work_shift", {"approach": "work_hard"})
+	_expect_true("a shift dispatches", worked)
+	if worked:
+		var earned: int = int(gs.cash) - before_cash
+		_expect_true("a shift actually paid something", earned > 0)
+		_expect_int("job wages land clean", int(gs.clean_cash), earned)
+		_expect_int("job wages leave nothing dirty", int(gs.dirty_cash), 0)
+
+	# --- a stickup take is dirty ---
+	#
+	# Driven until a success lands rather than assumed off a seed: a fixed seed
+	# may resolve to a failure, and a failed stickup pays nothing at all, which
+	# would make "the take is dirty" pass vacuously.
+	var found_take := false
+	for attempt in range(40):
+		_wallet_ready(gs, 0, 0)
+		gs.day = 9 + attempt
+		gs.stick_daily_count = 0
+		before_cash = int(gs.cash)
+		if not gm.dispatch("stickup", {"target_id": "washgo_regular"}):
+			continue
+		var take: int = int(gs.cash) - before_cash
+		if take <= 0:
+			continue
+		found_take = true
+		_expect_int("a stickup take lands dirty", int(gs.dirty_cash), take)
+		_expect_int("a stickup take leaves nothing clean", int(gs.clean_cash), 0)
+		break
+	_expect_true("the stickup provenance check found a paying take", found_take)
+
+	# --- a 907List flip is clean. Canon's other `addCleanCash` site. ---
+	_wallet_ready(gs, 0, 5000)
+	var listing: Dictionary = _first_listing(gm)
+	if listing.is_empty():
+		_fail("list provenance", "no listing on the board")
+	else:
+		var item_id := str(listing.get("id", ""))
+		_expect_true("a listing purchase dispatches",
+			gm.dispatch("list_buy", {"item_id": item_id}))
+		# The purchase is routine, so it came out of clean here (no dirty).
+		_expect_int("a routine list purchase drains clean when dirty is empty",
+			int(gs.dirty_cash), 0)
+		# The board holds a flip overnight — `sell_blocker`'s `sell_delay`. Moved
+		# by hand rather than by dispatching a night, which would settle every
+		# other system and drag their cash through this check.
+		gs.day += int(gs.market_tier()["sell_delay"])
+		before_cash = int(gs.cash)
+		var clean_before: int = int(gs.clean_cash)
+		_expect_true("a listing sale dispatches",
+			gm.dispatch("list_sell", {"index": 0}))
+		var got: int = int(gs.cash) - before_cash
+		_expect_true("the flip actually paid something", got > 0)
+		_expect_int("a 907List flip lands clean",
+			int(gs.clean_cash), clean_before + got)
+		_expect_int("a 907List flip leaves nothing dirty", int(gs.dirty_cash), 0)
+
+	# --- rent is high-visibility: clean goes first ---
+	_wallet_ready(gs, 5000, 5000)
+	gs.rent_due_day = gs.day
+	var clean_start: int = int(gs.clean_cash)
+	var dirty_start: int = int(gs.dirty_cash)
+	_expect_true("rent dispatches", gm.dispatch("pay_rent", {}))
+	_expect_int("rent comes out of clean first",
+		int(gs.clean_cash), clean_start - int(gs.WEEKLY_RENT))
+	_expect_int("rent leaves dirty alone while clean covers it",
+		int(gs.dirty_cash), dirty_start)
+
+	# --- the phone bill, same policy ---
+	_wallet_ready(gs, 5000, 5000)
+	gs.phone_due_day = gs.day
+	clean_start = int(gs.clean_cash)
+	dirty_start = int(gs.dirty_cash)
+	_expect_true("the phone bill dispatches", gm.dispatch("pay_phone_bill", {}))
+	_expect_int("the phone bill comes out of clean first",
+		int(gs.clean_cash), clean_start - int(gs.PHONE_BILL))
+	_expect_int("the phone bill leaves dirty alone while clean covers it",
+		int(gs.dirty_cash), dirty_start)
+
+	# --- a routine spend takes dirty first, through a real action ---
+	_wallet_ready(gs, 5000, 5000)
+	dirty_start = int(gs.dirty_cash)
+	clean_start = int(gs.clean_cash)
+	_expect_true("travel dispatches", gm.dispatch("travel", {"district_id": "downtown"}))
+	_expect_true("travel actually charged a fare", int(gs.dirty_cash) < dirty_start)
+	_expect_int("a travel fare leaves clean alone", int(gs.clean_cash), clean_start)
+
+	# --- the invariant survives every one of those ---
+	var wallet: RefCounted = gm.system("wallet") as RefCounted
+	_expect_true("the wallet is still balanced after the source sweep",
+		wallet.is_balanced())
+
+## A listing the board is actually offering today. Picking any item out of the
+## static table would hit `buy_blocker`'s "that one is gone" on a consumed id and
+## make the flip check pass by never running.
+func _first_listing(gm: Node) -> Dictionary:
+	var list_system: Object = gm.system("list")
+	if list_system == null:
+		return {}
+	var offered: Array = list_system.todays_listings()
+	for row in offered:
+		if row is Dictionary:
+			return row
+	return {}
+
+# --- the RNG contract -------------------------------------------------------
+
+## TI-003 §21: "TI-003 adds zero market-stream draws."
+##
+## Wallet and Heat are pure state arithmetic and must not touch `rng_state`,
+## which belongs to the market walk alone. Asserted around the owners' own API
+## and again around a full source action, because a source that started drawing
+## from the wrong stream would move the cursor without either owner doing so.
+func _check_owner_rng_non_drift(gs: Node, gm: Node, wallet: RefCounted,
+		heat: RefCounted) -> void:
+	_wallet_ready(gs, 1000, 1000)
+	gs.rng_state = 123456789
+	var cursor: int = int(gs.rng_state)
+
+	wallet.credit(500, wallet.DIRTY, {})
+	wallet.credit(500, wallet.CLEAN, {})
+	wallet.spend(300, wallet.ROUTINE_DIRTY_FIRST, {})
+	wallet.spend(900, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	wallet.reconcile()
+	wallet.classify_legacy_total()
+	_expect_int("the wallet draws nothing from the market stream",
+		int(gs.rng_state), cursor)
+
+	_deshawn_at(gs, 2)
+	heat.apply_gain(3.0, heat.FAMILY_STICK, "north_star_lot", {})
+	heat.apply_direct(1.0, {})
+	heat.apply_relief(2.0, {})
+	heat.district_multiplier("downtown", heat.FAMILY_BOOST)
+	heat.crew_multiplier()
+	_expect_int("the heat system draws nothing from the market stream",
+		int(gs.rng_state), cursor)
+
+	# And the cursor is genuinely observable — a check that pins an unmoving
+	# number is worth nothing if the field never moves anyway. The nightly
+	# evolve is the one thing allowed to move it, so it must.
+	_wallet_ready(gs, 1000, 1000)
+	gs.rng_state = 123456789
+	cursor = int(gs.rng_state)
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	_expect_true("the night dispatches", gm.dispatch("advance_time", {}))
+	_expect_true("the market walk does move the cursor", int(gs.rng_state) != cursor)
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -4203,7 +4983,14 @@ func _fail(label: String, detail: String) -> void:
 ## SAVE_VERSION: it only ever moves up, and it moving DOWN is the signal.
 ## FS-003.1 set this floor at 7665 as the inherited contract for FS-003.2
 ## through .12: the Consequence-Encounter Engine may add checks, never lose them.
-const MIN_CHECKS := 7726
+##
+## FS-003.3 raises it to 7889. Six of those are not new coverage but RECOVERED
+## coverage: FS-003.2's lifecycle-hook checks assigned an untyped Array literal
+## to an `Array[Callable]` property, which raises and aborts the enclosing check
+## — so the suite reported 7726 while six of its checks had never once run. The
+## floor moving up by more than the checks added is the tell, and it is exactly
+## the failure mode this constant exists to make visible.
+const MIN_CHECKS := 7889
 
 func _finish() -> void:
 	if _failures.is_empty():

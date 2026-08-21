@@ -204,7 +204,9 @@ func select(crew_id: String, assignment: Dictionary) -> Dictionary:
 	for entry in planned["items"]:
 		var item_id := str((entry as Dictionary)["item_id"])
 		var cost: int = int((entry as Dictionary)["cost"])
-		gs.cash -= cost
+		var wallet: Object = gm.system("wallet")
+		wallet.spend(cost, wallet.ROUTINE_DIRTY_FIRST,
+			{"source_id": "list_buy_pherris_%s" % item_id})
 		gs.list_holdings.append({
 			"item_id": item_id,
 			"bought_day": gs.day,

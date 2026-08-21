@@ -544,6 +544,140 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.3: cash and heat get owners  (added 2026-08-21)
+
+Twenty-one lines across eleven systems wrote `gs.cash`. Five wrote `gs.heat`,
+and two of those five were the same function copied into two files. Both fields
+are now owned. **Parity 7726 → 7889 checks, 0 failures. No schema change.**
+
+### The audit that started this was wrong, and the correction is the point
+
+The brief counted **20** direct cash writers across 10 systems. The real number
+at `72128b2` is **21 across 11** — `systems/list_adapter.gd:207` was missing from
+the list, which is Pherris spending the player's money on a delegated 907List
+pickup. It is exactly the kind of writer an audit misses: it does not live in
+the system that owns the surface, it lives in the adapter that drives it.
+
+That one line is the argument for the automated audit in this slice. A count in
+a document is right on the day it is written; a check that fails the build is
+right every day after.
+
+### What each source's money now is
+
+TI-003 §6 classifies income, and canon backs every row of it. The two
+`addCleanCash` call sites in the entire web build are `WORK_JOB`
+(game-core.js:7311) and `recordMarketFlip` (3160) — legal wages and a resale on
+a public board. Everything else is dirty.
+
+| source | bucket | why |
+| --- | --- | --- |
+| job shift | **clean** | canon `addCleanCash` |
+| 907List flip | **clean** | canon `addCleanCash` |
+| stickup take | dirty | canon `addDirtyCash` |
+| boost take / fence payout | dirty | canon `addDirtyCash` |
+| market sale | dirty | TI-003 "Market criminal sales" |
+| territory corner income | dirty | TI-003, once its payout caller migrated |
+| shark note returned / enforced | dirty | canon `addDirtyCash` (6569, 7997) |
+
+Spends carry a policy rather than a bucket. Rent and the phone bill are
+`HIGH_VISIBILITY_CLEAN_FIRST` because TI-003 §6 names them; the clinic is too,
+because §6 delegates "formal Recovery spending" to Recovery to declare and a
+clinic bills you. First aid and the No-Questions Doctor are routine — the second
+one is *named* for not generating a record, which is what dirty money is for.
+
+### Deshawn applies once, and it is grep-checkable
+
+The real risk in this migration: if `HeatSystem` scales by the crew multiplier
+and a migrated caller still scales by it too, Deshawn double-counts and nothing
+obviously breaks — 10 raw heat becomes 6.4 instead of 8.0.
+
+So every caller had its own lookup **deleted** rather than left alone. Both
+`_apply_heat` copies are gone, and `shark.gd` and `territory.gd` no longer fetch
+a multiplier at all. `systems/heat.gd` is now the only file in the codebase that
+calls `crew.heat_multiplier()` to apply it, and a parity check asserts the caller
+list is exactly `{crew.gd, heat.gd, ui/screens/crew.gd}` — the owner, the one
+consumer, and the screen that displays it as a number.
+
+The numeric coverage runs ranks 1, 2, 3, **4 and 7**. Above rank 3 the curve
+holds rank 3's 0.40 rather than falling back to neutral, which is a bug crew.gd
+already fixed once: a promotion must not silently remove the reduction he earned.
+
+### Relief bypasses the gain pipeline
+
+`apply_relief` does not call `_gain_multiplier()` — not "multiplies by 1.0", does
+not call it. If relief went through Deshawn, having him on the crew would make
+Lay Low work *less well*, which inverts his whole purpose. TI-003 lists this at
+regression #15 and the check measures the identical relief with him present and
+absent.
+
+### The district table ships as data and is deliberately not wired
+
+TI-003 §7 authors a district × family heat multiplier table. It is in
+`systems/heat.gd`, complete, and covered by nine pinned checks — and
+`apply_gain` does not consult it. Wiring it would change what every stickup and
+boost costs, which is a balance change to a shipped formula inside a refactor
+whose acceptance criterion is that current source outcomes are preserved. The
+multipliers also only mean anything beside District Pressure (§8), which is
+FS-003.9. `_district_scaling_enabled` is the one line that slice flips, and a
+check asserts it is still inert today.
+
+### A bug in FS-003.2's tests: six checks that never ran
+
+`post_settle_hooks` is declared `Array[Callable]`. FS-003.2's own tests
+registered hooks by assigning an untyped array literal — `lifecycle.post_settle_hooks = [probe]`
+— which does not convert, raises at runtime, and **aborts the enclosing check
+function**. The suite reported 7726 checks and 0 failures while six of its checks
+had never once executed, including every assertion that a hook runs at all.
+
+This slice depends on those hooks, so the trap is closed rather than worked
+around: registration is `add_post_settle_hook()` / `add_day_start_hook()` /
+`clear_hooks()`, the typing stays, and no caller has to know why the literal form
+fails. The recovered checks are why the floor rises by 163 while the section
+adds 157.
+
+This is `MIN_CHECKS` doing precisely the job it was added for — the floor moving
+up by *more* than the checks added is the tell.
+
+### The reload window, named rather than discovered later
+
+The buckets are **not persisted this slice** — that is FS-003.4, with the schema
+bump and the migration arm. So a save/load round trip reclassifies the whole
+balance as clean, which in provenance terms is a laundromat.
+
+It ships that way because nothing reads provenance to make a decision yet:
+Financial Pressure accumulates but is not consumed until FS-003.9, and no system
+asks which bucket a dollar came from. Unobservable in play, closed by the next
+slice, and written down here rather than found later.
+
+### The migration rule diverges from canon, deliberately
+
+Canon classifies its own pre-split saves as **dirty** (game-core.js:2060-2066):
+*"nothing in pre-v1.0 gameplay ever laundered anything, so this is the
+narratively honest default."*
+
+TI-003 §20 and §26 rule the opposite for this port: *"Old Godot saves enter with
+prior aggregate Cash classified Clean."* TI-003 is the approved implementation
+contract and wins, so `WalletSystem.classify_legacy_total()` sets clean and
+zeroes dirty. Both readings are in that function's docstring, in one place, so
+the divergence is a decision on the record rather than an accident.
+
+### Verification
+
+- Parity **7889 / 0**, `MIN_CHECKS` 7726 → 7889.
+- **28 sabotages, all red**, every one reverted — writer audits, policy matrices,
+  Deshawn double-application, relief through the multipliers, clamp reporting,
+  reconcile direction, legacy classification, per-source provenance, RNG drift,
+  and the hook-registration fix itself.
+- Glyph coverage passes.
+- All **20 screens** instantiate and bind headless with **zero** script errors
+  (`tests/smoke/screen_smoke.tscn`, added here because this checklist item
+  previously needed the editor MCP and could not be run headless).
+- Dispatch-guard warnings unchanged at **2**. (The brief expected 4; the
+  ownership test exercises Exposure's two mutators only. Curtis's three are
+  guarded but untested — filed, not fixed here.)
+- `rng_state` non-drift asserted around both owners, and the market walk asserted
+  to still move it so the check cannot pass on a field that never changes.
+
 ## FS-003.2: the night gets an order  (added 2026-08-21)
 
 Two things: the Boost heat divergence FS-003.1 froze is corrected, and night

@@ -25,10 +25,13 @@ extends RefCounted
 
 var gs: Node
 var rng: Node
+## Reached for the wallet. Buying and selling product both move cash.
+var gm: Node
 
-func setup(game_state: Node, rng_manager: Node) -> void:
+func setup(game_state: Node, rng_manager: Node, manager: Node) -> void:
 	gs = game_state
 	rng = rng_manager
+	gm = manager
 
 func can_handle(action: String) -> bool:
 	return action == "market_buy" or action == "market_sell" or action == "market_evolve"
@@ -137,7 +140,8 @@ func _buy(p: Dictionary) -> Dictionary:
 		return {"ok": false, "reason": "Not enough cash."}
 	if gs.cargo_used() + qty > gs.cargo_max:
 		return {"ok": false, "reason": "Cargo full."}
-	gs.cash -= cost
+	var wallet: Object = gm.system("wallet")
+	wallet.spend(cost, wallet.ROUTINE_DIRTY_FIRST, {"source_id": "market_buy_%s" % id})
 	gs.inventory[id] = int(gs.inventory.get(id, 0)) + qty
 	market["availability"][id] = available - qty
 	return {"ok": true}
@@ -153,7 +157,10 @@ func _sell(p: Dictionary) -> Dictionary:
 	var have: int = int(gs.inventory.get(id, 0))
 	if have < qty:
 		return {"ok": false, "reason": "Not enough to sell."}
-	gs.cash += int(prod.price) * qty
+	# TI-003 §6 Dirty: "Market criminal sales".
+	var wallet: Object = gm.system("wallet")
+	wallet.credit(int(prod.price) * qty, wallet.DIRTY,
+		{"source_id": "market_sell_%s" % id})
 	var left: int = have - qty
 	if left <= 0:
 		gs.inventory.erase(id)

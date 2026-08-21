@@ -40,6 +40,20 @@ var current_district_id: String = "north_star_lot"
 
 # --- Player stats (value / max) -------------------------------------------
 var cash: int = 847
+# Money provenance (TI-003 §5-6). `cash` above stays the one visible total and
+# the one number every blocker checks; these two ride underneath it, and
+# WalletSystem holds the invariant `cash == dirty_cash + clean_cash`.
+#
+# NOT in PERSIST_FIELDS yet — persisting them is FS-003.4, which also carries
+# the schema bump and the migration arm. Until then SaveSystem classifies the
+# loaded aggregate through `WalletSystem.classify_legacy_total()`, which is the
+# same rule that arm will apply. The defaults below match the `cash` default so
+# a fresh GameState is already balanced.
+var dirty_cash: int = 0
+var clean_cash: int = 847
+# Accumulated by high-visibility dirty spending (TI-003 §6). The decay-and-fold
+# rollover that reads it is §17, which is FS-003.9. Nothing reads it yet.
+var financial_pressure: int = 0
 # Heat is fractional. Canon carries it as a float and logs it to one decimal
 # (`Math.round(addedHeat * 10) / 10`), and it has to stay fractional here or the
 # multipliers that scale it round away to nothing — Deshawn's 0.80 against a
@@ -275,6 +289,14 @@ func reset_to_new_game() -> void:
 	time_slots_today = 0
 	current_district_id = "north_star_lot"
 	cash = 100
+	# Canon's START_RUN classifies starting funds clean, and TI-003 §6 lists
+	# "starting funds" under Clean income. Set alongside `cash` rather than
+	# through the wallet: this is initialization, which is one of the audit's
+	# named exceptions, and the wallet is not constructed yet on a title-screen
+	# reset.
+	dirty_cash = 0
+	clean_cash = 100
+	financial_pressure = 0
 	heat = 0.0
 	health = 100
 	debt = 0

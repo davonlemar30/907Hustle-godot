@@ -175,7 +175,10 @@ func _work(approach_id: String) -> Dictionary:
 	var payout: int = rng.seeded_int_range(gs.run_seed, key, int(band["min"]), int(band["max"]))
 	payout = int(round(float(payout) * float(approach["pay_mult"])))
 
-	gs.cash += payout
+	# TI-003 §6 Clean: "legal job wages". Canon agrees — WORK_JOB is one of the
+	# only two `addCleanCash` call sites in the whole build (game-core.js:7311).
+	gm.system("wallet").credit(payout, gm.system("wallet").CLEAN,
+		{"source_id": "job_%s" % job_id})
 	gs.health = clampi(gs.health + int(approach["health"]), 1, gs.health_max)
 
 	var rec: Dictionary = gs.job_records[job_id]

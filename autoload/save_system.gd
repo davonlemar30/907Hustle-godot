@@ -375,6 +375,34 @@ func _apply(state: Dictionary) -> void:
 		var id := str(prod.id)
 		if prices.has(id):
 			prod.price = clampi(int(prices[id]), int(prod.min), int(prod.max))
+	_classify_loaded_wallet(state)
+
+## Split the loaded aggregate Cash into its provenance buckets.
+##
+## FS-003.3 introduces `dirty_cash` / `clean_cash` but does NOT persist them —
+## that is FS-003.4, together with the schema bump and a versioned arm. So every
+## save that loads today is, by definition, a save from before the split, and
+## every one of them gets the legacy rule.
+##
+## The rule itself lives in WalletSystem, not here, because it is a design
+## decision rather than a serialisation detail — and one where TI-003 §20/§26
+## ("Old Godot saves enter with prior aggregate Cash classified Clean")
+## deliberately rules the opposite way from canon. One function, one place to
+## read why. See systems/wallet.gd.
+##
+## When FS-003.4 adds the buckets to PERSIST_FIELDS, this becomes conditional on
+## their absence and the migration arm calls the same classifier.
+func _classify_loaded_wallet(_state: Dictionary) -> void:
+	var gm: Node = get_node_or_null("/root/GameManager")
+	var wallet: Object = gm.system("wallet") if gm != null else null
+	if wallet == null:
+		# No manager yet (a load driven before systems exist). The buckets stay
+		# at their GameState defaults and the wallet's own `reconcile()` folds
+		# the difference on its next mutation — dirty-first, canon's rule. Worth
+		# saying out loud: that is the ONE path where a legacy total can land in
+		# the dirty bucket, and it is unreachable from the running game.
+		return
+	wallet.classify_legacy_total()
 
 func _deep(value: Variant) -> Variant:
 	if value is Dictionary:

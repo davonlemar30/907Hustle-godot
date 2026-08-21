@@ -101,16 +101,20 @@ func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node,
 ## Takes a float since the tier conversion: clean halves the target's heat and
 ## catastrophic multiplies it by 1.5, and rounding either to an int here is what
 ## would flatten the difference between them on a 1-heat target.
+##
+## The scaling itself is gone from this file. It lived here AND in boost.gd, in
+## identical copies, and both now route through the one owner (TI-003 §7). This
+## does no multiplication of its own — that is what keeps Deshawn applying once.
 func _apply_heat(amount: float) -> float:
-	var mult: float = 1.0
-	var crew: Object = gm.system("crew") if gm != null else null
-	if crew != null:
-		mult = crew.heat_multiplier()
-	# Kept fractional deliberately: rounding here is what made the reduction
-	# invisible on small amounts.
-	var scaled: float = amount * mult if amount > 0.0 else 0.0
-	gs.heat = clampf(gs.heat + scaled, 0.0, float(gs.heat_max))
-	return scaled
+	var heat: Object = gm.system("heat") if gm != null else null
+	if heat == null:
+		return 0.0
+	return heat.apply_gain(amount, heat.FAMILY_STICK, gs.current_district_id,
+		{"source_id": "stickup"})
+
+## The shared cash owner. A stickup take is dirty money by definition.
+func _wallet() -> Object:
+	return gm.system("wallet")
 
 func _curtis() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
@@ -202,7 +206,7 @@ func _run(target_id: String) -> Dictionary:
 	if success:
 		var band: Array = t["take"]
 		var take: int = rng.seeded_int_range(gs.run_seed, key + ":take", int(band[0]), int(band[1]))
-		gs.cash += take
+		_wallet().credit(take, _wallet().DIRTY, {"source_id": "stickup_take"})
 		# A clean take is half the heat of a loud one: the money moved and
 		# nobody watched you struggle for it.
 		applied = _apply_heat(float(t["heat"]) * (0.5 if tier == "clean" else 1.0))

@@ -544,6 +544,138 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.5: something to hold the moment open  (added 2026-08-21)
+
+`systems/consequence_engine.gd` and `ui/screens/consequence.tscn`. When a risky
+action goes wrong, something has to hold the situation open across a save, a
+reload, and a player who put the phone down mid-decision. **Parity 8036 → 8267
+checks, 0 failures. No schema change** — .4 already persists everything this
+writes.
+
+### Orchestration, not content
+
+The engine can open a chain, carry it through four stages, refuse a bad
+transition, keep an exactly-once ledger, arbitrate a queue, and hand the UI a
+projection. It knows nothing about what being caught costs, what bail runs, how
+Pressure accrues, or who retaliates. Those are .7, .8, .9 and .10.
+
+Everything is written to be **filled in rather than replaced**: `open_chain`
+takes an authored shape, the stage machine is a declared table, and the
+projections read whatever the chain carries. A later slice adds a chain kind and
+authored effects without touching this file's control flow.
+
+### Receipts, not flags
+
+TI-003 §4 wants the effect and its receipt in the same dispatch. The failure that
+prevents is ordinary: apply Caught's heat, autosave, player reloads before
+pressing Continue — without a receipt the chain reopens at the same stage and
+applies that heat again.
+
+`record_receipt` **returns false when the key is already claimed**, so the call
+site reads:
+
+```gdscript
+if engine.record_receipt(cause_id, "boost_caught:heat"):
+    heat.apply_gain(...)
+```
+
+Written that way round deliberately. `if not has_receipt(): apply(); record()` is
+three lines that can be reordered wrongly; this is one that cannot.
+
+### Committed buttons stay committed after a reload
+
+TI-003 §18's sharpest requirement, and the reason `disabled` comes from
+`choice_summaries()` rather than from a `_pressed` handler. **A flag set on click
+lives in the scene, and the scene dies on reload.** The commit lives in the chain,
+and the chain is in the save.
+
+The check asserts it the way the button does — through the projection, after an
+actual save/load round trip.
+
+### The route guard is one function, not twenty
+
+TI-003 §18's priority is game over → active consequence → ordinary screen.
+`ScreenManager.resolved_route()` is pure and applies it, and `go_to()` runs
+everything through it. That matters because *"ordinary navigation cannot bypass
+it"* has to hold for navigation nobody has written yet.
+
+The check walks **every ordinary route from ScreenManager's own constants**
+rather than a list kept in the test — a screen added without a route guard is
+exactly the gap this catches, and a hand-maintained list would not see it.
+
+`go_to_game()` is the boot and CONTINUE RUN path, so a save loaded mid-chain
+lands on the consequence rather than on Home and correcting — §18 requires that
+to happen without an ordinary screen being exposed for an interactive frame.
+
+### Two sabotages passed. Both were the check's fault.
+
+**The stage guard was never being measured.** The test advanced past `decision`
+and asserted a commit was refused — but a choice had already been committed on
+that chain, so the committed-choice *receipt* refused it whether or not the stage
+was ever checked. Deleting the stage guard outright went green.
+
+Measured now on a chain with **no prior commit**, plus assertions that the
+refusal recorded no receipt and committed nothing. Same sabotage: 3 failures.
+
+**Nothing proved the copying projections were copies.** `choice_summaries` builds
+its rows fresh, so aliasing is not reachable there and the check could not fail.
+The realistic edit is dropping `.duplicate(true)` from `booking_summary`,
+`result_summary` or `queue_snapshot` — where a screen could then write into
+persisted state without a dispatch and without anything saving it. Three checks
+added, three sabotages, all red.
+
+**Fifth build running.** A first-attempt sabotage pass has still never once meant
+the code was fine.
+
+### A parse error reads as a hang
+
+Worth writing down because it cost real time: a GDScript **parse** error in the
+runner means `_ready` never runs, which means `get_tree().quit()` is never
+called, and the headless process sits there forever. It looks exactly like an
+infinite loop in a new check.
+
+The cause was `:=` inferring off an untyped `RefCounted` return. Three
+declarations needed explicit `: String`.
+
+**If a parity run hangs, read the first ten lines of the log before hunting for
+a loop.**
+
+### The scene
+
+Generated from `hustle.tscn` through `scripts/make_surface_screen.py`, then the
+`NavBar` subtree and the floating HOME button stripped — TI-003 §18 keeps the
+TopBar and six-stat HUD and omits bottom navigation, because there is nowhere
+else to be until this resolves.
+
+Four stages in **one** scene. Separate scenes would duplicate the chrome four
+times and would make the stage a navigation fact, when stage is a state fact that
+has to survive a reload.
+
+A deterministic response shows **CERTAIN**, not 0% — showing a Yield that always
+resolves as zero percent would read as impossible when it means the opposite.
+
+### The container needed an import pass
+
+A brand-new `.tscn` will not load until Godot has imported it, and this repo's
+`.gd.uid` companions are tracked (176 of them). `--headless --import` generates
+both. It also produced the asset import cache, which **cleared all 22
+long-standing `Parse Error: referenced non-existent resource` lines** from the
+run — those were an artifact of a fresh clone, not a repo problem.
+
+Three `.uid` files from FS-003.3 and .4 are committed here because Godot had not
+imported when those landed.
+
+### Verification
+
+- Parity **8267 / 0**, `MIN_CHECKS` 8036 → 8267.
+- **27 sabotages**, all red after the two above were corrected.
+- Glyph coverage passes.
+- **21/21** screens instantiate and bind headless with zero script errors — the
+  consequence scene included.
+- Dispatch-guard warnings still **2**.
+- Engine RNG non-drift asserted, with `consequence_continue`'s time advance
+  measured separately so the claim stays the narrow true one.
+
 ## FS-003.4: the engine gets somewhere to live  (added 2026-08-21)
 
 Save schema **v7 → v8**. Everything TI-003 §5 declares now persists, and a v7

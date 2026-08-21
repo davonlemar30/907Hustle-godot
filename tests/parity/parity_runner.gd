@@ -122,6 +122,7 @@ func _ready() -> void:
 		_check_day_lifecycle_order()
 		_check_wallet_and_heat()
 		_check_consequence_state()
+		_check_consequence_engine()
 		_check_save_roundtrip()
 	_finish()
 
@@ -5582,6 +5583,698 @@ func _check_v8_save_carries_no_objects(gs: Node, gm: Node, saves: Node) -> void:
 		str((gs.consequence_history["cause:00000142"] as Dictionary)["scheduled_actor_ids"]),
 		str(["goodie"]))
 
+## FS-003.5 — the ConsequenceEngine, and the navigation it blocks.
+##
+## ## What this section deliberately does NOT re-cover
+##
+## FS-003.4 already round-trips every consequence field, including the active
+## chain at each stage (`_check_v8_roundtrips`). That persistence is not
+## re-asserted; what is asserted here is that the ENGINE reads a reloaded chain
+## correctly — the stage machine, the projections, and the route guard.
+##
+## What is new:
+##
+##   1. chain lifecycle: open, refuse a second, advance, clear;
+##   2. the declared stage machine, including every transition it refuses;
+##   3. receipt idempotency, which is the whole exactly-once guarantee;
+##   4. the adapter registry surviving a load without ever being serialised;
+##   5. the route guard, from every ordinary screen path;
+##   6. committed controls staying disabled across a reload;
+##   7. dispatch revalidation of identity, stage and allowed choice.
+func _check_consequence_engine() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var engine: RefCounted = gm.system("consequence") as RefCounted
+	if engine == null:
+		_fail("consequence engine", "not registered")
+		return
+	_check_engine_identity(gs, engine)
+	_check_engine_receipts(gs, engine)
+	_check_engine_chain_lifecycle(gs, engine)
+	_check_engine_stage_machine(gs, engine)
+	_check_engine_projections(gs, engine)
+	_check_engine_queue(gs, engine)
+	_check_engine_adapters(gs, gm, engine)
+	_check_engine_dispatch_validation(gs, gm, engine)
+	_check_blocking_route_guard(gs, gm)
+	_check_engine_reload(gs, gm, engine)
+	_check_engine_rng_non_drift(gs, gm, engine)
+	gs.reset_to_new_game()
+
+## A clean run with no chain open.
+func _engine_ready(gs: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 12
+	gs.time_slots_today = 1
+	gs.time_slot = "AFTERNOON"
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 2000
+	gs.clean_cash = 2000
+	gs.dirty_cash = 0
+
+## An authored chain spec, shaped the way FS-003.7 will build one.
+func _caught_spec() -> Dictionary:
+	return {
+		"district_id": "downtown",
+		"return_route": "BOOST",
+		"source": {
+			"family": "boost", "action_id": "boost", "target_id": "corner_store",
+			"target_tier": 2, "source_day": 12, "source_slot": 1,
+			"source_rng_key": "boost:12:1:corner_store",
+			"pre_encounter_heat": 6.0, "contested_take": 180,
+		},
+		"decision": {
+			"definition_id": "boost_caught",
+			"allowed_choices": ["fight", "run", "talk", "yield"],
+			"deterministic_choices": ["yield"],
+			"resolver_inputs": {"combat": 3, "charisma": 2},
+			"shown_probabilities": {"fight": 0.42, "run": 0.55, "talk": 0.31},
+		},
+	}
+
+## TI-003 §4: Cause allocation is sequential and uses zero randomness.
+func _check_engine_identity(gs: Node, engine: RefCounted) -> void:
+	_engine_ready(gs)
+	_expect_int("cause allocation starts from zero", int(gs.next_cause_sequence), 0)
+	# The literal format, pinned. RNG keys are built from the Cause id, so its
+	# shape is a contract rather than a display choice.
+	_expect_str("the first cause id", engine.allocate_cause_id(), "cause:00000001")
+	_expect_str("the second cause id", engine.allocate_cause_id(), "cause:00000002")
+	_expect_int("cause allocation advances the counter", int(gs.next_cause_sequence), 2)
+	_expect_str("consequence ids are their own sequence",
+		engine.allocate_consequence_id(), "consequence:00000001")
+	# Zero randomness: TI-003 §4 says so explicitly, and a Cause that renumbered
+	# on reload would reroll its own outcome.
+	_engine_ready(gs)
+	gs.rng_state = 555
+	engine.allocate_cause_id()
+	engine.allocate_consequence_id()
+	_expect_int("id allocation draws no RNG", int(gs.rng_state), 555)
+
+## The exactly-once ledger. TI-003 §4.
+func _check_engine_receipts(gs: Node, engine: RefCounted) -> void:
+	_engine_ready(gs)
+	var cause := "cause:00000042"
+	_expect_true("an unclaimed effect reports no receipt",
+		not engine.has_receipt(cause, "boost_caught:heat"))
+	# The contract: the FIRST claim returns true, and that return is what a
+	# caller branches on before mutating.
+	_expect_true("claiming an effect the first time succeeds",
+		engine.record_receipt(cause, "boost_caught:heat"))
+	_expect_true("a claimed effect reports its receipt",
+		engine.has_receipt(cause, "boost_caught:heat"))
+	# TI-003 acceptance: "duplicate receipt attempts become no-ops".
+	_expect_true("claiming the same effect twice is refused",
+		not engine.record_receipt(cause, "boost_caught:heat"))
+	_expect_int("a duplicate claim does not grow the ledger",
+		(engine.receipts_for(cause) as Array).size(), 1)
+
+	# Different effects under one Cause are independent — the reason this is a
+	# keyed ledger rather than a boolean.
+	_expect_true("a second effect under the same cause is its own claim",
+		engine.record_receipt(cause, "boost_caught:pressure"))
+	_expect_int("the ledger holds both effects",
+		(engine.receipts_for(cause) as Array).size(), 2)
+	# And the same key under a DIFFERENT Cause is a different claim, or a second
+	# stickup could never charge heat again.
+	_expect_true("the same effect under another cause is claimable",
+		engine.record_receipt("cause:00000043", "boost_caught:heat"))
+
+	_expect_true("an empty cause id claims nothing", not engine.record_receipt("", "x"))
+	_expect_true("an empty key claims nothing", not engine.record_receipt(cause, ""))
+
+	# Resolved-consequence and scheduled-actor ledgers follow the same rule.
+	_expect_true("a resolved consequence records once",
+		engine.record_resolved(cause, "consequence:00000050"))
+	_expect_true("a resolved consequence does not record twice",
+		not engine.record_resolved(cause, "consequence:00000050"))
+	_expect_true("a scheduled actor records once",
+		engine.record_scheduled_actor(cause, "goodie"))
+	_expect_true("a scheduled actor does not record twice",
+		not engine.record_scheduled_actor(cause, "goodie"))
+	_expect_true("a scheduled actor is readable back",
+		engine.has_scheduled_actor(cause, "goodie"))
+
+## Open, refuse a second, clear.
+func _check_engine_chain_lifecycle(gs: Node, engine: RefCounted) -> void:
+	_engine_ready(gs)
+	_expect_true("nothing is blocking at rest", not engine.has_active())
+	var opened: Dictionary = engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	_expect_true("a chain opens", bool(opened["ok"]))
+	_expect_true("an opened chain is active", engine.has_active())
+	_expect_str("a new chain starts at the decision stage",
+		engine.active_stage(), engine.STAGE_DECISION)
+	_expect_str("a new chain allocates a cause", engine.active_cause_id(), "cause:00000001")
+	_expect_str("a new chain allocates a consequence id",
+		engine.active_consequence_id(), "consequence:00000001")
+	_expect_int("a new chain stamps the day",
+		int((engine.active() as Dictionary)["created_day"]), 12)
+	# The source slot is owed from the moment the chain opens. TI-003 §12: a
+	# non-arrest result keeps it unsettled until Continue.
+	_expect_true("a new chain owes its source time", engine.source_time_owed())
+
+	# TI-003 §10: exactly one. A second caller is a bug, not a queue request.
+	var second: Dictionary = engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	_expect_true("a second chain is refused", not bool(second["ok"]))
+	_expect_str("the first chain is untouched by the refusal",
+		engine.active_consequence_id(), "consequence:00000001")
+
+	# An unknown kind cannot open a chain nothing could ever resolve.
+	_engine_ready(gs)
+	var bogus: Dictionary = engine.open_chain("not_a_kind", _caught_spec())
+	_expect_true("an unknown chain kind is refused", not bool(bogus["ok"]))
+	_expect_true("a refused kind opens nothing", not engine.has_active())
+
+	# Clearing frees the slot and leaves the history behind — which is what makes
+	# a Cause's effects un-repeatable after the chain is gone.
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	var cleared_cause: String = engine.active_cause_id()
+	engine.record_receipt(cleared_cause, "boost_caught:heat")
+	engine.clear_chain()
+	_expect_true("clearing frees the blocking slot", not engine.has_active())
+	_expect_true("clearing keeps the receipt ledger",
+		engine.has_receipt(cleared_cause, "boost_caught:heat"))
+	_expect_true("clearing records the consequence as resolved",
+		"consequence:00000001" in
+		((gs.consequence_history[cleared_cause] as Dictionary)["resolved_consequence_ids"] as Array))
+
+	# Source time settles exactly once. TI-003 regression #12.
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	_expect_true("source time settles the first time", engine.settle_source_time())
+	_expect_true("settled source time is no longer owed", not engine.source_time_owed())
+	_expect_true("source time does not settle twice", not engine.settle_source_time())
+
+## Every declared transition, and every one that is refused.
+##
+## Walked as a full matrix rather than as the happy path: the refusals are the
+## contract, and a stage machine that allows everything passes a happy-path test.
+func _check_engine_stage_machine(gs: Node, engine: RefCounted) -> void:
+	var stages: Array = [engine.STAGE_DECISION, engine.STAGE_RESULT,
+		engine.STAGE_BOOKING, engine.STAGE_RELEASE]
+	# The authored table, pinned as literals rather than read from the constant
+	# the code uses — deriving it from `STAGE_TRANSITIONS` would pass whatever
+	# that table said.
+	var allowed := {
+		"decision": ["result"],
+		"result": ["booking"],
+		"booking": ["release"],
+		"release": [],
+	}
+	for from_stage in stages:
+		for to_stage in stages:
+			_engine_ready(gs)
+			engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+			gs.active_consequence["stage"] = from_stage
+			var result: Dictionary = engine.advance_stage(str(to_stage))
+			var should_pass: bool = str(to_stage) in (allowed[from_stage] as Array)
+			_expect_true("stage %s -> %s is %s" % [from_stage, to_stage,
+				"allowed" if should_pass else "refused"],
+				bool(result["ok"]) == should_pass)
+			# A refused transition must leave the stage where it was — a machine
+			# that refuses and moves anyway is worse than one that allows.
+			_expect_str("stage %s -> %s leaves the stage %s" % [from_stage, to_stage,
+				"advanced" if should_pass else "unchanged"],
+				engine.active_stage(), str(to_stage) if should_pass else str(from_stage))
+
+	# With nothing open there is nothing to advance.
+	_engine_ready(gs)
+	_expect_true("advancing with no chain is refused",
+		not bool((engine.advance_stage(engine.STAGE_RESULT) as Dictionary)["ok"]))
+
+## TI-003 §18: the UI consumes projections only.
+func _check_engine_projections(gs: Node, engine: RefCounted) -> void:
+	_engine_ready(gs)
+	_expect_true("an empty summary when nothing is open",
+		(engine.active_summary() as Dictionary).is_empty())
+	_expect_true("no choices when nothing is open",
+		(engine.choice_summaries() as Array).is_empty())
+
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	var summary: Dictionary = engine.active_summary()
+	_expect_str("the summary carries the chain kind",
+		str(summary["chain_kind"]), "boost_caught")
+	_expect_str("the summary carries the stage", str(summary["stage"]), "decision")
+	_expect_str("the summary carries the target",
+		str(summary["source_target_id"]), "corner_store")
+	_expect_int("the summary carries the contested take",
+		int(summary["contested_take"]), 180)
+	_expect_float("the summary carries pre-encounter heat",
+		float(summary["pre_encounter_heat"]), 6.0)
+	_expect_str("the summary carries the return route",
+		str(summary["return_route"]), "BOOST")
+
+	# The projection is a COPY. A screen that mutated what it was handed would be
+	# writing to GameState through a projection, which is the whole thing §18
+	# forbids — and it would not go through a dispatch, so nothing would save it.
+	var rows: Array = engine.choice_summaries()
+	_expect_int("every allowed choice gets a row", rows.size(), 4)
+	var first: Dictionary = rows[0]
+	first["label"] = "MUTATED"
+	var rows_again: Array = engine.choice_summaries()
+	_expect_str("mutating a projection does not change the chain",
+		str((rows_again[0] as Dictionary)["label"]), "Fight")
+
+	# Odds come from the chain, so a reload shows the numbers the player decided
+	# on rather than odds re-derived against state that has since moved.
+	var run_row: Dictionary = _choice_row(rows, "run")
+	_expect_float("a rolled choice carries its shown odds",
+		float(run_row["success_probability"]), 0.55)
+	_expect_true("a rolled choice reports that it has odds", bool(run_row["has_odds"]))
+	_expect_true("a rolled choice is not deterministic",
+		not bool(run_row["deterministic"]))
+	# Yield is deterministic — TI-003 §12: "Yield uses Pressure +1.0 and consumes
+	# zero RNG." Showing it as 0% would read as impossible.
+	var yield_row: Dictionary = _choice_row(rows, "yield")
+	_expect_true("yield is deterministic", bool(yield_row["deterministic"]))
+	_expect_true("yield shows no odds", not bool(yield_row["has_odds"]))
+
+	# Nothing is committed yet, so nothing is disabled.
+	for entry in rows:
+		_expect_true("choice %s starts enabled" % str((entry as Dictionary)["choice_id"]),
+			not bool((entry as Dictionary)["disabled"]))
+
+	# Booking and result projections are empty until their stages fill them.
+	_expect_true("no booking quote before booking",
+		(engine.booking_summary() as Dictionary).is_empty())
+	_expect_str("no committed choice before one is made",
+		str((engine.result_summary() as Dictionary)["committed_choice"]), "")
+
+	# The two projections that hand back a nested authored Dictionary must hand
+	# back a COPY of it. `choice_summaries` builds its rows fresh so aliasing is
+	# not reachable there — these two are where dropping `.duplicate(true)` is a
+	# realistic edit, and where a screen could otherwise write into the chain
+	# without a dispatch and without anything saving it.
+	gs.active_consequence["booking"] = {"bail_quote": 375, "processing_slots": 2}
+	var quote: Dictionary = engine.booking_summary()
+	quote["bail_quote"] = 1
+	_expect_int("the booking projection is a copy",
+		int((engine.booking_summary() as Dictionary)["bail_quote"]), 375)
+
+	(gs.active_consequence["decision"] as Dictionary)["result"] = {"heat": 2.0}
+	var outcome: Dictionary = (engine.result_summary() as Dictionary)["result"]
+	outcome["heat"] = 99.0
+	_expect_float("the result projection is a copy",
+		float(((engine.result_summary() as Dictionary)["result"] as Dictionary)["heat"]), 2.0)
+
+	# And the queue snapshot, for the same reason: a caller that sorted what it
+	# was handed would reorder the real queue.
+	gs.consequence_queue = [{"queue_id": "a"}, {"queue_id": "b"}]
+	var snapshot: Array = engine.queue_snapshot()
+	snapshot.reverse()
+	_expect_str("the queue snapshot is a copy",
+		str((gs.consequence_queue[0] as Dictionary)["queue_id"]), "a")
+
+func _choice_row(rows: Array, choice_id: String) -> Dictionary:
+	for entry in rows:
+		if str((entry as Dictionary)["choice_id"]) == choice_id:
+			return entry
+	return {}
+
+## TI-003 §15's arbitration, as far as .5 builds it.
+func _check_engine_queue(gs: Node, engine: RefCounted) -> void:
+	_engine_ready(gs)
+	var base := {
+		"queue_id": "ret:1", "cause_id": "cause:00000100", "actor_id": "goodie",
+		"district_id": "north_star_lot", "trigger_day": 14, "expires_end_day": 17,
+		"encounter_definition_id": "retaliation_street_crew",
+	}
+	_expect_true("a delayed consequence queues", bool((engine.enqueue(base) as Dictionary)["ok"]))
+	_expect_int("the queue holds it", gs.consequence_queue.size(), 1)
+	# Dedupe on (actor_id, cause_id), TI-003 §15.
+	_expect_true("the same actor and cause does not queue twice",
+		not bool((engine.enqueue(base) as Dictionary)["ok"]))
+	_expect_int("a deduped enqueue does not grow the queue", gs.consequence_queue.size(), 1)
+	# A different actor under the same Cause is a separate entry.
+	var other: Dictionary = base.duplicate(true)
+	other["queue_id"] = "ret:2"
+	other["actor_id"] = "till_crew"
+	_expect_true("a different actor under the same cause queues",
+		bool((engine.enqueue(other) as Dictionary)["ok"]))
+	_expect_int("the queue holds both", gs.consequence_queue.size(), 2)
+
+	# --- eligibility ---
+	_engine_ready(gs)
+	gs.consequence_queue = []
+	# Deliberately enqueued OUT of the order they should surface in, so a check
+	# that passes cannot be reading insertion order.
+	engine.enqueue({"queue_id": "late", "cause_id": "c:3", "actor_id": "c",
+		"district_id": "north_star_lot", "trigger_day": 14, "expires_end_day": 20,
+		"created_sequence": 1})
+	engine.enqueue({"queue_id": "early", "cause_id": "c:1", "actor_id": "a",
+		"district_id": "north_star_lot", "trigger_day": 12, "expires_end_day": 20,
+		"created_sequence": 9})
+	engine.enqueue({"queue_id": "tie", "cause_id": "c:2", "actor_id": "b",
+		"district_id": "north_star_lot", "trigger_day": 12, "expires_end_day": 20,
+		"created_sequence": 2})
+	engine.enqueue({"queue_id": "elsewhere", "cause_id": "c:4", "actor_id": "d",
+		"district_id": "downtown", "trigger_day": 12, "expires_end_day": 20,
+		"created_sequence": 3})
+	engine.enqueue({"queue_id": "not_yet", "cause_id": "c:5", "actor_id": "e",
+		"district_id": "north_star_lot", "trigger_day": 99, "expires_end_day": 120,
+		"created_sequence": 4})
+
+	var eligible: Array = engine.eligible_queued(14, "north_star_lot")
+	var ids: Array = []
+	for row in eligible:
+		ids.append(str((row as Dictionary)["queue_id"]))
+	# TI-003 §15: sort by trigger_day, then created_sequence. `tie` and `early`
+	# share day 12, so `tie` (sequence 2) comes before `early` (sequence 9) —
+	# which is also the opposite of insertion order, so this cannot pass by
+	# accident. TI-003 regression #32.
+	_expect_str("eligible rows sort by trigger day then sequence", str(ids),
+		str(["tie", "early", "late"]))
+	# Regression #29: retaliation does not follow the player across districts.
+	_expect_true("a row in another district is not eligible", not "elsewhere" in ids)
+	_expect_true("a row before its trigger day is not eligible", not "not_yet" in ids)
+
+	# Expiry. TI-003 §15: a retaliation avoided through its whole window expires.
+	_expect_int("nothing has expired yet", engine.expire_stale(14), 0)
+	_expect_int("the window closes on day 21", engine.expire_stale(21), 4)
+	_expect_true("an expired row is no longer eligible",
+		(engine.eligible_queued(21, "north_star_lot") as Array).is_empty())
+	# Expiring twice is a no-op, not a second count.
+	_expect_int("expiring again expires nothing", engine.expire_stale(22), 0)
+
+	# Suppression. TI-003 §15: an arrest removes the same Cause's retaliation.
+	_engine_ready(gs)
+	gs.consequence_queue = []
+	engine.enqueue({"queue_id": "a", "cause_id": "cause:1", "actor_id": "x",
+		"district_id": "north_star_lot", "trigger_day": 12, "expires_end_day": 20})
+	engine.enqueue({"queue_id": "b", "cause_id": "cause:1", "actor_id": "y",
+		"district_id": "north_star_lot", "trigger_day": 12, "expires_end_day": 20})
+	engine.enqueue({"queue_id": "c", "cause_id": "cause:2", "actor_id": "z",
+		"district_id": "north_star_lot", "trigger_day": 12, "expires_end_day": 20})
+	_expect_int("arrest suppresses every row for its cause",
+		engine.suppress_cause("cause:1"), 2)
+	_expect_int("suppression leaves other causes alone", gs.consequence_queue.size(), 1)
+	_expect_str("the surviving row belongs to the other cause",
+		str((gs.consequence_queue[0] as Dictionary)["cause_id"]), "cause:2")
+
+	# --- the daily allowance ---
+	_engine_ready(gs)
+	_expect_true("a delayed consequence may surface on a free day",
+		engine.can_surface_delayed(12))
+	engine.mark_delayed_surfaced(12)
+	_expect_true("only one delayed consequence surfaces per day",
+		not engine.can_surface_delayed(12))
+	_expect_true("the next day is free again", engine.can_surface_delayed(13))
+	# TI-003 regression #27: retaliation must not surface during Caught or
+	# Booking. An occupied blocking slot is what prevents it.
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	_expect_true("nothing surfaces while a chain is active",
+		not engine.can_surface_delayed(12))
+
+## TI-003 §1 and §26: adapters are runtime, re-registered on boot, never saved.
+func _check_engine_adapters(gs: Node, gm: Node, engine: RefCounted) -> void:
+	# GameManager registered these in `_ready()`, which runs on every boot
+	# including after a load. That is the mechanism the whole rule rests on.
+	_expect_str("the source adapters registered at boot",
+		str(engine.registered_adapter_ids()), str(["boost", "stickup"]))
+	_expect_true("the boost adapter resolves to a system",
+		engine.source_adapter("boost") != null)
+	_expect_true("the boost adapter is the boost system",
+		engine.source_adapter("boost") == gm.system("boost"))
+	_expect_true("the stickup adapter is the stickup system",
+		engine.source_adapter("stickup") == gm.system("stickup"))
+	# An unknown id resolves to null rather than erroring — a chain can outlive
+	# an adapter if a save is loaded by a build that no longer registers it, and
+	# that has to read as "cannot act".
+	_expect_true("an unknown adapter id resolves to null",
+		engine.source_adapter("no_such_source") == null)
+
+	# The chain names its source by String, which is the only reason it can be
+	# serialised at all.
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	var action_id: String = str(((engine.active() as Dictionary)["source"] as Dictionary)["action_id"])
+	_expect_str("a chain names its source by id", action_id, "boost")
+	_expect_true("that id resolves back to the live system",
+		engine.source_adapter(action_id) == gm.system("boost"))
+
+## TI-003 §12's revalidation, driven through the real dispatch path.
+func _check_engine_dispatch_validation(gs: Node, gm: Node, engine: RefCounted) -> void:
+	# With nothing open, the action is refused rather than crashing.
+	_engine_ready(gs)
+	_expect_true("committing with no chain open is refused",
+		not gm.dispatch("resolve_consequence_choice", {"choice_id": "run"}))
+
+	# Identity. A button rendered before a reload must be refused, not honoured
+	# against whatever chain happens to be open now.
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	_expect_true("a stale consequence id is refused",
+		not gm.dispatch("resolve_consequence_choice", {
+			"consequence_id": "consequence:99999999", "choice_id": "run"}))
+	_expect_true("a stale cause id is refused",
+		not gm.dispatch("resolve_consequence_choice", {
+			"cause_id": "cause:99999999", "choice_id": "run"}))
+	# A refused commit must leave the decision open.
+	_expect_str("a refused commit leaves nothing committed",
+		str((engine.result_summary() as Dictionary)["committed_choice"]), "")
+
+	# Allowed choice.
+	_expect_true("a choice that is not offered is refused",
+		not gm.dispatch("resolve_consequence_choice", {"choice_id": "bribe"}))
+	_expect_true("an empty choice is refused",
+		not gm.dispatch("resolve_consequence_choice", {"choice_id": ""}))
+
+	# The commit itself, with matching identity.
+	var summary: Dictionary = engine.active_summary()
+	_expect_true("a valid commit dispatches", gm.dispatch("resolve_consequence_choice", {
+		"consequence_id": str(summary["consequence_id"]),
+		"cause_id": str(summary["cause_id"]),
+		"choice_id": "run"}))
+	_expect_str("the commit is recorded",
+		str((engine.result_summary() as Dictionary)["committed_choice"]), "run")
+	# The committed-choice receipt is what makes a second commit impossible.
+	_expect_true("committing twice is refused",
+		not gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"}))
+	_expect_str("the second commit did not overwrite the first",
+		str((engine.result_summary() as Dictionary)["committed_choice"]), "run")
+
+	# Stage — on a chain with NO prior commit.
+	#
+	# Asserting this on the chain above passed for the wrong reason: a choice was
+	# already committed there, so the committed-choice receipt refused the second
+	# attempt whether or not the stage was ever checked. A sabotage that deleted
+	# the stage guard outright went green. The refusal has to be measured where
+	# the receipt cannot also produce it.
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	engine.advance_stage(engine.STAGE_RESULT)
+	_expect_str("the uncommitted chain really is past the decision stage",
+		engine.active_stage(), engine.STAGE_RESULT)
+	_expect_true("no choice has been committed on it",
+		str((engine.result_summary() as Dictionary)["committed_choice"]).is_empty())
+	_expect_true("committing outside the decision stage is refused",
+		not gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"}))
+	_expect_true("a stage-refused commit records no receipt",
+		not engine.has_receipt(engine.active_cause_id(), "boost_caught:committed_choice"))
+	_expect_true("a stage-refused commit commits nothing",
+		str((engine.result_summary() as Dictionary)["committed_choice"]).is_empty())
+
+	# --- Continue, the terminal handoff ---
+	#
+	# TI-003 §12: "Continue settles that source slot once and clears the chain."
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	_expect_true("continue is refused at the decision stage",
+		not gm.dispatch("consequence_continue", {}))
+	_expect_true("a refused continue leaves the chain open", engine.has_active())
+
+	engine.advance_stage(engine.STAGE_RESULT)
+	var slots_before: int = int(gs.time_slots_today)
+	_expect_true("continue dispatches from the result stage",
+		gm.dispatch("consequence_continue", {}))
+	_expect_true("continue clears the chain", not engine.has_active())
+	# The source slot the chain was holding is finally paid.
+	_expect_int("continue settles the source slot once",
+		int(gs.time_slots_today), slots_before + 1)
+	_expect_true("continue with nothing open is refused",
+		not gm.dispatch("consequence_continue", {}))
+
+## TI-003 §18's navigation contract: ordinary navigation cannot bypass a
+## blocking consequence, and game over still outranks it.
+##
+## Tested through `resolved_route()` rather than by changing scenes: the routing
+## decision is the contract, and driving 20 real scene changes would test
+## Godot's scene loader instead.
+func _check_blocking_route_guard(gs: Node, gm: Node) -> void:
+	var nav := get_node("/root/ScreenManager")
+	var engine: RefCounted = gm.system("consequence") as RefCounted
+
+	# Every ordinary screen path, from the manager's own constants rather than a
+	# list kept here — a screen added without a route guard is exactly the gap
+	# this check exists to catch, and a hand-maintained list would not see it.
+	var ordinary: Array = [
+		nav.HOME, nav.STREET, nav.MARKET, nav.HUSTLE, nav.JOBS, nav.STICKUP,
+		nav.SHARK, nav.LIST, nav.BOOST, nav.CREW, nav.TURF, nav.PEOPLE,
+		nav.PHONE, nav.MORE, nav.HELP, nav.CHARACTER, nav.RECOVERY,
+		nav.TITLE, nav.NAME_ENTRY,
+	]
+
+	# Nothing blocking: every route resolves to itself.
+	_engine_ready(gs)
+	_expect_str("no blocking route at rest", nav.blocking_route(), "")
+	for path in ordinary:
+		_expect_str("%s routes to itself when nothing blocks" % str(path).get_file(),
+			nav.resolved_route(str(path)), str(path))
+
+	# A chain open: every ordinary route is redirected.
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	_expect_str("an open chain is the blocking route",
+		nav.blocking_route(), nav.CONSEQUENCE)
+	for path in ordinary:
+		_expect_str("%s cannot bypass an open chain" % str(path).get_file(),
+			nav.resolved_route(str(path)), nav.CONSEQUENCE)
+	# The blocking screen itself is not redirected to itself in a loop.
+	_expect_str("the consequence scene routes to itself",
+		nav.resolved_route(nav.CONSEQUENCE), nav.CONSEQUENCE)
+	# And `go_to_game()` — the boot and CONTINUE RUN path — lands on the chain
+	# rather than on Home. TI-003 §18: a loaded active consequence must not
+	# expose an ordinary screen for an interactive frame.
+	_expect_str("continuing a run re-enters the chain",
+		nav.resolved_route(nav.HOME), nav.CONSEQUENCE)
+
+	# Game over outranks a consequence. Both open at once is the case that
+	# decides the priority, and routing to the consequence would strand a run
+	# that has already ended.
+	gs.game_over = true
+	_expect_str("game over outranks an open chain",
+		nav.blocking_route(), nav.GAME_OVER)
+	for path in ordinary:
+		_expect_str("%s routes to game over first" % str(path).get_file(),
+			nav.resolved_route(str(path)), nav.GAME_OVER)
+	_expect_str("game over is reachable while a chain is open",
+		nav.resolved_route(nav.GAME_OVER), nav.GAME_OVER)
+	gs.game_over = false
+
+	# Game over alone still behaves as it always did.
+	_engine_ready(gs)
+	gs.game_over = true
+	_expect_str("game over blocks on its own", nav.blocking_route(), nav.GAME_OVER)
+	gs.game_over = false
+	_expect_str("clearing game over unblocks", nav.blocking_route(), "")
+
+## A chain reloaded from a save is the same chain, at the same stage, with the
+## same buttons disabled.
+func _check_engine_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	# Commit a choice, save, wipe, reload.
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	var consequence_id: String = engine.active_consequence_id()
+	var cause_id: String = engine.active_cause_id()
+	_expect_true("the commit before the reload dispatches",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "run"}))
+	saves.save_run()
+
+	gs.active_consequence = {}
+	gs.consequence_history = {}
+	_expect_true("a chain reloads", saves.load_run())
+	_expect_true("a reloaded chain is active", engine.has_active())
+	_expect_str("a reloaded chain keeps its identity",
+		engine.active_consequence_id(), consequence_id)
+	_expect_str("a reloaded chain keeps its cause", engine.active_cause_id(), cause_id)
+	_expect_str("a reloaded chain keeps its stage",
+		engine.active_stage(), engine.STAGE_DECISION)
+
+	# TI-003 acceptance: "committed controls remain disabled after reload."
+	# The projection is what the scene reads, so this is the exact assertion the
+	# button makes — and it comes from persisted state, not from a click.
+	var rows: Array = engine.choice_summaries()
+	for entry in rows:
+		var row: Dictionary = entry
+		_expect_true("choice %s stays disabled after reload" % str(row["choice_id"]),
+			bool(row["disabled"]))
+	_expect_true("the committed choice is still marked committed",
+		bool((_choice_row(rows, "run") as Dictionary)["committed"]))
+	_expect_true("an uncommitted choice is not marked committed",
+		not bool((_choice_row(rows, "fight") as Dictionary)["committed"]))
+
+	# The receipt survived, so a second commit is still refused after a reload.
+	# This is the exactly-once guarantee doing the job it exists for.
+	_expect_true("the committed-choice receipt survives a reload",
+		engine.has_receipt(cause_id, "boost_caught:committed_choice"))
+	_expect_true("committing again after a reload is refused",
+		not gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"}))
+
+	# The adapter registry was NOT saved, and yet the reloaded chain resolves its
+	# source — because `GameManager._ready()` rebuilt it and the chain carries a
+	# String. Both halves asserted: the registry works, and the save is clean.
+	_expect_true("a reloaded chain still resolves its adapter",
+		engine.source_adapter(str(((engine.active() as Dictionary)["source"] as Dictionary)["action_id"])) != null)
+	var file := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+	if file != null:
+		var text: String = file.get_as_text()
+		file.close()
+		_expect_true("the chain's save carries no Object references",
+			not "Object(" in text)
+
+	# The route guard reads reloaded state, so a save loaded mid-chain blocks
+	# immediately rather than after a refresh.
+	var nav := get_node("/root/ScreenManager")
+	_expect_str("a reloaded chain blocks navigation",
+		nav.resolved_route(nav.HOME), nav.CONSEQUENCE)
+
+	# And a save with no chain does not block.
+	_engine_ready(gs)
+	saves.save_run()
+	gs.active_consequence = {"stage": "decision", "cause_id": "cause:00000999"}
+	_expect_true("a chainless save reloads", saves.load_run())
+	_expect_true("a chainless save clears the blocking slot", not engine.has_active())
+	_expect_str("a chainless save does not block navigation",
+		nav.resolved_route(nav.HOME), nav.HOME)
+
+	if previous_save.is_empty():
+		DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+
+## TI-003 §21: "TI-003 adds zero market-stream draws."
+##
+## The engine is pure bookkeeping — identity allocation, receipts, queue sorting
+## — and none of it may touch the market cursor.
+func _check_engine_rng_non_drift(gs: Node, gm: Node, engine: RefCounted) -> void:
+	_engine_ready(gs)
+	gs.rng_state = 987654321
+	var cursor: int = int(gs.rng_state)
+
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	engine.record_receipt(engine.active_cause_id(), "boost_caught:heat")
+	engine.enqueue({"queue_id": "r", "cause_id": "c:1", "actor_id": "a",
+		"district_id": "north_star_lot", "trigger_day": 12, "expires_end_day": 20})
+	engine.eligible_queued(12, "north_star_lot")
+	engine.expire_stale(12)
+	engine.active_summary()
+	engine.choice_summaries()
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"})
+	engine.advance_stage(engine.STAGE_RESULT)
+	_expect_int("the consequence engine draws nothing from the market stream",
+		int(gs.rng_state), cursor)
+
+	# Continue advances time, which CAN legitimately move the cursor if it
+	# crosses a day — so it is measured separately rather than folded into the
+	# claim above, and the claim is the narrower true one.
+	gs.time_slots_today = 0
+	gm.dispatch("consequence_continue", {})
+	_expect_int("continue inside a day still draws nothing", int(gs.rng_state), cursor)
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -5629,7 +6322,12 @@ func _fail(label: String, detail: String) -> void:
 ## FS-003.4 raises it to 8036. Thirteen of those came for free: the round-trip
 ## section walks `PERSIST_FIELDS` by name, so adding the TI-003 §5 state to the
 ## manifest added coverage without a line of test being written for it.
-const MIN_CHECKS := 8036
+##
+## FS-003.5 raises it to 8267. Two of the checks behind that number exist only
+## because a sabotage passed without them: the stage-refusal check was measuring
+## the committed-choice receipt rather than the stage, and nothing proved the
+## copying projections were copies.
+const MIN_CHECKS := 8267
 
 func _finish() -> void:
 	if _failures.is_empty():

@@ -129,6 +129,19 @@ func _ready() -> void:
 	territory.setup(_gs, self)
 	register_system("territory", territory)
 
+	# The consequence layer, last: it reaches its source adapters through a
+	# runtime registry, so every system it can drive has to exist first.
+	#
+	# Registration happens on every boot INCLUDING after a load, which is what
+	# lets a chain reloaded from a save find its source again — the save carries
+	# `action_id`, a String, and this is what turns it back into a system.
+	# Nothing here is ever serialised (TI-003 §1, §26).
+	var consequence_engine = preload("res://systems/consequence_engine.gd").new()
+	consequence_engine.setup(_gs, self)
+	consequence_engine.register_source_adapter("boost", boost)
+	consequence_engine.register_source_adapter("stickup", stickup)
+	register_system("consequence", consequence_engine)
+
 func register_system(sys_name: String, instance: Object) -> void:
 	_systems.append({"name": sys_name, "node": instance})
 

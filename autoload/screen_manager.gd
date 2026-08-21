@@ -31,6 +31,9 @@ const HELP := "res://ui/screens/help.tscn"
 const CHARACTER := "res://ui/screens/character.tscn"
 const RECOVERY := "res://ui/screens/recovery.tscn"
 const GAME_OVER := "res://ui/screens/game_over.tscn"
+## The blocking consequence scene (TI-003 §18). Not in NAV_ROUTES: it is never
+## somewhere the player chooses to go.
+const CONSEQUENCE := "res://ui/screens/consequence.tscn"
 
 ## Every bottom-nav cell has a scene now. The empty-route branch in
 ## screen_base::_wire_nav() is kept for the next cell that does not.
@@ -61,15 +64,52 @@ func show_toast(text: String) -> void:
 		await _toast.ready
 	_toast.show_message(text)
 
+## The global screen priority, TI-003 §18:
+##
+##   1. game over
+##   2. active blocking consequence
+##   3. the ordinary screen that was asked for
+##
+## Enforced here rather than at each call site because "ordinary navigation
+## cannot bypass it" has to hold for navigation nobody has written yet. A nav
+## button, a deep link from a surface, a Continue on the title screen — they all
+## come through `go_to`, so they all get the same answer.
+##
+## Deliberately NOT enforced for the two screens that are themselves the higher
+## priority: routing to Game Over while a consequence is open must reach Game
+## Over, or the run could never end mid-chain.
+func blocking_route() -> String:
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs == null:
+		return ""
+	if bool(gs.game_over):
+		return GAME_OVER
+	if not (gs.active_consequence as Dictionary).is_empty():
+		return CONSEQUENCE
+	return ""
+
+## Where a request for `scene_path` actually lands once priority is applied.
+## Pure, so the route guard is testable without changing scenes.
+func resolved_route(scene_path: String) -> String:
+	if scene_path == GAME_OVER or scene_path == CONSEQUENCE:
+		return scene_path
+	var blocking: String = blocking_route()
+	return blocking if not blocking.is_empty() else scene_path
+
 func go_to(scene_path: String) -> void:
 	if scene_path.is_empty():
 		return
 	# Deferred because a nav button is mid-signal when it calls this, and
 	# freeing the scene that owns that button inside its own handler crashes.
-	_change.call_deferred(scene_path)
+	_change.call_deferred(resolved_route(scene_path))
 
 ## Enter the game proper. Named separately from go_to(HOME) because callers mean
 ## "start playing", and where that lands may stop being Home later.
+##
+## This is the boot and CONTINUE RUN path, so it is also where a save loaded
+## mid-chain re-enters the consequence — TI-003 §18 requires that to happen
+## without an ordinary screen being exposed for an interactive frame, and
+## routing here rather than to Home and correcting is what achieves it.
 func go_to_game() -> void:
 	go_to(HOME)
 

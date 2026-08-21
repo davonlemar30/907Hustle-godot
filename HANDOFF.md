@@ -544,6 +544,114 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.6: the odds the player is deciding on  (added 2026-08-21)
+
+`success_probability()` and `tier_probabilities()` on the outcome resolver.
+Pure, exact, zero RNG. **Parity 8267 → 8785 checks, 0 failures. No schema
+change.**
+
+### Derived, not sampled
+
+The obvious implementation runs the resolver a thousand times and counts. That
+consumes no stream, but it is slow on a hot path and — worse — **approximate on
+a screen that shows an exact percentage.**
+
+So the pipeline is inverted analytically. Every step has a closed form:
+
+1. `build_outcome_pool` splits `chance` across the shape's tier weights;
+2. at level ≥ 6 the catastrophic entries leave and the rest renormalise, which
+   *raises* the odds — the weight that fed the worst tier is redistributed;
+3. below level 3 the answer is the success share of that pool;
+4. at level ≥ 3 two independent keyed picks are taken and the better wins, so
+   the action fails only when **both** picks land on a losing tier:
+
+```
+P(success | advantage) = 1 - (1 - p)²
+```
+
+Two identities fall out and are pinned as literals, because a sampled matrix can
+only ever be approximate:
+
+- **Below both thresholds, the projection IS the base chance.** Every shape's
+  `success` half sums to 1.0 and its `failure` half sums to 1.0, so splitting a
+  chance across them cannot change how often you win — only what winning looks
+  like.
+- **With advantage at 0.5, exactly 0.75.**
+
+### Proved against the resolver actually running
+
+A check that recomputed the shape table and compared would be the implementation
+written twice; it would agree with a broken projection as readily as a correct
+one.
+
+So `_measured_success_rate` calls **`resolve_action` over 4000 distinct keys per
+cell** and counts how often the tier came back a success. Nothing about that
+measurement knows the shape table exists. The matrix covers 4 action types × 3
+chances × 6 attributes, spanning both thresholds and the ceiling.
+
+### The finding: FNV-1a is biased by its LAST characters
+
+The first run produced **four failures that were the harness, not the code.**
+
+`seeded_random` is canon's `stringHash(key) / 2^32` — an FNV-1a whose
+multiplication propagates low bits upward. A character near the **end** of the
+key barely moves the **high** bits, and the high bits are exactly what dividing
+by 2³² reads.
+
+Measured directly, 4000 keys, same indices:
+
+| index position | mean | P(< 0.25) |
+| --- | --- | --- |
+| tail — `confrontation:250:0:<i>` | **0.531** | **0.188** |
+| front — `<i>:confrontation:250:0` | 0.502 | 0.252 |
+
+True values are 0.5 and 0.25. **Sweeping a keyed roll with a trailing counter
+does not sample a uniform distribution at all.**
+
+This is canon's hash, bias and all — `game-core.js` uses the same `stringHash`,
+so it is not a defect to correct here and correcting it would diverge from the
+oracle. It is a **trap to avoid in every future check**: any sweep that varies
+the tail of a key is measuring a skewed distribution, and will produce false
+failures or, far worse, false passes.
+
+`_check_projection_harness_is_uniform()` now measures the sweep's own key family
+before any projection assertion runs. A failure there says *"the sweep is
+broken"* — a much more useful message than fifty mismatched probabilities. It is
+sabotage-proven by moving the index back onto the tail: 6 failures.
+
+**Worth carrying to the real game:** keys shaped `family:<int>:<small int>` are
+the biased shape. `shark:%d:%d` (loan id, due day) is one. Canon has the same
+behaviour so nothing is diverging, but it is filed rather than unnoticed.
+
+### Three sabotages passed, and one of them stays passing
+
+- **`immunity-drops-guard`** — removing canon's "only drop catastrophic when
+  something survives" fallback changed nothing, because no authored shape is
+  all-catastrophic. Now exercised on a **synthetic pool** through
+  `_immunity_filtered` directly, the same way FS-003.4's migration arm is
+  exercised at its own boundary rather than through a path that hides it.
+  Sabotage now: 2 failures.
+- **`projection-draws-rng`** — the sabotage multiplied by
+  `1.0 if randf() >= 0.0 else 0.5`, which is identity. Replaced with a call
+  counter that perturbs the answer (132 failures) and a version that genuinely
+  moves `rng_state` (1 failure).
+- **`bonus-not-clamped` — still passes, and that is correct.** Both thresholds
+  are one-sided, so an unclamped effective level of 17 lands in the same band as
+  a clamped 12, and −5 in the same band as 0. The clamp stays for symmetry with
+  `resolve_action`, which needs it. The checks that used to claim "the clamp
+  works" now claim what they actually prove — that the projection is **flat**
+  past the ceiling and below the floor, and **monotonic** in effective level
+  across −3..15. A check should not claim more than it can fail on.
+
+### Verification
+
+- Parity **8785 / 0**, `MIN_CHECKS` 8267 → 8785.
+- **14 sabotages**, 13 red; the fourteenth documented above as correctly inert.
+- Glyph coverage passes; 21/21 screens headless, zero script errors.
+- Projection asserted to draw nothing from the market stream **and** to be
+  referentially transparent — a helper drawing from a keyed hash would leave
+  `rng_state` alone while still returning a different answer each call.
+
 ## FS-003.5: something to hold the moment open  (added 2026-08-21)
 
 `systems/consequence_engine.gd` and `ui/screens/consequence.tscn`. When a risky

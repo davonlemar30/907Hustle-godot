@@ -230,6 +230,7 @@ regardless of how small the source file is.
 | FS-003.3. Wallet + Heat owners | ✅ every runtime Cash/Heat write routes through one owner, with automated writer audits; parity → 7889 checks |
 | FS-003.4. Consequence state | ✅ TI-003 §5 state persisted, save v8, v7 aggregate Cash migrates to Clean; parity → 8036 checks |
 | FS-003.5. ConsequenceEngine core | ✅ one blocking chain with receipts, stage machine, queue arbitration and a blocking scene navigation cannot bypass; parity → 8267 checks |
+| FS-003.6. Odds projection | ✅ pure `success_probability` / `tier_probabilities`, proved against the resolver over 4000 keys per cell; parity → 8785 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

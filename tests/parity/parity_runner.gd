@@ -123,6 +123,7 @@ func _ready() -> void:
 		_check_wallet_and_heat()
 		_check_consequence_state()
 		_check_consequence_engine()
+		_check_outcome_projection()
 		_check_save_roundtrip()
 	_finish()
 
@@ -6275,6 +6276,415 @@ func _check_engine_rng_non_drift(gs: Node, gm: Node, engine: RefCounted) -> void
 	gm.dispatch("consequence_continue", {})
 	_expect_int("continue inside a day still draws nothing", int(gs.rng_state), cursor)
 
+## FS-003.6 — the pure odds projection.
+##
+## ## The one thing this section must not do
+##
+## `success_probability()` is derived from the shape table, the immunity filter
+## and the advantage rule. A check that recomputed those three things and
+## compared would be the implementation written twice, and it would agree with a
+## broken projection as readily as a correct one.
+##
+## So the projection is measured against **the resolver actually running**.
+## `_measured_success_rate` calls `resolve_action` over thousands of distinct
+## keys and counts how often the tier came back a success. Nothing about that
+## measurement knows the shape table exists.
+##
+## That is the acceptance criterion — "projection matches exhaustive resolver
+## probability" — taken literally, and it is what fails if the pipeline changes
+## and the projection does not.
+##
+## ## What is NOT re-covered
+##
+## The resolver's own tier behaviour is already pinned by
+## `_check_outcome_resolver` against generated fixtures. Pool construction,
+## `seeded_pick`, and the tier tables are not re-asserted here.
+
+## Distinct keys per measured cell. 4000 puts the standard error at ~0.8% for a
+## coin-flip cell, so the 0.03 tolerance below is comfortably over 3 sigma while
+## still being tight enough to catch a wrong advantage or immunity rule — both
+## of which move the answer by 10-25 points, not by 3.
+##
+## Deterministic despite being a sample: the same 4000 keys every run.
+const PROJECTION_SAMPLES := 4000
+const PROJECTION_TOLERANCE := 0.03
+
+func _check_outcome_projection() -> void:
+	var gm := get_node("/root/GameManager")
+	var gs := get_node("/root/GameState")
+	var resolver: RefCounted = gm.system("outcome_resolver") as RefCounted
+	if resolver == null:
+		_fail("outcome projection", "no resolver registered")
+		return
+	_check_projection_harness_is_uniform()
+	_check_projection_against_resolver(resolver)
+	_check_projection_identities(resolver)
+	_check_projection_thresholds(resolver)
+	_check_projection_edges(resolver)
+	_check_tier_probabilities(resolver)
+	_check_projection_rng_non_drift(gs, resolver)
+
+## The sweep key for sample `i`.
+##
+## **The varying index goes at the FRONT, and that is load-bearing.**
+##
+## `seeded_random` is canon's `stringHash(key) / 2^32`, an FNV-1a whose
+## multiplication propagates low bits upward — so a character near the END of the
+## key barely moves the HIGH bits, and the high bits are exactly what dividing by
+## 2^32 reads. Sweeping with the counter on the tail therefore does not sample a
+## uniform distribution at all.
+##
+## Measured, on the first attempt at this section: 4000 keys of the shape
+## `confrontation:250:0:<i>` gave mean 0.531 and P(< 0.25) = 0.188 against a true
+## 0.25 — and produced four "failures" that were the harness, not the projection.
+## The same 4000 indices moved to the front gave mean 0.502 and P = 0.252.
+##
+## This is canon's hash, bias and all (game-core.js uses the same `stringHash`),
+## so it is not a defect to fix here. It is a trap to avoid: **any future check
+## that sweeps a keyed roll by incrementing a trailing counter is measuring a
+## skewed distribution.** `_check_projection_harness_is_uniform` below guards it.
+func _projection_key(action_type: String, chance: float, raw_attribute: int,
+		index: int) -> String:
+	return "%d:%s:%d:%d" % [index, action_type, int(chance * 1000.0), raw_attribute]
+
+## The instrument, checked before it is trusted.
+##
+## Every "projection matches the resolver" assertion is only as good as the
+## uniformity of the keys it samples over. If the key family is skewed, those
+## assertions fail — or worse, pass — for a reason that has nothing to do with
+## the projection.
+##
+## So the harness measures itself first. A failure here says "the sweep is
+## broken", which is a different and much more useful message than fifty
+## mismatched probabilities.
+func _check_projection_harness_is_uniform() -> void:
+	var rng := get_node("/root/RngManager")
+	var total: float = 0.0
+	var below_quarter: int = 0
+	var below_half: int = 0
+	for i in PROJECTION_SAMPLES:
+		var value: float = rng.seeded_random(
+			"projection_seed", _projection_key("confrontation", 0.25, 0, i))
+		total += value
+		if value < 0.25:
+			below_quarter += 1
+		if value < 0.5:
+			below_half += 1
+	var mean: float = total / float(PROJECTION_SAMPLES)
+	_expect_true("the projection sweep samples a uniform mean (%.4f)" % mean,
+		absf(mean - 0.5) <= PROJECTION_TOLERANCE)
+	_expect_true("the projection sweep samples a uniform lower quartile (%.4f)"
+		% (float(below_quarter) / float(PROJECTION_SAMPLES)),
+		absf(float(below_quarter) / float(PROJECTION_SAMPLES) - 0.25) <= PROJECTION_TOLERANCE)
+	_expect_true("the projection sweep samples a uniform median (%.4f)"
+		% (float(below_half) / float(PROJECTION_SAMPLES)),
+		absf(float(below_half) / float(PROJECTION_SAMPLES) - 0.5) <= PROJECTION_TOLERANCE)
+
+## Run the real resolver over many keys and report the observed success rate.
+##
+## Deliberately ignorant of everything the projection knows: it calls
+## `resolve_action` and asks `is_success_tier`, which is what the game asks.
+func _measured_success_rate(resolver: RefCounted, action_type: String,
+		chance: float, raw_attribute: int, bonus: int) -> float:
+	var hits: int = 0
+	for i in PROJECTION_SAMPLES:
+		var outcome: Dictionary = resolver.resolve_action(
+			action_type, chance, raw_attribute, "projection_seed",
+			_projection_key(action_type, chance, raw_attribute + bonus, i),
+			bonus)
+		if resolver.is_success_tier(str(outcome["tier"])):
+			hits += 1
+	return float(hits) / float(PROJECTION_SAMPLES)
+
+## The acceptance criterion, as a matrix.
+##
+## Covers the three action types TI-003 §12 maps the Caught responses onto —
+## `confrontation`, `escape`, `negotiation` — plus `robbery`, which has the
+## heaviest catastrophic half and so moves the most under immunity.
+##
+## Attributes span both thresholds: 0-2 plain, 3-5 advantage, 6+ advantage AND
+## immunity, and 12 to prove the top of the range behaves like 6 rather than
+## wrapping.
+func _check_projection_against_resolver(resolver: RefCounted) -> void:
+	var actions: Array = ["confrontation", "escape", "negotiation", "robbery"]
+	var chances: Array = [0.25, 0.5, 0.75]
+	var attributes: Array = [0, 2, 3, 5, 6, 12]
+	for action in actions:
+		for chance in chances:
+			for raw in attributes:
+				var projected: float = resolver.success_probability(
+					str(action), float(chance), int(raw), 0)
+				var measured: float = _measured_success_rate(
+					resolver, str(action), float(chance), int(raw), 0)
+				_expect_true("projection matches the resolver: %s c=%.2f attr=%d (proj %.4f, measured %.4f)"
+					% [action, chance, raw, projected, measured],
+					absf(projected - measured) <= PROJECTION_TOLERANCE)
+
+	# A bonus has to move the measured rate too, not just the projection — that
+	# is what proves the projection clamps the effective level the same way
+	# `resolve_action` does rather than merely agreeing with itself.
+	#
+	# Attribute 2 with +1 backup crosses into advantage; attribute 5 with +1
+	# crosses into immunity. Both are cases where being wrong by one level is
+	# visible in the number.
+	for spec in [[2, 1], [5, 1], [0, 3], [11, 5]]:
+		var raw: int = int((spec as Array)[0])
+		var bonus: int = int((spec as Array)[1])
+		var projected: float = resolver.success_probability("confrontation", 0.5, raw, bonus)
+		var measured: float = _measured_success_rate(resolver, "confrontation", 0.5, raw, bonus)
+		_expect_true("projection matches with bonus: attr=%d+%d (proj %.4f, measured %.4f)"
+			% [raw, bonus, projected, measured],
+			absf(projected - measured) <= PROJECTION_TOLERANCE)
+
+## Two closed forms the projection must reproduce exactly, not approximately.
+##
+## They fall out of the shape table's structure: every shape's `success` half
+## sums to 1.0 and its `failure` half sums to 1.0, so splitting a chance across
+## them cannot change the success/failure ratio.
+##
+## Worth asserting as exact literals because the sampled matrix above can only
+## ever be approximate, and these two say what the number IS.
+func _check_projection_identities(resolver: RefCounted) -> void:
+	# Below advantage and below immunity, the projection is the base chance.
+	# The shape divides the win between clean and messy; it does not change how
+	# often you win.
+	for chance in [0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0]:
+		for action in ["confrontation", "escape", "negotiation", "robbery"]:
+			_expect_float("below advantage, %s at %.2f projects the base chance"
+				% [action, chance],
+				resolver.success_probability(str(action), float(chance), 0, 0),
+				float(chance))
+
+	# At advantage and below immunity, two independent picks and the better one
+	# wins: 1 - (1 - c)^2. Written out per row rather than computed, so this
+	# pins the numbers instead of restating the formula.
+	var advantage_rows := [
+		[0.0, 0.0], [0.25, 0.4375], [0.5, 0.75], [0.75, 0.9375], [1.0, 1.0],
+	]
+	for row in advantage_rows:
+		var chance: float = float((row as Array)[0])
+		var want: float = float((row as Array)[1])
+		_expect_float("advantage at %.2f projects %.4f" % [chance, want],
+			resolver.success_probability("confrontation", chance, 3, 0), want)
+
+	# Immunity redistributes the catastrophic weight across the survivors, which
+	# RAISES the odds. `escape` has failure {failure 0.8, catastrophic 0.2}, so
+	# at chance 0.5 a single pick becomes 0.5 / (0.5 + 0.5*0.8) = 0.5/0.9, and
+	# advantage squares the complement of that.
+	#
+	# 0.5/0.9 = 0.5555...; 1 - (1 - 0.5555...)^2 = 0.8024691358...
+	_expect_float("escape at 0.50 with immunity and advantage",
+		resolver.success_probability("escape", 0.5, 6, 0), 1.0 - pow(1.0 - (0.5 / 0.9), 2.0))
+	# And the single-pick half of that, isolated: a level with immunity but not
+	# advantage is unreachable (6 > 3), so this is asserted through the same
+	# call with the advantage arithmetic named rather than hidden.
+	_expect_true("immunity raises the odds above the base chance",
+		resolver.success_probability("escape", 0.5, 6, 0) > 0.75)
+
+## The two thresholds are the whole design. Each must be invisible on one side
+## and decisive on the other.
+func _check_projection_thresholds(resolver: RefCounted) -> void:
+	# Advantage: nothing at 0-2, a jump at 3, nothing again at 4-5.
+	var below: float = resolver.success_probability("confrontation", 0.5, 2, 0)
+	var at_advantage: float = resolver.success_probability("confrontation", 0.5, 3, 0)
+	var above: float = resolver.success_probability("confrontation", 0.5, 4, 0)
+	_expect_float("attribute 0 and 2 project the same", below,
+		resolver.success_probability("confrontation", 0.5, 0, 0))
+	_expect_true("attribute 3 projects better than 2", at_advantage > below)
+	_expect_float("attribute 4 projects the same as 3", above, at_advantage)
+	_expect_float("attribute 5 projects the same as 3",
+		resolver.success_probability("confrontation", 0.5, 5, 0), at_advantage)
+
+	# Immunity: a second jump at 6, then flat to the ceiling.
+	var at_immunity: float = resolver.success_probability("confrontation", 0.5, 6, 0)
+	_expect_true("attribute 6 projects better than 5", at_immunity > at_advantage)
+	_expect_float("attribute 7 projects the same as 6",
+		resolver.success_probability("confrontation", 0.5, 7, 0), at_immunity)
+	_expect_float("attribute 12 projects the same as 6",
+		resolver.success_probability("confrontation", 0.5, 12, 0), at_immunity)
+	# Past the ceiling the clamp holds — a value the attribute system cannot
+	# produce must not project differently from one it can.
+	_expect_float("an attribute past the ceiling clamps",
+		resolver.success_probability("confrontation", 0.5, 99, 0), at_immunity)
+
+	# `negotiation` has no catastrophic-free path either, so it moves at 6 too;
+	# `job_interview` has NO catastrophic tier at all, so immunity is a no-op
+	# there. That contrast is what proves the filter reads the shape rather than
+	# applying a flat bonus.
+	var interview_below: float = resolver.success_probability("job_interview", 0.5, 5, 0)
+	var interview_at: float = resolver.success_probability("job_interview", 0.5, 6, 0)
+	_expect_float("immunity changes nothing for a shape with no catastrophic tier",
+		interview_at, interview_below)
+	_expect_true("immunity does change a shape that has one",
+		resolver.success_probability("negotiation", 0.5, 6, 0)
+			> resolver.success_probability("negotiation", 0.5, 5, 0))
+
+	# A bonus is an effective-level modifier, so it crosses thresholds the same
+	# way the attribute does. This is what makes crew backup worth something
+	# specific rather than a vague nudge.
+	_expect_float("a bonus crosses the advantage threshold",
+		resolver.success_probability("confrontation", 0.5, 2, 1), at_advantage)
+	_expect_float("a bonus crosses the immunity threshold",
+		resolver.success_probability("confrontation", 0.5, 5, 1), at_immunity)
+
+	# Above the immunity threshold and below the advantage one, the projection is
+	# FLAT — an effective level of 17 reads as 6, and one of -5 reads as 0.
+	#
+	# Stated as flatness rather than as "the clamp works", because the clamp is
+	# not independently observable here and a check claiming otherwise would be
+	# claiming more than it proves: both thresholds are one-sided, so an
+	# unclamped level lands in the same band as a clamped one every time. The
+	# clamp stays for symmetry with `resolve_action`, which needs it because
+	# `seeded_pick` indexes on the value; removing it from the projection alone
+	# changes nothing, and the parity suite says so honestly.
+	_expect_float("the projection is flat past the ceiling",
+		resolver.success_probability("confrontation", 0.5, 12, 5), at_immunity)
+	_expect_float("the projection is flat below the floor",
+		resolver.success_probability("confrontation", 0.5, 0, -5),
+		resolver.success_probability("confrontation", 0.5, 0, 0))
+
+	# Monotonic in effective level: a higher attribute may never project worse.
+	# That is the ordinal contract the whole advantage design rests on, and it is
+	# the property the clamp exists to preserve at the edges.
+	var previous: float = -1.0
+	for level in range(-3, 16):
+		var here: float = resolver.success_probability("confrontation", 0.5, level, 0)
+		_expect_true("the projection never drops going from level %d up" % (level - 1),
+			here >= previous - 1e-9)
+		previous = here
+
+	# The immunity filter keeps a pool that is nothing but catastrophic entries,
+	# rather than filtering it to nothing. Canon's guard, and unreachable through
+	# any authored shape — every shape has a non-catastrophic tier — so it is
+	# exercised on a synthetic pool, the same way the v7 migration arm is
+	# exercised at its own boundary rather than through a path that hides it.
+	var all_catastrophic: Array = [
+		{"tier": "catastrophic", "value": 0, "weight": 1.0},
+	]
+	var survived: Array = resolver._immunity_filtered(all_catastrophic, 6)
+	_expect_int("an all-catastrophic pool survives the immunity filter",
+		survived.size(), 1)
+	# Guarded rather than indexed straight: if the filter DID empty the pool,
+	# `survived[0]` would raise and abort this whole function, costing the checks
+	# below it. A check that loses its neighbours on failure reports a smaller
+	# green, which is the one thing MIN_CHECKS exists to make visible.
+	_expect_str("and keeps its only tier",
+		str((survived[0] as Dictionary)["tier"]) if not survived.is_empty() else "",
+		"catastrophic")
+	# A mixed pool does lose its catastrophic entry, so the guard is not simply
+	# disabling the filter.
+	var mixed: Array = [
+		{"tier": "clean", "value": 3, "weight": 0.5},
+		{"tier": "catastrophic", "value": 0, "weight": 0.5},
+	]
+	_expect_int("a mixed pool loses its catastrophic entry",
+		(resolver._immunity_filtered(mixed, 6) as Array).size(), 1)
+	_expect_int("and keeps everything below the threshold",
+		(resolver._immunity_filtered(mixed, 5) as Array).size(), 2)
+
+func _check_projection_edges(resolver: RefCounted) -> void:
+	# An unknown action type resolves to a plain failure, so it projects zero.
+	# The two must agree, or the screen would offer odds on something that
+	# cannot succeed.
+	_expect_float("an unknown action projects zero",
+		resolver.success_probability("not_an_action", 0.9, 6, 0), 0.0)
+	var outcome: Dictionary = resolver.resolve_action(
+		"not_an_action", 0.9, 6, "seed", "ctx", 0)
+	_expect_str("an unknown action resolves to failure", str(outcome["tier"]), "failure")
+	_expect_true("an unknown action is not a success",
+		not resolver.is_success_tier(str(outcome["tier"])))
+
+	# Certainty at both ends, at every level.
+	for raw in [0, 3, 6, 12]:
+		_expect_float("a zero chance projects zero at attribute %d" % raw,
+			resolver.success_probability("confrontation", 0.0, raw, 0), 0.0)
+		_expect_float("a certain chance projects one at attribute %d" % raw,
+			resolver.success_probability("confrontation", 1.0, raw, 0), 1.0)
+
+	# Out-of-range chances are clamped by `build_outcome_pool`, so the projection
+	# inherits that rather than reporting a probability outside [0, 1].
+	_expect_float("a chance above one clamps",
+		resolver.success_probability("confrontation", 1.4, 0, 0), 1.0)
+	_expect_float("a negative chance clamps",
+		resolver.success_probability("confrontation", -0.4, 0, 0), 0.0)
+	# NaN is what a divide-by-zero in a caller's own formula produces, and
+	# `build_outcome_pool` already treats it as zero.
+	_expect_float("a non-finite chance projects zero",
+		resolver.success_probability("confrontation", NAN, 0, 0), 0.0)
+
+	# Every projected value is a probability, across the whole matrix.
+	for action in resolver.OUTCOME_SHAPES.keys():
+		for chance in [0.0, 0.33, 0.5, 0.9, 1.0]:
+			for raw in [0, 3, 6, 12]:
+				var p: float = resolver.success_probability(str(action), float(chance), raw, 0)
+				_expect_true("%s c=%.2f attr=%d projects within [0,1]" % [action, chance, raw],
+					p >= 0.0 and p <= 1.0)
+
+## The full distribution, which the result screen reads.
+func _check_tier_probabilities(resolver: RefCounted) -> void:
+	for action in ["confrontation", "escape", "negotiation", "robbery"]:
+		for chance in [0.0, 0.25, 0.5, 0.75, 1.0]:
+			for raw in [0, 3, 6]:
+				var tiers: Dictionary = resolver.tier_probabilities(
+					str(action), float(chance), raw, 0)
+				var total: float = 0.0
+				for value in tiers.values():
+					total += float(value)
+				_expect_true("%s c=%.2f attr=%d tiers sum to 1" % [action, chance, raw],
+					absf(total - 1.0) < 1e-9)
+				# The two halves must agree with the single-number projection,
+				# or the screen could show odds that contradict its own summary.
+				_expect_true("%s c=%.2f attr=%d success halves agree" % [action, chance, raw],
+					absf((float(tiers["clean"]) + float(tiers["messy"]))
+						- resolver.success_probability(str(action), float(chance), raw, 0)) < 1e-9)
+
+	# Immunity means catastrophic cannot happen at all — the sharpest statement
+	# the distribution makes, and the one a player earns at Combat 6.
+	for action in ["confrontation", "escape", "robbery"]:
+		var immune: Dictionary = resolver.tier_probabilities(str(action), 0.5, 6, 0)
+		_expect_float("%s at attribute 6 cannot go catastrophic" % action,
+			float(immune["catastrophic"]), 0.0)
+		var exposed: Dictionary = resolver.tier_probabilities(str(action), 0.5, 5, 0)
+		_expect_true("%s at attribute 5 still can" % action,
+			float(exposed["catastrophic"]) > 0.0)
+
+	# And the distribution has to match the resolver too, not only sum to one.
+	# Measured per tier off the real pipeline.
+	var counts := {"clean": 0, "messy": 0, "failure": 0, "catastrophic": 0}
+	for i in PROJECTION_SAMPLES:
+		var outcome: Dictionary = resolver.resolve_action(
+			"robbery", 0.5, 3, "tier_seed", _projection_key("robbery", 0.5, 3, i), 0)
+		var tier := str(outcome["tier"])
+		counts[tier] = int(counts[tier]) + 1
+	var projected: Dictionary = resolver.tier_probabilities("robbery", 0.5, 3, 0)
+	for tier in counts.keys():
+		var measured: float = float(counts[tier]) / float(PROJECTION_SAMPLES)
+		_expect_true("robbery attr=3 tier %s matches the resolver (proj %.4f, measured %.4f)"
+			% [tier, float(projected[tier]), measured],
+			absf(float(projected[tier]) - measured) <= PROJECTION_TOLERANCE)
+
+	# An unknown action type resolves to a plain failure, so it projects one.
+	var unknown: Dictionary = resolver.tier_probabilities("not_an_action", 0.5, 3, 0)
+	_expect_float("an unknown action projects certain failure",
+		float(unknown["failure"]), 1.0)
+
+## TI-003 §2: the helper "consumes zero RNG".
+##
+## Asserted on the market cursor AND by proving the projection is referentially
+## transparent — a helper that drew from a keyed hash would still leave
+## `rng_state` alone while returning a different answer each call.
+func _check_projection_rng_non_drift(gs: Node, resolver: RefCounted) -> void:
+	gs.rng_state = 424242
+	var cursor: int = int(gs.rng_state)
+	var first: float = resolver.success_probability("confrontation", 0.5, 3, 0)
+	for _i in 50:
+		resolver.success_probability("confrontation", 0.5, 3, 0)
+		resolver.tier_probabilities("robbery", 0.5, 6, 0)
+	_expect_int("the projection draws nothing from the market stream",
+		int(gs.rng_state), cursor)
+	_expect_float("the projection returns the same answer every call",
+		resolver.success_probability("confrontation", 0.5, 3, 0), first)
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -6327,7 +6737,11 @@ func _fail(label: String, detail: String) -> void:
 ## because a sabotage passed without them: the stage-refusal check was measuring
 ## the committed-choice receipt rather than the stage, and nothing proved the
 ## copying projections were copies.
-const MIN_CHECKS := 8267
+##
+## FS-003.6 raises it to 8785. The projection section is mostly a sampled matrix
+## measured off the real resolver, so most of that number is one assertion per
+## (action, chance, attribute) cell rather than new surface area.
+const MIN_CHECKS := 8785
 
 func _finish() -> void:
 	if _failures.is_empty():

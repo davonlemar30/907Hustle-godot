@@ -1,8 +1,9 @@
 # 907Hustle — Godot
 
-A ground-up **Godot 4.7.2** rebuild of *907Hustle: One Good Run* — a mobile-first
-(375×812, portrait) street-sim set in Anchorage's Spenard district. The shipping
-**web build (React, v1.35) is the behavioral canon** for all game data and logic.
+A **Godot 4.7.2** production build of *907Hustle: One Good Run* — a mobile-first
+(375×812, portrait) street-sim set in Anchorage's Spenard district. Approved
+ClickUp specifications and the current Godot architecture are authoritative.
+The frozen React v1.35 build is historical parity reference material only.
 
 **Play it: https://davonlemar30.github.io/907Hustle-godot/** — rebuilt on every merge
 to `main`. Roughly a 13MB first load, cached after.
@@ -20,8 +21,9 @@ between three districts, hire crew and pay their wages, take corners and post so
 on them — while rent, the phone bill and Curtis's attention all advance on their own
 schedule. Miss enough rent and you are evicted, which ends the run.
 
-Every number comes from the web build. Where a written brief and the oracle disagreed,
-the oracle won; those divergences are listed in `HANDOFF.md`.
+Existing ported formulas retain oracle-backed parity where that remains the approved
+Godot decision. Newer approved Godot/ClickUp decisions take precedence over historical
+web behavior; named divergences are listed in `HANDOFF.md`.
 
 ### What works
 
@@ -186,10 +188,10 @@ Full roadmap and the design-decision log live in the project's ClickUp master do
 
 ## Contributing
 
-Feature branches per screen/system, opened as PRs against `main`. Pull game data and
-logic from the web build (`src/data/*`, `game-core.js`) — **never guess canon**, and
-when a brief disagrees with the oracle, the oracle wins and the divergence goes in the
-PR body.
+Feature branches per screen/system, opened as PRs against `main`. Follow approved
+ClickUp specifications, current Godot design decisions, and reproducible Godot tests.
+The frozen web build (`src/data/*`, `game-core.js`) may explain migration history or
+legacy formulas, but it does not override a newer approved Godot decision.
 
 **Documentation ships with the PR.** A `HANDOFF.md` entry and the relevant ClickUp doc
 section are part of the change, not a follow-up. A PR that introduces a new system

@@ -160,12 +160,14 @@ func _ready() -> void:
 ## same reach-across canon makes, for the same reason: identity is a read of
 ## what the neighborhood has actually seen.
 func ledger_of(npc_id: String) -> Array:
-	return _ledger(npc_id)
+	return gs.npc_ledgers.get(npc_id, [])
 
 func npc_ids() -> Array:
 	return NPC_LENSES.keys()
 
-func _ledger(npc_id: String) -> Array:
+## Write-side accessor. Reads use ledger_of() so asking for disposition or
+## rendering People cannot create persistent empty ledgers as a side effect.
+func _ledger_for_write(npc_id: String) -> Array:
 	if not gs.npc_ledgers.has(npc_id):
 		gs.npc_ledgers[npc_id] = []
 	return gs.npc_ledgers[npc_id]
@@ -182,7 +184,7 @@ func record_observation(npc_id: String, spec: Dictionary) -> void:
 	if not type_name in CATEGORIES:
 		push_warning("Exposure: unknown observation category '%s'" % type_name)
 		return
-	var ledger: Array = _ledger(npc_id)
+	var ledger: Array = _ledger_for_write(npc_id)
 	var key := _key(spec)
 	for row in ledger:
 		if str(row["key"]) == key:
@@ -283,7 +285,7 @@ func disposition(npc_id: String) -> float:
 	if lens.is_empty():
 		return 0.0
 	var score: float = 0.0
-	for row in _ledger(npc_id):
+	for row in ledger_of(npc_id):
 		score += _row_weight(lens, row)
 	return snappedf(score, 0.01)
 
@@ -314,7 +316,7 @@ func everyone() -> Array:
 			"score": score,
 			"band": band_for(score),
 			"label": str(BAND_LABELS.get(band_for(score), "NEUTRAL")),
-			"rows": _ledger(str(npc_id)).size(),
+			"rows": ledger_of(str(npc_id)).size(),
 		})
 	return out
 

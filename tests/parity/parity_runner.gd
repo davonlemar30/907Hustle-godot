@@ -30,6 +30,16 @@ extends Node
 ##              there is no formula copy here to prove, only agreement to hold
 ##   recovery — the Phase 5d ladder: canon's layLowPreview against every heat
 ##              value that changes its answer, and treatmentCost at full price
+##   outcome  — the Build 5e resolver: the tier tables, pool construction at
+##              every chance boundary, seededPick by cumulative weight, the
+##              full action x chance x attribute resolution grid, and the two
+##              thresholds proven rather than asserted — 400 advantage pairs
+##              where the second look demonstrably upgrades, and 1000 seeds
+##              that produce catastrophes at Combat 5 and none at Combat 6
+##   stickup  — the Build 5e vertical proof, driven through the real dispatch
+##              layer: one case per tier asserting the whole consequence
+##              spread (cash, heat, health, Curtis, the Exposure footprint),
+##              plus the reload replay and the market cursor holding still
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -39,6 +49,9 @@ extends Node
 ## printf-shaped noise.
 
 const FIXTURES := "res://tests/parity/fixtures/rng_fixtures.json"
+## Build 5e keeps its fixtures in their own file: rng_fixtures.json records
+## primitives and system reads, this one records whole actions resolving.
+const OUTCOME_FIXTURES := "res://tests/parity/fixtures/outcome_resolver/outcome_fixtures.json"
 const EPS := 1e-12
 
 var _failures: Array[String] = []
@@ -58,11 +71,16 @@ func _ready() -> void:
 		_check_phone(fixtures.get("phone", {}))
 		_check_attributes(fixtures.get("attributes", {}))
 		_check_recovery(fixtures.get("recovery", {}))
+		_check_outcome_resolver(_load_json(OUTCOME_FIXTURES))
+		_check_stickup_tiers()
 		_check_save_roundtrip()
 	_finish()
 
 func _load_fixtures() -> Dictionary:
-	var file := FileAccess.open(FIXTURES, FileAccess.READ)
+	return _load_json(FIXTURES)
+
+func _load_json(path: String) -> Dictionary:
+	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return {}
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
@@ -618,6 +636,7 @@ func _check_save_roundtrip() -> void:
 	var gm := get_node("/root/GameManager")
 	var exposure := get_node("/root/Exposure")
 	var curtis := get_node("/root/Curtis")
+	var jobs_system: RefCounted = gm.system("jobs") as RefCounted
 	var saves := get_node("/root/SaveSystem")
 
 	# The test autosaves into the real user:// slot. Whatever run lives there
@@ -632,7 +651,25 @@ func _check_save_roundtrip() -> void:
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 	_expect_true("dispatch market_buy", gm.dispatch("market_buy", {"product_id": "weed", "quantity": 2}))
-	_expect_true("dispatch apply_job", gm.dispatch("apply_job", {"job_id": "wash_go"}))
+	# Applying is a real interview as of Build 5e, so the run has to actually be
+	# hired before it can work a shift. The seed is fixed by reset_to_new_game,
+	# and the interview is keyed on day and slot — so this walks slots until the
+	# job lands rather than pinning a seed that a later balance change would
+	# quietly invalidate. Two days of slots is far more than the 0.62 floor needs.
+	var hired := false
+	for _attempt in 8:
+		gm.dispatch("apply_job", {"job_id": "wash_go"})
+		if gs.active_job_id == "wash_go":
+			hired = true
+			break
+		gm.dispatch("advance_time", {})
+	_expect_true("dispatch apply_job eventually hires", hired)
+	# The shift needs a slot wash_go actually runs, and the walk above may have
+	# left the run standing in one it does not.
+	for _attempt in 4:
+		if jobs_system.shift_blocker().is_empty():
+			break
+		gm.dispatch("advance_time", {})
 	_expect_true("dispatch work_shift", gm.dispatch("work_shift", {"approach": "work_hard"}))
 	_expect_true("dispatch advance_time", gm.dispatch("advance_time", {}))
 	_expect_true("dispatch travel", gm.dispatch("travel", {"district_id": "downtown"}))
@@ -754,6 +791,539 @@ func _check_v2_migration(gs: Node, saves: Node) -> void:
 		future.store_string(var_to_str({"save_version": saves.SAVE_VERSION + 1, "state": v2_state}))
 		future.close()
 	_expect_true("future version refused", not saves.load_run())
+
+## Build 5e — the tiered outcome resolver, against recorded oracle truth.
+##
+## The strongest position the harness can take on this system: canon exports
+## `buildOutcomePool`, `seededPick`, `resolveWithAttribute` and `resolveAction`,
+## so every expected value here came out of the oracle's own functions. There is
+## no formula copy on this side to prove — only agreement to hold.
+##
+## What is worth knowing about the sections below:
+##
+##   - **Pool ORDER is checked, not just content.** seeded_pick walks cumulative
+##     weight in array order, so a pool with the right entries in the wrong
+##     order resolves different tiers from the same hash. That is the failure a
+##     content-only check would wave through.
+##   - **The thresholds are proven, not asserted.** The advantage fixture
+##     records how many of its 400 pairs the second look actually upgraded; if
+##     that ever reads 0 the fixture has stopped testing anything, so the count
+##     itself is checked. Immunity does the same in the other direction: the
+##     same 1000 seeds must produce catastrophes at Combat 5 and none at 6.
+func _check_outcome_resolver(fixture: Dictionary) -> void:
+	if fixture.is_empty():
+		_fail("outcome", "could not read %s" % OUTCOME_FIXTURES)
+		return
+	var gm := get_node("/root/GameManager")
+	var resolver: RefCounted = gm.system("outcome_resolver") as RefCounted
+	if resolver == null:
+		_fail("outcome", "no outcome_resolver system registered")
+		return
+
+	_check_outcome_tables(resolver, fixture)
+	_check_outcome_pools(resolver, fixture)
+	_check_outcome_picks(resolver, fixture)
+	_check_outcome_resolutions(resolver, fixture)
+	_check_outcome_thresholds(resolver, fixture)
+	_check_outcome_observations(resolver, fixture)
+
+## Data parity. A transcription typo in a hand-copied weight would corrupt every
+## resolution while the pipeline stayed provably correct, so the tables are
+## checked against what the oracle actually carries — including their SIZE, so a
+## missing action type cannot pass by simply never being looked up.
+func _check_outcome_tables(resolver: RefCounted, fixture: Dictionary) -> void:
+	_expect_int("outcome advantage threshold", resolver.ADVANTAGE_THRESHOLD,
+		int(fixture["advantage_threshold"]))
+	_expect_int("outcome immunity threshold", resolver.CATASTROPHE_IMMUNITY_THRESHOLD,
+		int(fixture["catastrophe_immunity_threshold"]))
+	_expect_int("outcome attribute min", resolver.ATTRIBUTE_MIN, int(fixture["attribute_min"]))
+	_expect_int("outcome attribute max", resolver.ATTRIBUTE_MAX, int(fixture["attribute_max"]))
+
+	var want_values: Dictionary = fixture["outcome_values"]
+	for tier in want_values.keys():
+		_expect_int("outcome value %s" % str(tier),
+			int(resolver.OUTCOME_VALUES.get(str(tier), -99)), int(want_values[tier]))
+	_expect_int("outcome value count", resolver.OUTCOME_VALUES.size(), want_values.size())
+
+	var want_map: Dictionary = fixture["action_attribute_map"]
+	for action in want_map.keys():
+		_expect_str("outcome attribute for %s" % str(action),
+			resolver.attribute_for(str(action)), str(want_map[action]))
+	_expect_int("outcome attribute map count", resolver.ACTION_ATTRIBUTE_MAP.size(), want_map.size())
+	_expect_str("outcome attribute for unknown", resolver.attribute_for("not_a_real_action"), "")
+
+	# The shapes themselves, key order included — see the section header.
+	var want_shapes: Dictionary = fixture["outcome_shapes"]
+	_expect_int("outcome shape count", resolver.OUTCOME_SHAPES.size(), want_shapes.size())
+	for action in want_shapes.keys():
+		var got_shape: Dictionary = resolver.OUTCOME_SHAPES.get(str(action), {})
+		var want_shape: Dictionary = want_shapes[action]
+		for half in ["success", "failure"]:
+			var want_half: Dictionary = want_shape.get(half, {})
+			var got_half: Dictionary = got_shape.get(half, {})
+			_expect_str("outcome shape %s.%s key order" % [str(action), half],
+				str(got_half.keys()), str(want_half.keys()))
+			for tier in want_half.keys():
+				_expect_float("outcome shape %s.%s.%s" % [str(action), half, str(tier)],
+					float(got_half.get(str(tier), -1.0)), float(want_half[tier]))
+
+## Pool construction at every chance boundary, including 0 and 1 where one half
+## of the shape weighs nothing at all.
+func _check_outcome_pools(resolver: RefCounted, fixture: Dictionary) -> void:
+	for row in fixture["pools"]:
+		var action: String = str(row["action_type"])
+		var chance: float = float(row["chance"])
+		var label := "outcome pool %s @%.2f" % [action, chance]
+		var got: Array = resolver.build_outcome_pool(action, chance)
+		var want: Array = row["pool"]
+		_expect_int(label + " size", got.size(), want.size())
+		if got.size() != want.size():
+			continue
+		var total: float = 0.0
+		for i in want.size():
+			var got_entry: Dictionary = got[i]
+			var want_entry: Dictionary = want[i]
+			_expect_str(label + " [%d] tier" % i, str(got_entry["tier"]), str(want_entry["tier"]))
+			_expect_int(label + " [%d] value" % i, int(got_entry["value"]), int(want_entry["value"]))
+			_expect_float(label + " [%d] weight" % i,
+				float(got_entry["weight"]), float(want_entry["weight"]))
+			total += float(got_entry["weight"])
+		_expect_float(label + " weight total", total, float(row["weight_total"]))
+	# An action type canon has never heard of builds nothing, and nothing
+	# resolves to a plain failure rather than to null.
+	var unknown: Dictionary = fixture["pool_unknown"]
+	_expect_int("outcome pool unknown is empty",
+		resolver.build_outcome_pool("not_a_real_action", 0.5).size(),
+		(unknown["pool"] as Array).size())
+	var fallback: Dictionary = resolver.resolve_action(
+		"not_a_real_action", 0.5, 4, "seed", "nope")
+	_expect_str("outcome unknown resolves to", str(fallback["tier"]),
+		str((unknown["resolved"] as Dictionary)["tier"]))
+
+## seededPick by cumulative weight, on the oracle's own hand-built pools. The
+## `zeroed` pool is the modulo fallback: the one branch a real chance never
+## reaches, ported because bit-exact is bit-exact.
+func _check_outcome_picks(resolver: RefCounted, fixture: Dictionary) -> void:
+	var pools := {
+		"even": [{"tier": "clean", "value": 3, "weight": 1.0},
+			{"tier": "messy", "value": 2, "weight": 1.0}],
+		"skewed": [{"tier": "clean", "value": 3, "weight": 0.05},
+			{"tier": "failure", "value": 1, "weight": 0.95}],
+		"zeroed": [{"tier": "clean", "value": 3, "weight": 0.0},
+			{"tier": "messy", "value": 2, "weight": 0.0},
+			{"tier": "failure", "value": 1, "weight": 0.0}],
+		"single": [{"tier": "catastrophic", "value": 0, "weight": 0.4}],
+	}
+	for row in fixture["picks"]:
+		# The fixture records canon's single joined key; this side splits it at
+		# the first colon, which is the same string once seeded_random rejoins it.
+		var key: String = str(row["key"])
+		var split: int = key.find(":")
+		var picked: Variant = resolver.seeded_pick(
+			pools[str(row["pool"])], key.substr(0, split), key.substr(split + 1))
+		_expect_str("outcome pick %s" % key,
+			str(picked["tier"]) if picked != null else "<null>", str(row["tier"]))
+	var empty: Dictionary = fixture["pick_empty"]
+	_expect_true("outcome pick of an empty pool is null",
+		resolver.seeded_pick([], "907hustle", "pick:empty") == null
+			and empty["empty_array"] == null)
+
+## The whole grid: every action type, every chance step, every attribute value
+## from the floor to the ceiling — so both thresholds are crossed inside it.
+func _check_outcome_resolutions(resolver: RefCounted, fixture: Dictionary) -> void:
+	for row in fixture["resolutions"]:
+		var outcome: Dictionary = resolver.resolve_action(
+			str(row["action_type"]), float(row["chance"]), int(row["attribute"]),
+			str(row["seed"]), str(row["context"]))
+		var label := "outcome resolve %s" % str(row["context"])
+		_expect_str(label, str(outcome["tier"]), str(row["tier"]))
+		_expect_int(label + " value", int(outcome["value"]), int(row["value"]))
+
+	# Determinism, and the reload case with it: resolving the same key twice must
+	# give the same answer, which is what makes a save/load round-trip replay.
+	for row in fixture["determinism"]:
+		var first: Dictionary = resolver.resolve_action(
+			"dealer_robbery", 0.6, 4, str(row["seed"]), str(row["context"]))
+		var again: Dictionary = resolver.resolve_action(
+			"dealer_robbery", 0.6, 4, str(row["seed"]), str(row["context"]))
+		var label := "outcome determinism %s:%s" % [str(row["seed"]), str(row["context"])]
+		_expect_str(label, str(first["tier"]), str(row["tier"]))
+		_expect_str(label + " repeats", str(again["tier"]), str(row["tier"]))
+
+	# The stickup key canon actually builds. A right resolver on a wrong key is
+	# still a wrong game, so the call site's key shape is pinned here.
+	for row in fixture["stickup_keys"]:
+		var outcome: Dictionary = resolver.resolve_action(
+			"robbery", float(row["chance"]), int(row["attribute"]),
+			str(row["seed"]), str(row["context"]))
+		_expect_str("outcome stickup key %s @%d" % [str(row["context"]), int(row["attribute"])],
+			str(outcome["tier"]), str(row["tier"]))
+		# And the port's own call site builds that same context string.
+		_expect_str("outcome stickup key shape %s" % str(row["context"]),
+			"stickup:%d:%d:%s" % [int(row["day"]), int(row["slot"]), str(row["target_id"])],
+			str(row["context"]))
+
+	for row in fixture["success_tiers"]:
+		_expect_true("outcome is_success_tier(%s)" % str(row["tier"]),
+			resolver.is_success_tier(str(row["tier"])) == bool(row["success"]))
+
+## Advantage and immunity, proven rather than asserted — see the section header.
+func _check_outcome_thresholds(resolver: RefCounted, fixture: Dictionary) -> void:
+	var advantage: Dictionary = fixture["advantage"]
+	var upgraded := 0
+	for row in advantage["cases"]:
+		var below: Dictionary = resolver.resolve_action(
+			"robbery", 0.5, 2, str(row["seed"]), str(row["context"]))
+		var at: Dictionary = resolver.resolve_action(
+			"robbery", 0.5, 3, str(row["seed"]), str(row["context"]))
+		var label := "outcome advantage %s" % str(row["context"])
+		_expect_str(label + " below", str(below["tier"]), str(row["below_tier"]))
+		_expect_str(label + " at", str(at["tier"]), str(row["at_tier"]))
+		# The contract of the ordinal: a second look may never make it worse.
+		_expect_true(label + " never downgrades", int(at["value"]) >= int(below["value"]))
+		if str(below["tier"]) != str(at["tier"]):
+			upgraded += 1
+	_expect_int("outcome advantage upgrade count", upgraded, int(advantage["upgraded"]))
+	_expect_true("outcome advantage actually upgrades something", upgraded > 0)
+
+	var immunity: Dictionary = fixture["immunity"]
+	var tally := {"below": {}, "at": {}}
+	for i in int(immunity["sweep"]):
+		var context := "immunity:%d" % i
+		var below: Dictionary = resolver.resolve_action("robbery", 0.35, 5, "907hustle", context)
+		var at: Dictionary = resolver.resolve_action("robbery", 0.35, 6, "907hustle", context)
+		tally["below"][below["tier"]] = int(tally["below"].get(below["tier"], 0)) + 1
+		tally["at"][at["tier"]] = int(tally["at"].get(at["tier"], 0)) + 1
+	for side in ["below", "at"]:
+		var want_tally: Dictionary = immunity["tally"][side]
+		for tier in want_tally.keys():
+			_expect_int("outcome immunity %s %s" % [side, str(tier)],
+				int(tally[side].get(str(tier), 0)), int(want_tally[tier]))
+		_expect_int("outcome immunity %s tier count" % side,
+			(tally[side] as Dictionary).size(), want_tally.size())
+	# Said plainly, because it is the acceptance criterion in its own words.
+	_expect_true("outcome Combat 5 can be catastrophic",
+		int(tally["below"].get("catastrophic", 0)) > 0)
+	_expect_true("outcome Combat 6 never catastrophic",
+		int(tally["at"].get("catastrophic", 0)) == 0)
+
+	# Crew backup as an effective level, re-clamped to the attribute ceiling.
+	for row in fixture["bonus"]:
+		var outcome: Dictionary = resolver.resolve_action(
+			"robbery", 0.4, int(row["attribute"]), str(row["seed"]), str(row["context"]),
+			int(row["bonus"]))
+		_expect_str("outcome bonus %s" % str(row["context"]), str(outcome["tier"]), str(row["tier"]))
+
+## The observation table, which is the half of this build the resolver does not
+## roll for: outcome quality decides the footprint, and the footprint is data.
+func _check_outcome_observations(resolver: RefCounted, fixture: Dictionary) -> void:
+	var want: Dictionary = fixture["outcome_observations"]
+	_expect_int("outcome observation action count", resolver.OUTCOME_OBSERVATIONS.size(), want.size())
+	for action in want.keys():
+		var want_tiers: Dictionary = want[action]
+		for tier in want_tiers.keys():
+			var want_rows: Array = want_tiers[tier]
+			var got_rows: Array = resolver.observations_for(str(action), str(tier))
+			var label := "outcome obs %s.%s" % [str(action), str(tier)]
+			_expect_int(label + " count", got_rows.size(), want_rows.size())
+			if got_rows.size() != want_rows.size():
+				continue
+			for i in want_rows.size():
+				var got_row: Dictionary = got_rows[i]
+				var want_row: Dictionary = want_rows[i]
+				for field in ["type", "event", "channel"]:
+					_expect_str("%s [%d] %s" % [label, i, field],
+						str(got_row.get(field, "")), str(want_row.get(field, "")))
+				# Every category the table names has to be one Exposure knows,
+				# or the row is silently dropped at record time.
+				_expect_true("%s [%d] category is real" % [label, i],
+					str(want_row.get("type", "")) in Exposure.CATEGORIES)
+				_expect_true("%s [%d] channel is real" % [label, i],
+					Exposure.CHANNELS.has(str(want_row.get("channel", ""))))
+	# A tier a shape does not carry reads empty rather than assuming a row —
+	# job_interview has no catastrophic, because the worst case is not hired.
+	_expect_int("outcome obs job_interview has no catastrophic",
+		resolver.observations_for("job_interview", "catastrophic").size(), 0)
+	_expect_int("outcome obs unknown action",
+		resolver.observations_for("not_a_real_action", "clean").size(), 0)
+
+## Build 5e's vertical proof: a robbery resolving into each of the four tiers,
+## driven through the REAL dispatch layer rather than by calling the resolver.
+##
+## Unlike the section above, these are not oracle fixtures and they do not
+## pretend to be. Canon's failure branch runs through an arrest system, dirty
+## cash, district heat weighting, a witness roll and a retaliation queue, none of
+## which this build has; the consequence spread here is the port's, specified in
+## the build brief and documented at the top of stickup.gd. What IS oracle-exact
+## is the tier pick, and that is proven in `_check_outcome_resolver` above.
+##
+## So what this proves is the contract between them: given a tier, the right
+## money moves, the right heat lands, the right injury is rolled, Curtis reads it
+## the right way, and the block learns exactly the rows canon's table names.
+##
+## The probe target is deliberate: Wash & Go regular is tier 1, resistance 0,
+## heat 2, and runs in any slot, so the only things moving the number are the
+## ones under test. Combat 1 keeps every tier live — below the advantage
+## threshold and well below immunity.
+const STICKUP_PROBE_TARGET := "washgo_regular"
+const STICKUP_PROBE_COMBAT := 1
+
+## What each tier is contracted to do to a heat-2, take-[30,50] target.
+## `heat` is the absolute amount `_apply_heat` should land with no crew.
+const STICKUP_EXPECTED := {
+	"clean": {"paid": true, "heat": 1.0, "injury": [0, 0], "awareness": 1},
+	"messy": {"paid": true, "heat": 2.0, "injury": [5, 10], "awareness": 2},
+	"failure": {"paid": false, "heat": 1.0, "injury": [0, 0], "awareness": 1},
+	# Four, not three: the catastrophic footprint carries a `network` row, and a
+	# network row that genuinely reaches Curtis is worth another point of
+	# awareness on its own. That compounding is canon's, in broadcast_tracked.
+	"catastrophic": {"paid": false, "heat": 3.0, "injury": [15, 25], "awareness": 4},
+}
+
+func _check_stickup_tiers() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var exposure := get_node("/root/Exposure")
+	var stickup: RefCounted = gm.system("stickup") as RefCounted
+	var resolver: RefCounted = gm.system("outcome_resolver") as RefCounted
+	if stickup == null or resolver == null:
+		_fail("stickup tiers", "stickup or outcome_resolver is missing")
+		return
+	var target: Dictionary = gs.stick_target_by_id(STICKUP_PROBE_TARGET)
+	if target.is_empty():
+		_fail("stickup tiers", "probe target %s is gone" % STICKUP_PROBE_TARGET)
+		return
+
+	for tier in ["clean", "messy", "failure", "catastrophic"]:
+		var day: int = _find_stickup_day(gs, stickup, resolver, str(tier))
+		if day < 0:
+			_fail("stickup %s" % str(tier), "no day in the scan window produces this tier")
+			continue
+		_run_stickup_case(gs, gm, exposure, target, str(tier), day)
+
+	_check_stickup_reload(gs, gm, stickup, resolver)
+	_check_stickup_rng_isolation(gs, gm, resolver)
+	_reset_stickup_probe(gs)
+
+## Put the run in the shape the probe needs: Spenard, morning, no heat, no crew,
+## Combat 1, and the daily cap clear.
+func _reset_stickup_probe(gs: Node) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.heat = 0.0
+	gs.attributes = {"combat": STICKUP_PROBE_COMBAT, "charisma": 1, "intelligence": 1}
+	gs.stick_daily_count = 0
+
+## Which day resolves to the tier we want. The roll is keyed on day and slot, so
+## walking the day is walking the seed — no seed is pinned, which means a
+## balance change moves this scan instead of silently invalidating it.
+func _find_stickup_day(gs: Node, stickup: RefCounted, resolver: RefCounted, tier: String) -> int:
+	_reset_stickup_probe(gs)
+	var target: Dictionary = gs.stick_target_by_id(STICKUP_PROBE_TARGET)
+	var chance: float = stickup.chance_for(target)
+	for day in range(1, 400):
+		var key := "stickup:%d:0:%s" % [day, STICKUP_PROBE_TARGET]
+		var outcome: Dictionary = resolver.resolve_action(
+			"robbery", chance, STICKUP_PROBE_COMBAT, gs.run_seed, key)
+		if str(outcome["tier"]) == tier:
+			return day
+	return -1
+
+## The first `wanted` days that resolve to this tier, for checks that need more
+## than one sample to be worth anything.
+func _find_stickup_days(gs: Node, stickup: RefCounted, resolver: RefCounted,
+		tier: String, wanted: int) -> Array:
+	_reset_stickup_probe(gs)
+	var target: Dictionary = gs.stick_target_by_id(STICKUP_PROBE_TARGET)
+	var chance: float = stickup.chance_for(target)
+	var out: Array = []
+	for day in range(1, 400):
+		var key := "stickup:%d:0:%s" % [day, STICKUP_PROBE_TARGET]
+		var outcome: Dictionary = resolver.resolve_action(
+			"robbery", chance, STICKUP_PROBE_COMBAT, gs.run_seed, key)
+		if str(outcome["tier"]) == tier:
+			out.append(day)
+			if out.size() >= wanted:
+				break
+	return out
+
+## One tier, end to end: snapshot, dispatch, and hold the whole spread to
+## account — including which channel each observation actually travelled on.
+func _run_stickup_case(gs: Node, gm: Node, exposure: Node, target: Dictionary,
+		tier: String, day: int) -> void:
+	_reset_stickup_probe(gs)
+	gs.day = day
+	var want: Dictionary = STICKUP_EXPECTED[tier]
+	var label := "stickup %s" % tier
+
+	var cash_before: int = gs.cash
+	var health_before: int = gs.health
+	var heat_before: float = gs.heat
+	var awareness_before: int = gs.curtis_awareness
+	var attempts_before: int = gs.stick_attempts
+	var rep_before: int = gs.stick_rep
+	var successes_before: int = gs.stick_successes
+	var queue_before: int = gs.observation_queue.size()
+	var slot_before: int = gs.time_slots_today
+
+	_expect_true(label + " dispatches", gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET}))
+
+	# Money. The take band is the target's, unchanged by the tier — what the
+	# tier decides is whether it arrives at all.
+	var took: int = gs.cash - cash_before
+	if bool(want["paid"]):
+		_expect_true(label + " pays inside the take band",
+			took >= int(target["take"][0]) and took <= int(target["take"][1]))
+	else:
+		_expect_int(label + " pays nothing", took, 0)
+
+	# Heat, to the tenth. Fractional on purpose: rounding is what flattened the
+	# difference between a quiet take and a loud one on a 1-heat target.
+	_expect_float(label + " heat", snappedf(gs.heat - heat_before, 0.001), float(want["heat"]))
+
+	# Health. A band of [0, 0] means no injury roll was keyed at all.
+	var hurt: int = health_before - gs.health
+	var band: Array = want["injury"]
+	_expect_true(label + " health cost in band",
+		hurt >= int(band[0]) and hurt <= int(band[1]))
+
+	# Curtis.
+	_expect_int(label + " curtis awareness",
+		gs.curtis_awareness - awareness_before, int(want["awareness"]))
+
+	# Counters the surface has always kept, still kept.
+	_expect_int(label + " attempts", gs.stick_attempts - attempts_before, 1)
+	var scored: int = 1 if bool(want["paid"]) else 0
+	_expect_int(label + " rep", gs.stick_rep - rep_before, scored)
+	_expect_int(label + " successes", gs.stick_successes - successes_before, scored)
+	_expect_int(label + " daily count", gs.stick_daily_count, 1)
+
+	# A robbery is still exactly one slot, tier or no tier.
+	_expect_int(label + " advances one slot", gs.time_slots_today, slot_before + 1)
+
+	# The Exposure footprint, row for row against canon's table. A `direct` row
+	# lands in the ledger the same turn; `neighborhood` and `network` take a day,
+	# so they are in the queue instead. Checking the wrong one would pass a
+	# clean robbery that had quietly gone out over the network.
+	var specs: Array = (gm.system("outcome_resolver") as RefCounted).observations_for("robbery", tier)
+	var queued_rows: int = gs.observation_queue.size() - queue_before
+	var immediate: int = 0
+	var delayed: int = 0
+	for spec in specs:
+		var channel: String = str(spec["channel"])
+		var listeners := 0
+		for npc_id in exposure.NPC_LENSES.keys():
+			if channel in exposure.NPC_CHANNELS.get(str(npc_id), []):
+				listeners += 1
+		if int(exposure.CHANNELS[channel]["days"]) <= 0:
+			immediate += listeners
+		else:
+			delayed += listeners
+	_expect_int(label + " queued observation rows", queued_rows, delayed)
+	for spec in specs:
+		var channel: String = str(spec["channel"])
+		var event: String = str(spec["event"])
+		var found := false
+		if int(exposure.CHANNELS[channel]["days"]) <= 0:
+			for npc_id in exposure.NPC_LENSES.keys():
+				for row in exposure.ledger_of(str(npc_id)):
+					if str(row["event"]) == event:
+						found = true
+		else:
+			for entry in gs.observation_queue:
+				if str((entry["spec"] as Dictionary).get("event", "")) == event:
+					found = true
+		_expect_true("%s carries %s on %s" % [label, event, channel], found)
+	_expect_true(label + " wrote at least one row", immediate + delayed > 0)
+	# And nothing the tier does not own: the pre-tier hand-rolled `stickup` row
+	# is gone, and broadcast_outcome is the only thing writing here now.
+	var stray := false
+	for npc_id in exposure.NPC_LENSES.keys():
+		for row in exposure.ledger_of(str(npc_id)):
+			if str(row["event"]) == "stickup":
+				stray = true
+	for entry in gs.observation_queue:
+		if str((entry["spec"] as Dictionary).get("event", "")) == "stickup":
+			stray = true
+	_expect_true(label + " writes no legacy stickup row", not stray)
+
+## Save before a robbery, reload, attempt again: the same tier, the same money,
+## the same heat. The roll is keyed on the run seed plus day, slot and target —
+## none of which a reload changes — so this is the acceptance test for the whole
+## "no stream draws in outcome resolution" rule.
+func _check_stickup_reload(gs: Node, gm: Node, stickup: RefCounted, resolver: RefCounted) -> void:
+	var saves := get_node("/root/SaveSystem")
+	var rng := get_node("/root/RngManager")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	# Both injured tiers, and several days of each. One replay comparison can
+	# agree by luck — an unseeded injury inside a 5..10 band matches its own
+	# re-roll one time in six — so the equality is checked across a spread AND
+	# the injury is separately held to the exact value its key hashes to, which
+	# is the assertion luck cannot satisfy.
+	for tier in ["messy", "catastrophic"]:
+		var days: Array = _find_stickup_days(gs, stickup, resolver, str(tier), 4)
+		if days.is_empty():
+			_fail("stickup reload", "no %s day in the scan window" % str(tier))
+			continue
+		for day in days:
+			var label := "stickup reload %s d%d" % [str(tier), int(day)]
+			_reset_stickup_probe(gs)
+			gs.day = int(day)
+			saves.save_run()
+			_expect_true(label + " wrote a save", FileAccess.file_exists(saves.SAVE_PATH))
+			var first: Dictionary = stickup.handle("stickup", {"target_id": STICKUP_PROBE_TARGET})
+			var first_cash: int = gs.cash
+			var first_heat: float = gs.heat
+			var first_health: int = gs.health
+
+			# The injury is not merely reproducible, it is the value this key
+			# hashes to. Nothing unseeded can land here by coincidence.
+			var band: Array = STICKUP_EXPECTED[str(tier)]["injury"]
+			var key := "stickup:%d:0:%s:injury" % [int(day), STICKUP_PROBE_TARGET]
+			_expect_int(label + " injury is the seeded value",
+				int(first.get("damage", -1)),
+				rng.seeded_int_range(gs.run_seed, key, int(band[0]), int(band[1])))
+
+			_expect_true(label + " loads", saves.load_run())
+			var second: Dictionary = stickup.handle("stickup", {"target_id": STICKUP_PROBE_TARGET})
+			_expect_str(label + " same tier", str(second.get("tier", "")), str(first.get("tier", "")))
+			_expect_int(label + " same take", int(second.get("take", -1)), int(first.get("take", -2)))
+			_expect_int(label + " same damage",
+				int(second.get("damage", -1)), int(first.get("damage", -2)))
+			_expect_int(label + " same cash", gs.cash, first_cash)
+			_expect_float(label + " same heat", gs.heat, first_heat)
+			_expect_int(label + " same health", gs.health, first_health)
+
+	if previous_save.is_empty():
+		DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+
+## The market stream must not move. Outcome resolution is keyed and hashed; the
+## xorshift cursor in run state belongs to the nightly market walk and to
+## nothing else. A resolver that reached for it would desynchronise every price
+## in the run from the oracle's.
+func _check_stickup_rng_isolation(gs: Node, gm: Node, resolver: RefCounted) -> void:
+	_reset_stickup_probe(gs)
+	var cursor_before: int = gs.rng_state
+	for i in 100:
+		resolver.resolve_action("robbery", 0.55, 2, gs.run_seed, "isolation:%d" % i)
+	_expect_int("market cursor unmoved by 100 resolutions", gs.rng_state, cursor_before)
+	# And through the real surface, inside a single day so no market walk runs.
+	gs.day = 3
+	gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET})
+	_expect_int("market cursor unmoved by a dispatched robbery", gs.rng_state, cursor_before)
 
 # --- plumbing ---------------------------------------------------------------
 

@@ -33,6 +33,20 @@ extends RefCounted
 ## Still not ported: the recovered-amount curve on enforcement (canon recovers a
 ## variable amount and takes Dre's cut off the excess; here the principal comes
 ## back flat), and Dre's mission arc.
+##
+## ## Why this is still a hashed roll after Build 5e
+##
+## The default check is not an action the player takes, so it has no shape in
+## canon's OUTCOME_SHAPES and never touches `resolveAction`. It asks whether
+## somebody else paid you back — the player is not in the room, and there is no
+## Charisma read to make about a phone that does not ring. Canon resolves it the
+## way this file already does: `stringHash % 10000 / 10000` against the
+## probability above, at game-core.js:6561.
+##
+## Enforcement, on the other hand, IS an action — and when the consequence
+## encounter engine lands, collecting hard is exactly the `confrontation` /
+## `negotiation` pair the tier table is waiting for. Until then the collection
+## resolves flat, which is canon.
 
 const GREEN := Color(0.451, 0.722, 0.404)
 const RED := Color(0.827, 0.161, 0.125)

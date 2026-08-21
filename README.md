@@ -35,6 +35,7 @@ the oracle won; those divergences are listed in `HANDOFF.md`.
 | Get better at reading value, and watch the odds move | automatic, on a clean flip |
 | Lift stock from rooms that may be watching | Hustle → Boost |
 | Rob marks for fast money and real Heat | Hustle → Stickup |
+| Have it go clean, messy, wrong, or badly wrong | automatic, on any risky action |
 | Lend at interest and decide what a default costs | Hustle → Shark |
 | Hire crew, pay wages, watch loyalty | Street → People → Crew |
 | Claim corners, post soldiers, collect nightly | Home → Turf |
@@ -49,9 +50,10 @@ the oracle won; those divergences are listed in `HANDOFF.md`.
 
 ### Not built yet
 
-Arrest/jail, venue interiors, combat encounters, and equipment.
-Attributes are live but resolution is still binary — canon's four-tier
-clean/messy/failure/catastrophic outcomes are a build of their own.
+Arrest/jail, venue interiors, combat encounters, and equipment. The consequence
+encounter engine is the next real gap: canon routes a blown boost and a hard
+collection into it, and it is what would let those two surfaces reach the tiers
+that already exist for them.
 
 ## Project layout
 
@@ -73,6 +75,7 @@ systems/              # the ONLY writers of GameState
   obligations.gd      # rent + phone bill, settled nightly
   phone.gd            # the inbox, the held inbox, and the line coming back
   attributes.gd       # combat / charisma / intelligence, and how they grow
+  outcome_resolver.gd # the four tiers, advantage, and what the block learns
   recovery.gd         # first aid, the clinic ladder, and laying low
   stickup.gd          # armed robbery, tiers, the two-a-day cap
   shark.gd            # lending, terms, defaults
@@ -94,6 +97,7 @@ scripts/
 
 tests/parity/         # CI gate: replays recorded oracle fixtures through the
                       # Godot port headless; also runs the save round-trip
+  fixtures/outcome_resolver/   # Build 5e: whole actions resolving, not primitives
 ```
 
 ## Architecture
@@ -115,6 +119,12 @@ tests/parity/         # CI gate: replays recorded oracle fixtures through the
 - **Day-cross is the heartbeat.** `time_system` emits `day_crossed`; jobs, obligations,
   crew, territory, shark, curtis and exposure all settle against it. Settlement is
   scoped to the day that *ended*, so a bill due on day 7 is payable during day 7.
+- **Outcomes are tiered, not binary.** A risky action resolves into clean /
+  messy / failure / catastrophic. The attribute reads that pool with tabletop
+  advantage — a second look at 3, catastrophe immunity at 6 — rather than a
+  bonus to a number the player cannot see. The tier then decides the Exposure
+  footprint, which is the point: doing crime well does not make you invisible,
+  it makes you quiet.
 - **Theme-driven UI** — colors, fonts, skins and type scale live in
   `hustle_theme.tres`; a change there restyles every screen.
 
@@ -169,6 +179,7 @@ regardless of how small the source file is.
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
 | 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
 | 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
+| 5e. Tiered outcomes | ✅ shared resolver + Stickup/Jobs/907List converted; parity 2399 → 6628 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

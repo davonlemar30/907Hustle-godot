@@ -21,6 +21,13 @@ func _ready() -> void:
 	attributes.setup(_gs)
 	register_system("attributes", attributes)
 
+	# The outcome resolver is pure — no GameState handle at all — and every
+	# risky surface reaches it, so it is built alongside attributes rather than
+	# next to any one of its callers.
+	var outcome_resolver = preload("res://systems/outcome_resolver.gd").new()
+	outcome_resolver.setup(rng)
+	register_system("outcome_resolver", outcome_resolver)
+
 	var economy = preload("res://systems/economy.gd").new()
 	economy.setup(_gs, rng)
 	register_system("economy", economy)
@@ -45,7 +52,7 @@ func _ready() -> void:
 
 	# Jobs and obligations both hang off day_crossed, which time_system emits.
 	var jobs = preload("res://systems/jobs.gd").new()
-	jobs.setup(_gs, rng, time)
+	jobs.setup(_gs, rng, time, self, attributes)
 	register_system("jobs", jobs)
 
 	var obligations = preload("res://systems/obligations.gd").new()
@@ -61,7 +68,7 @@ func _ready() -> void:
 	register_system("shark", shark)
 
 	var nine07list = preload("res://systems/nine07list.gd").new()
-	nine07list.setup(_gs, rng, time, attributes)
+	nine07list.setup(_gs, rng, time, attributes, self)
 	register_system("list", nine07list)
 
 	var boost = preload("res://systems/boost.gd").new()

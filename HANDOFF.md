@@ -497,6 +497,169 @@ that reasoning is most of the value. The Build State page can be reconstructed f
 - Any deliberate divergence from canon is named with the reason.
 - Any canon oddity found is recorded rather than silently corrected.
 
+## Build 5e: tiered outcome resolution — the resolver Attributes deferred  (added 2026-08-21)
+
+`systems/attributes.gd` named this port as explicitly deferred, in writing, with
+the reason: *"porting the resolver now would ship a large untested branch with
+no caller."* It has callers now. **Parity 2399 → 6628 checks, 0 failures.**
+
+A risky action no longer resolves `roll < chance`. It resolves into one of four
+tiers — **clean / messy / failure / catastrophic** — and the tier decides the
+money, the heat, the injury, what Curtis makes of it, and what the block ends up
+knowing.
+
+### The idea, and why it is not a percentage bonus
+
+Every wired roll already computes a context-sensitive chance out of heat,
+resistance, attributes and district. Canon does not throw that away for a flat
+weighted table — it **splits that chance across the tiers**. `success` divides
+the winning half, `failure` divides the losing half.
+
+The attribute then reads the pool with tabletop advantage rather than a bonus to
+a number nobody can see:
+
+- **Combat 3+** rolls twice and keeps the better tier
+- **Combat 6+** has catastrophic removed from the pool entirely
+
+That shape is deliberate: one effective level is invisible at 0-1 and 3-4 and
+decisive at 2 and 5. It is also what makes crew backup (`bonus`) mean something
+specific — *it does not make you better at fighting, it takes the worst ending
+off the table.*
+
+Measured through the real surface, 1000 seeds per row:
+
+| Combat | chance | clean | messy | failure | catastrophic |
+|---|---|---|---|---|---|
+| 0 | 0.54 | 365 | 205 | 353 | **77** |
+| 1 | 0.62 | 424 | 220 | 303 | **53** |
+| 2 | 0.70 | 447 | 263 | 243 | **47** |
+| 3 | 0.78 | 688 | 268 | 44 | **0** |
+| 6 | 0.86 | 755 | 241 | 4 | **0** |
+
+### The keystone is the observation table, not the roll
+
+`OUTCOME_OBSERVATIONS` is what this build is actually for. Outcome quality
+decides the Exposure footprint: **doing crime well does not make you invisible,
+it makes you quiet.** A clean robbery still writes its financial row — it just
+travels on `direct` instead of reaching the network. A catastrophe goes out on
+two channels because somebody called it in.
+
+Most tiers in that table are empty, and that is not an omission. Canon measured
+a row for every talk-down and every night at the counter as moving every
+disposition up half a band and dragging story pacing with it. What lives in the
+table is only the difference between doing a thing well and doing it badly.
+
+One consequence worth knowing: a catastrophic robbery raises Curtis by **four**,
+not three. Three from the tier, and one more because its `network` row genuinely
+lands on him — that compounding is canon's, in `broadcast_tracked`.
+
+### Two things that are easy to get wrong, both load-bearing
+
+1. **The resolver reads the RAW attribute, not `compat()`.** The compatibility
+   offset exists for the pre-v1.10 inline `(x - 2) * k` terms and nothing else;
+   canon's own comment says anything routed through `resolveWithAttribute` reads
+   the stored value and carries no inline term. Feeding `compat()` in would
+   shift both thresholds down a level. The parity fixture pins this: the sabotage
+   of moving `ADVANTAGE_THRESHOLD` by one produces 201 failures.
+2. **Pool ORDER is load-bearing.** `seeded_pick` walks cumulative weight in array
+   order, so a pool with the right entries in the wrong order resolves different
+   tiers from the same hash. The fixture checks order, not just content — a
+   content-only check waves this through, and reversing the pool produces 2385
+   failures.
+
+### Stickup is the vertical proof
+
+| tier | cash | heat | health | Curtis |
+|---|---|---|---|---|
+| clean | full take | target × 0.5 | — | +1 |
+| messy | full take | target × 1.0 | -5..-10 | +2, criminal |
+| failure | $0 | max(1, heat-1) | — | +1 |
+| catastrophic | $0 | target × 1.5 | -15..-25 | +3, criminal (+1 network) |
+
+`_apply_heat` takes a float now. Rounding it is exactly what would flatten the
+difference between a quiet take and a loud one on a 1-heat target.
+
+The hand-rolled `violence / stickup` broadcast is **gone**. `broadcast_outcome`
+is the single entry point for post-resolution Exposure effects, and the parity
+check asserts no legacy row is written.
+
+**This consequence spread is the port's, not canon's** — canon's failure branch
+runs through an arrest system, dirty cash, district heat weighting, a witness
+roll and a retaliation queue, none of which this build has. What is oracle-exact
+is the thing that had to be: the tier pick. Same seed, same chance, same Combat,
+same tier as the web build, proven across 715 grid resolutions, 400 advantage
+pairs and 1000 immunity seeds.
+
+### Two surfaces were NOT converted, and that is the oracle's call
+
+The brief listed boost and shark for conversion. The oracle does not tier
+either, so converting them would have invented behaviour in two shipped surfaces
+with nothing left to check them against:
+
+- **Boost** (`game-core.js:2248`) is still a plain `roll < chance`. Getting
+  caught is not a tier in canon, it is a **scene** — the failure hands off to the
+  consequence-encounter engine with the take still in play, and *that* resolves
+  on this pipeline as `confrontation` / `escape` / `negotiation`. The tiers a
+  blown lift deserves already exist in `OUTCOME_SHAPES`; what is missing is the
+  encounter engine that reaches them.
+- **Shark**'s default check is not an action the player takes. It has no shape in
+  `OUTCOME_SHAPES` and never touches `resolveAction` — the player is not in the
+  room, and there is no read to make about a phone that does not ring.
+
+Both files now carry that reasoning in their headers so the next person does not
+re-open the question from scratch.
+
+### Jobs and 907List, which canon DOES tier
+
+- **Jobs.** Applying used to be a formality — every application became a job.
+  It is a real interview now, read through Charisma:
+  `clamp(0.62 - max(0, heat - 4) * 0.04, 0.25, 0.95)`. Heat costs you here too:
+  a manager who has heard things is a harder room. Measured, 40 applications
+  each: 23 hired at heat 0, 21 at heat 6, **13 at heat 12**.
+  `job_interview` is the one shape in the table with **no catastrophic tier** —
+  the worst case of an interview is not being hired, and canon says so in the
+  data rather than in a special case.
+  *Divergence:* canon queues the application and resolves it two slots later
+  over the phone, then *offers* the job. That pipeline does not exist here, so
+  the interview resolves at apply time, keyed on the day and slot applied —
+  which is exactly what canon keys on.
+- **907List.** A sale is a handoff in a parking lot, resolved on `market_meetup`
+  at canon's flat 0.75. The thing to understand: **the tier has no mechanical
+  consequence.** Canon leaves the robbery roll alone so the risk number the page
+  shows stays honest, and the money is settled before the tier is picked. What
+  the tier decides is the Exposure footprint and nothing else.
+
+### The parity work is where the real cost was
+
+4229 new checks, all replayed from oracle truth recorded by
+`scripts/parity/gen_fixtures.mjs`. They live in their own file
+(`tests/parity/fixtures/outcome_resolver/`) because they are a different kind of
+fixture: `rng_fixtures.json` records primitives and system reads, this one
+records whole actions resolving.
+
+Every new check was **sabotage-tested before being trusted**. Reversed pool
+order → 2385 failures. Advantage threshold off by one → 201. A single weight
+typo in one shape → 10. Dropping `broadcast_outcome` → 10.
+
+**One of them was flaky and had to be fixed.** The reload check originally
+compared a pre-save injury roll against its post-load replay. Swapping
+`seeded_int_range` for `randi_range` *passed* on the first sabotage run — a
+5..10 band matches its own re-roll one time in six. The fix is not more samples
+alone: the injury is now held to the exact value its key hashes to, which is an
+assertion luck cannot satisfy. Re-sabotaged three times: fails every time.
+
+The lesson generalises. **A determinism check that can pass by coincidence is
+not a determinism check**, and the only way to find out is to break the thing on
+purpose and watch.
+
+### The market stream never moves
+
+Outcome resolution is keyed and hashed, never drawn from `rng_state`. The
+xorshift cursor belongs to the nightly market walk and to nothing else — a
+resolver that reached for it would desynchronise every price in the run from the
+oracle's. Asserted directly: the cursor is unmoved by 100 resolutions and by a
+dispatched robbery.
+
 ## Phase 5d: Recovery — health finally goes back up  (added 2026-08-20)
 
 Health has been a HUD stat since the first build with nothing in the game able

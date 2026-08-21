@@ -27,6 +27,22 @@ extends RefCounted
 ## Tier 3 needs technique 13 AND field-assignable crew, so it is unreachable
 ## until crew lands in 3e. Its merchandise-and-fence loop is written and tested
 ## but has no way to trigger yet — that is canon's gate, not an omission.
+##
+## ## Why this is still a binary roll after Build 5e
+##
+## Every other risky surface moved onto `outcome_resolver` in 5e. This one did
+## not, and that is the oracle's call rather than an unfinished migration:
+## canon's `resolveBoostAttempt` (game-core.js:2248) is a plain `roll < chance`
+## and has stayed one. Getting caught is not a tier in canon, it is a SCENE —
+## the failure hands off to the consequence-encounter engine with the take still
+## in play, and THAT resolves on the tier pipeline as `confrontation`, `escape`
+## or `negotiation`. The tiers a blown lift deserves already exist in
+## OUTCOME_SHAPES; what is missing is the encounter engine that reaches them.
+##
+## Tiering the lift itself here would invent a shape canon does not have, in a
+## shipped surface, with no oracle left to check it against. When the encounter
+## engine lands, this becomes a binary roll into three tiered scenes — which is
+## canon, and is a different change from the one 5e was.
 
 const GREEN := Color(0.451, 0.722, 0.404)
 const RED := Color(0.827, 0.161, 0.125)

@@ -13,6 +13,22 @@ extends RefCounted
 ## Not ported, each its own feature: seller reliability, named buyer requests,
 ## bulk lots, specialist category tags, the carried-value robbery risk that
 ## prices moving stock between districts.
+##
+## ## The meetup (Build 5e)
+##
+## A sale is a handoff in a parking lot, and canon resolves how visible it was
+## on the `market_meetup` shape at a flat 0.75 — an Intelligence read of picking
+## the hour and the lot.
+##
+## The thing to understand about this one: **the tier has no mechanical
+## consequence.** Canon is explicit that the robbery roll is left alone so the
+## risk number the page shows stays honest, and the money is already settled by
+## the time the tier is picked. What the tier decides is the Exposure footprint
+## and nothing else — a clean meetup writes no row at all, a messy one puts
+## `presence / met_a_stranger` on the block, and a catastrophe would write
+## `violence / robbery_victim`. That last tier is reachable here but toothless
+## until the carried-value robbery lands, which is the feature that gives it
+## teeth in canon.
 
 const GREEN := Color(0.451, 0.722, 0.404)
 const RED := Color(0.827, 0.161, 0.125)
@@ -22,17 +38,23 @@ const AMBER := Color(0.882, 0.651, 0.227)
 ## between reading the board and getting lucky.
 const PROFITABLE_FLIP_MARGIN := 1.3
 
+## Canon's flat meetup chance. Not a balance number this build chose — it is the
+## constant canon passes at the call site, frozen with the rest of the port.
+const MEETUP_CHANCE := 0.75
+
 var gs: Node
 var rng: Node
 var time_system: RefCounted
 var attributes: RefCounted
+var gm: Node
 
 func setup(game_state: Node, rng_manager: Node, time: RefCounted,
-		attribute_system: RefCounted) -> void:
+		attribute_system: RefCounted, manager: Node) -> void:
 	gs = game_state
 	rng = rng_manager
 	time_system = time
 	attributes = attribute_system
+	gm = manager
 
 func can_handle(action: String) -> bool:
 	return action in ["list_buy", "list_sell"]
@@ -141,14 +163,30 @@ func _sell(index: int) -> Dictionary:
 	if paid > 0 and float(got) > float(paid) * PROFITABLE_FLIP_MARGIN:
 		attributes.train("list_flip", maxi(0, gs.list_flips - 1))
 
+	# How visible the handoff was. Canon keys this on the day, the slot and a
+	# nonce; the held item is this build's nonce, which is unique per holding.
+	var resolver: Object = gm.system("outcome_resolver") if gm != null else null
+	var tier: String = ""
+	if resolver != null:
+		var key := "meetup:%d:%d:%s" % [gs.day, gs.time_slots_today, str(held["item_id"])]
+		var outcome: Dictionary = resolver.resolve_action("market_meetup", MEETUP_CHANCE,
+			attributes.value("intelligence"), gs.run_seed, key)
+		tier = str(outcome["tier"])
+		resolver.broadcast_outcome("market_meetup", tier, gs.current_district_id, got)
+
 	var delta: int = got - paid
 	if delta >= 0:
 		gs.log_activity("Flipped %s for $%d (+$%d)." % [str(item["name"]), got, delta], GREEN)
 	else:
 		gs.log_activity("%s moved for $%d. Down $%d." % [str(item["name"]), got, -delta], RED)
+	# The only tier the player is ever told about: somebody clocked the handoff.
+	# The rest of the spread is silent by design — see the header.
+	if tier == "messy":
+		gs.log_activity("Somebody was paying attention to that meet.", AMBER)
+
 	# A meet is a slot.
 	time_system.handle("advance_time", {})
-	return {"ok": true, "got": got, "delta": delta}
+	return {"ok": true, "got": got, "delta": delta, "tier": tier}
 
 func _update_tier() -> void:
 	var was: int = gs.list_tier

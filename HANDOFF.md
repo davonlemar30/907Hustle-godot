@@ -524,6 +524,131 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-001.2: 907List opportunity ownership — and the filter that was missing  (added 2026-08-21)
+
+A listing was a shelf, not an opportunity. You could buy the same space heater
+until the money or the capacity ran out, and reopening the screen handed it back
+every time. **Parity 6641 → 6702 checks, 0 failures. Save schema v5 → v6.**
+
+### What a listing is now
+
+Canon tracks `nineZeroSevenList.taken` as `{day, ids}` and filters the board
+POOL by it. Two details in that sentence are load-bearing and both are easy to
+get backwards:
+
+**The filter runs on the pool, before generation — not on the output.** Buying an
+item does not subtract a row from the board; the board is regenerated from a
+smaller pool, so its remaining composition moves with it. Day 2 shows
+`[space_heater, dresser]`; take the heater and it shows `[winter_coat, dresser]`,
+not `[dresser]`. That is canon's `listingSlate` and it is pinned as a literal in
+the fixtures, because it is exactly the behaviour a reasonable person would
+"fix" by mistake.
+
+**The day reset is lazy** — keyed on `list_taken.day` rather than a `day_crossed`
+handler. Canon does it this way and the reason shows up under load: a save
+written on day 4 and loaded on day 9 is correctly empty with nothing having run
+in between, and no ordering question arises about whether consumption clears
+before or after the systems that settle on a day cross. A handler would have
+introduced one.
+
+### The prerequisite nobody asked for
+
+Task 3 was "route the completed flip's financial observation through
+`Curtis.broadcast_tracked()`." Doing only that would have been wrong.
+
+Canon gates Curtis's network ear behind `clearsCurtisFilter`: only `violence`,
+`defiance` and `growth` clear it by category, and `financial` clears it on volume
+alone at **$200**. `exposure.gd` had that filter listed in its header as NOT
+ported. Broadcasting a flip's profit on the network without it means **every $40
+flip raises Curtis's awareness** — the exact opposite of the design, and canon
+says so in its own comment: *a big 907List day is exactly how this is meant to
+reach him, and a $40 space heater is exactly how it is meant not to.*
+
+So the filter is ported here, as a dependency of the feature rather than as
+scope creep.
+
+### It immediately found a bug I shipped in 5e
+
+Build 5e's HANDOFF entry states that a catastrophic robbery raises Curtis by
+**four** — three from the tier, one more because its `network` row lands on him.
+That was true, and it was wrong.
+
+The row is `heat_exposure`, which is **not** one of the three categories that
+clear his filter. In canon it never reaches him and never credits the point. The
+port had been over-crediting Curtis on every catastrophic robbery since 5e,
+purely because the filter was missing. Verified directly against the oracle:
+
+```
+clearsCurtisFilter({type: "heat_exposure"})  →  false
+```
+
+The number is three. The fixture now derives the expected listener count through
+`clears_curtis_filter` rather than hardcoding either answer, so the check moves
+with the rule instead of having to be re-taught.
+
+### The migration is the first one that reconstructs
+
+Every arm before this defaulted: a v4 save has no attributes, and canon's
+fresh-run values genuinely ARE its history. v5 → v6 cannot do that. Defaulting
+`list_taken` hands the player back an opportunity they already spent.
+
+So the arm reconstructs what it can prove. **A holding bought on the current day
+is proof that listing was taken today**, and holdings persist, so those ids come
+back exactly.
+
+**The named limit:** a listing bought AND sold on the same day leaves no trace in
+a v5 save. The holding is gone and nothing else recorded the purchase. Those ids
+are unrecoverable and are not guessed at — the player gets that one slot back for
+the rest of the loading day, and every day after is correct.
+
+The alternative was suppressing the whole board for the loading day, which
+punishes every v5 save to be exact about a case most never hit. **Recovering what
+is provable and naming what is not** is the honest trade, and the limit is
+asserted in the fixtures rather than only commented.
+
+### A pre-existing generator defect, pinned rather than fixed
+
+Day 3 returns one listing where tier 1 asks for two. The cause is real: the board
+walks `seeded_int_range` over keys differing only in a trailing counter, and
+FNV-1a over that shape clusters hard — all 40 guard keys for day 3 hash into the
+same bucket, so the dedupe never finds a second item.
+
+```
+907list:3:0 → 0.0463    907list:3:2 → 0.0541
+907list:3:1 → 0.0424    907list:3:3 → 0.0502   → floor(x * 8) == 0 every time
+```
+
+Canon does not have this because it `seededShuffle`s the whole pool instead of
+sampling it with retries. Fixing it moves every board in every existing save, so
+it is **filed, not fixed** — and the short day-3 board is now an explicit
+assertion, so the day someone fixes it, the fixture says so out loud.
+
+### Sabotage log
+
+Eleven faults injected, every one confirmed red before revert:
+
+| # | fault | result |
+|---|---|---|
+| 1 | purchase does not record consumption | 12 failures |
+| 2 | board does not filter consumed ids | 9 |
+| 3 | no system-level duplicate guard | 7 |
+| 4 | day reset ignored | 2 |
+| 5 | `list_taken` dropped from `PERSIST_FIELDS` | 8 |
+| 6 | v5→v6 arm defaults instead of reconstructing | 3 |
+| 7 | Curtis network filter removed | 4 |
+| 8 | completed flip broadcasts nothing | 4 |
+| 9 | volume threshold 200 → 100 | 1 |
+| 10 | board seed key changed | 17 |
+| 11 | migration recovers all holdings, not just today's | 1 |
+
+Sabotage 7 is the one worth keeping: it reproduces the 5e bug exactly
+(`stickup catastrophic curtis awareness: got 4, want 3`), which is how you know
+the correction is real and not a fixture edited to match new behaviour.
+
+Sabotage 9 failing on exactly one check — the `$199` boundary — is the shape a
+threshold test should have. If moving a constant by 100 had failed nothing, the
+boundary was never being tested.
+
 ## Build 5e: tiered outcome resolution — the resolver Attributes deferred  (added 2026-08-21)
 
 `systems/attributes.gd` named this port as explicitly deferred, in writing, with

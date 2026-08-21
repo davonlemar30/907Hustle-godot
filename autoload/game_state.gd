@@ -296,6 +296,7 @@ func reset_to_new_game() -> void:
 	list_tier = 1
 	list_flips = 0
 	list_holdings = []
+	list_taken = {"day": 0, "ids": []}
 	boost_tier = 1
 	boost_technique = 0
 	boost_merchandise = 0
@@ -552,6 +553,19 @@ var list_tier: int = 1
 var list_flips: int = 0
 ## Items currently held, each {item_id, bought_day}.
 var list_holdings: Array = []
+## Canon `nineZeroSevenList.taken` — which of today's listings have already been
+## bought, so the same opportunity cannot be taken twice off one day's board.
+##
+## Shape is `{day: int, ids: Array[String]}` and the RESET IS LAZY, keyed on the
+## day field rather than driven by a day_crossed handler. Canon does it this way
+## (`markListingTaken`) and the choice is load-bearing: a save written on day 4
+## and loaded on day 9 is correctly empty without anything having run in
+## between, and no ordering question arises about whether consumption clears
+## before or after the systems that settle on a day cross.
+##
+## `systems/nine07list.gd` owns every read and write of this. Nothing else
+## should touch it.
+var list_taken: Dictionary = {"day": 0, "ids": []}
 
 func listing_item_by_id(id: String) -> Dictionary:
 	for i in listing_items:

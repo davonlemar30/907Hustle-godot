@@ -27,7 +27,8 @@ extends Node
 ## Not ported yet, and named so the gap is legible:
 ##   - presence gating (NPC_PRESENCE_SLOTS / NPC_PRESENCE_AREAS): whether an NPC
 ##     was physically somewhere to witness a thing. Everything is deliverable.
-##   - the Curtis network filter (CURTIS_NETWORK_CATEGORIES / volume threshold).
+##   - slot-level presence gating for the Curtis filter's siblings. The filter
+##     itself IS ported as of FS-001.2 (see clears_curtis_filter).
 ##   - slot-level delivery. The queue works in whole days, which is the
 ##     granularity the rest of this build runs on.
 
@@ -126,6 +127,18 @@ const NPC_CHANNELS := {
 	"dre": ["direct", "network"],
 }
 
+## Canon CURTIS_NETWORK_CATEGORIES. **Curtis hears through a filter, not a
+## firehose.** Only these categories clear it; anything else stays below his
+## radar no matter how often it happens, and the whole design of his attention
+## depends on that staying true. Territory claims and named reports arrive as
+## `defiance`, which is why that one is on the list.
+const CURTIS_NETWORK_CATEGORIES := ["violence", "defiance", "growth"]
+
+## Canon CURTIS_VOLUME_THRESHOLD. Volume, not category, is the other way onto
+## his radar: a `financial` observation reaches him only when it was a big
+## enough day to be worth a phone call.
+const CURTIS_VOLUME_THRESHOLD := 200.0
+
 ## Canon HEAT_CHANNEL_THRESHOLDS — carrying enough heat becomes news by itself.
 const HEAT_CHANNEL_THRESHOLDS := [
 	{"above": 12.0, "channel": "network"},
@@ -218,6 +231,12 @@ func broadcast_observation(spec: Dictionary) -> Array:
 	for npc_id in NPC_LENSES.keys():
 		if not channel in NPC_CHANNELS.get(npc_id, []):
 			continue
+		# Canon `receives()`: Curtis's network ear is filtered. Everything else
+		# about who hears what is channel membership; this is the one per-NPC
+		# gate, and it has to sit inside the loop because it is about Curtis
+		# specifically rather than about the observation.
+		if npc_id == "curtis" and channel == "network" and not clears_curtis_filter(spec):
+			continue
 		var delivered := spec.duplicate()
 		delivered["source"] = str(def["source"])
 		reached.append(str(npc_id))
@@ -230,6 +249,26 @@ func broadcast_observation(spec: Dictionary) -> Array:
 				"deliver_on_day": gs.day + delay,
 			})
 	return reached
+
+## Canon clearsCurtisFilter — his sensitivity threshold. True when an
+## observation is loud enough to reach him through the network at all.
+##
+## The `financial` arm is the one that matters for money surfaces: a big 907List
+## day is exactly how a flip is meant to reach him, and a $40 space heater is
+## exactly how it is meant not to. Absolute value on purpose — canon uses
+## `Math.abs`, so a large LOSS is as audible as a large gain.
+##
+## Ported in FS-001.2 because the completed-flip financial observation is
+## meaningless without it: unfiltered, every trivial flip would raise his
+## awareness through the network channel, which is the opposite of canon's
+## design for his attention.
+func clears_curtis_filter(spec: Dictionary) -> bool:
+	var type_name: String = str(spec.get("type", ""))
+	if type_name in CURTIS_NETWORK_CATEGORIES:
+		return true
+	if type_name == "financial":
+		return absf(float(spec.get("value", 0.0))) >= CURTIS_VOLUME_THRESHOLD
+	return false
 
 # --- scoring ---------------------------------------------------------------
 

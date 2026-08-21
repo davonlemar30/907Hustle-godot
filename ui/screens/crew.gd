@@ -36,7 +36,7 @@ func _status_card(sys: Object) -> Control:
 	var owed: int = 0
 	for person in gs.recruited_crew():
 		owed += int(gs.crew_record(str(person["id"])).get("wage_due", 0))
-	v.add_child(label("%d/%d CREW  ·  POWER %d" % [gs.recruited_crew().size(), gs.CREW_CAPACITY, gs.crew_power], "CardTitle", 13, CREAM))
+	v.add_child(label("%d/%d CREW  ·  POWER %d" % [gs.recruited_crew().size(), gs.crew_capacity(), gs.crew_power], "CardTitle", 13, CREAM))
 	if owed > 0:
 		v.add_child(label("$%d owed in wages. Two nights is all the grace there is." % owed, "Muted", 11, RED))
 	else:

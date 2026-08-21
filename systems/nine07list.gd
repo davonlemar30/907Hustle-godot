@@ -143,18 +143,9 @@ func todays_listings() -> Array:
 	if eligible.is_empty():
 		return []
 	var want: int = int(tier["listings"])
-	var out: Array = []
-	var seen: Array = []
-	# Walk deterministically until the board is full; the offset keeps a day
-	# from showing the same item twice.
-	var guard: int = 0
-	while out.size() < want and guard < 40:
-		var pick: int = rng.seeded_int_range(gs.run_seed, "907list:%d:%d" % [gs.day, guard], 0, eligible.size() - 1)
-		if not pick in seen:
-			seen.append(pick)
-			out.append(eligible[pick])
-		guard += 1
-	return out
+	var salt: int = rng.string_hash("907list:%d:%d" % [gs.day, int(gs.list_tier)])
+	var order: Array = rng.seeded_shuffle(eligible, gs.run_seed, salt)
+	return order.slice(0, mini(want, order.size()))
 
 func capacity() -> int:
 	return int(gs.market_tier()["capacity"])

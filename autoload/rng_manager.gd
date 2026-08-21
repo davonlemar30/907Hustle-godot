@@ -49,6 +49,21 @@ func seeded_int_range(seed: String, context: String, min_v: int, max_v: int) -> 
 		return min_v
 	return min_v + int(floor(seeded_random(seed, context) * (max_v - min_v + 1)))
 
+## Canon seededShuffle. Fisher-Yates over a copied array, with a stream seeded
+## from the normalized run seed and normalized salt. Unlike keyed sampling with
+## a retry counter, this always returns a permutation and therefore cannot
+## under-fill a board through hash collisions.
+func seeded_shuffle(items: Array, seed_value: Variant, salt_value: Variant) -> Array:
+	var random := make_stream(string_hash("%d:%d" % [
+		normalize_seed(seed_value), normalize_seed(salt_value)]))
+	var out: Array = items.duplicate()
+	for index in range(out.size() - 1, 0, -1):
+		var swap: int = random.next_int(0, index)
+		var held: Variant = out[index]
+		out[index] = out[swap]
+		out[swap] = held
+	return out
+
 ## Deterministic float in [0, 1) using the web's OTHER normalisation:
 ## `stringHash(key) % 10000 / 10000`. Canon uses this form for some rolls (the
 ## Shark default check at game-core.js:6561 among them) and `hash / 2^32` for

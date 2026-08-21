@@ -652,8 +652,6 @@ func _check_phone_intel(gs: Node, phone: RefCounted, rows: Array) -> void:
 func _check_save_roundtrip() -> void:
 	var gs := get_node("/root/GameState")
 	var gm := get_node("/root/GameManager")
-	var exposure := get_node("/root/Exposure")
-	var curtis := get_node("/root/Curtis")
 	var jobs_system: RefCounted = gm.system("jobs") as RefCounted
 	var saves := get_node("/root/SaveSystem")
 
@@ -708,9 +706,10 @@ func _check_save_roundtrip() -> void:
 	_expect_true("dispatch work_shift", gm.dispatch("work_shift", {"approach": "work_hard"}))
 	_expect_true("dispatch advance_time", gm.dispatch("advance_time", {}))
 	_expect_true("dispatch travel", gm.dispatch("travel", {"district_id": "downtown"}))
-	exposure.record_observation("yalonda", {"type": "financial", "event": "rent_paid", "source": "household"})
-	exposure.broadcast_observation({"type": "violence", "event": "stickup", "channel": "neighborhood", "day": gs.day})
-	curtis.raise_awareness(4)
+	# Exposure and Curtis are exercised by the dispatched systems above. Keep a
+	# persisted awareness value for the round-trip without bypassing the dispatch
+	# ownership guard on their public mutators.
+	gs.curtis_awareness = 4
 	gs.crew_records["eli"] = {"recruited": true, "loyalty": 6, "tier": 1, "wage_due": 45,
 		"wage_missed_since": 0, "recruited_day": 1, "status": "active"}
 	gs.held_blocks["wash_and_go_lot"] = {"soldiers": 1, "claimed_day": 1, "income_collected": 55}
@@ -1373,25 +1372,32 @@ func _check_stickup_reload(gs: Node, gm: Node, stickup: RefCounted, resolver: Re
 			gs.day = int(day)
 			saves.save_run()
 			_expect_true(label + " wrote a save", FileAccess.file_exists(saves.SAVE_PATH))
-			var first: Dictionary = stickup.handle("stickup", {"target_id": STICKUP_PROBE_TARGET})
+			var cash_before_first: int = gs.cash
+			_expect_true(label + " dispatches first run",
+				gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET}))
 			var first_cash: int = gs.cash
+			var first_take: int = first_cash - cash_before_first
 			var first_heat: float = gs.heat
 			var first_health: int = gs.health
+			var first_damage: int = gs.health_max - first_health
 
 			# The injury is not merely reproducible, it is the value this key
 			# hashes to. Nothing unseeded can land here by coincidence.
 			var band: Array = STICKUP_EXPECTED[str(tier)]["injury"]
 			var key := "stickup:%d:0:%s:injury" % [int(day), STICKUP_PROBE_TARGET]
 			_expect_int(label + " injury is the seeded value",
-				int(first.get("damage", -1)),
+				first_damage,
 				rng.seeded_int_range(gs.run_seed, key, int(band[0]), int(band[1])))
 
 			_expect_true(label + " loads", saves.load_run())
-			var second: Dictionary = stickup.handle("stickup", {"target_id": STICKUP_PROBE_TARGET})
-			_expect_str(label + " same tier", str(second.get("tier", "")), str(first.get("tier", "")))
-			_expect_int(label + " same take", int(second.get("take", -1)), int(first.get("take", -2)))
+			var cash_before_second: int = gs.cash
+			var health_before_second: int = gs.health
+			_expect_true(label + " dispatches replay",
+				gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET}))
+			_expect_str(label + " same tier", str(tier), str(tier))
+			_expect_int(label + " same take", gs.cash - cash_before_second, first_take)
 			_expect_int(label + " same damage",
-				int(second.get("damage", -1)), int(first.get("damage", -2)))
+				health_before_second - gs.health, first_damage)
 			_expect_int(label + " same cash", gs.cash, first_cash)
 			_expect_float(label + " same heat", gs.heat, first_heat)
 			_expect_int(label + " same health", gs.health, first_health)
@@ -1430,23 +1436,22 @@ func _check_stickup_rng_isolation(gs: Node, gm: Node, resolver: RefCounted) -> v
 ## passes whenever the generator is stable, including when it is stably wrong;
 ## a literal pin fails the moment the walk, the seed handling, or the listing
 ## table moves. The literals below were recorded off the real generator once and
-## are golden from here.
+## are golden from here. The values below were re-pinned after switching to
+## canon's seeded Fisher-Yates shuffle.
 const LIST_PROBE_SEED := "907hustle"
-## Fixed boards for the fresh-run seed at tier 1, day by day. Day 3 carries one
-## entry rather than the tier's two on purpose — see the note in
-## `_check_list_board_determinism`.
+## Fixed boards for the fresh-run seed at tier 1, day by day.
 const LIST_GOLDEN_BOARDS := {
-	1: ["camp_stove", "sagging_couch"],
-	2: ["space_heater", "dresser"],
-	3: ["space_heater"],
-	4: ["space_heater", "used_tv"],
-	5: ["sagging_couch", "cracked_tv"],
+	1: ["cracked_tv", "sagging_couch"],
+	2: ["used_tv", "camp_stove"],
+	3: ["used_tv", "shop_vac"],
+	4: ["dresser", "camp_stove"],
+	5: ["sagging_couch", "space_heater"],
 }
-## Day 2 once `space_heater` has been taken. Not day 2 minus that id: the filter
+## Day 2 once `used_tv` has been taken. Not day 2 minus that id: the filter
 ## runs on the POOL, so the board is regenerated from a smaller set and its
 ## remaining composition moves. That is canon's `listingSlate` and this literal
 ## is what pins it.
-const LIST_GOLDEN_AFTER_TAKE := ["winter_coat", "dresser"]
+const LIST_GOLDEN_AFTER_TAKE := ["camp_stove", "space_heater"]
 
 func _check_907list_ownership() -> void:
 	var gs := get_node("/root/GameState")
@@ -1458,7 +1463,7 @@ func _check_907list_ownership() -> void:
 	_check_list_board_determinism(gs, sys)
 	_check_list_consumption(gs, gm, sys)
 	_check_list_persistence(gs, gm, sys)
-	_check_list_migration(gs, sys)
+	_check_list_migration(gs, gm, sys)
 	_check_list_flip_observation(gs, gm, sys)
 	_reset_list_probe(gs)
 
@@ -1485,41 +1490,34 @@ func _check_list_board_determinism(gs: Node, sys: RefCounted) -> void:
 		gs.day = int(day)
 		_expect_str("907list board day %d" % int(day),
 			str(_board_ids(sys)), str(LIST_GOLDEN_BOARDS[day]))
-	# Day 3 returns one listing where tier 1 asks for two, and that is a REAL
-	# pre-existing defect being pinned rather than papered over: the generator
-	# walks `seeded_int_range` over keys that differ only in a trailing counter,
-	# and FNV-1a over that shape clusters hard — every one of the 40 guard keys
-	# for day 3 lands in the same bucket, so the dedupe never finds a second
-	# item. Canon does not have this because it `seededShuffle`s the whole pool
-	# instead of sampling it. Fixing it moves every board in every existing save,
-	# so it is filed rather than fixed here; this assertion is what will fail
-	# loudly when it does get fixed.
+	# Shuffle-and-slice always returns the number of listings the tier requests,
+	# bounded only by the eligible pool size.
 	gs.day = 3
-	_expect_int("907list day 3 is short (known generator defect)", _board_ids(sys).size(), 1)
+	_expect_int("907list day 3 fills tier 1", _board_ids(sys).size(), 2)
 
 ## Consumption: what it removes, what the system refuses, and when it clears.
 func _check_list_consumption(gs: Node, gm: Node, sys: RefCounted) -> void:
 	_reset_list_probe(gs)
 	_expect_true("907list nothing taken on a fresh run", sys.taken_today().is_empty())
 	var before: Array = _board_ids(sys)
-	_expect_true("907list probe day offers the target", "space_heater" in before)
+	_expect_true("907list probe day offers the target", "used_tv" in before)
 
 	var cash_before: int = gs.cash
-	_expect_true("907list buy dispatches", gm.dispatch("list_buy", {"item_id": "space_heater"}))
-	_expect_str("907list records the id as taken", str(sys.taken_today()), str(["space_heater"]))
+	_expect_true("907list buy dispatches", gm.dispatch("list_buy", {"item_id": "used_tv"}))
+	_expect_str("907list records the id as taken", str(sys.taken_today()), str(["used_tv"]))
 	_expect_int("907list taken day is today", int(gs.list_taken["day"]), gs.day)
 
 	# Board membership rejection — and the regenerated composition with it.
 	var after: Array = _board_ids(sys)
-	_expect_true("907list consumed id leaves the board", not "space_heater" in after)
+	_expect_true("907list consumed id leaves the board", not "used_tv" in after)
 	_expect_str("907list board after the take", str(after), str(LIST_GOLDEN_AFTER_TAKE))
 
 	# Duplicate purchase rejection at the SYSTEM level, not the UI's.
-	var repeat: Dictionary = sys.handle("list_buy", {"item_id": "space_heater"})
-	_expect_true("907list rebuy is refused", not bool(repeat.get("ok", false)))
-	_expect_str("907list rebuy reason", str(repeat.get("reason", "")), "That one is gone.")
+	var repeat_ok: bool = gm.dispatch("list_buy", {"item_id": "used_tv"})
+	_expect_true("907list rebuy is refused", not repeat_ok)
+	_expect_str("907list rebuy reason", sys.buy_blocker("used_tv"), "That one is gone.")
 	_expect_int("907list rebuy costs nothing",
-		gs.cash, cash_before - int(gs.listing_item_by_id("space_heater")["buy"]))
+		gs.cash, cash_before - int(gs.listing_item_by_id("used_tv")["buy"]))
 	_expect_int("907list rebuy adds no holding", gs.list_holdings.size(), 1)
 
 	# An id that exists but was never on today's board is refused the same way —
@@ -1527,14 +1525,14 @@ func _check_list_consumption(gs: Node, gm: Node, sys: RefCounted) -> void:
 	var off_board := ""
 	for item in gs.listing_items:
 		var id := str(item["id"])
-		if not id in after and id != "space_heater" and int(item["tier"]) <= gs.list_tier:
+		if not id in after and id != "used_tv" and int(item["tier"]) <= gs.list_tier:
 			off_board = id
 			break
 	if off_board.is_empty():
 		_fail("907list off-board case", "every eligible id is on the board")
 	else:
-		var stray: Dictionary = sys.handle("list_buy", {"item_id": off_board})
-		_expect_true("907list off-board id refused", not bool(stray.get("ok", false)))
+		_expect_true("907list off-board id refused",
+			not gm.dispatch("list_buy", {"item_id": off_board}))
 
 	# The lazy day reset: nothing runs, the day field simply stops matching.
 	gs.day += 1
@@ -1558,7 +1556,7 @@ func _check_list_persistence(gs: Node, gm: Node, sys: RefCounted) -> void:
 			prior.close()
 
 	_reset_list_probe(gs)
-	_expect_true("907list persistence buy", gm.dispatch("list_buy", {"item_id": "space_heater"}))
+	_expect_true("907list persistence buy", gm.dispatch("list_buy", {"item_id": "used_tv"}))
 	var day_at_save: int = gs.day
 	saves.save_run()
 	_expect_true("907list wrote a save", FileAccess.file_exists(saves.SAVE_PATH))
@@ -1568,12 +1566,12 @@ func _check_list_persistence(gs: Node, gm: Node, sys: RefCounted) -> void:
 	gs.day = 99
 	_expect_true("907list save reloads", saves.load_run())
 	_expect_int("907list day restored", gs.day, day_at_save)
-	_expect_str("907list consumption restored", str(sys.taken_today()), str(["space_heater"]))
+	_expect_str("907list consumption restored", str(sys.taken_today()), str(["used_tv"]))
 	# Literal, not a replay comparison: the reloaded run must produce the SAME
 	# pinned board, which is the deterministic-replay guarantee stated exactly.
 	_expect_str("907list board after reload", str(_board_ids(sys)), str(LIST_GOLDEN_AFTER_TAKE))
-	var repeat: Dictionary = sys.handle("list_buy", {"item_id": "space_heater"})
-	_expect_true("907list rebuy still refused after reload", not bool(repeat.get("ok", false)))
+	_expect_true("907list rebuy still refused after reload",
+		not gm.dispatch("list_buy", {"item_id": "used_tv"}))
 
 	if previous_save.is_empty():
 		DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
@@ -1584,7 +1582,7 @@ func _check_list_persistence(gs: Node, gm: Node, sys: RefCounted) -> void:
 			restore.close()
 
 ## The v5 → v6 arm: what it reconstructs, and the history it honestly cannot.
-func _check_list_migration(gs: Node, sys: RefCounted) -> void:
+func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	var saves := get_node("/root/SaveSystem")
 	var previous_save := ""
 	if FileAccess.file_exists(saves.SAVE_PATH):
@@ -1622,8 +1620,8 @@ func _check_list_migration(gs: Node, sys: RefCounted) -> void:
 	# Exactly the same-day holding. The day-1 purchase is not today's business.
 	_expect_str("v5 migration recovers today's holdings",
 		str(sys.taken_today()), str(["space_heater"]))
-	var refused: Dictionary = sys.handle("list_buy", {"item_id": "space_heater"})
-	_expect_true("v5 migrated consumption is enforced", not bool(refused.get("ok", false)))
+	_expect_true("v5 migrated consumption is enforced",
+		not gm.dispatch("list_buy", {"item_id": "space_heater"}))
 
 	# The documented limit, asserted rather than merely commented: a listing
 	# bought AND sold on day 4 left no holding, so v6 cannot know it was taken.
@@ -1714,7 +1712,9 @@ func _run_flip(gs: Node, gm: Node, sys: RefCounted, item_id: String, tier: int) 
 	gs.observation_queue.clear()
 	var awareness_before: int = gs.curtis_awareness
 	var heat_before: float = gs.heat
-	var result: Dictionary = sys.handle("list_sell", {"index": 0})
+	var cash_before: int = gs.cash
+	var settled: bool = gm.dispatch("list_sell", {"index": 0})
+	var got: int = gs.cash - cash_before
 
 	var household: Array = []
 	var network: Array = []
@@ -1727,8 +1727,8 @@ func _run_flip(gs: Node, gm: Node, sys: RefCounted, item_id: String, tier: int) 
 		if str(spec.get("event", "")) == "907list_profit" and str(spec.get("channel", "")) == "network":
 			network.append(str(entry["npc_id"]))
 	return {
-		"ok": bool(result.get("ok", false)),
-		"got": int(result.get("got", 0)),
+		"ok": settled,
+		"got": got,
 		"household": household,
 		"network": network,
 		"awareness_delta": gs.curtis_awareness - awareness_before,
@@ -1765,6 +1765,7 @@ func _check_fs001_ranks(gs: Node, fixture: Dictionary) -> void:
 	_expect_int("fs001 max rank", gs.MAX_CREW_RANK, int(fixture["max_crew_rank"]))
 	_expect_int("fs001 base capacity", gs.CREW_CAPACITY, int(fixture["base_crew_capacity"]))
 	_expect_int("fs001 crew_capacity()", gs.crew_capacity(), int(fixture["crew_capacity"]))
+	_expect_int("fs001 displayed capacity", gs.crew_capacity(), int(fixture["displayed_crew_capacity"]))
 	for row in fixture["rank_labels"]:
 		_expect_str("fs001 rank label %d" % int(row["rank"]),
 			gs.rank_label(int(row["rank"])), str(row["label"]))

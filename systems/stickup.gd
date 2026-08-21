@@ -31,9 +31,54 @@ extends RefCounted
 ## than canon from Phase 3d until Phase 5c.
 ##
 ## Heat is the real cost and it IS ported: canon clamps 0-15 and this does too.
+##
+## ## Tiered resolution (Build 5e)
+##
+## The roll is no longer binary. `outcome_resolver` splits `chance_for()` across
+## canon's four tiers and Combat decides how the pool is read — a second look at
+## 3, catastrophe immunity at 6. Stickup is the vertical proof for that engine,
+## so what follows is the whole consequence spread rather than success/failure:
+##
+## | tier         | cash | heat            | health   | Curtis        |
+## |--------------|------|-----------------|----------|---------------|
+## | clean        | take | target x 0.5    | —        | +1            |
+## | messy        | take | target x 1.0    | -5..-10  | +2, criminal  |
+## | failure      | $0   | max(1, heat-1)  | —        | +1            |
+## | catastrophic | $0   | target x 1.5    | -15..-25 | +3, criminal  |
+##
+## A clean take is quieter because nobody watched you struggle; a catastrophe is
+## louder because you were. The Exposure footprint moves with it —
+## `broadcast_outcome` is now the ONLY place this file talks to Curtis about
+## what the block saw.
+##
+## **This spread is the port's, not canon's.** Canon's failure branch runs
+## through an arrest system, dirty cash, district heat weighting, a witness roll
+## and a retaliation queue, none of which exist in this build; inventing them to
+## reach canon's exact numbers would be guessing. What IS canon-exact is the
+## thing that had to be: the tier pick itself. Same seed, same chance, same
+## Combat, same tier as the web build. The divergences are listed in the PR.
 
 const RED := Color(0.827, 0.161, 0.125)
 const GREEN := Color(0.451, 0.722, 0.404)
+const AMBER := Color(0.882, 0.651, 0.227)
+
+## Health cost per tier, as canon's `[min, max]` band shape. Clean and failure
+## are absent rather than zeroed: no band means no injury roll is keyed at all,
+## which keeps those two tiers off the RNG entirely.
+const INJURY_BANDS := {
+	"messy": [5, 10],
+	"catastrophic": [15, 25],
+}
+
+## What each tier does to Curtis: how far his awareness moves, and whether the
+## night counts as criminal activity (which is what stops the quiet streak from
+## bleeding awareness back down).
+const CURTIS_BY_TIER := {
+	"clean": {"awareness": 1, "criminal": false},
+	"messy": {"awareness": 2, "criminal": true},
+	"failure": {"awareness": 1, "criminal": false},
+	"catastrophic": {"awareness": 3, "criminal": true},
+}
 
 var gs: Node
 var rng: Node
@@ -52,14 +97,18 @@ func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node,
 
 ## Canon scales generated heat by DESHAWN_HEAT_REDUCTION when he is on the crew.
 ## Returns the heat actually applied.
-func _apply_heat(amount: int) -> float:
+##
+## Takes a float since the tier conversion: clean halves the target's heat and
+## catastrophic multiplies it by 1.5, and rounding either to an int here is what
+## would flatten the difference between them on a 1-heat target.
+func _apply_heat(amount: float) -> float:
 	var mult: float = 1.0
 	var crew: Object = gm.system("crew") if gm != null else null
 	if crew != null:
 		mult = crew.heat_multiplier()
 	# Kept fractional deliberately: rounding here is what made the reduction
 	# invisible on small amounts.
-	var scaled: float = float(amount) * mult if amount > 0 else 0.0
+	var scaled: float = amount * mult if amount > 0.0 else 0.0
 	gs.heat = clampf(gs.heat + scaled, 0.0, float(gs.heat_max))
 	return scaled
 
@@ -124,52 +173,89 @@ func _run(target_id: String) -> Dictionary:
 		return {"ok": false, "reason": blocked}
 	var t: Dictionary = gs.stick_target_by_id(target_id)
 
-	# Canon keys this roll on seed:stickup:day:slot:targetId.
+	# Canon keys this roll on seed:stickup:day:slot:targetId, and the resolver
+	# joins seed and context exactly as canon's template string does.
 	var key := "stickup:%d:%d:%s" % [gs.day, gs.time_slots_today, target_id]
-	var roll: float = rng.seeded_random(gs.run_seed, key)
-	var success: bool = roll < chance_for(t)
+	var resolver: Object = gm.system("outcome_resolver") if gm != null else null
+	if resolver == null:
+		return {"ok": false, "reason": "No outcome resolver."}
+	# The RAW combat value, not compat() — anything routed through the resolver
+	# reads the stored attribute and carries no inline offset. See its header.
+	var outcome: Dictionary = resolver.resolve_action(
+		"robbery", chance_for(t), attributes.value("combat"), gs.run_seed, key)
+	var tier: String = str(outcome["tier"])
+	var success: bool = resolver.is_success_tier(tier)
 
 	gs.stick_attempts += 1
 	gs.stick_daily_count += 1
 
+	# Health first, and only for the two tiers that carry a band. Keyed off the
+	# same string as the tier pick, so a reload replays the injury too.
+	var damage: int = 0
+	if INJURY_BANDS.has(tier):
+		var hurt: Array = INJURY_BANDS[tier]
+		damage = rng.seeded_int_range(gs.run_seed, key + ":injury", int(hurt[0]), int(hurt[1]))
+		gs.health = clampi(gs.health - damage, 0, gs.health_max)
+
 	var result: Dictionary
+	var applied: float
 	if success:
 		var band: Array = t["take"]
 		var take: int = rng.seeded_int_range(gs.run_seed, key + ":take", int(band[0]), int(band[1]))
 		gs.cash += take
-		var applied: float = _apply_heat(int(t["heat"]))
+		# A clean take is half the heat of a loud one: the money moved and
+		# nobody watched you struggle for it.
+		applied = _apply_heat(float(t["heat"]) * (0.5 if tier == "clean" else 1.0))
 		gs.stick_rep += 1
 		gs.stick_successes += 1
-		# Canon: a successful robbery is loud in Curtis's world.
-		var curtis: Node = _curtis()
-		if curtis != null:
-			curtis.raise_awareness(2)
-			curtis.mark_criminal_activity()
-			# Canon: a tier-3 job is organized work, and from the second one
-			# Curtis is told about it directly over the network. The count rides
-			# along, so his read gets worse each time rather than once.
-			if int(t["tier"]) == 3:
-				gs.stick_organized_hits += 1
-				if gs.stick_organized_hits >= 2:
-					var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
-					if exposure != null:
-						exposure.record_observation("curtis", {
-							"type": "violence", "event": "organized_hit",
-							"count": gs.stick_organized_hits, "source": "network",
-						})
-			# Violence on the block is neighbourhood news either way.
-			curtis.broadcast_tracked({
-				"type": "violence", "event": "stickup",
-				"location": gs.current_district_id, "channel": "neighborhood",
-			})
-		gs.log_activity("%s: +$%d, heat +%.1f." % [str(t["name"]), take, applied], GREEN)
-		result = {"ok": true, "success": true, "take": take, "heat": applied}
+		# Canon: a tier-3 job is organized work, and from the second one Curtis
+		# is told about it directly over the network. The count rides along, so
+		# his read gets worse each time rather than once. Success-only, as canon
+		# has it — a blown job is not organized work, it is a blown job.
+		if int(t["tier"]) == 3:
+			gs.stick_organized_hits += 1
+			if gs.stick_organized_hits >= 2:
+				var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+				if exposure != null:
+					exposure.record_observation("curtis", {
+						"type": "violence", "event": "organized_hit",
+						"count": gs.stick_organized_hits, "source": "network",
+					})
+		if tier == "clean":
+			gs.log_activity("%s gives it up without a scene. +$%d, heat +%.1f."
+				% [str(t["name"]), take, applied], GREEN)
+		else:
+			gs.log_activity("%s gives it up, but not quietly. +$%d, heat +%.1f, -%d health."
+				% [str(t["name"]), take, applied, damage], AMBER)
+		result = {"ok": true, "success": true, "tier": tier, "take": take,
+			"heat": applied, "damage": damage}
 	else:
 		# Canon still charges heat on a bad attempt — being seen is the cost,
-		# whether or not the money moved.
-		var missed_heat: float = _apply_heat(maxi(1, int(t["heat"]) - 1))
-		gs.log_activity("%s went wrong. Heat +%.1f, nothing to show." % [str(t["name"]), missed_heat], RED)
-		result = {"ok": true, "success": false, "take": 0, "heat": missed_heat}
+		# whether or not the money moved. A catastrophe amplifies it because you
+		# were loud; a plain failure stays at the pre-tier number.
+		applied = _apply_heat((float(t["heat"]) * 1.5) if tier == "catastrophic"
+			else float(maxi(1, int(t["heat"]) - 1)))
+		if tier == "catastrophic":
+			gs.log_activity("%s fights back harder than the plan allowed. Heat +%.1f, -%d health, nothing to show."
+				% [str(t["name"]), applied, damage], RED)
+		else:
+			gs.log_activity("%s went wrong. Heat +%.1f, nothing to show."
+				% [str(t["name"]), applied], RED)
+		result = {"ok": true, "success": false, "tier": tier, "take": 0,
+			"heat": applied, "damage": damage}
+
+	# What Curtis makes of it, and what the block ends up knowing. Both are
+	# keyed off the tier now: broadcast_outcome is the single entry point for
+	# post-resolution Exposure effects, so this file no longer hand-rolls a
+	# `violence / stickup` row of its own.
+	var curtis: Node = _curtis()
+	if curtis != null:
+		var reads: Dictionary = CURTIS_BY_TIER.get(tier, CURTIS_BY_TIER["failure"])
+		curtis.raise_awareness(int(reads["awareness"]))
+		if bool(reads["criminal"]):
+			curtis.mark_criminal_activity()
+	resolver.broadcast_outcome("robbery", tier, gs.current_district_id,
+		result["take"] if success else null)
 
 	# A robbery is a slot, the same as any other district action.
 	time_system.handle("advance_time", {})

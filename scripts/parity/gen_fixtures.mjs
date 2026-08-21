@@ -25,7 +25,8 @@ const oraclePath = resolve(
 );
 const require = createRequire(join(oraclePath, "package.json"));
 const { stringHash, HASH_CEILING } = require(join(oraclePath, "src/hash.js"));
-const { normalizeSeed, makeRandom } = require(join(oraclePath, "src/events/random.js"));
+const Random = require(join(oraclePath, "src/events/random.js"));
+const { normalizeSeed, makeRandom } = Random;
 const core = require(join(oraclePath, "game-core.js"));
 
 // ---------------------------------------------------------------------------
@@ -660,4 +661,232 @@ console.log(
   `initialMarket copy verified at offset ${verifiedAtBurn}, ` +
   `evolveMarkets copy verified at offset ${evolveVerifiedAtBurn}; ` +
   `phone message-id format verified against oracle message ${phone.message.message.id})`
+);
+
+// ---------------------------------------------------------------------------
+// Build 5e — the tiered outcome resolver.
+//
+// Written to its OWN file (tests/parity/fixtures/outcome_resolver/) rather than
+// into rng_fixtures.json, because it is a different kind of fixture: the file
+// above records primitives and system reads, this one records the resolution of
+// a whole action end to end. Same discipline either way — every value below
+// comes out of canon's own exported functions, never re-derived here.
+//
+// `resolveAction` reads the attribute off state and the streak fields off
+// state.player; a state with neither gymStreak nor nileStreakAttribute set
+// scores both streak bonuses at 0, which is what this build has (no venues).
+const R = core.attributeSystem;
+const RD = core.ATTRIBUTES;
+const ACTION_TYPES = Object.keys(RD.OUTCOME_SHAPES);
+const CHANCE_STEPS = [0, 0.25, 0.5, 0.75, 1];
+
+// The state shape resolveAction reads. All three attributes move together so a
+// case is valid whichever attribute its action maps to.
+const outcomeState = (value) => ({
+  player: { attributes: { combat: value, charisma: value, intelligence: value } },
+});
+
+// (a) Pool construction. Order is recorded as well as content: seededPick walks
+// cumulative weight in array order, so a pool that is right but reordered
+// resolves different tiers from the same hash.
+const outcome_pools = [];
+for (const actionType of ACTION_TYPES) {
+  for (const chance of CHANCE_STEPS) {
+    const pool = R.buildOutcomePool(actionType, chance);
+    outcome_pools.push({
+      action_type: actionType,
+      chance,
+      pool: pool.map((entry) => ({ tier: entry.tier, value: entry.value, weight: entry.weight })),
+      weight_total: pool.reduce((sum, entry) => sum + entry.weight, 0),
+    });
+  }
+}
+// An action type canon has never heard of yields an empty pool, and an empty
+// pool is what makes resolveAction fall through to a plain failure.
+const outcome_pool_unknown = {
+  pool: R.buildOutcomePool("not_a_real_action", 0.5),
+  resolved: R.resolveAction(outcomeState(4), "not_a_real_action", 0.5, "seed:nope"),
+};
+
+// (b) seededPick itself, on hand-built pools — including the zero-total
+// fallback, which is the one branch a real chance never reaches.
+const PICK_POOLS = {
+  even: [{ tier: "clean", value: 3, weight: 1 }, { tier: "messy", value: 2, weight: 1 }],
+  skewed: [{ tier: "clean", value: 3, weight: 0.05 }, { tier: "failure", value: 1, weight: 0.95 }],
+  zeroed: [{ tier: "clean", value: 3, weight: 0 }, { tier: "messy", value: 2, weight: 0 },
+    { tier: "failure", value: 1, weight: 0 }],
+  single: [{ tier: "catastrophic", value: 0, weight: 0.4 }],
+};
+const seeded_picks = [];
+for (const [poolName, pool] of Object.entries(PICK_POOLS)) {
+  for (let i = 0; i < 12; i += 1) {
+    const key = `907hustle:pick:${poolName}:${i}`;
+    const picked = Random.seededPick(pool, key);
+    seeded_picks.push({ pool: poolName, key, tier: picked ? picked.tier : null });
+  }
+}
+// Both empty-input guards, which return null rather than throwing.
+const seeded_pick_empty = {
+  empty_array: Random.seededPick([], "907hustle:pick:empty"),
+  not_an_array: Random.seededPick(null, "907hustle:pick:null"),
+};
+
+// (c) Resolution across the whole grid: every action type, every chance step,
+// every attribute value from the floor to the ceiling. This is the check that
+// pins the advantage threshold and the immunity threshold at once, because both
+// are crossed inside the sweep.
+const outcome_resolutions = [];
+for (const actionType of ACTION_TYPES) {
+  for (const chance of CHANCE_STEPS) {
+    for (let value = 0; value <= 12; value += 1) {
+      const context = `outcome:${actionType}:${chance}:${value}`;
+      const outcome = R.resolveAction(outcomeState(value), actionType, chance, `907hustle:${context}`);
+      outcome_resolutions.push({
+        action_type: actionType, chance, attribute: value,
+        seed: "907hustle", context,
+        tier: outcome.tier, value: outcome.value,
+      });
+    }
+  }
+}
+
+// (d) Advantage, proven rather than asserted.
+//
+// A sweep at Combat 2 (one roll) and the same seeds at Combat 3 (two rolls,
+// better kept) over a chance where both halves are live. `upgraded` counts the
+// seeds where the second look actually changed the answer - if that number is
+// ever 0 the fixture has stopped testing anything, so it is recorded and
+// checked rather than left implicit.
+const ADVANTAGE_SWEEP = 400;
+const advantage_cases = [];
+let advantage_upgraded = 0;
+for (let i = 0; i < ADVANTAGE_SWEEP; i += 1) {
+  const context = `advantage:${i}`;
+  const key = `907hustle:${context}`;
+  const below = R.resolveAction(outcomeState(2), "robbery", 0.5, key);
+  const at = R.resolveAction(outcomeState(3), "robbery", 0.5, key);
+  if (below.tier !== at.tier) advantage_upgraded += 1;
+  advantage_cases.push({
+    seed: "907hustle", context,
+    below_tier: below.tier, below_value: below.value,
+    at_tier: at.tier, at_value: at.value,
+  });
+}
+
+// (e) Catastrophe immunity. The same 1000 seeds at Combat 5 and Combat 6: the
+// first must produce catastrophes, the second must produce none.
+const IMMUNITY_SWEEP = 1000;
+const immunity_tally = { below: {}, at: {} };
+const immunity_cases = [];
+for (let i = 0; i < IMMUNITY_SWEEP; i += 1) {
+  const context = `immunity:${i}`;
+  const key = `907hustle:${context}`;
+  const below = R.resolveAction(outcomeState(5), "robbery", 0.35, key);
+  const at = R.resolveAction(outcomeState(6), "robbery", 0.35, key);
+  immunity_tally.below[below.tier] = (immunity_tally.below[below.tier] || 0) + 1;
+  immunity_tally.at[at.tier] = (immunity_tally.at[at.tier] || 0) + 1;
+  if (i < 40) {
+    immunity_cases.push({
+      seed: "907hustle", context, below_tier: below.tier, at_tier: at.tier,
+    });
+  }
+}
+
+// (f) The bonus parameter - crew backup as an effective level, re-clamped to
+// the attribute ceiling. Cases straddle both thresholds (2+1 reaches advantage,
+// 5+1 reaches immunity) and one that would overflow the clamp.
+const BONUS_CASES = [
+  { attribute: 2, bonus: 0 }, { attribute: 2, bonus: 1 },
+  { attribute: 5, bonus: 0 }, { attribute: 5, bonus: 1 },
+  { attribute: 0, bonus: 3 }, { attribute: 12, bonus: 4 },
+  { attribute: 4, bonus: -2 },
+];
+const bonus_cases = [];
+for (const testCase of BONUS_CASES) {
+  for (let i = 0; i < 20; i += 1) {
+    const context = `bonus:${testCase.attribute}:${testCase.bonus}:${i}`;
+    const outcome = R.resolveAction(
+      outcomeState(testCase.attribute), "robbery", 0.4, `907hustle:${context}`, testCase.bonus);
+    bonus_cases.push({
+      seed: "907hustle", context,
+      attribute: testCase.attribute, bonus: testCase.bonus,
+      tier: outcome.tier, value: outcome.value,
+    });
+  }
+}
+
+// (g) Determinism: the same call repeated must not drift, and the same key
+// under a different seed must.
+const determinism_cases = [];
+for (const seed of ["907hustle", "12345", "another-run"]) {
+  for (let i = 0; i < 8; i += 1) {
+    const context = `determinism:${i}`;
+    const first = R.resolveAction(outcomeState(4), "dealer_robbery", 0.6, `${seed}:${context}`);
+    const again = R.resolveAction(outcomeState(4), "dealer_robbery", 0.6, `${seed}:${context}`);
+    determinism_cases.push({
+      seed, context, tier: first.tier, stable: first.tier === again.tier,
+    });
+  }
+}
+
+// (h) The stickup key canon actually builds, resolved at a spread of Combat
+// values. This is the one that proves the Godot call site keys its roll the
+// same way canon does - a right resolver on a wrong key is still a wrong game.
+const stickup_keys = [];
+for (const targetId of ["wash_go", "corner_store", "goodie_stash"]) {
+  for (const day of [1, 4, 11]) {
+    for (const slot of [0, 2]) {
+      for (const value of [0, 2, 3, 5, 6, 9]) {
+        const context = `stickup:${day}:${slot}:${targetId}`;
+        const outcome = R.resolveAction(
+          outcomeState(value), "robbery", 0.62, `907hustle:${context}`);
+        stickup_keys.push({
+          seed: "907hustle", context, target_id: targetId, day, slot,
+          attribute: value, chance: 0.62, tier: outcome.tier, value: outcome.value,
+        });
+      }
+    }
+  }
+}
+
+// (i) isSuccessTier, across every tier plus a nonsense one.
+const success_tiers = ["clean", "messy", "failure", "catastrophic", "nonsense"].map((tier) => ({
+  tier, success: R.isSuccessTier(tier),
+}));
+
+const outcomeFixtures = {
+  oracle_version: core.VERSION,
+  generated_note: "run scripts/parity/gen_fixtures.mjs against the web oracle; do not hand-edit",
+  outcome_values: RD.OUTCOME_VALUES,
+  outcome_shapes: RD.OUTCOME_SHAPES,
+  action_attribute_map: RD.ACTION_ATTRIBUTE_MAP,
+  outcome_observations: RD.OUTCOME_OBSERVATIONS,
+  advantage_threshold: RD.ADVANTAGE_THRESHOLD,
+  catastrophe_immunity_threshold: RD.CATASTROPHE_IMMUNITY_THRESHOLD,
+  attribute_min: RD.ATTRIBUTE_MIN,
+  attribute_max: RD.ATTRIBUTE_MAX,
+  pools: outcome_pools,
+  pool_unknown: outcome_pool_unknown,
+  picks: seeded_picks,
+  pick_empty: seeded_pick_empty,
+  resolutions: outcome_resolutions,
+  advantage: { sweep: ADVANTAGE_SWEEP, upgraded: advantage_upgraded, cases: advantage_cases },
+  immunity: { sweep: IMMUNITY_SWEEP, tally: immunity_tally, cases: immunity_cases },
+  bonus: bonus_cases,
+  determinism: determinism_cases,
+  stickup_keys,
+  success_tiers,
+};
+
+const outcomePath = join(
+  here, "..", "..", "tests", "parity", "fixtures", "outcome_resolver", "outcome_fixtures.json");
+mkdirSync(dirname(outcomePath), { recursive: true });
+writeFileSync(outcomePath, JSON.stringify(outcomeFixtures, null, 1) + "\n");
+console.log(
+  `wrote ${outcomePath}: ${outcome_pools.length} pools, ${seeded_picks.length} picks, ` +
+  `${outcome_resolutions.length} resolutions, ${advantage_cases.length} advantage pairs ` +
+  `(${advantage_upgraded} upgraded by the second look), ` +
+  `${IMMUNITY_SWEEP} immunity pairs (catastrophic at 5: ` +
+  `${immunity_tally.below.catastrophic || 0}, at 6: ${immunity_tally.at.catastrophic || 0}), ` +
+  `${bonus_cases.length} bonus rows, ${stickup_keys.length} stickup keys`
 );

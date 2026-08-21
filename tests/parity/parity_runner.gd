@@ -63,6 +63,9 @@ extends Node
 ##              player/Pherris seam, settlement through the same path a personal
 ##              sale uses, and the three-way leak check that keeps delegation
 ##              from being strictly better than doing it yourself
+##   presentation — FS-001.8: the reads the screens are built on. A preview
+##              that disagrees with what select() then does is worse than no
+##              preview, so the two are held to each other directly.
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -104,6 +107,7 @@ func _ready() -> void:
 		_check_day_lifecycle()
 		_check_crew_operations()
 		_check_run_the_board()
+		_check_operation_presentation()
 		_check_save_roundtrip()
 	_finish()
 
@@ -3042,6 +3046,301 @@ func _check_rb_reload(gs: Node, gm: Node, ops: RefCounted, lst: RefCounted) -> v
 			restore.store_string(previous_save)
 			restore.close()
 
+## FS-001.8 — the reads the screens are built on.
+##
+## The screens themselves are checked by rendering them (see the PR), but the
+## contract that matters is here: **the UI owns no gameplay rules.** Everything
+## it shows about Pherris comes from `operation_summary()`, `preview()` and
+## `spend_options()`, so those are what get held to account.
+##
+## The central one is that a preview must not lie. A preview that re-derives its
+## answer is a second implementation, and the day it drifts the player is shown
+## a number the game does not honour — so `preview()` and `select()` are run
+## against each other on the same state and required to agree exactly.
+func _check_operation_presentation() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var ops: RefCounted = gm.system("crew_operations") as RefCounted
+	var adapter: RefCounted = gm.system("list_adapter") as RefCounted
+	var lst: RefCounted = gm.system("list") as RefCounted
+	if ops == null or adapter == null or lst == null:
+		_fail("presentation", "a required system is missing")
+		return
+	_check_preview_matches_reality(gs, gm, ops, adapter)
+	_check_preview_context(gs, gm, ops, adapter, lst)
+	_check_spend_options(gs, gm, ops, adapter)
+	_check_summary_shape(gs, gm, ops)
+	_check_last_assignment(gs, gm, ops)
+	_check_screen_reads(gs, gm)
+	gs.reset_to_new_game()
+
+## The guarantee: what the player is shown is what happens.
+##
+## Run at every budget the board supports, plus the unlimited case and a few
+## that stop early — because the useful version of this check is not "they agree
+## once" but "they agree at every boundary the player can pick".
+func _check_preview_matches_reality(gs: Node, gm: Node, ops: RefCounted,
+		adapter: RefCounted) -> void:
+	for limit in [-1, 0, 25, 60, 100, 5000]:
+		_rb_ready(gs)
+		ops.reconcile()
+		var predicted: Dictionary = adapter.preview(RB_CREW, limit)
+		var predicted_ids: Array = []
+		for entry in predicted["items"]:
+			predicted_ids.append(str((entry as Dictionary)["item_id"]))
+		var cash_before: int = gs.cash
+
+		gm.dispatch("assign_crew_operation", {
+			"crew_id": RB_CREW, "operation_id": RB_OPERATION, "spend_limit": limit})
+		var selection: Dictionary = (gs.crew_assignments[RB_CREW] as Dictionary)["selection"]
+		var label := "preview @%d" % limit
+		_expect_str(label + " picks what it promised",
+			str(_rb_purchased_ids(selection)), str(predicted_ids))
+		_expect_int(label + " spends what it promised",
+			int(selection["total_spent"]), int(predicted["total_spent"]))
+		_expect_int(label + " stops for the reason it promised",
+			1 if str(selection["stop_reason"]) == str(predicted["stop_reason"]) else 0, 1)
+		# And the cash figure the screen showed is the cash that resulted.
+		_expect_int(label + " leaves the cash it promised",
+			gs.cash, int(predicted["cash_after"]))
+		_expect_int(label + " cash_on_hand was the truth", int(predicted["cash_on_hand"]),
+			cash_before)
+
+## A preview is a read. It must not move anything.
+func _check_preview_context(gs: Node, gm: Node, ops: RefCounted, adapter: RefCounted,
+		lst: RefCounted) -> void:
+	_rb_ready(gs)
+	ops.reconcile()
+	var cash: int = gs.cash
+	var holdings: int = gs.list_holdings.size()
+	var taken: int = lst.taken_today().size()
+	for limit in [-1, 0, 60, 9999]:
+		adapter.preview(RB_CREW, limit)
+		ops.operation_summary(RB_OPERATION)
+		ops.spend_options(RB_OPERATION)
+	_expect_int("preview spends no cash", gs.cash, cash)
+	_expect_int("preview takes no stock", gs.list_holdings.size(), holdings)
+	_expect_int("preview consumes no opportunity", lst.taken_today().size(), taken)
+	_expect_true("preview claims no day", ops.assignment_for(RB_CREW).is_empty())
+
+	# Storage is reported against what is actually free, not against the tier's
+	# raw capacity — a shelf with something on it has less room.
+	var capacity: int = lst.capacity()
+	var plan: Dictionary = adapter.preview(RB_CREW, -1)
+	_expect_int("preview storage capacity", int(plan["storage_capacity"]), capacity)
+	_expect_int("preview storage free on an empty shelf", int(plan["storage_free"]), capacity)
+	gs.list_holdings.append({"item_id": "space_heater", "bought_day": 1, "source": "player"})
+	_expect_int("preview storage free counts what is held",
+		int((adapter.preview(RB_CREW, -1) as Dictionary)["storage_free"]), capacity - 1)
+
+	# A full shelf previews the stop reason rather than a plan.
+	_rb_ready(gs)
+	ops.reconcile()
+	for i in capacity:
+		gs.list_holdings.append({"item_id": "space_heater", "bought_day": 1, "source": "player"})
+	var full: Dictionary = adapter.preview(RB_CREW, -1)
+	_expect_int("preview on a full shelf plans nothing", int(full["cycles_used"]), 0)
+	_expect_str("preview on a full shelf says why", str(full["stop_reason"]), "capacity")
+	_expect_int("preview on a full shelf reports no room", int(full["storage_free"]), 0)
+
+	# Low cash previews the cash stop, and never a spend the player cannot make.
+	_rb_ready(gs, 10)
+	ops.reconcile()
+	var broke: Dictionary = adapter.preview(RB_CREW, -1)
+	_expect_int("preview with no cash plans nothing", int(broke["cycles_used"]), 0)
+	_expect_str("preview with no cash says why", str(broke["stop_reason"]), "cash")
+	_expect_int("preview never plans past the wallet",
+		int(broke["cash_after"]), int(broke["cash_on_hand"]))
+
+	# The case that actually tests running the wallet down: enough for the FIRST
+	# item and not for the second. A first pass only tested "cannot afford
+	# anything", which passes whether or not the plan tracks what it has already
+	# committed — and a plan that forgets would promise a spend the player
+	# cannot make.
+	_rb_ready(gs)
+	ops.reconcile()
+	var whole: Dictionary = adapter.preview(RB_CREW, -1)
+	if int(whole["cycles_used"]) < 2:
+		_fail("preview cumulative cash", "the probe board does not offer two items")
+	else:
+		var first_cost: int = int((whole["items"][0] as Dictionary)["cost"])
+		var second_cost: int = int((whole["items"][1] as Dictionary)["cost"])
+		# Exactly enough for one, one dollar short of both.
+		_rb_ready(gs, first_cost + second_cost - 1)
+		ops.reconcile()
+		var tight: Dictionary = adapter.preview(RB_CREW, -1)
+		_expect_int("preview stops when the running total empties the wallet",
+			int(tight["cycles_used"]), 1)
+		_expect_str("preview says the wallet stopped it",
+			str(tight["stop_reason"]), "cash")
+		_expect_int("preview never promises more than the wallet holds",
+			int(tight["total_spent"]), first_cost)
+		_expect_true("preview leaves a non-negative balance",
+			int(tight["cash_after"]) >= 0)
+
+## The budgets offered are real ones: each buys exactly that many items.
+func _check_spend_options(gs: Node, gm: Node, ops: RefCounted, adapter: RefCounted) -> void:
+	_rb_ready(gs)
+	ops.reconcile()
+	var options: Array = ops.spend_options(RB_OPERATION)
+	var cap: int = adapter.cycle_cap(RB_CREW)
+	_expect_true("spend options never exceed the rank cap", options.size() <= cap)
+	_expect_true("spend options exist when the board does", not options.is_empty())
+
+	var running: int = 0
+	for i in options.size():
+		var option: Dictionary = options[i]
+		_expect_int("spend option %d counts up by one" % i, int(option["cycles"]), i + 1)
+		_expect_true("spend option %d costs more than the last" % i,
+			int(option["spend"]) > running)
+		running = int(option["spend"])
+		# The promise each button makes: this budget buys exactly this many.
+		var at_budget: Dictionary = adapter.preview(RB_CREW, int(option["spend"]))
+		_expect_int("spend option %d buys what it says" % i,
+			int(at_budget["cycles_used"]), int(option["cycles"]))
+		_expect_int("spend option %d costs what it says" % i,
+			int(at_budget["total_spent"]), int(option["spend"]))
+		# And a dollar less buys one fewer — which is what makes the number the
+		# boundary rather than a label.
+		if int(option["spend"]) > 0:
+			var under: Dictionary = adapter.preview(RB_CREW, int(option["spend"]) - 1)
+			_expect_true("spend option %d is a real boundary" % i,
+				int(under["cycles_used"]) < int(option["cycles"]))
+
+	# Nothing to offer when there is nothing to buy.
+	_rb_ready(gs, 5)
+	ops.reconcile()
+	_expect_true("no spend options when nothing is affordable",
+		(ops.spend_options(RB_OPERATION) as Array).is_empty())
+
+## The summary is the screen's single source. Every field it renders must be
+## present and honest, including the ones that are null on purpose.
+func _check_summary_shape(gs: Node, gm: Node, ops: RefCounted) -> void:
+	_rb_ready(gs)
+	ops.reconcile()
+	var available: Dictionary = ops.operation_summary(RB_OPERATION)
+	for field in ["operation_id", "crew_id", "discovered", "available", "blocker",
+			"assigned_today", "assignment_settled", "assignment_result",
+			"requested_cap", "spend_limit", "stop_reason", "selection", "preview"]:
+		_expect_true("summary carries %s" % field, available.has(field))
+	_expect_true("summary previews when she is free", available["preview"] is Dictionary)
+	_expect_true("summary has no selection before she goes", available["selection"] == null)
+
+	# Once she is out, the preview is null — previewing an assignment that
+	# already exists is a different question, and a screen showing both would be
+	# offering a choice that is gone.
+	gm.dispatch("assign_crew_operation", {"crew_id": RB_CREW, "operation_id": RB_OPERATION})
+	var assigned: Dictionary = ops.operation_summary(RB_OPERATION)
+	_expect_true("summary stops previewing once she is out", assigned["preview"] == null)
+	_expect_true("summary carries the selection once she is out",
+		assigned["selection"] is Dictionary)
+	_expect_true("summary reports her stop reason",
+		not str(assigned["stop_reason"]).is_empty())
+
+	# Undiscovered: no preview, and a blocker that says so rather than a
+	# requirement she happens to also fail.
+	#
+	# On a FRESH run with no assignment. A first pass cleared discovery after
+	# assigning her, so the preview was already null for the other reason and
+	# the check passed without testing discovery at all.
+	_rb_ready(gs)
+	gs.crew_operation_state = {"discovered": [], "adapters": {}}
+	var hidden: Dictionary = ops.operation_summary(RB_OPERATION)
+	_expect_true("summary sees no assignment in the undiscovered case",
+		not bool(hidden["assigned_today"]))
+	_expect_true("summary does not preview what is undiscovered", hidden["preview"] == null)
+	_expect_true("summary reports undiscovered as not available",
+		not bool(hidden["available"]))
+
+## "What did she bring back last night" is a real question the day-scoped read
+## deliberately cannot answer.
+## The screens themselves, rendered.
+##
+## Everything else in this suite tests the reads a screen is built on; nothing
+## tested that a screen can actually consume them. That gap let a real defect
+## reach `main`: PR #40 split Exposure's private ledger accessor into
+## `_ledger_for_write`, and `people.gd` kept calling the old name — so every NPC
+## row on that screen has been erroring, and no check noticed because no check
+## rendered anything.
+##
+## This does not try to be a layout test (the interactive pass at 375x812 covers
+## that). It asserts the one thing a headless run can: a screen fed real state
+## produces the content that state implies. A broken read shows up as the empty
+## copy instead.
+func _check_screen_reads(gs: Node, gm: Node) -> void:
+	var exposure := get_node("/root/Exposure")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	# Something for Yalonda to actually know about, so "she knows nothing" is a
+	# failure rather than the honest state.
+	#
+	# Written straight into state rather than through `record_observation`: PR
+	# #40's ownership guard makes that a no-op outside a dispatch, and this is
+	# fixture setup rather than an exercise of the observation path. This is the
+	# same shape the save/load path restores.
+	gs.npc_ledgers["yalonda"] = [{
+		"key": "financial|rent_paid|north_star_lot",
+		"type": "financial", "event": "rent_paid", "location": "north_star_lot",
+		"source": "household", "count": 1, "day": gs.day,
+	}]
+	_expect_true("exposure exposes a public ledger read", exposure.has_method("ledger_of"))
+	_expect_true("the ledger read returns the row",
+		(exposure.ledger_of("yalonda") as Array).size() > 0)
+
+	var packed: PackedScene = load("res://ui/screens/people.tscn")
+	if packed == null:
+		_fail("screen reads", "people.tscn will not load")
+		return
+	var screen: Node = packed.instantiate()
+	add_child(screen)
+	if screen.has_method("refresh"):
+		screen.refresh()
+	var text: Array[String] = []
+	_collect_labels(screen, text)
+	screen.queue_free()
+
+	var joined := "\n".join(text)
+	_expect_true("people screen renders something", not text.is_empty())
+	# Assert the evidence LINE, not the absence of the empty copy: four other
+	# NPCs have nothing on the player and legitimately render "Knows nothing
+	# about you yet." The screen prints the event with underscores swapped for
+	# spaces, so this string exists only if the ledger read actually returned
+	# the row. A broken accessor renders the empty copy for everyone and this
+	# line never appears.
+	_expect_true("people screen reads the ledger it was given",
+		"rent paid" in joined.to_lower())
+	_expect_true("people screen names the source of what it knows",
+		"household" in joined.to_lower())
+
+func _collect_labels(node: Node, out: Array[String]) -> void:
+	if node is Label:
+		var t := (node as Label).text.strip_edges()
+		if not t.is_empty():
+			out.append(t)
+	for child in node.get_children():
+		_collect_labels(child, out)
+
+func _check_last_assignment(gs: Node, gm: Node, ops: RefCounted) -> void:
+	_rb_ready(gs)
+	ops.reconcile()
+	_expect_true("no last assignment on a fresh run",
+		ops.last_assignment(RB_CREW).is_empty())
+	gm.dispatch("assign_crew_operation", {"crew_id": RB_CREW, "operation_id": RB_OPERATION})
+	var assigned_day: int = gs.day
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+
+	# Today's read is empty — the claim was yesterday's — but the record is
+	# still there to be asked about.
+	_expect_true("today's assignment read is empty after the night",
+		ops.assignment_for(RB_CREW).is_empty())
+	var last: Dictionary = ops.last_assignment(RB_CREW)
+	_expect_true("last assignment survives the day roll", not last.is_empty())
+	_expect_int("last assignment keeps its day", int(last["day"]), assigned_day)
+	_expect_true("last assignment is settled", bool(last["settled"]))
+	_expect_true("last assignment carries its result", last["result"] is Dictionary)
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -3076,7 +3375,7 @@ func _fail(label: String, detail: String) -> void:
 ##
 ## Bumped deliberately whenever checks are added, the same discipline as
 ## SAVE_VERSION: it only ever moves up, and it moving DOWN is the signal.
-const MIN_CHECKS := 7308
+const MIN_CHECKS := 7400
 
 func _finish() -> void:
 	if _failures.is_empty():

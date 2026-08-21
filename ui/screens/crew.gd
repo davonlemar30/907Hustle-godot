@@ -100,6 +100,14 @@ func _member_row(sys: Object, person: Dictionary, hired: bool) -> Control:
 	# control is HIDDEN rather than disabled: a greyed-out PROMOTE reading
 	# "NOWHERE HIGHER TO GO" tells the player there is a ladder they cannot
 	# climb, which is a promise this build does not keep. Pay then fills the row.
+	# What they are doing today, if anything. Read from the operations layer —
+	# the screen does not know what an operation is, only how to show one.
+	var ops: Object = _gm.system("crew_operations")
+	if ops != null:
+		var duty := _duty_line(ops, id)
+		if not duty.is_empty():
+			v.add_child(label(duty, "Mono", 11, AMBER))
+
 	var promo_blocked: String = sys.promote_blocker(id)
 	if not sys.at_top_rank(id):
 		var promo := button("PROMOTE" if promo_blocked.is_empty() else promo_blocked.to_upper(), false, _on_promote.bind(id))
@@ -108,6 +116,44 @@ func _member_row(sys: Object, person: Dictionary, hired: bool) -> Control:
 		row.add_child(promo)
 	v.add_child(row)
 	return c
+
+## One line on where this crew member's day went, or is going. Empty for
+## somebody with nothing to do — a row that says "not assigned" every day for
+## three of four people is noise, and this screen is already dense.
+func _duty_line(ops: Object, id: String) -> String:
+	var assignment: Dictionary = ops.assignment_for(id)
+	if assignment.is_empty():
+		# Nothing today. Say so only if there is something they COULD be doing,
+		# so the absence reads as an available choice rather than a blank.
+		for operation_id in ops.operation_ids():
+			var summary: Dictionary = ops.operation_summary(str(operation_id))
+			if str(summary["crew_id"]) != id or not bool(summary["discovered"]):
+				continue
+			if bool(summary["available"]):
+				return "FREE TODAY  ·  could work the board"
+			var blocker: Variant = summary["blocker"]
+			if blocker is Dictionary:
+				return "NOT TODAY  ·  %s" % _blocker_short(
+					str((blocker as Dictionary).get("blocker_code", "")))
+		return ""
+	if bool(assignment.get("settled", false)):
+		return "WORKED THE BOARD  ·  settled"
+	var selection: Variant = assignment.get("selection")
+	var picked: int = 0
+	if selection is Dictionary:
+		picked = (( selection as Dictionary).get("purchased", []) as Array).size()
+	return "OUT TODAY  ·  %d picked up, settles tonight" % picked
+
+## The blocker code in a few words. Codes come from the operations layer; only
+## the wording is the screen's.
+func _blocker_short(code: String) -> String:
+	match code:
+		"crew_loyalty_min": return "not sure enough of you"
+		"payroll_not_delinquent": return "owed wages"
+		"crew_unassigned_today": return "already busy"
+		"planning_window_open": return "morning decision"
+		"crew_active": return "not on the crew"
+	return "not available"
 
 func _on_recruit(id: String) -> void:
 	if _gm.dispatch("recruit_crew", {"crew_id": id}):

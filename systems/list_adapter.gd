@@ -111,19 +111,21 @@ func cycle_cap(crew_id: String) -> int:
 	return int(gs.crew_capability_value(
 		crew_id, CAPABILITY_ID, "max_cycles_by_rank", rank, 0))
 
-## Buy until something stops her. Runs inside the assignment dispatch, so every
-## mutation here rides that action's single `notify_changed()`.
+## What she WOULD do, without doing it.
 ##
-## Returns `{ok, purchased, total_spent, cycles_used, stop_reason, spend_limit}`.
-## `ok` is false only when the board offered her nothing at all — and even then
-## the assignment still stands, because she spent the day looking.
-func select(crew_id: String, assignment: Dictionary) -> Dictionary:
-	var limit: int = int(assignment.get("spend_limit", -1))
+## The plan and the purchase run through this one function, which is the whole
+## point: a preview that re-derives the answer separately is a second
+## implementation, and the day it drifts is the day the player is shown a number
+## the game does not honour. `select()` executes exactly what `preview()` shows.
+##
+## Pure — reads state, writes nothing.
+func plan(crew_id: String, spend_limit: int) -> Dictionary:
 	var cap: int = cycle_cap(crew_id)
 	var capacity: int = list_system.capacity()
+	var held: int = gs.list_holdings.size()
 	var candidates: Array = acceptable_board()
 
-	var purchased: Array = []
+	var items: Array = []
 	var spent: int = 0
 	var stop_reason: String = ""
 	var index: int = 0
@@ -133,7 +135,7 @@ func select(crew_id: String, assignment: Dictionary) -> Dictionary:
 		# should be the most fundamental thing in her way. Nowhere to put it
 		# outranks nothing worth taking, which outranks the budget, which
 		# outranks the wallet, which outranks having done enough for one day.
-		if gs.list_holdings.size() >= capacity:
+		if held + items.size() >= capacity:
 			stop_reason = STOP_CAPACITY
 			break
 		if index >= candidates.size():
@@ -141,17 +143,67 @@ func select(crew_id: String, assignment: Dictionary) -> Dictionary:
 			break
 		var item: Dictionary = candidates[index]
 		var cost: int = int(item["buy"])
-		if limit >= 0 and spent + cost > limit:
+		if spend_limit >= 0 and spent + cost > spend_limit:
 			stop_reason = STOP_SPEND_LIMIT
 			break
-		if gs.cash < cost:
+		if gs.cash - spent < cost:
 			stop_reason = STOP_CASH
 			break
-		if purchased.size() >= cap:
+		if items.size() >= cap:
 			stop_reason = STOP_CYCLE_CAP
 			break
+		items.append({"item_id": str(item["id"]), "name": str(item["name"]), "cost": cost})
+		spent += cost
+		index += 1
 
-		var item_id := str(item["id"])
+	return {
+		"items": items,
+		"total_spent": spent,
+		"cycles_used": items.size(),
+		"cycle_cap": cap,
+		"stop_reason": stop_reason,
+		"spend_limit": spend_limit,
+		"storage_capacity": capacity,
+		"storage_free": maxi(0, capacity - held),
+	}
+
+## The plan, plus what it would cost against what is in the pocket. This is what
+## a screen shows before the player commits.
+func preview(crew_id: String, spend_limit: int) -> Dictionary:
+	var planned: Dictionary = plan(crew_id, spend_limit)
+	planned["cash_on_hand"] = gs.cash
+	planned["cash_after"] = gs.cash - int(planned["total_spent"])
+	return planned
+
+## What she could be asked to spend, as the running total of taking 1, 2, ... up
+## to her cap. Derived from the real board rather than offered as round numbers,
+## so every option shown is a spend that actually buys something.
+func spend_options(crew_id: String) -> Array:
+	var full: Dictionary = plan(crew_id, -1)
+	var options: Array = []
+	var running: int = 0
+	for item in full["items"]:
+		running += int((item as Dictionary)["cost"])
+		options.append({"cycles": options.size() + 1, "spend": running})
+	return options
+
+## Buy until something stops her. Runs inside the assignment dispatch, so every
+## mutation here rides that action's single `notify_changed()`.
+##
+## Executes `plan()` rather than re-deciding, so what the player was shown is
+## what happens.
+##
+## Returns `{ok, purchased, total_spent, cycles_used, stop_reason, spend_limit}`.
+## `ok` is false only when the board offered her nothing at all — and even then
+## the assignment still stands, because she spent the day looking.
+func select(crew_id: String, assignment: Dictionary) -> Dictionary:
+	var limit: int = int(assignment.get("spend_limit", -1))
+	var planned: Dictionary = plan(crew_id, limit)
+	var purchased: Array = []
+
+	for entry in planned["items"]:
+		var item_id := str((entry as Dictionary)["item_id"])
+		var cost: int = int((entry as Dictionary)["cost"])
 		gs.cash -= cost
 		gs.list_holdings.append({
 			"item_id": item_id,
@@ -164,15 +216,13 @@ func select(crew_id: String, assignment: Dictionary) -> Dictionary:
 		# personal buy does, so the player cannot take the same listing after.
 		list_system._mark_taken(item_id)
 		purchased.append({"item_id": item_id, "cost": cost})
-		spent += cost
-		index += 1
 
 	return {
 		"ok": not purchased.is_empty(),
 		"purchased": purchased,
-		"total_spent": spent,
+		"total_spent": int(planned["total_spent"]),
 		"cycles_used": purchased.size(),
-		"stop_reason": stop_reason,
+		"stop_reason": str(planned["stop_reason"]),
 		"spend_limit": limit,
 	}
 

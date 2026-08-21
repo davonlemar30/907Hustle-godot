@@ -59,7 +59,11 @@ func _person_row(E: Node, entry: Dictionary) -> Control:
 	if inverted:
 		v.add_child(label("Reads backwards — for him, quiet is good.", "Muted", 10, MUTED, true))
 
-	var rows: Array = E._ledger(id)
+	# `ledger_of` is the public READ. PR #40 split the private accessor into
+	# `_ledger_for_write` as part of making Exposure read-only during
+	# observation, and this call site kept the old name — so every NPC row on
+	# this screen has been erroring since. Reading is what it wants.
+	var rows: Array = E.ledger_of(id)
 	if rows.is_empty():
 		v.add_child(label("Knows nothing about you yet.", "Muted", 11, MUTED, true))
 		return c

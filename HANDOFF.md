@@ -495,6 +495,76 @@ that reasoning is most of the value. The Build State page can be reconstructed f
 - Any deliberate divergence from canon is named with the reason.
 - Any canon oddity found is recorded rather than silently corrected.
 
+## Phase 5 (part 2): the canon market walk  (added 2026-08-20)
+
+The pending market fixtures are **enforced** now. `economy.gd` speaks canon:
+per-area markets, the xorshift stream, mean-reversion, availability — and the
+suite grew from 355 to **1212 checks, 0 failures**.
+
+### What the market is now
+
+- **`GameState.markets`** — canon `state.world.markets`: per-area
+  `{prices, availability, history (last 8), updated_at}`, walked off
+  **`GameState.rng_state`**, the xorshift cursor (canon `run.rngState`).
+- **`economy.gd`'s walk primitives are static and pure** — `price_step`
+  (marketPrice: 0.34 reversion toward base×bias, ±volatility movement, clamp
+  [min×0.72, max×1.2]), `availability_roll` (gate, then int(4,12/9) initial vs
+  int(3,13/9) nightly — that asymmetry is canon), `walk_initial_area`,
+  `walk_evolve_area`. `GameState.init_markets()` (run creation) and
+  `evolve()` (nightly) share them; so does the parity runner.
+- **`sync_display_prices()`** mirrors the current district's prices into
+  `products[].price`, so every existing screen binding stays correct without
+  knowing markets exist. Called after any walk, after travel, after load.
+- **Buy enforces and consumes availability** (canon BUY, game-core.js:7561-66);
+  sell does not restore it — supply restocks overnight, not from the player's
+  bag. Canon rejects an over-availability buy silently; ours says "Not enough
+  supply." — named divergence, the action layer speaks.
+
+### Two corrections this forced
+
+1. **Markets move ONCE PER DAY.** evolveMarkets is called from day-end
+   settlement (game-core.js:6654), never per slot. The 3b change that keyed
+   prices per-slot treated the nightly cadence as a bug and "fixed" it —
+   the oracle says nightly was the design. `time_system` now evolves on
+   day-cross only; prices hold through a day's four slots.
+2. **Product order is stream order.** GameState listed molly before coke;
+   canon PRODUCTS is coke-then-molly. With draws consumed in product order,
+   the swap silently mis-dealt every draw after it — the end-to-end fixture
+   caught it (coke wearing molly's numbers). Products are in canon order now,
+   and the Market scene's R4/R5 icons swapped to match. **Data ORDER is part
+   of parity, not just data values.**
+
+### The verification ladder (all in the `parity` CI job)
+
+- **Data parity** — the hand-copied bias/availability/volatility tables must
+  equal what the oracle carries (a typo can't hide behind a correct formula).
+- **Formula parity** — recorded lifecycle walks (initial + 6 nightly evolves,
+  3 areas × 8 products, cursor per frame) replay through economy.gd's own
+  statics. The generator's marketPrice AND evolveMarkets copies are themselves
+  oracle-verified before fixtures are written: each must reproduce a real
+  `createRun` market / a real CONFIRM_END_DAY settlement from a scanned
+  stream offset (both verified at offset 0).
+- **End-to-end parity, pure oracle** — `GameState.init_markets()` must equal
+  the recorded output of the web build's actual `createRun` for the same seed:
+  every price, every availability, and the cursor left behind. Both real
+  seeds are pinned: numeric 907 and the default `"907hustle"` (→ the
+  normalizeSeed fallback).
+
+### Save schema v2 — the migration chain's first real use
+
+`markets` + `rng_state` joined `PERSIST_FIELDS`; `SAVE_VERSION` is 2; the
+v1→v2 arm is additive (stamp only). A v1 save loads with no markets, so
+`load_run()` walks a fresh board off the run seed — an old save resumes priced
+rather than empty, and the next day-cross re-walks it.
+
+### Verified live (editor run)
+
+New run → Spenard board priced from the seed walk ($25 weed opening, matching
+the oracle); buy 2 weed → cash 100→50, availability 9→7; a 99-unit buy
+rejected on supply; prices held across three intraday advances and walked on
+the day-cross ($25→$28); Market screen renders the canon-ordered rows with
+the right icons. Game log clean.
+
 ## Phase 5 (part 1): the parity harness  (added 2026-08-20)
 
 The dual-run harness the Migration doc's plan-Phase 7 asks for, in its first

@@ -47,7 +47,12 @@ extends Node
 ## that persists becomes a fake fact.
 
 const SAVE_PATH := "user://907hustle_run.save"
-const SAVE_VERSION := 1
+## v2 (Phase 5 part 2): adds `markets` (per-area prices/availability/history)
+## and `rng_state` (the xorshift stream cursor). Both additive — the v1→v2
+## migration arm only stamps the version, and a v1 save's missing fields
+## default in; load_run() then walks fresh markets off the run seed, so an old
+## save resumes with a coherent board instead of an empty one.
+const SAVE_VERSION := 2
 
 ## Every mutable GameState field, captured and applied by name. products.price
 ## is the one mutable value living inside a canon table; it rides separately as
@@ -56,6 +61,8 @@ const PERSIST_FIELDS: Array[String] = [
 	# Run clock + identity
 	"day", "time_slot", "time_slots_today", "run_seed", "current_district_id",
 	"street_name",
+	# Markets + the stream cursor (v2)
+	"markets", "rng_state",
 	# Player stats
 	"cash", "heat", "health", "debt", "debt_due_days", "respect", "crew_power",
 	"inventory",
@@ -164,6 +171,12 @@ func load_run() -> bool:
 		return false
 	_suspended = true
 	_apply(state)
+	# A pre-v2 save carries no markets. Walk a fresh board off the run seed so
+	# the run resumes priced rather than empty; the next day-cross re-walks it.
+	if gs.markets.is_empty():
+		gs.init_markets()
+	else:
+		preload("res://systems/economy.gd").sync_display_prices(gs)
 	gs.notify_changed()
 	_suspended = false
 	return true
@@ -189,10 +202,13 @@ func _migrate(payload: Dictionary) -> Dictionary:
 	var state: Dictionary = raw
 	while version < SAVE_VERSION:
 		match version:
+			1:
+				# v1 → v2: markets + rng_state are additive. Nothing to
+				# transform — absent fields keep GameState's defaults, and
+				# load_run() walks fresh markets when none arrived.
+				pass
 			_:
 				return {}
-		# Unreachable until the first real migration lands; each arm must
-		# transform `state` in place and fall through to here.
 		version += 1
 	for key in REQUIRED_KEYS:
 		if not state.has(key):

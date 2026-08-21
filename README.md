@@ -59,7 +59,7 @@ autoload/
   save_system.gd      # versioned autosave on every state change; title save preview
 
 systems/              # the ONLY writers of GameState
-  economy.gd          # buy / sell / seeded price evolution
+  economy.gd          # buy / sell + canon market walk (per-area, nightly)
   time_system.gd      # time slots + day-cross
   travel.gd           # district change: fare + a slot
   jobs.gd             # apply / work / quit + attendance
@@ -155,7 +155,7 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| **5. Behavioral parity harness vs the JS oracle** | **in progress** — RNG primitives + save round-trip enforced in CI; market-walk port next |
+| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (1212 checks); fixtures grow with each system |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

@@ -859,29 +859,62 @@
   "areas": [
    {
     "id": "north_star_lot",
+    "role": "Home",
     "bias": {
      "weed": 0.78,
      "shrooms": 0.88,
      "cocaine": 1.02,
      "meth": 0.95
+    },
+    "availability": {
+     "weed": 1,
+     "shrooms": 0.88,
+     "pills": 0.82,
+     "lean": 0.7,
+     "coke": 0.62,
+     "molly": 0.68,
+     "cocaine": 0.55,
+     "meth": 0.48
     }
    },
    {
     "id": "downtown",
+    "role": "Commercial",
     "bias": {
      "weed": 1.08,
      "shrooms": 1.32,
      "cocaine": 1.46,
      "meth": 1.08
+    },
+    "availability": {
+     "weed": 0.9,
+     "shrooms": 0.9,
+     "pills": 0.82,
+     "lean": 0.78,
+     "coke": 0.8,
+     "molly": 0.86,
+     "cocaine": 0.78,
+     "meth": 0.58
     }
    },
    {
     "id": "airport_industrial",
+    "role": "Outer",
     "bias": {
      "weed": 1.12,
      "shrooms": 1.18,
      "cocaine": 1.32,
      "meth": 1.62
+    },
+    "availability": {
+     "weed": 0.72,
+     "shrooms": 0.7,
+     "pills": 0.7,
+     "lean": 0.74,
+     "coke": 0.78,
+     "molly": 0.72,
+     "cocaine": 0.7,
+     "meth": 0.86
     }
    }
   ]
@@ -890,2014 +923,1168 @@
   {
    "seed": 907,
    "normalized": 907,
-   "steps": [
+   "frames": [
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 24
+     "kind": "initial",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 24,
+        "shrooms": 55,
+        "pills": 94,
+        "lean": 153,
+        "coke": 218,
+        "molly": 269,
+        "cocaine": 259,
+        "meth": 209
+       },
+       "availability": {
+        "weed": 4,
+        "shrooms": 6,
+        "pills": 7,
+        "lean": 5,
+        "coke": 7,
+        "molly": 4,
+        "cocaine": 5,
+        "meth": 5
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 61
+      "downtown": {
+       "prices": {
+        "weed": 37,
+        "shrooms": 135,
+        "pills": 119,
+        "lean": 151,
+        "coke": 354,
+        "molly": 184,
+        "cocaine": 537,
+        "meth": 243
+       },
+       "availability": {
+        "weed": 4,
+        "shrooms": 4,
+        "pills": 7,
+        "lean": 0,
+        "coke": 0,
+        "molly": 4,
+        "cocaine": 4,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 87
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 122
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 292
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 211
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 244
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 179
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 38
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 107
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 97
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 142
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 218
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 178
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 436
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 268
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 39
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 76
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 97
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 135
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 254
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 245
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 330
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 227
+      "airport_industrial": {
+       "prices": {
+        "weed": 36,
+        "shrooms": 101,
+        "pills": 103,
+        "lean": 133,
+        "coke": 224,
+        "molly": 163,
+        "cocaine": 268,
+        "meth": 334
+       },
+       "availability": {
+        "weed": 11,
+        "shrooms": 0,
+        "pills": 11,
+        "lean": 0,
+        "coke": 7,
+        "molly": 7,
+        "cocaine": 6,
+        "meth": 5
+       }
       }
-     ],
-     "state": 767318895
+     },
+     "state": 555200872
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 25
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 23,
+        "shrooms": 70,
+        "pills": 96,
+        "lean": 187,
+        "coke": 269,
+        "molly": 246,
+        "cocaine": 260,
+        "meth": 236
+       },
+       "availability": {
+        "weed": 8,
+        "shrooms": 3,
+        "pills": 9,
+        "lean": 6,
+        "coke": 5,
+        "molly": 8,
+        "cocaine": 6,
+        "meth": 6
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 77
+      "downtown": {
+       "prices": {
+        "weed": 38,
+        "shrooms": 124,
+        "pills": 131,
+        "lean": 163,
+        "coke": 386,
+        "molly": 187,
+        "cocaine": 644,
+        "meth": 160
+       },
+       "availability": {
+        "weed": 6,
+        "shrooms": 7,
+        "pills": 0,
+        "lean": 3,
+        "coke": 8,
+        "molly": 4,
+        "cocaine": 5,
+        "meth": 9
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 81
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 162
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 309
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 153
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 320
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 220
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 39
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 104
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 111
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 170
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 315
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 163
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 423
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 160
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 43
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 63
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 85
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 160
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 340
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 200
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 331
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 320
+      "airport_industrial": {
+       "prices": {
+        "weed": 34,
+        "shrooms": 91,
+        "pills": 90,
+        "lean": 156,
+        "coke": 185,
+        "molly": 164,
+        "cocaine": 267,
+        "meth": 358
+       },
+       "availability": {
+        "weed": 4,
+        "shrooms": 4,
+        "pills": 8,
+        "lean": 4,
+        "coke": 13,
+        "molly": 4,
+        "cocaine": 0,
+        "meth": 7
+       }
       }
-     ],
-     "state": 3680888605
+     },
+     "state": 1769794476
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 26
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 24,
+        "shrooms": 57,
+        "pills": 113,
+        "lean": 159,
+        "coke": 274,
+        "molly": 171,
+        "cocaine": 294,
+        "meth": 155
+       },
+       "availability": {
+        "weed": 3,
+        "shrooms": 7,
+        "pills": 7,
+        "lean": 7,
+        "coke": 7,
+        "molly": 0,
+        "cocaine": 0,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 89
+      "downtown": {
+       "prices": {
+        "weed": 40,
+        "shrooms": 90,
+        "pills": 140,
+        "lean": 171,
+        "coke": 446,
+        "molly": 194,
+        "cocaine": 546,
+        "meth": 218
+       },
+       "availability": {
+        "weed": 8,
+        "shrooms": 0,
+        "pills": 7,
+        "lean": 0,
+        "coke": 9,
+        "molly": 8,
+        "cocaine": 6,
+        "meth": 7
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 87
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 160
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 360
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 143
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 383
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 146
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 40
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 97
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 92
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 174
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 285
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 130
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 454
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 140
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 43
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 84
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 80
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 137
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 248
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 245
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 413
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 307
+      "airport_industrial": {
+       "prices": {
+        "weed": 38,
+        "shrooms": 101,
+        "pills": 111,
+        "lean": 162,
+        "coke": 182,
+        "molly": 215,
+        "cocaine": 334,
+        "meth": 215
+       },
+       "availability": {
+        "weed": 13,
+        "shrooms": 11,
+        "pills": 7,
+        "lean": 6,
+        "coke": 8,
+        "molly": 6,
+        "cocaine": 13,
+        "meth": 12
+       }
       }
-     ],
-     "state": 2032658469
+     },
+     "state": 3530128736
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 23
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 23,
+        "shrooms": 54,
+        "pills": 107,
+        "lean": 153,
+        "coke": 357,
+        "molly": 208,
+        "cocaine": 238,
+        "meth": 139
+       },
+       "availability": {
+        "weed": 3,
+        "shrooms": 4,
+        "pills": 8,
+        "lean": 0,
+        "coke": 0,
+        "molly": 0,
+        "cocaine": 0,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 81
+      "downtown": {
+       "prices": {
+        "weed": 42,
+        "shrooms": 76,
+        "pills": 147,
+        "lean": 131,
+        "coke": 507,
+        "molly": 194,
+        "cocaine": 580,
+        "meth": 281
+       },
+       "availability": {
+        "weed": 8,
+        "shrooms": 7,
+        "pills": 4,
+        "lean": 0,
+        "coke": 0,
+        "molly": 5,
+        "cocaine": 3,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 98
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 186
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 435
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 146
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 365
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 178
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 40
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 92
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 95
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 142
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 339
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 153
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 375
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 152
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 44
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 79
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 90
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 149
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 255
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 231
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 394
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 300
+      "airport_industrial": {
+       "prices": {
+        "weed": 39,
+        "shrooms": 96,
+        "pills": 103,
+        "lean": 184,
+        "coke": 198,
+        "molly": 238,
+        "cocaine": 399,
+        "meth": 176
+       },
+       "availability": {
+        "weed": 0,
+        "shrooms": 0,
+        "pills": 8,
+        "lean": 0,
+        "coke": 0,
+        "molly": 8,
+        "cocaine": 5,
+        "meth": 8
+       }
       }
-     ],
-     "state": 2070100354
+     },
+     "state": 2107071984
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 25
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 23,
+        "shrooms": 55,
+        "pills": 99,
+        "lean": 139,
+        "coke": 375,
+        "molly": 184,
+        "cocaine": 247,
+        "meth": 146
+       },
+       "availability": {
+        "weed": 6,
+        "shrooms": 9,
+        "pills": 6,
+        "lean": 4,
+        "coke": 0,
+        "molly": 3,
+        "cocaine": 6,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 94
+      "downtown": {
+       "prices": {
+        "weed": 44,
+        "shrooms": 102,
+        "pills": 119,
+        "lean": 150,
+        "coke": 307,
+        "molly": 238,
+        "cocaine": 595,
+        "meth": 281
+       },
+       "availability": {
+        "weed": 5,
+        "shrooms": 0,
+        "pills": 9,
+        "lean": 0,
+        "coke": 0,
+        "molly": 7,
+        "cocaine": 8,
+        "meth": 6
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 113
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 187
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 295
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 126
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 397
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 123
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 42
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 94
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 81
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 126
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 416
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 136
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 354
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 118
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 41
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 106
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 86
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 134
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 208
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 203
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 430
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 217
+      "airport_industrial": {
+       "prices": {
+        "weed": 34,
+        "shrooms": 93,
+        "pills": 118,
+        "lean": 198,
+        "coke": 279,
+        "molly": 235,
+        "cocaine": 342,
+        "meth": 204
+       },
+       "availability": {
+        "weed": 0,
+        "shrooms": 10,
+        "pills": 8,
+        "lean": 0,
+        "coke": 12,
+        "molly": 10,
+        "cocaine": 6,
+        "meth": 10
+       }
       }
-     ],
-     "state": 586910567
+     },
+     "state": 2749406439
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 23
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 26,
+        "shrooms": 50,
+        "pills": 98,
+        "lean": 116,
+        "coke": 400,
+        "molly": 230,
+        "cocaine": 255,
+        "meth": 111
+       },
+       "availability": {
+        "weed": 7,
+        "shrooms": 3,
+        "pills": 9,
+        "lean": 8,
+        "coke": 9,
+        "molly": 0,
+        "cocaine": 0,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 95
+      "downtown": {
+       "prices": {
+        "weed": 39,
+        "shrooms": 125,
+        "pills": 99,
+        "lean": 179,
+        "coke": 244,
+        "molly": 183,
+        "cocaine": 535,
+        "meth": 198
+       },
+       "availability": {
+        "weed": 6,
+        "shrooms": 6,
+        "pills": 3,
+        "lean": 9,
+        "coke": 4,
+        "molly": 3,
+        "cocaine": 0,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 111
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 196
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 259
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 126
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 272
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 123
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 45
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 91
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 87
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 116
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 325
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 204
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 411
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 93
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 39
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 101
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 81
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 116
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 180
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 220
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 442
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 320
+      "airport_industrial": {
+       "prices": {
+        "weed": 32,
+        "shrooms": 75,
+        "pills": 129,
+        "lean": 173,
+        "coke": 213,
+        "molly": 249,
+        "cocaine": 276,
+        "meth": 298
+       },
+       "availability": {
+        "weed": 5,
+        "shrooms": 0,
+        "pills": 11,
+        "lean": 11,
+        "coke": 0,
+        "molly": 0,
+        "cocaine": 0,
+        "meth": 4
+       }
       }
-     ],
-     "state": 3875341455
+     },
+     "state": 639437988
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 24
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 26,
+        "shrooms": 69,
+        "pills": 118,
+        "lean": 108,
+        "coke": 405,
+        "molly": 238,
+        "cocaine": 261,
+        "meth": 143
+       },
+       "availability": {
+        "weed": 6,
+        "shrooms": 3,
+        "pills": 5,
+        "lean": 0,
+        "coke": 0,
+        "molly": 7,
+        "cocaine": 0,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 96
+      "downtown": {
+       "prices": {
+        "weed": 41,
+        "shrooms": 138,
+        "pills": 87,
+        "lean": 170,
+        "coke": 197,
+        "molly": 164,
+        "cocaine": 592,
+        "meth": 218
+       },
+       "availability": {
+        "weed": 5,
+        "shrooms": 6,
+        "pills": 6,
+        "lean": 8,
+        "coke": 0,
+        "molly": 4,
+        "cocaine": 9,
+        "meth": 3
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 100
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 189
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 284
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 155
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 219
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 153
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 37
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 113
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 98
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 156
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 244
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 224
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 496
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 149
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 42
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 75
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 104
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 152
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 177
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 244
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 459
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 409
+      "airport_industrial": {
+       "prices": {
+        "weed": 32,
+        "shrooms": 81,
+        "pills": 131,
+        "lean": 136,
+        "coke": 219,
+        "molly": 228,
+        "cocaine": 299,
+        "meth": 338
+       },
+       "availability": {
+        "weed": 4,
+        "shrooms": 0,
+        "pills": 0,
+        "lean": 11,
+        "coke": 0,
+        "molly": 6,
+        "cocaine": 12,
+        "meth": 7
+       }
       }
-     ],
-     "state": 3871879786
-    },
-    {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 27
-      },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 77
-      },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 118
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 176
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 266
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 199
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 235
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 108
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 37
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 130
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 92
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 166
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 300
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 222
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 587
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 189
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 41
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 92
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 122
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 142
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 209
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 247
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 418
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 333
-      }
-     ],
-     "state": 1552861299
+     },
+     "state": 1945318141
     }
    ]
   },
   {
    "seed": "907hustle",
    "normalized": 151461926,
-   "steps": [
+   "frames": [
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 25
+     "kind": "initial",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 25,
+        "shrooms": 84,
+        "pills": 104,
+        "lean": 171,
+        "coke": 364,
+        "molly": 196,
+        "cocaine": 291,
+        "meth": 143
+       },
+       "availability": {
+        "weed": 9,
+        "shrooms": 9,
+        "pills": 7,
+        "lean": 9,
+        "coke": 9,
+        "molly": 0,
+        "cocaine": 0,
+        "meth": 8
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 81
+      "downtown": {
+       "prices": {
+        "weed": 39,
+        "shrooms": 94,
+        "pills": 103,
+        "lean": 158,
+        "coke": 272,
+        "molly": 205,
+        "cocaine": 405,
+        "meth": 133
+       },
+       "availability": {
+        "weed": 9,
+        "shrooms": 8,
+        "pills": 0,
+        "lean": 5,
+        "coke": 0,
+        "molly": 0,
+        "cocaine": 0,
+        "meth": 9
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 119
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 178
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 250
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 269
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 293
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 128
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 37
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 121
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 111
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 187
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 364
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 223
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 526
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 175
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 41
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 95
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 120
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 138
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 271
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 237
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 446
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 341
+      "airport_industrial": {
+       "prices": {
+        "weed": 34,
+        "shrooms": 102,
+        "pills": 113,
+        "lean": 163,
+        "coke": 252,
+        "molly": 237,
+        "cocaine": 494,
+        "meth": 268
+       },
+       "availability": {
+        "weed": 8,
+        "shrooms": 8,
+        "pills": 12,
+        "lean": 7,
+        "coke": 7,
+        "molly": 0,
+        "cocaine": 11,
+        "meth": 5
+       }
       }
-     ],
-     "state": 2916855163
+     },
+     "state": 915084991
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 28
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 28,
+        "shrooms": 78,
+        "pills": 106,
+        "lean": 174,
+        "coke": 396,
+        "molly": 167,
+        "cocaine": 296,
+        "meth": 137
+       },
+       "availability": {
+        "weed": 6,
+        "shrooms": 8,
+        "pills": 5,
+        "lean": 8,
+        "coke": 0,
+        "molly": 3,
+        "cocaine": 3,
+        "meth": 9
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 68
+      "downtown": {
+       "prices": {
+        "weed": 37,
+        "shrooms": 98,
+        "pills": 87,
+        "lean": 135,
+        "coke": 277,
+        "molly": 218,
+        "cocaine": 450,
+        "meth": 135
+       },
+       "availability": {
+        "weed": 3,
+        "shrooms": 3,
+        "pills": 7,
+        "lean": 5,
+        "coke": 0,
+        "molly": 3,
+        "cocaine": 6,
+        "meth": 4
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 101
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 188
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 257
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 316
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 301
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 142
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 34
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 111
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 128
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 169
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 440
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 211
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 593
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 122
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 38
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 115
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 98
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 152
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 274
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 243
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 307
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 317
+      "airport_industrial": {
+       "prices": {
+        "weed": 32,
+        "shrooms": 83,
+        "pills": 117,
+        "lean": 167,
+        "coke": 190,
+        "molly": 219,
+        "cocaine": 393,
+        "meth": 200
+       },
+       "availability": {
+        "weed": 0,
+        "shrooms": 0,
+        "pills": 3,
+        "lean": 0,
+        "coke": 8,
+        "molly": 0,
+        "cocaine": 9,
+        "meth": 10
+       }
       }
-     ],
-     "state": 1980658313
+     },
+     "state": 2872552359
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 29
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 28,
+        "shrooms": 84,
+        "pills": 113,
+        "lean": 161,
+        "coke": 263,
+        "molly": 211,
+        "cocaine": 334,
+        "meth": 117
+       },
+       "availability": {
+        "weed": 3,
+        "shrooms": 7,
+        "pills": 8,
+        "lean": 7,
+        "coke": 0,
+        "molly": 0,
+        "cocaine": 0,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 68
+      "downtown": {
+       "prices": {
+        "weed": 38,
+        "shrooms": 118,
+        "pills": 109,
+        "lean": 152,
+        "coke": 294,
+        "molly": 213,
+        "cocaine": 526,
+        "meth": 134
+       },
+       "availability": {
+        "weed": 4,
+        "shrooms": 5,
+        "pills": 3,
+        "lean": 8,
+        "coke": 9,
+        "molly": 7,
+        "cocaine": 0,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 118
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 186
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 222
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 263
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 260
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 172
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 34
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 120
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 139
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 199
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 382
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 250
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 491
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 127
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 35
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 129
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 117
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 154
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 272
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 235
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 404
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 320
+      "airport_industrial": {
+       "prices": {
+        "weed": 36,
+        "shrooms": 75,
+        "pills": 130,
+        "lean": 184,
+        "coke": 275,
+        "molly": 204,
+        "cocaine": 318,
+        "meth": 268
+       },
+       "availability": {
+        "weed": 13,
+        "shrooms": 11,
+        "pills": 5,
+        "lean": 12,
+        "coke": 7,
+        "molly": 7,
+        "cocaine": 4,
+        "meth": 13
+       }
       }
-     ],
-     "state": 2305317303
+     },
+     "state": 4252926875
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 30
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 28,
+        "shrooms": 73,
+        "pills": 97,
+        "lean": 137,
+        "coke": 273,
+        "molly": 231,
+        "cocaine": 346,
+        "meth": 113
+       },
+       "availability": {
+        "weed": 3,
+        "shrooms": 4,
+        "pills": 3,
+        "lean": 4,
+        "coke": 9,
+        "molly": 8,
+        "cocaine": 0,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 67
+      "downtown": {
+       "prices": {
+        "weed": 37,
+        "shrooms": 138,
+        "pills": 109,
+        "lean": 153,
+        "coke": 236,
+        "molly": 215,
+        "cocaine": 537,
+        "meth": 148
+       },
+       "availability": {
+        "weed": 3,
+        "shrooms": 7,
+        "pills": 8,
+        "lean": 5,
+        "coke": 0,
+        "molly": 7,
+        "cocaine": 5,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 118
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 150
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 289
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 285
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 352
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 132
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 32
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 87
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 128
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 148
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 258
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 218
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 349
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 195
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 35
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 94
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 94
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 153
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 309
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 181
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 291
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 344
+      "airport_industrial": {
+       "prices": {
+        "weed": 39,
+        "shrooms": 78,
+        "pills": 103,
+        "lean": 172,
+        "coke": 220,
+        "molly": 248,
+        "cocaine": 272,
+        "meth": 328
+       },
+       "availability": {
+        "weed": 8,
+        "shrooms": 11,
+        "pills": 6,
+        "lean": 12,
+        "coke": 4,
+        "molly": 0,
+        "cocaine": 11,
+        "meth": 10
+       }
       }
-     ],
-     "state": 2709148709
+     },
+     "state": 3002045672
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 29
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 26,
+        "shrooms": 60,
+        "pills": 103,
+        "lean": 166,
+        "coke": 311,
+        "molly": 182,
+        "cocaine": 337,
+        "meth": 136
+       },
+       "availability": {
+        "weed": 9,
+        "shrooms": 7,
+        "pills": 0,
+        "lean": 0,
+        "coke": 0,
+        "molly": 6,
+        "cocaine": 3,
+        "meth": 3
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 58
+      "downtown": {
+       "prices": {
+        "weed": 35,
+        "shrooms": 157,
+        "pills": 96,
+        "lean": 158,
+        "coke": 325,
+        "molly": 162,
+        "cocaine": 489,
+        "meth": 164
+       },
+       "availability": {
+        "weed": 8,
+        "shrooms": 6,
+        "pills": 5,
+        "lean": 8,
+        "coke": 4,
+        "molly": 8,
+        "cocaine": 6,
+        "meth": 5
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 118
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 145
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 289
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 313
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 350
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 153
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 30
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 102
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 125
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 153
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 241
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 221
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 320
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 142
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 38
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 79
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 107
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 164
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 329
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 144
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 341
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 418
+      "airport_industrial": {
+       "prices": {
+        "weed": 36,
+        "shrooms": 92,
+        "pills": 119,
+        "lean": 187,
+        "coke": 273,
+        "molly": 225,
+        "cocaine": 376,
+        "meth": 409
+       },
+       "availability": {
+        "weed": 10,
+        "shrooms": 0,
+        "pills": 0,
+        "lean": 8,
+        "coke": 10,
+        "molly": 12,
+        "cocaine": 8,
+        "meth": 8
+       }
       }
-     ],
-     "state": 3671800760
+     },
+     "state": 2188534910
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 25
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 23,
+        "shrooms": 59,
+        "pills": 97,
+        "lean": 189,
+        "coke": 278,
+        "molly": 240,
+        "cocaine": 284,
+        "meth": 157
+       },
+       "availability": {
+        "weed": 4,
+        "shrooms": 4,
+        "pills": 6,
+        "lean": 7,
+        "coke": 8,
+        "molly": 8,
+        "cocaine": 5,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 54
+      "downtown": {
+       "prices": {
+        "weed": 34,
+        "shrooms": 128,
+        "pills": 110,
+        "lean": 157,
+        "coke": 291,
+        "molly": 217,
+        "cocaine": 373,
+        "meth": 193
+       },
+       "availability": {
+        "weed": 4,
+        "shrooms": 6,
+        "pills": 4,
+        "lean": 9,
+        "coke": 7,
+        "molly": 6,
+        "cocaine": 5,
+        "meth": 9
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 113
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 143
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 367
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 243
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 344
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 168
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 29
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 105
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 125
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 160
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 255
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 172
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 402
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 162
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 40
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 93
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 91
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 186
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 300
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 133
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 379
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 249
+      "airport_industrial": {
+       "prices": {
+        "weed": 33,
+        "shrooms": 114,
+        "pills": 109,
+        "lean": 139,
+        "coke": 310,
+        "molly": 177,
+        "cocaine": 424,
+        "meth": 332
+       },
+       "availability": {
+        "weed": 13,
+        "shrooms": 7,
+        "pills": 4,
+        "lean": 5,
+        "coke": 0,
+        "molly": 13,
+        "cocaine": 3,
+        "meth": 0
+       }
       }
-     ],
-     "state": 222248545
+     },
+     "state": 4148728954
     },
     {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 27
+     "kind": "evolve",
+     "areas": {
+      "north_star_lot": {
+       "prices": {
+        "weed": 23,
+        "shrooms": 73,
+        "pills": 100,
+        "lean": 196,
+        "coke": 269,
+        "molly": 212,
+        "cocaine": 234,
+        "meth": 120
+       },
+       "availability": {
+        "weed": 7,
+        "shrooms": 9,
+        "pills": 0,
+        "lean": 0,
+        "coke": 3,
+        "molly": 6,
+        "cocaine": 0,
+        "meth": 4
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 68
+      "downtown": {
+       "prices": {
+        "weed": 36,
+        "shrooms": 99,
+        "pills": 97,
+        "lean": 143,
+        "coke": 310,
+        "molly": 245,
+        "cocaine": 362,
+        "meth": 269
+       },
+       "availability": {
+        "weed": 4,
+        "shrooms": 3,
+        "pills": 3,
+        "lean": 7,
+        "coke": 0,
+        "molly": 7,
+        "cocaine": 4,
+        "meth": 0
+       }
       },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 122
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 161
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 362
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 196
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 394
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 189
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 28
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 87
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 132
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 148
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 234
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 236
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 344
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 117
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 41
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 102
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 105
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 181
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 271
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 205
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 372
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 185
+      "airport_industrial": {
+       "prices": {
+        "weed": 38,
+        "shrooms": 104,
+        "pills": 98,
+        "lean": 163,
+        "coke": 250,
+        "molly": 203,
+        "cocaine": 490,
+        "meth": 312
+       },
+       "availability": {
+        "weed": 6,
+        "shrooms": 8,
+        "pills": 0,
+        "lean": 11,
+        "coke": 10,
+        "molly": 4,
+        "cocaine": 8,
+        "meth": 5
+       }
       }
-     ],
-     "state": 414857133
-    },
-    {
-     "frame": [
-      {
-       "area": "north_star_lot",
-       "product": "weed",
-       "price": 27
-      },
-      {
-       "area": "north_star_lot",
-       "product": "shrooms",
-       "price": 81
-      },
-      {
-       "area": "north_star_lot",
-       "product": "pills",
-       "price": 135
-      },
-      {
-       "area": "north_star_lot",
-       "product": "lean",
-       "price": 146
-      },
-      {
-       "area": "north_star_lot",
-       "product": "coke",
-       "price": 392
-      },
-      {
-       "area": "north_star_lot",
-       "product": "molly",
-       "price": 229
-      },
-      {
-       "area": "north_star_lot",
-       "product": "cocaine",
-       "price": 329
-      },
-      {
-       "area": "north_star_lot",
-       "product": "meth",
-       "price": 248
-      },
-      {
-       "area": "downtown",
-       "product": "weed",
-       "price": 29
-      },
-      {
-       "area": "downtown",
-       "product": "shrooms",
-       "price": 96
-      },
-      {
-       "area": "downtown",
-       "product": "pills",
-       "price": 134
-      },
-      {
-       "area": "downtown",
-       "product": "lean",
-       "price": 179
-      },
-      {
-       "area": "downtown",
-       "product": "coke",
-       "price": 215
-      },
-      {
-       "area": "downtown",
-       "product": "molly",
-       "price": 200
-      },
-      {
-       "area": "downtown",
-       "product": "cocaine",
-       "price": 438
-      },
-      {
-       "area": "downtown",
-       "product": "meth",
-       "price": 124
-      },
-      {
-       "area": "airport_industrial",
-       "product": "weed",
-       "price": 44
-      },
-      {
-       "area": "airport_industrial",
-       "product": "shrooms",
-       "price": 119
-      },
-      {
-       "area": "airport_industrial",
-       "product": "pills",
-       "price": 93
-      },
-      {
-       "area": "airport_industrial",
-       "product": "lean",
-       "price": 167
-      },
-      {
-       "area": "airport_industrial",
-       "product": "coke",
-       "price": 259
-      },
-      {
-       "area": "airport_industrial",
-       "product": "molly",
-       "price": 183
-      },
-      {
-       "area": "airport_industrial",
-       "product": "cocaine",
-       "price": 349
-      },
-      {
-       "area": "airport_industrial",
-       "product": "meth",
-       "price": 172
-      }
-     ],
-     "state": 830908994
+     },
+     "state": 899982883
     }
    ]
+  }
+ ],
+ "initial_markets": [
+  {
+   "seed": 907,
+   "rng_state": 555200872,
+   "areas": {
+    "north_star_lot": {
+     "prices": {
+      "weed": 24,
+      "shrooms": 55,
+      "pills": 94,
+      "lean": 153,
+      "coke": 218,
+      "molly": 269,
+      "cocaine": 259,
+      "meth": 209
+     },
+     "availability": {
+      "weed": 4,
+      "shrooms": 6,
+      "pills": 7,
+      "lean": 5,
+      "coke": 7,
+      "molly": 4,
+      "cocaine": 5,
+      "meth": 5
+     }
+    },
+    "downtown": {
+     "prices": {
+      "weed": 37,
+      "shrooms": 135,
+      "pills": 119,
+      "lean": 151,
+      "coke": 354,
+      "molly": 184,
+      "cocaine": 537,
+      "meth": 243
+     },
+     "availability": {
+      "weed": 4,
+      "shrooms": 4,
+      "pills": 7,
+      "lean": 0,
+      "coke": 0,
+      "molly": 4,
+      "cocaine": 4,
+      "meth": 0
+     }
+    },
+    "airport_industrial": {
+     "prices": {
+      "weed": 36,
+      "shrooms": 101,
+      "pills": 103,
+      "lean": 133,
+      "coke": 224,
+      "molly": 163,
+      "cocaine": 268,
+      "meth": 334
+     },
+     "availability": {
+      "weed": 11,
+      "shrooms": 0,
+      "pills": 11,
+      "lean": 0,
+      "coke": 7,
+      "molly": 7,
+      "cocaine": 6,
+      "meth": 5
+     }
+    }
+   }
+  },
+  {
+   "seed": "907hustle",
+   "rng_state": 915084991,
+   "areas": {
+    "north_star_lot": {
+     "prices": {
+      "weed": 25,
+      "shrooms": 84,
+      "pills": 104,
+      "lean": 171,
+      "coke": 364,
+      "molly": 196,
+      "cocaine": 291,
+      "meth": 143
+     },
+     "availability": {
+      "weed": 9,
+      "shrooms": 9,
+      "pills": 7,
+      "lean": 9,
+      "coke": 9,
+      "molly": 0,
+      "cocaine": 0,
+      "meth": 8
+     }
+    },
+    "downtown": {
+     "prices": {
+      "weed": 39,
+      "shrooms": 94,
+      "pills": 103,
+      "lean": 158,
+      "coke": 272,
+      "molly": 205,
+      "cocaine": 405,
+      "meth": 133
+     },
+     "availability": {
+      "weed": 9,
+      "shrooms": 8,
+      "pills": 0,
+      "lean": 5,
+      "coke": 0,
+      "molly": 0,
+      "cocaine": 0,
+      "meth": 9
+     }
+    },
+    "airport_industrial": {
+     "prices": {
+      "weed": 34,
+      "shrooms": 102,
+      "pills": 113,
+      "lean": 163,
+      "coke": 252,
+      "molly": 237,
+      "cocaine": 494,
+      "meth": 268
+     },
+     "availability": {
+      "weed": 8,
+      "shrooms": 8,
+      "pills": 12,
+      "lean": 7,
+      "coke": 7,
+      "molly": 0,
+      "cocaine": 11,
+      "meth": 5
+     }
+    }
+   }
   }
  ]
 }

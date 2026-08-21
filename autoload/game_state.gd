@@ -54,11 +54,49 @@ func cargo_used() -> int:
 
 # --- Districts (canon: src/data/locations.js NEIGHBORHOODS) ----------------
 # risk/police/rival are the raw 0-4 scores; travel is the how-you-get-there.
+## market_role / bias / availability are canon NEIGHBORHOODS data (src/data/
+## locations.js): market_role gates the availability roll ceiling ("Outer" rolls
+## higher), bias multiplies a product's base into this area's price anchor
+## (absent id = 1.0, flat citywide), availability is the nightly restock chance
+## per product. `role` here stays the DISPLAY string; canon's role lives in
+## market_role so the two never collide.
 var districts: Array = [
-	{"id": "north_star_lot", "name": "SPENARD", "role": "HOME TURF", "risk": 1, "police": 1, "rival": 0, "accent": Color(0.842, 0.842, 0.842), "blurb": "Safest footing in the city. Thin margins, low patrol."},
-	{"id": "downtown", "name": "DOWNTOWN", "role": "COMMERCIAL", "risk": 2, "police": 3, "rival": 1, "accent": Color(0.882, 0.263, 0.196), "blurb": "Nightlife money moves fast under cameras and Curtis's buyers."},
-	{"id": "airport_industrial", "name": "INDUSTRIAL", "role": "SERVICE ROADS", "risk": 4, "police": 2, "rival": 3, "accent": Color(0.604, 0.114, 0.094), "blurb": "Loading yards, rare supply, and expensive mistakes."},
+	{"id": "north_star_lot", "name": "SPENARD", "role": "HOME TURF", "risk": 1, "police": 1, "rival": 0, "accent": Color(0.842, 0.842, 0.842), "blurb": "Safest footing in the city. Thin margins, low patrol.",
+		"market_role": "Home",
+		"bias": {"weed": 0.78, "shrooms": 0.88, "cocaine": 1.02, "meth": 0.95},
+		"availability": {"weed": 1.0, "shrooms": 0.88, "pills": 0.82, "lean": 0.7, "coke": 0.62, "molly": 0.68, "cocaine": 0.55, "meth": 0.48}},
+	{"id": "downtown", "name": "DOWNTOWN", "role": "COMMERCIAL", "risk": 2, "police": 3, "rival": 1, "accent": Color(0.882, 0.263, 0.196), "blurb": "Nightlife money moves fast under cameras and Curtis's buyers.",
+		"market_role": "Commercial",
+		"bias": {"weed": 1.08, "shrooms": 1.32, "cocaine": 1.46, "meth": 1.08},
+		"availability": {"weed": 0.9, "shrooms": 0.9, "pills": 0.82, "lean": 0.78, "coke": 0.8, "molly": 0.86, "cocaine": 0.78, "meth": 0.58}},
+	{"id": "airport_industrial", "name": "INDUSTRIAL", "role": "SERVICE ROADS", "risk": 4, "police": 2, "rival": 3, "accent": Color(0.604, 0.114, 0.094), "blurb": "Loading yards, rare supply, and expensive mistakes.",
+		"market_role": "Outer",
+		"bias": {"weed": 1.12, "shrooms": 1.18, "cocaine": 1.32, "meth": 1.62},
+		"availability": {"weed": 0.72, "shrooms": 0.7, "pills": 0.7, "lean": 0.74, "coke": 0.78, "molly": 0.72, "cocaine": 0.7, "meth": 0.86}},
 ]
+
+# --- Per-area markets (canon: state.world.markets) -------------------------
+## area_id -> {prices: {pid: int}, availability: {pid: int}, history: {pid: [int]},
+## updated_at: int}. Walked nightly by economy.evolve() off the rng_state stream.
+var markets: Dictionary = {}
+## The xorshift32 stream cursor, canon state.run.rngState. Owned by whoever
+## draws from the stream (today: the market walk); written back after a batch.
+var rng_state: int = 0
+
+## Canon initialMarket (game-core.js:1323) for every area, in districts order —
+## which is canon NEIGHBORHOODS order, and initialMarket is createRun's FIRST
+## stream consumer (proven by the parity generator's offset-0 verification), so
+## a new run's markets here are byte-identical to the web build's for the same
+## numeric seed. The walk primitives are static on economy.gd — one source of
+## truth for the formula, whether the caller is this init or the nightly evolve.
+func init_markets() -> void:
+	var economy_script := preload("res://systems/economy.gd")
+	var stream = get_node("/root/RngManager").make_stream(run_seed)
+	markets = {}
+	for d in districts:
+		markets[d["id"]] = economy_script.walk_initial_area(d, products, stream)
+	rng_state = stream.state
+	economy_script.sync_display_prices(self)
 
 # --- Spenard local venues (canon: Locations doc + jobs/gambling data) -------
 var spenard_venues: Array = [
@@ -76,14 +114,14 @@ var personal_contacts: int = 3
 # trend ("up"/"flat") drives the hint's arrow icon — it is a field rather than a
 # glyph in the hint string because no theme font carries an arrow.
 var products: Array = [
-	{"id": "weed", "name": "WEED", "role": "DEPENDABLE · OWN 4oz", "owned": "4oz", "route": "+$11 Industrial", "color": Color(0.451, 0.722, 0.404), "price": 27, "base": 34, "min": 18, "max": 68, "hint": "SELL INDUSTRIAL  +$11", "trend": "up", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
-	{"id": "shrooms", "name": "SHROOMS", "role": "VOLATILE · OWN 2", "owned": "2", "route": "+$36 Downtown", "color": Color(0.373, 0.663, 0.847), "price": 72, "base": 82, "min": 35, "max": 180, "hint": "SELL DOWNTOWN  +$36", "trend": "up", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
-	{"id": "pills", "name": "PILLS", "role": "STEADY MARGIN · OWN 3", "owned": "3", "route": "Stable citywide", "color": Color(0.882, 0.651, 0.227), "price": 105, "base": 105, "min": 55, "max": 220, "hint": "— STABLE CITYWIDE", "trend": "flat", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
-	{"id": "lean", "name": "LEAN", "role": "PREMIUM", "owned": "0", "route": "Downtown margin", "color": Color(0.62, 0.5, 0.85), "price": 155, "base": 155, "min": 80, "max": 330, "hint": "+30% MARGIN DOWNTOWN", "trend": "up", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
-	{"id": "molly", "name": "MOLLY", "role": "CLUB DEMAND", "owned": "0", "route": "Downtown margin", "color": Color(1, 0.29, 0.239), "price": 215, "base": 215, "min": 105, "max": 480, "hint": "+30% MARGIN DOWNTOWN", "trend": "up", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
-	{"id": "coke", "name": "COKE", "role": "HIGH MARGIN", "owned": "0", "route": "Stable citywide", "color": Color(0.9, 0.89, 0.86), "price": 290, "base": 290, "min": 145, "max": 690, "hint": "— STABLE CITYWIDE", "trend": "flat", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
-	{"id": "cocaine", "name": "COCAINE", "role": "PREMIUM", "owned": "0", "route": "+$127 Downtown", "color": Color(0.85, 0.72, 0.42), "price": 296, "base": 290, "min": 145, "max": 690, "hint": "SELL DOWNTOWN  +$127", "trend": "up", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
-	{"id": "meth", "name": "METH", "role": "EXTREME RISK", "owned": "0", "route": "Locked", "color": Color(0.6, 0.6, 0.6), "price": 176, "base": 185, "min": 70, "max": 560, "hint": "NEEDS INDUSTRIAL TURF", "trend": "flat", "hint_color": Color(0.827, 0.161, 0.125), "locked": true},
+	{"id": "weed", "name": "WEED", "role": "DEPENDABLE · OWN 4oz", "owned": "4oz", "route": "+$11 Industrial", "color": Color(0.451, 0.722, 0.404), "price": 27, "base": 34, "volatility": 0.12, "min": 18, "max": 68, "hint": "SELL INDUSTRIAL  +$11", "trend": "up", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "shrooms", "name": "SHROOMS", "role": "VOLATILE · OWN 2", "owned": "2", "route": "+$36 Downtown", "color": Color(0.373, 0.663, 0.847), "price": 72, "base": 82, "volatility": 0.25, "min": 35, "max": 180, "hint": "SELL DOWNTOWN  +$36", "trend": "up", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "pills", "name": "PILLS", "role": "STEADY MARGIN · OWN 3", "owned": "3", "route": "Stable citywide", "color": Color(0.882, 0.651, 0.227), "price": 105, "base": 105, "volatility": 0.18, "min": 55, "max": 220, "hint": "— STABLE CITYWIDE", "trend": "flat", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
+	{"id": "lean", "name": "LEAN", "role": "PREMIUM", "owned": "0", "route": "Downtown margin", "color": Color(0.62, 0.5, 0.85), "price": 155, "base": 155, "volatility": 0.22, "min": 80, "max": 330, "hint": "+30% MARGIN DOWNTOWN", "trend": "up", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
+	{"id": "coke", "name": "COKE", "role": "HIGH MARGIN", "owned": "0", "route": "Stable citywide", "color": Color(0.9, 0.89, 0.86), "price": 290, "base": 290, "volatility": 0.3, "min": 145, "max": 690, "hint": "— STABLE CITYWIDE", "trend": "flat", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
+	{"id": "molly", "name": "MOLLY", "role": "CLUB DEMAND", "owned": "0", "route": "Downtown margin", "color": Color(1, 0.29, 0.239), "price": 215, "base": 215, "volatility": 0.28, "min": 105, "max": 480, "hint": "+30% MARGIN DOWNTOWN", "trend": "up", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
+	{"id": "cocaine", "name": "COCAINE", "role": "PREMIUM", "owned": "0", "route": "+$127 Downtown", "color": Color(0.85, 0.72, 0.42), "price": 296, "base": 290, "volatility": 0.3, "min": 145, "max": 690, "hint": "SELL DOWNTOWN  +$127", "trend": "up", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "meth", "name": "METH", "role": "EXTREME RISK", "owned": "0", "route": "Locked", "color": Color(0.6, 0.6, 0.6), "price": 176, "base": 185, "volatility": 0.38, "min": 70, "max": 560, "hint": "NEEDS INDUSTRIAL TURF", "trend": "flat", "hint_color": Color(0.827, 0.161, 0.125), "locked": true},
 ]
 
 # Which products the Home "Market Snapshot" summarizes (by id), in display order.
@@ -264,6 +302,9 @@ func reset_to_new_game() -> void:
 	curtis_recent_watcher_lines = []
 	curtis_phase_messages_sent = []
 	activity_log = []
+	# Markets walk from the run seed, canon createRun order (initialMarket is
+	# its first stream consumer), so the opening board is deterministic.
+	init_markets()
 	notify_changed()
 
 # --- Jobs (canon: src/data/jobs.js SPENARD_JOBS) ---------------------------

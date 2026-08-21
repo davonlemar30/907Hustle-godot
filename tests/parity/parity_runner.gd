@@ -66,6 +66,12 @@ extends Node
 ##   presentation — FS-001.8: the reads the screens are built on. A preview
 ##              that disagrees with what select() then does is worse than no
 ##              preview, so the two are held to each other directly.
+##   frozen   — FS-003.1: the consequence-adjacent behaviour the encounter
+##              engine is about to build on top of. Boost end to end (which
+##              had none), the fence, the heat write path, cash discipline on
+##              refused actions, and the dispatch-ownership guard that shipped
+##              untested. Deliberately does NOT restate what earlier sections
+##              already pin — see the section header.
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -108,6 +114,7 @@ func _ready() -> void:
 		_check_crew_operations()
 		_check_run_the_board()
 		_check_operation_presentation()
+		_check_frozen_behavior()
 		_check_save_roundtrip()
 	_finish()
 
@@ -1439,8 +1446,14 @@ func _check_stickup_rng_isolation(gs: Node, gm: Node, resolver: RefCounted) -> v
 		resolver.resolve_action("robbery", 0.55, 2, gs.run_seed, "isolation:%d" % i)
 	_expect_int("market cursor unmoved by 100 resolutions", gs.rng_state, cursor_before)
 	# And through the real surface, inside a single day so no market walk runs.
+	#
+	# The dispatch is ASSERTED. Without that this check passed vacuously: a
+	# blocked robbery moves nothing, so "the cursor did not move" was true for
+	# the wrong reason, and a stickup that genuinely drew from the market stream
+	# would have gone unnoticed. Found by sabotaging it in FS-003.1.
 	gs.day = 3
-	gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET})
+	_expect_true("cursor probe robbery actually happened",
+		gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET}))
 	_expect_int("market cursor unmoved by a dispatched robbery", gs.rng_state, cursor_before)
 
 ## FS-001.2 — 907List opportunity ownership.
@@ -3341,6 +3354,459 @@ func _check_last_assignment(gs: Node, gm: Node, ops: RefCounted) -> void:
 	_expect_true("last assignment is settled", bool(last["settled"]))
 	_expect_true("last assignment carries its result", last["result"] is Dictionary)
 
+## FS-003.1 — the freeze pass.
+##
+## The Consequence-Encounter Engine is about to start moving shared seams. This
+## pins the inherited behaviour first, so a later slice that drifts it fails here
+## rather than in review.
+##
+## ## What this section deliberately does NOT do
+##
+## It does not restate coverage that already exists. An audit of the suite before
+## this build found most of the named areas already pinned, some of them heavily:
+##
+##   - Outcome Resolver pools, thresholds, picks and the full resolution grid —
+##     `_check_outcome_resolver` (Build 5e)
+##   - Stickup's four tiers and their whole consequence spread —
+##     `_check_stickup_tiers` (Build 5e)
+##   - `day_ending` / `day_crossed` ordering — `_check_day_lifecycle` (FS-001.6)
+##   - Market RNG cursor isolation — `_check_stickup_rng_isolation` (Build 5e)
+##   - Curtis's volume filter — `_check_list_flip_observation` (FS-001.2)
+##   - Save round-trip and the v6 → v7 arm — `_check_save_roundtrip`,
+##     `_check_ops_persistence`
+##
+## A second copy of an assertion that already exists raises the check count and
+## protects nothing. Worse, it makes the total a less honest number — and this
+## suite has already learned once that a green result is only as good as the
+## checks behind it. So what follows is the GAPS that audit turned up.
+##
+## ## The gaps
+##
+##   1. **Boost had no behavioural coverage at all.** Only `chance_for()` was
+##      pinned, by the attribute-formula fixtures. Nothing covered the roll, the
+##      take, the heat, technique, the daily gate, tier promotion, or the fence.
+##   2. **The fence had none whatsoever** — not one assertion touched it.
+##   3. **The heat WRITE path** was covered only through stickup's per-tier
+##      figures; nothing pinned that it stays fractional, clamps, and re-reads
+##      the crew multiplier.
+##   4. **Cash discipline on refused actions** was implicit everywhere and
+##      asserted nowhere.
+##   5. **The dispatch-ownership guard** from the cleanup pass shipped with no
+##      test at all.
+func _check_frozen_behavior() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	_check_boost_behavior(gs, gm)
+	_check_boost_fence(gs, gm)
+	_check_heat_write_path(gs, gm)
+	_check_cash_discipline(gs, gm)
+	_check_dispatch_ownership(gs, gm)
+	gs.reset_to_new_game()
+
+## The literal win/loss pattern of the Boost sweep below, recorded once off the
+## real system. Golden data: it moves only if Boost's observable behaviour does.
+const BOOST_FROZEN_PATTERN := "101111011001011101111111111101101111111110111101"
+
+## A run standing in Spenard at the start of a day with money in hand.
+func _frozen_ready(gs: Node, cash: int = 5000) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.current_district_id = "north_star_lot"
+	gs.cash = cash
+	gs.heat = 0.0
+
+## The first behavioural coverage Boost has ever had.
+##
+## The rule being frozen is that Boost is BINARY. Canon's `resolveBoostAttempt`
+## (game-core.js:2248) is a plain `roll < chance`, and the tiered resolver
+## deliberately does not touch it — a blown lift is a scene handed to the
+## encounter engine, which is what FS-003 is about to build. If a later slice
+## routes Boost through the resolver by reflex, this is what says so.
+func _check_boost_behavior(gs: Node, gm: Node) -> void:
+	var rng := get_node("/root/RngManager")
+	var boost: RefCounted = gm.system("boost") as RefCounted
+	if boost == null:
+		_fail("frozen boost", "no boost system registered")
+		return
+
+	# The binary rule, derived rather than asserted: the outcome must equal the
+	# keyed roll against the computed chance, at every target, on many days.
+	# Nothing here re-implements the chance — it is read off the system.
+	var checked := 0
+	var wins := 0
+	var outcomes := ""
+	for day in range(1, 25):
+		_frozen_ready(gs)
+		gs.day = day
+		for target in gs.boost_targets:
+			var t: Dictionary = target
+			if str(t["area"]) != gs.current_district_id or int(t["tier"]) > gs.boost_tier:
+				continue
+			var key := "boost:%d:%d:%s" % [gs.day, gs.time_slots_today, str(t["id"])]
+			var expected: bool = rng.seeded_random(gs.run_seed, key) < boost.chance_for(t)
+			var before_cash: int = gs.cash
+			# Through dispatch, not handle(): a lift marks criminal activity on
+			# Curtis, and his mutators refuse outside a dispatch. Calling the
+			# system directly would exercise a stack the game never produces —
+			# and would quietly skip the very write being frozen.
+			_expect_true("boost d%d %s dispatches" % [day, str(t["id"])],
+				gm.dispatch("boost", {"target_id": str(t["id"])}))
+			# The outcome read off state rather than a returned dictionary,
+			# which is the honest version of the question anyway: a win is a win
+			# because the money moved.
+			var take: int = gs.cash - before_cash
+			var won: bool = take > 0
+			outcomes += "1" if won else "0"
+			_expect_true("boost d%d %s resolves binary" % [day, str(t["id"])],
+				won == expected)
+			checked += 1
+			if won:
+				wins += 1
+				var band: Array = t["take"]
+				_expect_true("boost d%d %s take is in band" % [day, str(t["id"])],
+					take >= int(band[0]) and take <= int(band[1]))
+				# The take is the keyed value, not just a number in range.
+				_expect_int("boost d%d %s take is the keyed value" % [day, str(t["id"])],
+					take, rng.seeded_int_range(gs.run_seed, key + ":take",
+						int(band[0]), int(band[1])))
+			else:
+				_expect_int("boost d%d %s pays nothing on a miss" % [day, str(t["id"])],
+					gs.cash, before_cash)
+	# A sweep that never wins or never loses would agree with a broken rule.
+	_expect_true("boost sweep saw both outcomes", wins > 0 and wins < checked)
+	_expect_true("boost sweep was substantial", checked >= 20)
+	# And the pattern itself, pinned as a literal.
+	#
+	# The comparison above derives its expectation with the same `<` the system
+	# uses, which makes it a tautology against an inverted operator — sabotaging
+	# `<` to `<=` changed both sides and the check stayed green. The literal is
+	# what actually holds the rule: it moves if the key changes, if the chance
+	# formula changes, if the comparison inverts observably, or if the take band
+	# shifts. (`<` versus `<=` alone is measure-zero against a hash — no roll
+	# ever equals the chance exactly — so it is not separately observable, and
+	# claiming to test it would be the tautology again in a different costume.)
+	_expect_str("boost outcome pattern is frozen", outcomes, BOOST_FROZEN_PATTERN)
+
+	# Every lift is criminal activity, win or lose. It is what stops Curtis's
+	# quiet streak bleeding his awareness back down, and nothing asserted it
+	# before this build.
+	for expect_win in [true, false]:
+		var found := false
+		for day in range(1, 30):
+			_frozen_ready(gs)
+			gs.day = day
+			gs.curtis_last_criminal_day = -1
+			var cash_mark: int = gs.cash
+			if not gm.dispatch("boost", {"target_id": "night_owl"}):
+				continue
+			if (gs.cash > cash_mark) != expect_win:
+				continue
+			found = true
+			_expect_int("boost marks criminal activity on a %s" % ("win" if expect_win else "miss"),
+				gs.curtis_last_criminal_day, gs.day)
+			break
+		_expect_true("boost criminal-marking case %s was reachable" % str(expect_win), found)
+
+	# That the outcome equals the single keyed roll, across the whole sweep
+	# above, IS the statement that Boost is binary — a resolver-driven Boost
+	# would disagree with that roll the moment advantage or immunity applied.
+	# Sniffing the result dictionary for tier names would be a weaker claim
+	# about the same thing, so it is not made.
+
+	# Technique climbs on a win and only on a win.
+	_frozen_ready(gs)
+	var technique_before: int = gs.boost_technique
+	var cash_before_tech: int = gs.cash
+	gm.dispatch("boost", {"target_id": "night_owl"})
+	var tech_won: bool = gs.cash > cash_before_tech
+	_expect_int("boost technique moves only on success",
+		gs.boost_technique, technique_before + (1 if tech_won else 0))
+
+	# One go per target per day, and the gate is per TARGET rather than global.
+	_frozen_ready(gs)
+	gm.dispatch("boost", {"target_id": "night_owl"})
+	_expect_str("boost refuses the same room twice in a day",
+		boost.blocker("night_owl"), "You've already been in today.")
+	_expect_str("boost still allows a different room",
+		boost.blocker("spenard_fuel"), "")
+	_expect_true("boost repeat is refused at the system level",
+		not gm.dispatch("boost", {"target_id": "night_owl"}))
+
+	# A lift is exactly one slot.
+	_frozen_ready(gs)
+	var slot_before: int = gs.time_slots_today
+	gm.dispatch("boost", {"target_id": "night_owl"})
+	_expect_int("boost costs exactly one slot", gs.time_slots_today, slot_before + 1)
+
+	# Tier promotion: technique alone opens tier 2; tier 3 also needs somebody
+	# who can be field-assigned, and that gate is the one FS-003 must not lose.
+	_frozen_ready(gs)
+	gs.boost_technique = gs.BOOST_TIER2_TECHNIQUE
+	boost._update_tier()
+	_expect_int("boost reaches tier 2 on technique", gs.boost_tier, 2)
+	gs.boost_technique = gs.BOOST_TIER3_TECHNIQUE
+	boost._update_tier()
+	_expect_int("boost tier 3 needs field crew", gs.boost_tier, 2)
+	gs.crew_records["eli"] = {
+		"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
+	}
+	boost._update_tier()
+	_expect_int("boost reaches tier 3 with field crew", gs.boost_tier, 3)
+	_expect_true("boost tier 3 gate is has_field_crew",
+		(gm.system("crew") as RefCounted).has_field_crew())
+
+	# Tier 3 pays in merchandise, not cash — the fence is the only way out.
+	_frozen_ready(gs)
+	gs.boost_tier = 3
+	gs.crew_records["eli"] = {
+		"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
+	}
+	var tier3_id := ""
+	for target in gs.boost_targets:
+		if int((target as Dictionary)["tier"]) == 3 \
+				and str((target as Dictionary)["area"]) == gs.current_district_id:
+			tier3_id = str((target as Dictionary)["id"])
+			break
+	if tier3_id.is_empty():
+		_fail("frozen boost", "no tier 3 target in Spenard")
+	else:
+		var cash_before: int = gs.cash
+		var merch_before: int = gs.boost_merchandise
+		gm.dispatch("boost", {"target_id": tier3_id})
+		if gs.boost_merchandise > merch_before:
+			_expect_int("boost tier 3 pays merchandise not cash", gs.cash, cash_before)
+			_expect_true("boost tier 3 banks the take as merchandise",
+				gs.boost_merchandise - merch_before > 0)
+
+## The fence, which had not one assertion before this build.
+func _check_boost_fence(gs: Node, gm: Node) -> void:
+	var exposure := get_node("/root/Exposure")
+	var boost: RefCounted = gm.system("boost") as RefCounted
+	if boost == null:
+		return
+
+	# Canon boostFenceRate: 0.40 + standing*0.05, then 0.55 from 3, 0.60 from 5.
+	for entry in [[0, 0.40], [1, 0.45], [2, 0.50], [3, 0.55], [4, 0.55], [5, 0.60], [9, 0.60]]:
+		_frozen_ready(gs)
+		gs.boost_fence_standing = int(entry[0])
+		_expect_float("fence rate at standing %d" % int(entry[0]),
+			boost.fence_rate(), float(entry[1]))
+
+	# Nothing to move is a refusal, not a zero payout.
+	_frozen_ready(gs)
+	gs.boost_merchandise = 0
+	_expect_true("fence refuses an empty lot", not gm.dispatch("fence_goods", {}))
+	_expect_str("fence says why", boost.handle("fence_goods", {}).get("reason", ""),
+		"Nothing to move.")
+
+	# The payout is the rate applied to the whole lot, rounded — and the lot is
+	# cleared, the standing climbs, and Slide keeps it off the street.
+	_frozen_ready(gs)
+	gs.boost_merchandise = 500
+	gs.boost_fence_standing = 2
+	for npc_id in exposure.npc_ids():
+		exposure.ledger_of(str(npc_id)).clear()
+	gs.observation_queue.clear()
+	var cash_before: int = gs.cash
+	_expect_true("fence moves the lot", gm.dispatch("fence_goods", {}))
+	_expect_int("fence pays rate times lot", gs.cash - cash_before, 250)
+	_expect_int("fence credits the cash", gs.cash, cash_before + 250)
+	_expect_int("fence clears the merchandise", gs.boost_merchandise, 0)
+	_expect_int("fence raises the standing", gs.boost_fence_standing, 3)
+
+	# Slide is discreet: household only, and never the street or the network.
+	var household := 0
+	var elsewhere := 0
+	for npc_id in exposure.npc_ids():
+		for row in exposure.ledger_of(str(npc_id)):
+			if str(row["event"]) == "fenced_goods":
+				if str(row["source"]) == "household":
+					household += 1
+				else:
+					elsewhere += 1
+	for entry in gs.observation_queue:
+		if str((entry["spec"] as Dictionary).get("event", "")) == "fenced_goods":
+			elsewhere += 1
+	_expect_true("fence tells the household", household > 0)
+	_expect_int("fence tells nobody else", elsewhere, 0)
+
+	# Standing is capped, so the rate cannot climb forever.
+	_frozen_ready(gs)
+	gs.boost_fence_standing = 5
+	gs.boost_merchandise = 100
+	gm.dispatch("fence_goods", {})
+	_expect_int("fence standing clamps at 5", gs.boost_fence_standing, 5)
+
+## The heat WRITE path, as opposed to the per-tier figures already pinned.
+func _check_heat_write_path(gs: Node, gm: Node) -> void:
+	var stickup: RefCounted = gm.system("stickup") as RefCounted
+	var boost: RefCounted = gm.system("boost") as RefCounted
+	var crew: RefCounted = gm.system("crew") as RefCounted
+	if stickup == null or boost == null or crew == null:
+		return
+
+	# Fractional, and it must stay that way. Rounding here is what made
+	# Deshawn's reduction invisible on small amounts — the bug the comment in
+	# `_apply_heat` was written about.
+	_frozen_ready(gs)
+	gs.crew_records["deshawn"] = {
+		"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
+	}
+	_expect_float("deshawn multiplier at rank 1", crew.heat_multiplier(), 0.80)
+	var applied: float = stickup._apply_heat(2.0)
+	_expect_float("heat applies the multiplier fractionally", applied, 1.6)
+	_expect_float("heat lands fractionally on state", gs.heat, 1.6)
+	_expect_true("heat is a float on state", gs.heat is float)
+
+	# The multiplier is read fresh. A cached one would keep paying the old rate
+	# after a promotion or after he walks.
+	gs.crew_records["deshawn"]["tier"] = 3
+	_expect_float("multiplier re-read after promotion", crew.heat_multiplier(), 0.40)
+	gs.heat = 0.0
+	_expect_float("heat uses the new multiplier", stickup._apply_heat(2.0), 0.8)
+	gs.crew_records.erase("deshawn")
+	gs.heat = 0.0
+	_expect_float("heat is unmodified with him gone", stickup._apply_heat(2.0), 2.0)
+
+	# Clamped at both ends of the 0-15 scale.
+	_frozen_ready(gs)
+	gs.heat = 14.5
+	stickup._apply_heat(10.0)
+	_expect_float("heat clamps at the ceiling", gs.heat, float(gs.heat_max))
+	_expect_int("the ceiling is canon's 15", gs.heat_max, 15)
+	gs.heat = 0.0
+	stickup._apply_heat(0.0)
+	_expect_float("zero heat is a no-op", gs.heat, 0.0)
+	stickup._apply_heat(-5.0)
+	_expect_float("negative heat cannot drain the meter", gs.heat, 0.0)
+
+	# Boost's own path, and a divergence this pass FREEZES rather than fixes.
+	#
+	# Canon scales boost heat 0.5 / 1 / 2 by tier (game-core.js:2260). This
+	# build's `_apply_heat` takes an int, so the call site passes 1 / 1 / 2 —
+	# a tier-1 lift makes DOUBLE canon's heat, and the comment above that call
+	# still says 0.5. The freeze pass pins what is, so this asserts the port's
+	# number and names it: fixing it is a balance change and belongs in its own
+	# slice. When somebody does fix it, this line fails and says why.
+	_frozen_ready(gs)
+	gs.heat = 0.0
+	gm.dispatch("boost", {"target_id": "night_owl"})
+	_expect_float("boost tier 1 heat is the port's 1.0, not canon's 0.5 (known divergence)",
+		gs.heat, 1.0)
+
+## Cash discipline: a refused action must leave the wallet exactly as it was.
+##
+## This was implicit in every flow and asserted in none, which is the shape of
+## thing that survives a refactor and then does not.
+func _check_cash_discipline(gs: Node, gm: Node) -> void:
+	var stickup: RefCounted = gm.system("stickup") as RefCounted
+	var boost: RefCounted = gm.system("boost") as RefCounted
+	var lst: RefCounted = gm.system("list") as RefCounted
+	if stickup == null or boost == null or lst == null:
+		return
+
+	# A blown stickup pays nothing, at either failing tier.
+	var seen_failure := false
+	for day in range(1, 40):
+		_frozen_ready(gs)
+		gs.day = day
+		gs.stick_daily_count = 0
+		var before: int = gs.cash
+		var rep_before: int = gs.stick_rep
+		if gm.dispatch("stickup", {"target_id": "washgo_regular"}) \
+				and gs.stick_rep == rep_before:
+			# Rep only moves on a success, so an unchanged rep after a
+			# successful dispatch is a failed robbery.
+			seen_failure = true
+			_expect_int("stickup failure pays nothing on d%d" % day, gs.cash, before)
+	_expect_true("cash discipline saw a failed stickup", seen_failure)
+
+	# Every blocker refuses BEFORE touching the wallet.
+	_frozen_ready(gs, 0)
+	var broke: int = gs.cash
+	_expect_true("a buy with no cash is refused",
+		not gm.dispatch("list_buy", {"item_id": "space_heater"}))
+	_expect_int("a refused buy spends nothing", gs.cash, broke)
+
+	_frozen_ready(gs)
+	gs.current_district_id = "downtown"
+	var wrong_place: int = gs.cash
+	_expect_true("a stickup in the wrong district is refused",
+		not gm.dispatch("stickup", {"target_id": "washgo_regular"}))
+	_expect_int("a refused stickup spends nothing", gs.cash, wrong_place)
+
+	_frozen_ready(gs)
+	var capacity: int = lst.capacity()
+	for i in capacity:
+		gs.list_holdings.append({"item_id": "space_heater", "bought_day": 1, "source": "player"})
+	var full_cash: int = gs.cash
+	_expect_true("a buy with no room is refused",
+		not gm.dispatch("list_buy", {"item_id": "space_heater"}))
+	_expect_int("a refused buy with no room spends nothing", gs.cash, full_cash)
+
+	# The daily cap on stickups refuses without charging.
+	_frozen_ready(gs)
+	gs.stick_daily_count = gs.STICK_DAILY_CAP
+	var capped_cash: int = gs.cash
+	_expect_true("a third stickup in a day is refused",
+		not gm.dispatch("stickup", {"target_id": "washgo_regular"}))
+	_expect_int("a capped stickup spends nothing", gs.cash, capped_cash)
+
+	# And the daily count clears on the day cross rather than drifting.
+	_frozen_ready(gs)
+	gs.stick_daily_count = 2
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	_expect_int("stickup daily count resets on the day cross", gs.stick_daily_count, 0)
+
+## The dispatch-ownership guard, which shipped with no test at all.
+##
+## The cleanup pass made Exposure and Curtis refuse their persisted mutators
+## outside a `GameManager.dispatch()`. That guard is the reason a screen cannot
+## quietly write an observation while rendering — and nothing verified it, so a
+## later slice could have removed it and gone green.
+func _check_dispatch_ownership(gs: Node, gm: Node) -> void:
+	var exposure := get_node("/root/Exposure")
+	var curtis := get_node("/root/Curtis")
+	_frozen_ready(gs)
+	_expect_true("game manager reports when it is dispatching",
+		gm.has_method("is_dispatching"))
+	_expect_true("nothing is dispatching at rest", not gm.is_dispatching())
+
+	# Outside a dispatch the mutator is refused: the ledger does not grow.
+	for npc_id in exposure.npc_ids():
+		exposure.ledger_of(str(npc_id)).clear()
+	exposure.record_observation("yalonda", {
+		"type": "financial", "event": "rent_paid", "source": "household"})
+	_expect_int("record_observation outside a dispatch writes nothing",
+		(exposure.ledger_of("yalonda") as Array).size(), 0)
+	exposure.broadcast_observation({
+		"type": "violence", "event": "street_fight", "channel": "neighborhood"})
+	_expect_int("broadcast_observation outside a dispatch queues nothing",
+		gs.observation_queue.size(), 0)
+
+	# Inside one, the same call lands. Driven through a real action so the guard
+	# sees the stack the game actually produces.
+	_frozen_ready(gs)
+	for npc_id in exposure.npc_ids():
+		exposure.ledger_of(str(npc_id)).clear()
+	gs.observation_queue.clear()
+	var wrote := false
+	gm.dispatch("stickup", {"target_id": "washgo_regular"})
+	for npc_id in exposure.npc_ids():
+		if not (exposure.ledger_of(str(npc_id)) as Array).is_empty():
+			wrote = true
+	_expect_true("observations land from inside a dispatch",
+		wrote or not gs.observation_queue.is_empty())
+	_expect_true("dispatching is over once the action returns", not gm.is_dispatching())
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -3375,7 +3841,9 @@ func _fail(label: String, detail: String) -> void:
 ##
 ## Bumped deliberately whenever checks are added, the same discipline as
 ## SAVE_VERSION: it only ever moves up, and it moving DOWN is the signal.
-const MIN_CHECKS := 7400
+## FS-003.1 set this floor at 7665 as the inherited contract for FS-003.2
+## through .12: the Consequence-Encounter Engine may add checks, never lose them.
+const MIN_CHECKS := 7665
 
 func _finish() -> void:
 	if _failures.is_empty():

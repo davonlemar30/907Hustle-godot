@@ -544,6 +544,106 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.1: the freeze pass  (added 2026-08-21)
+
+Regression protection before the Consequence-Encounter Engine starts moving
+shared seams. **Parity 7400 → 7665 checks, 0 failures. Test-only — one file
+changed.** The floor is now 7665 and that is the contract FS-003.2 through .12
+inherit.
+
+### What this did NOT do, and why that matters
+
+The brief named ten areas to pin. An audit found most of them already pinned,
+several heavily: the Outcome Resolver's pools and thresholds and its whole
+resolution grid, stickup's four tiers and their consequence spread, `day_ending`
+ordering, market cursor isolation, Curtis's volume filter, the save round-trip
+and the v6 → v7 arm.
+
+**A second copy of an existing assertion raises the count and protects nothing** —
+and this suite has already learned that a green result is only as good as the
+checks behind it. So the work went where the audit found actual holes:
+
+| area | state before | done |
+|---|---|---|
+| Boost behaviour | only `chance_for()` | full: roll, take, heat, technique, daily gate, tier gates, tier-3 merchandise |
+| The fence | **zero assertions** | rate table, payout, standing clamp, household-only broadcast |
+| Heat write path | per-tier figures only | fractional, clamped, multiplier re-read fresh |
+| Cash on refused actions | implicit everywhere | every blocker asserted not to move the wallet |
+| Dispatch-ownership guard | **untested** | refuses outside dispatch, lands inside |
+
+### Two bugs in the suite itself
+
+**A check that could pass vacuously.** Build 5e's market-cursor check dispatched
+a robbery and asserted the cursor had not moved — without asserting the robbery
+happened. A blocked robbery moves nothing, so it was true for the wrong reason,
+and a stickup that genuinely drew from the market stream would have gone
+unnoticed. It asserts the dispatch now.
+
+**A check that was a tautology.** The Boost binary rule was verified by
+recomputing `roll < chance` in the test — so inverting the operator flipped both
+sides and stayed green. Replaced with a golden literal of the sweep's win/loss
+pattern, which moves if the key, the chance formula, the take band or the
+comparison observably changes.
+
+Worth stating plainly, because it is the kind of thing that looks like a gap:
+**`<` versus `<=` is measure-zero against a hash.** No roll ever equals the
+chance exactly, so the two are not separately observable and no honest check can
+distinguish them. Claiming otherwise would be the tautology again in costume.
+
+### A canon divergence, frozen rather than fixed
+
+Canon scales Boost heat **0.5 / 1 / 2** by tier (game-core.js:2260). This build's
+`_apply_heat` takes an `int`, so the call site passes **1 / 1 / 2** — a tier-1
+lift makes double canon's heat — and the comment above that call still says 0.5.
+
+A freeze pass pins what is. The assertion names it as a known divergence, so the
+day somebody corrects it the suite says why it changed rather than going quietly
+red. Fixing it is a balance change and belongs in its own slice.
+
+### My own tests were on the wrong path again
+
+First run of the new section produced **320** `_require_dispatch` warnings: the
+fixtures called `boost.handle()` and `stickup.handle()` directly, and those
+systems write to Curtis, whose mutators refuse outside a dispatch. So the tests
+were exercising a stack the game never produces **and silently skipping the very
+writes being frozen** — a freeze pass that froze nothing.
+
+Converted to `gm.dispatch()`, reading outcomes off state rather than returned
+dictionaries, which is the more honest question anyway: a win is a win because
+the money moved. Down to **4** warnings, all from the ownership test that
+deliberately calls outside a dispatch to prove refusal.
+
+This is the third build in a row where that rule earned its keep. It is worth
+treating "did my test take the path the game takes" as a standing checklist item
+rather than a lesson already learned.
+
+### Sabotage log — 16 faults, all confirmed red
+
+| # | fault | result |
+|---|---|---|
+| 1 | boost key changed (observable rule drift) | 55 failures |
+| 2 | boost skips `mark_criminal_activity` | 2 |
+| 3 | fence rate table broken | 4 |
+| 4 | outcome pool order reversed | 2385 |
+| 5 | `ADVANTAGE_THRESHOLD` 3 → 4 | 231 |
+| 6 | `CATASTROPHE_IMMUNITY_THRESHOLD` 6 → 7 | 15 |
+| 7 | stickup drops `broadcast_outcome` | 10 |
+| 8 | heat rounded to int | 1 |
+| 9 | heat clamp removed | 1 |
+| 10 | cash added on stickup failure | 23 |
+| 11 | `crew_assignments` dropped from `PERSIST_FIELDS` | 6 |
+| 12 | `SAVE_VERSION` bumped with no migration arm | 10 |
+| 13 | `clears_curtis_filter` removed | 4 |
+| 14 | dispatch-ownership guard removed | 1 |
+| 15 | `day_ending` emitted after the increment | 8 |
+| 16 | stickup draws from the market stream | 10 + completeness floor |
+
+Three needed the checks fixed first (1, 2, 16). One sabotage was itself a no-op
+before it was corrected: `make_stream(cursor).state` is identity for a nonzero
+cursor, so the first attempt at 16 never drew from the stream at all. **A
+sabotage that fails to break anything is not evidence the check works** — it has
+to be verified as a real fault before its result means anything.
+
 ## FS-001.8: the slice becomes playable  (added 2026-08-21)
 
 Presentation only — no new mechanic, no new screen. What changed is that the

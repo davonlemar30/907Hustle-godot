@@ -28,6 +28,12 @@ func _ready() -> void:
 	outcome_resolver.setup(rng)
 	register_system("outcome_resolver", outcome_resolver)
 
+	# The requirement evaluator is pure — no GameState, no autoloads, all input
+	# through its parameters — so it is built here with nothing to wire. Nothing
+	# queries it yet; FS-001.6 is the caller.
+	var requirements = preload("res://systems/requirements.gd").new()
+	register_system("requirements", requirements)
+
 	var economy = preload("res://systems/economy.gd").new()
 	economy.setup(_gs, rng)
 	register_system("economy", economy)

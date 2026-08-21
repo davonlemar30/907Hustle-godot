@@ -642,6 +642,117 @@ const CREW_CAPACITY := 2
 const TONE_DEFENSE_MULTIPLIER := {1: 1.15, 2: 1.30, 3: 1.50}
 const DESHAWN_HEAT_REDUCTION := {1: 0.80, 2: 0.60, 3: 0.40}
 
+# --- Crew progression (canon: src/data/crew-progression.js) ----------------
+## FS-001.5. Structural only: ranks 4-6 have LABELS but no authored promotion
+## requirements, so nothing can reach them yet. They exist so the curves below
+## have somewhere to clamp to and so a later slice adds a rule rather than a
+## concept.
+
+## Canon CREW_RANKS. The player sees these; the number is internal.
+const RANK_LABELS := {
+	1: "RECRUIT", 2: "PROVEN", 3: "TRUSTED",
+	4: "SPECIALIST LEAD", 5: "LIEUTENANT", 6: "INNER CIRCLE",
+}
+const MAX_CREW_RANK := 6
+
+## Canon crewRankLabel. Anything outside 1..6 clamps rather than falling back to
+## a sentinel — an out-of-range rank is a bug to fix, not a label to invent.
+func rank_label(rank: int) -> String:
+	return str(RANK_LABELS[clampi(rank, 1, MAX_CREW_RANK)])
+
+## Canon curveValueForRank. **A rank above the highest authored entry keeps that
+## entry** — it never drops back to the fallback.
+##
+## This is the whole point of the helper. `TIER_WAGES.deshawn` has three values;
+## before this, a hypothetical rank 4 read `.get(4, 1.0)` on the effect tables
+## and silently returned the neutral 1.0, which would have handed a Rank 4
+## Deshawn NO heat reduction — a promotion that removes a benefit. Clamping up
+## is the only safe direction for a curve the player has already earned.
+##
+## Handles both shapes canon uses: an Array indexed from rank 1, and a
+## Dictionary with numeric rank keys (which may be sparse).
+func curve_value_for_rank(curve: Variant, rank: int, fallback: Variant = 1.0) -> Variant:
+	var requested: int = maxi(1, rank)
+	if curve is Array:
+		var arr: Array = curve
+		if arr.is_empty():
+			return fallback
+		var value: Variant = arr[mini(arr.size(), requested) - 1]
+		return fallback if value == null else value
+	if curve is Dictionary:
+		var dict: Dictionary = curve
+		var keys: Array = []
+		for key in dict.keys():
+			if key is int or key is float:
+				keys.append(int(key))
+		if keys.is_empty():
+			return fallback
+		keys.sort()
+		# The highest authored rank at or below the one asked for.
+		var selected: int = keys[0]
+		for key in keys:
+			if key > requested:
+				break
+			selected = key
+		var found: Variant = dict[selected]
+		return fallback if found == null else found
+	return fallback
+
+## Canon CREW_CAPABILITIES — what a named crew member can eventually be ASKED to
+## do. Inert data: nothing assigns, reserves a day, or executes anything off it.
+## Named Crew Operations (FS-001.6) is the caller.
+##
+## **Only Pherris is authored, and that is canon, not an omission.** The build
+## brief listed capabilities for Eli, Tone and Deshawn as well; the oracle has
+## none for them, and inventing three would hand FS-001.6 data it then has to
+## migrate away from. Their existing effects (Tone's defense multiplier,
+## Deshawn's heat reduction) are presence effects, not delegable operations —
+## a different mechanism, already shipped, and untouched here.
+const CREW_CAPABILITIES := {
+	"pherris": {
+		"907list_run_board": {"min_rank": 1, "max_cycles_by_rank": [1, 2, 3]},
+	},
+}
+
+## The capability definition, or an empty dictionary when there is none.
+func capability_definition(crew_id: String, capability_id: String) -> Dictionary:
+	var owned: Dictionary = CREW_CAPABILITIES.get(crew_id, {})
+	return owned.get(capability_id, {})
+
+## Canon crewHasCapability. Rank matters: a capability is defined for a person
+## AND gated on how far they have come.
+func crew_has_capability(crew_id: String, capability_id: String, rank: int) -> bool:
+	var definition: Dictionary = capability_definition(crew_id, capability_id)
+	if definition.is_empty():
+		return false
+	return rank >= int(definition.get("min_rank", 1))
+
+## Canon crewCapabilityValue: one field of a capability, read through the rank
+## curve, or the fallback when the capability is not available at that rank.
+func crew_capability_value(crew_id: String, capability_id: String, field: String,
+		rank: int, fallback: Variant = null) -> Variant:
+	var definition: Dictionary = capability_definition(crew_id, capability_id)
+	if definition.is_empty() or not crew_has_capability(crew_id, capability_id, rank):
+		return fallback
+	return curve_value_for_rank(definition.get(field), rank, fallback)
+
+## Canon crewCapabilitySummary — the shape a UI or an operation would read.
+func crew_capability_summary(crew_id: String, capability_id: String, rank: int) -> Dictionary:
+	var available: bool = crew_has_capability(crew_id, capability_id, rank)
+	return {
+		"crew_id": crew_id,
+		"capability_id": capability_id,
+		"available": available,
+		"max_cycles": crew_capability_value(
+			crew_id, capability_id, "max_cycles_by_rank", rank, 0) if available else 0,
+	}
+
+## Canon crewCapacity. A FUNCTION rather than a bare const read, because base
+## upgrades extend it later and every caller should already be asking rather
+## than reading. CREW_CAPACITY stays as the floor it returns.
+func crew_capacity() -> int:
+	return CREW_CAPACITY
+
 ## id -> {recruited, loyalty, tier, wage_due, wage_missed_since, recruited_day, status}
 var crew_records: Dictionary = {}
 

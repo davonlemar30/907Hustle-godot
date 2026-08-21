@@ -40,7 +40,7 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Rob marks for fast money and real Heat | Hustle → Stickup |
 | Have it go clean, messy, wrong, or badly wrong | automatic, on any risky action |
 | Lend at interest and decide what a default costs | Hustle → Shark |
-| Hire crew, pay wages, watch loyalty | Street → People → Crew |
+| Hire crew, pay wages, watch loyalty, move them up the ranks | Street → People → Crew |
 | Claim corners, post soldiers, collect nightly | Home → Turf |
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
@@ -84,7 +84,8 @@ systems/              # the ONLY writers of GameState
   shark.gd            # lending, terms, defaults
   nine07list.gd       # the flip board and its tiers
   boost.gd            # lifting, the technique ladder, the fence
-  crew.gd             # roster, loyalty, the nightly wage clock
+  crew.gd             # roster, loyalty, ranks, the nightly wage clock
+  requirements.gd     # pure eligibility evaluator — structured blockers, no state
   territory.gd        # corners, soldiers, passive income
 
 ui/screens/*.tscn|.gd # one scene per screen; screen_base.gd holds shared chrome
@@ -101,6 +102,7 @@ scripts/
 tests/parity/         # CI gate: replays recorded oracle fixtures through the
                       # Godot port headless; also runs the save round-trip
   fixtures/outcome_resolver/   # Build 5e: whole actions resolving, not primitives
+  fixtures/requirements/       # FS-001.5: the eligibility evaluator, every type
 ```
 
 ## Architecture
@@ -122,6 +124,11 @@ tests/parity/         # CI gate: replays recorded oracle fixtures through the
 - **Day-cross is the heartbeat.** `time_system` emits `day_crossed`; jobs, obligations,
   crew, territory, shark, curtis and exposure all settle against it. Settlement is
   scoped to the day that *ended*, so a bill due on day 7 is payable during day 7.
+- **Eligibility is data, not `if` statements.** `requirements.gd` takes a list of
+  semantic requirement records and a facts dictionary and returns a structured
+  blocker — `{ok, blocker_code, blocker_copy_key, current, required}` — stopping
+  at the first failure, so the order of the list is the authored priority of the
+  reasons. It reads nothing but its own parameters: no GameState, no autoloads.
 - **Curtis hears through a filter, not a firehose.** Only violence, defiance and
   growth clear his network ear; a `financial` row reaches him on volume alone,
   at $200. That is why a big 907List day gets his attention and a $40 space
@@ -188,6 +195,7 @@ regardless of how small the source file is.
 | 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
 | 5e. Tiered outcomes | ✅ shared resolver + Stickup/Jobs/907List converted; parity 2399 → 6628 checks |
 | FS-001.2. 907List ownership | ✅ same-day opportunity consumption, Curtis volume filter, save v6; parity → 6702 checks |
+| FS-001.5. Crew extensibility | ✅ rank labels, rank-curve clamp, shared requirement evaluator; parity → 7121 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

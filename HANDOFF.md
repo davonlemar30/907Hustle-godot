@@ -524,6 +524,145 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-001.5: Crew extensibility — structure without gameplay  (added 2026-08-21)
+
+No new gameplay. Crew members have rank NAMES instead of tier numbers, curves
+clamp instead of falling off, and a shared eligibility evaluator exists for
+FS-001.6 to build on. **Parity 6702 → 7121 checks, 0 failures. No save schema
+bump.**
+
+### The bug hiding in a feature nobody can reach
+
+`heat_multiplier()` read `DESHAWN_HEAT_REDUCTION.get(tier, 1.0)`. That table has
+three entries. At rank 4 the lookup misses and returns the neutral `1.0` —
+meaning **a promotion would have removed the heat reduction Deshawn had already
+earned.** `defense_multiplier()` had the same shape.
+
+Nothing can reach rank 4 today, which is exactly why it had to be fixed before
+something can. A benefit that silently vanishes on promotion is not the kind of
+bug that gets noticed in review; it is the kind that ships and gets diagnosed
+six builds later as "Deshawn feels useless at high rank."
+
+Canon's `curveValueForRank` is the general answer and it is ported whole: a rank
+above the highest authored entry **keeps that entry**. Clamping up is the only
+safe direction for a curve the player has already paid for.
+
+### The evaluator, and why it reads nothing
+
+`systems/requirements.gd` answers one question — "can this happen yet, and if
+not, why" — and returns it structured:
+
+```gdscript
+{ok, blocker_code, blocker_copy_key, current, required}
+```
+
+`current` and `required` ride on the blocker, so a caller can say "needs loyalty
+6, has 4" without knowing what loyalty is. `blocker_copy_key` is the translation
+seam: presentation swaps wording without touching eligibility.
+
+**It reads ONLY from the `facts` dictionary passed in.** No GameState, no
+autoloads, no `Engine.get_main_loop()`, no `setup()`. It cannot be tested wrong
+because it cannot see anything a test does not hand it.
+
+Ten requirement types ship, and **unknown types fail closed**. A typo in a
+requirement record must never read as "no gate here" — an unrecognised gate is
+an impassable one, which is the only safe direction for code whose whole job is
+deciding what is allowed.
+
+### Two divergences from the build brief, both to the oracle
+
+**1. The capability table is Pherris only.** The brief listed capabilities for
+Eli, Tone and Deshawn as well. Canon (`src/data/crew-progression.js`) has none
+for them, and its own test asserts `crewHasCapability("tone", ...)` is `false`.
+Inventing three would hand FS-001.6 data it then has to migrate away from — and
+the brief's stated reason for the table is that FS-001.6 can reference it
+*without adding data*. Canon's shape is also richer: `{min_rank,
+max_cycles_by_rank}` rather than a flat array, so a capability is gated on rank
+rather than merely owned.
+
+Tone's defense multiplier and Deshawn's heat reduction are **presence effects**,
+not delegable operations — a different mechanism, already shipped, untouched.
+
+**2. Fact keys are snake_case here, camelCase in the oracle.** The oracle reads
+`facts.currentDay` / `crew.recruitedDay`; this build's crew records already
+carry `recruited_day` and `wage_missed_since`. Translating at every future call
+site would be worse than translating once, in the fixture generator, where it is
+recorded as data. **The output shape is byte-identical**, including its
+snake_case `blocker_code` — that half is a contract, not a convention.
+
+### The sabotage run found a hole in its own coverage
+
+Sixteen faults injected. Fourteen went red immediately. Two did not, and both
+mattered:
+
+**`payroll_not_delinquent` ignoring the `-1` sentinel changed nothing.** Canon
+records "no missed wage" as `null`; this build records it as `-1`. The evaluator
+accepts both — a documented, deliberate superset. Removing that guard broke
+**zero** checks, because every fixture came from the oracle and the oracle can
+never produce a `-1`.
+
+That is the failure mode of oracle-only fixtures: they prove agreement with
+canon and say nothing about the port's own shapes. Fed a real crew record, an
+unguarded evaluator computes `current_day - (-1)` days delinquent and silently
+blocks every gate. It is now covered by a check that drives the live record
+straight out of GameState, and the re-run fails on it.
+
+**The malformed-`proofs` check could not be made to fail.** `crew_proofs()`
+returns a typed `Dictionary`, so a guarded read and an unguarded one both yield
+`{}` — the engine recovers the type error either way. A check that cannot go red
+is not coverage, so rather than bank one, it was **removed** and the reason
+written where it was. The guard stays in the code; the falsifiable half — an
+absent key — is what the remaining checks pin.
+
+| # | fault | result |
+|---|---|---|
+| 1 | recruit does not create `proofs` | 2 failures |
+| 2 | `heat_multiplier` falls off at rank 4 (the old bug) | 3 |
+| 3 | `defense_multiplier` falls off at rank 4 | 3 |
+| 4 | `evaluate_requirements` does not short-circuit | 15 |
+| 5 | result omits `blocker_code` | 26 |
+| 6 | wrong copy-key prefix | 25 |
+| 7 | missing `recruited_day` reports 0 tenure, not INF | 4 |
+| 8 | payroll ignores the `-1` sentinel | **0 → 2 after the gap was closed** |
+| 9 | unsupported requirement type fails OPEN | 3 |
+| 10 | loyalty boundary uses `>` instead of `>=` | 6 |
+| 11 | curve does not clamp above the authored range | 22 |
+| 12 | rank label does not clamp | 2 |
+| 13 | capability table gains the brief's invented Tone entry | 3 |
+| 14 | `crew_capacity()` returns 3 | 2 |
+| 15 | `at_top_rank` always false | 3 |
+| 16 | malformed-`proofs` guard removed | **un-falsifiable — check withdrawn** |
+
+### Ranks 4-6 have names and no ladder
+
+`RANK_LABELS` runs to six. `CREW_TIER_REQUIREMENTS` stops at three. That gap is
+the shape of this build: the labels exist so the curves have somewhere to clamp
+to, and so a later slice adds a *rule* rather than a *concept*.
+
+The Crew screen respects it. At Trusted the promote control is **hidden, not
+disabled** — a greyed-out button reading "NOWHERE HIGHER TO GO" advertises a
+ladder the player cannot climb, which is a promise this build does not keep. Pay
+expands to fill the row instead. The screen asks `at_top_rank()` rather than
+matching on the blocker string, because control flow on a copy string breaks the
+first time somebody rewords it.
+
+### No save bump, and why that is safe rather than lucky
+
+`proofs` lands inside `crew_records`, which is already in `PERSIST_FIELDS` and
+already round-trips as a Dictionary. A record saved before the field existed
+reads `{}` through `crew_proofs()` — canon's mergeDefaults pattern applied
+inside a persisted dictionary rather than at the top level. Both the absent-key
+path and a legacy record that still promotes cleanly are asserted.
+
+### One note on the oracle checkout
+
+`src/systems/requirements.js` and `src/data/crew-progression.js` arrived in web
+PR #98, one commit ahead of the oracle checkout's `main`. The generator extracts
+those two files to a scratch directory and requires them from there rather than
+moving the checkout's HEAD, since every other fixture is recorded from `main`.
+The dance is documented at the top of that generator section; when PR #98 lands
+on the oracle's main, delete it and require the files directly.
+
 ## FS-001.2: 907List opportunity ownership — and the filter that was missing  (added 2026-08-21)
 
 A listing was a shelf, not an opportunity. You could buy the same space heater

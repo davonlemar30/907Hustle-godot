@@ -72,8 +72,11 @@ func recruit_blocker(id: String) -> String:
 		return "Already with you."
 	if str(gs.crew_record(id).get("status", "")) == "departed":
 		return "They already walked."
-	if gs.recruited_crew().size() >= gs.CREW_CAPACITY:
-		return "No room. %d is all you can carry." % gs.CREW_CAPACITY
+	# Through crew_capacity(), not the const: base upgrades extend it later and
+	# every caller should already be asking rather than reading.
+	var capacity: int = gs.crew_capacity()
+	if gs.recruited_crew().size() >= capacity:
+		return "No room. %d is all you can carry." % capacity
 	if gs.cash < int(person["cost"]):
 		return "Need $%d." % int(person["cost"])
 	return ""
@@ -92,6 +95,10 @@ func _recruit(id: String) -> Dictionary:
 		"wage_due": 0,
 		"wage_missed_since": -1,
 		"recruited_day": gs.day,
+		# FS-001.5: behaviour-based gates read this. Nothing writes to it yet —
+		# it ships now so the record shape is settled before a save carries one
+		# without it. See crew_proofs() for how an older record reads.
+		"proofs": {},
 	}
 	_recompute_power()
 	gs.log_activity("%s is on the crew." % str(person["name"]).split(" ")[0], GREEN)
@@ -150,13 +157,24 @@ func _pay(id: String) -> Dictionary:
 
 # --- tiers -----------------------------------------------------------------
 
+## Is there an authored rank above this one at all?
+##
+## Separate from `promote_blocker` on purpose. "You cannot promote yet" and
+## "there is nothing to promote to" are different facts, and only the first is a
+## blocker the player can work against. The screen hides the control on the
+## second rather than showing a disabled button for a ladder that does not
+## exist — so this is a predicate rather than a string the UI has to match on.
+func at_top_rank(id: String) -> bool:
+	var rec: Dictionary = gs.crew_record(id)
+	return not gs.CREW_TIER_REQUIREMENTS.has(int(rec.get("tier", 1)) + 1)
+
 func promote_blocker(id: String) -> String:
 	if not gs.is_recruited(id):
 		return "Not on the crew."
+	if at_top_rank(id):
+		return "Nowhere higher to go."
 	var rec: Dictionary = gs.crew_record(id)
 	var target: int = int(rec.get("tier", 1)) + 1
-	if not gs.CREW_TIER_REQUIREMENTS.has(target):
-		return "Nowhere higher to go."
 	var req: Dictionary = gs.CREW_TIER_REQUIREMENTS[target]
 	if int(rec.get("loyalty", 0)) < int(req["loyalty"]):
 		return "Needs loyalty %d." % int(req["loyalty"])
@@ -172,7 +190,9 @@ func _promote(id: String) -> Dictionary:
 	var rec: Dictionary = gs.crew_records[id]
 	rec["tier"] = int(rec["tier"]) + 1
 	_recompute_power()
-	gs.log_activity("%s moves up to tier %d. The wage moves with it." % [str(gs.crew_member_by_id(id)["name"]).split(" ")[0], int(rec["tier"])], GREEN)
+	gs.log_activity("%s is %s now. The wage moves with it."
+		% [str(gs.crew_member_by_id(id)["name"]).split(" ")[0],
+			gs.rank_label(int(rec["tier"])).capitalize()], GREEN)
 	return {"ok": true}
 
 # --- effects ---------------------------------------------------------------
@@ -194,7 +214,13 @@ func heat_multiplier() -> float:
 	if not gs.is_recruited("deshawn"):
 		return 1.0
 	var tier: int = int(gs.crew_record("deshawn").get("tier", 1))
-	return float(gs.DESHAWN_HEAT_REDUCTION.get(tier, 1.0))
+	# Through the rank curve, not `.get(tier, 1.0)`. The dictionary lookup was a
+	# latent bug: at any rank above 3 it missed and returned the neutral 1.0, so
+	# a promotion would have REMOVED the heat reduction Deshawn already earned.
+	# Nothing can reach rank 4 today, which is exactly why it had to be fixed
+	# before something can — a benefit that silently vanishes on promotion is
+	# not the kind of bug that gets noticed, it is the kind that gets shipped.
+	return float(gs.curve_value_for_rank(gs.DESHAWN_HEAT_REDUCTION, tier, 1.0))
 
 ## Canon TONE_DEFENSE_MULTIPLIER. Stored and surfaced; nothing multiplies it
 ## until combat encounters land in a later phase.
@@ -202,7 +228,25 @@ func defense_multiplier() -> float:
 	if not gs.is_recruited("tone"):
 		return 1.0
 	var tier: int = int(gs.crew_record("tone").get("tier", 1))
-	return float(gs.TONE_DEFENSE_MULTIPLIER.get(tier, 1.0))
+	# Same clamp, same reason — see heat_multiplier().
+	return float(gs.curve_value_for_rank(gs.TONE_DEFENSE_MULTIPLIER, tier, 1.0))
+
+## What this person has PROVEN, for the gates that read behaviour rather than
+## numbers. Empty for an unknown id, and — the case that matters — empty for a
+## record saved before the field existed.
+##
+## No save schema bump for this. `crew_records` already round-trips as a
+## Dictionary in PERSIST_FIELDS, and a v6 record without `proofs` reads as `{}`
+## here rather than erroring: canon's mergeDefaults pattern applied inside a
+## persisted dictionary instead of at the top level.
+func crew_proofs(id: String) -> Dictionary:
+	var proofs: Variant = gs.crew_record(id).get("proofs", {})
+	return proofs if proofs is Dictionary else {}
+
+## The rank a crew member reads as. The player is told this and never the tier
+## number — same rule the attribute labels follow.
+func rank_label(id: String) -> String:
+	return gs.rank_label(int(gs.crew_record(id).get("tier", 1)))
 
 ## Boost tier 3 waits on somebody who can be field-assigned. Every canon crew
 ## member can be, so this is really "is there anyone at all".

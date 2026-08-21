@@ -890,3 +890,248 @@ console.log(
   `${immunity_tally.below.catastrophic || 0}, at 6: ${immunity_tally.at.catastrophic || 0}), ` +
   `${bonus_cases.length} bonus rows, ${stickup_keys.length} stickup keys`
 );
+
+// ---------------------------------------------------------------------------
+// FS-001.5 — the shared Requirement Evaluator, and the Crew rank/capability
+// foundation it sits beside.
+//
+// These two modules arrived in web PR #98, which is one commit ahead of the
+// oracle checkout's `main`. Rather than move the oracle's HEAD (this generator
+// is read-only against it, and every fixture above is recorded from `main`),
+// the two files are extracted to a scratch directory and required from there,
+// with `requirements.js`'s one relative import repointed at the oracle's real
+// `src/data/crew.js`. Nothing about the checkout changes.
+//
+// Regenerate with FS001_ORACLE_DIR pointing wherever the extracted pair lives:
+//   git show <pr98-sha>:src/systems/requirements.js  > $DIR/requirements.js
+//   git show <pr98-sha>:src/data/crew-progression.js > $DIR/crew-progression.js
+// When PR #98 lands on the oracle's main, delete this dance and require them
+// directly.
+const fs001Dir = process.env.FS001_ORACLE_DIR
+  ?? "/private/tmp/claude-501/-Users-damusthadon-Documents-907HustleGodot/6d9a4a40-7c5c-4e5a-ae64-894f354d24bd/scratchpad/fs001-oracle";
+const Req = require(join(fs001Dir, "requirements.js"));
+const Prog = require(join(fs001Dir, "crew-progression.js"));
+
+// Infinity is a real value here — `crew_tenure_days_min` reports it for a
+// record with no recruited day — and JSON.stringify flattens it to null. It is
+// recorded as a tagged string instead, so the Godot side asserts INF rather
+// than "some missing value".
+const encode = (value) => (value === Infinity ? "@Infinity" : value);
+const encodeResult = (r) => ({
+  ok: r.ok,
+  blocker_code: r.blocker_code ?? null,
+  blocker_copy_key: r.blocker_copy_key ?? null,
+  current: encode(r.current ?? null),
+  required: encode(r.required ?? null),
+});
+
+// The oracle reads camelCase facts; the Godot port reads snake_case, because
+// its crew records already carry `recruited_day` / `wage_missed_since`. Each
+// case records BOTH shapes — same data, one translation, and the translation is
+// recorded here rather than performed on the Godot side.
+function godotFacts(facts) {
+  const crew = {};
+  for (const [id, record] of Object.entries(facts.crew || {})) {
+    crew[id] = {
+      recruited: record.recruited,
+      status: record.status,
+      loyalty: record.loyalty,
+      tier: record.tier,
+      recruited_day: record.recruitedDay ?? null,
+      wage_missed_since: record.wageMissedSince ?? null,
+      proofs: record.proofs || {},
+    };
+  }
+  const out = { crew, current_day: facts.currentDay ?? 0 };
+  if (facts.timeSlotsToday !== undefined) out.time_slots_today = facts.timeSlotsToday;
+  if (facts.wageGraceDays !== undefined) out.wage_grace_days = facts.wageGraceDays;
+  if (facts.hustleTiers !== undefined) out.hustle_tiers = facts.hustleTiers;
+  if (facts.assignments !== undefined) out.assignments = facts.assignments;
+  return out;
+}
+
+function godotRequirement(requirement) {
+  if (requirement === null || typeof requirement !== "object" || Array.isArray(requirement)) {
+    return requirement;
+  }
+  const rename = {
+    crewId: "crew_id", hustleId: "hustle_id",
+    blockerCode: "blocker_code", blockerCopyKey: "blocker_copy_key",
+  };
+  const out = {};
+  for (const [key, value] of Object.entries(requirement)) out[rename[key] || key] = value;
+  return out;
+}
+
+const CREW_BASE = {
+  recruited: true, status: "active", loyalty: 8, tier: 2,
+  recruitedDay: 1, wageMissedSince: null,
+  proofs: { first_route: true, completed_routes: 4 },
+};
+const baseFacts = (overrides = {}, crewOverrides = {}) => ({
+  currentDay: 14,
+  timeSlotsToday: 0,
+  wageGraceDays: 2,
+  crew: { pherris: { ...CREW_BASE, ...crewOverrides } },
+  hustleTiers: { "907list": 3 },
+  assignments: {},
+  ...overrides,
+});
+
+// Every type gets a pass, a fail, and its boundary in both directions.
+const REQUIREMENT_CASES = [
+  ["crew_active pass", { type: "crew_active", crewId: "pherris" }, baseFacts()],
+  ["crew_active not recruited", { type: "crew_active", crewId: "pherris" }, baseFacts({}, { recruited: false })],
+  ["crew_active departed", { type: "crew_active", crewId: "pherris" }, baseFacts({}, { status: "departed" })],
+  ["crew_active unknown id", { type: "crew_active", crewId: "nobody" }, baseFacts()],
+  ["crew_active no crew facts", { type: "crew_active", crewId: "pherris" }, { currentDay: 4 }],
+  ["crew_loyalty_min exactly at min", { type: "crew_loyalty_min", crewId: "pherris", min: 8 }, baseFacts()],
+  ["crew_loyalty_min one below", { type: "crew_loyalty_min", crewId: "pherris", min: 9 }, baseFacts()],
+  ["crew_loyalty_min well under", { type: "crew_loyalty_min", crewId: "pherris", min: 10 }, baseFacts({}, { loyalty: 2 })],
+  ["crew_loyalty_min zero min", { type: "crew_loyalty_min", crewId: "pherris" }, baseFacts({}, { loyalty: 0 })],
+  ["crew_rank_min at rank", { type: "crew_rank_min", crewId: "pherris", min: 2 }, baseFacts()],
+  ["crew_rank_min one above rank", { type: "crew_rank_min", crewId: "pherris", min: 3 }, baseFacts()],
+  ["crew_rank_min rank 6", { type: "crew_rank_min", crewId: "pherris", min: 6 }, baseFacts({}, { tier: 6 })],
+  ["crew_tenure exactly at threshold", { type: "crew_tenure_days_min", crewId: "pherris", min: 13 }, baseFacts()],
+  ["crew_tenure one short", { type: "crew_tenure_days_min", crewId: "pherris", min: 14 }, baseFacts()],
+  ["crew_tenure recruited today", { type: "crew_tenure_days_min", crewId: "pherris", min: 1 }, baseFacts({}, { recruitedDay: 14 })],
+  ["crew_tenure missing recruited day is infinite", { type: "crew_tenure_days_min", crewId: "pherris", min: 99 }, baseFacts({}, { recruitedDay: null })],
+  ["crew_tenure negative window clamps to zero", { type: "crew_tenure_days_min", crewId: "pherris", min: 1 }, baseFacts({}, { recruitedDay: 20 })],
+  ["hustle_tier_min at tier", { type: "hustle_tier_min", hustleId: "907list", min: 3 }, baseFacts()],
+  ["hustle_tier_min above tier", { type: "hustle_tier_min", hustleId: "907list", min: 4 }, baseFacts()],
+  ["hustle_tier_min unknown hustle", { type: "hustle_tier_min", hustleId: "nope", min: 1 }, baseFacts()],
+  ["hustle_tier_min no hustle facts", { type: "hustle_tier_min", hustleId: "907list", min: 1 }, { currentDay: 2 }],
+  ["payroll nothing owed", { type: "payroll_not_delinquent", crewId: "pherris" }, baseFacts()],
+  ["payroll within grace", { type: "payroll_not_delinquent", crewId: "pherris" }, baseFacts({}, { wageMissedSince: 12 })],
+  ["payroll one past grace", { type: "payroll_not_delinquent", crewId: "pherris" }, baseFacts({}, { wageMissedSince: 11 })],
+  ["payroll far past grace", { type: "payroll_not_delinquent", crewId: "pherris" }, baseFacts({}, { wageMissedSince: 4 })],
+  ["payroll unknown crew", { type: "payroll_not_delinquent", crewId: "nobody" }, baseFacts()],
+  ["payroll custom grace", { type: "payroll_not_delinquent", crewId: "pherris" }, baseFacts({ wageGraceDays: 5 }, { wageMissedSince: 10 })],
+  ["unassigned when nothing booked", { type: "crew_unassigned_today", crewId: "pherris" }, baseFacts()],
+  ["unassigned blocked by today", { type: "crew_unassigned_today", crewId: "pherris" }, baseFacts({ assignments: { pherris: { day: 14, operationId: "other" } } })],
+  ["unassigned ignores yesterday", { type: "crew_unassigned_today", crewId: "pherris" }, baseFacts({ assignments: { pherris: { day: 13 } } })],
+  ["planning window open at slot 0", { type: "planning_window_open" }, baseFacts()],
+  ["planning window shut at slot 1", { type: "planning_window_open" }, baseFacts({ timeSlotsToday: 1 })],
+  ["planning window shut at slot 3", { type: "planning_window_open" }, baseFacts({ timeSlotsToday: 3 })],
+  ["proof_flag set", { type: "proof_flag", crewId: "pherris", key: "first_route" }, baseFacts()],
+  ["proof_flag unset", { type: "proof_flag", crewId: "pherris", key: "never_happened" }, baseFacts()],
+  ["proof_flag no proofs at all", { type: "proof_flag", crewId: "pherris", key: "first_route" }, baseFacts({}, { proofs: {} })],
+  ["proof_counter at min", { type: "proof_counter_min", crewId: "pherris", key: "completed_routes", min: 4 }, baseFacts()],
+  ["proof_counter one below", { type: "proof_counter_min", crewId: "pherris", key: "completed_routes", min: 5 }, baseFacts()],
+  ["proof_counter missing key", { type: "proof_counter_min", crewId: "pherris", key: "absent", min: 1 }, baseFacts()],
+  ["custom blocker code", { type: "crew_loyalty_min", crewId: "pherris", min: 9, blockerCode: "pherris_not_ready" }, baseFacts()],
+  ["custom copy key", { type: "crew_loyalty_min", crewId: "pherris", min: 9, blockerCopyKey: "crew.pherris.loyalty" }, baseFacts()],
+  ["unsupported type", { type: "future_magic_gate" }, baseFacts()],
+  ["missing type", { crewId: "pherris" }, baseFacts()],
+  ["null requirement", null, baseFacts()],
+  ["string requirement", "crew_active", baseFacts()],
+  ["number requirement", 7, baseFacts()],
+];
+
+const requirement_cases = REQUIREMENT_CASES.map(([name, requirement, facts]) => ({
+  name,
+  requirement,
+  godot_requirement: godotRequirement(requirement),
+  godot_facts: godotFacts(facts),
+  expected: encodeResult(Req.evaluateRequirement(requirement, facts)),
+}));
+
+// evaluateRequirements: the short-circuit, and that ORDER decides which blocker
+// the player is shown. The same two gates reversed must report the other
+// reason — that is what proves it stops rather than scores.
+const LIST_CASES = [
+  ["all pass", [
+    { type: "crew_active", crewId: "pherris" },
+    { type: "crew_loyalty_min", crewId: "pherris", min: 6 },
+    { type: "crew_rank_min", crewId: "pherris", min: 1 },
+    { type: "crew_tenure_days_min", crewId: "pherris", min: 5 },
+    { type: "hustle_tier_min", hustleId: "907list", min: 3 },
+    { type: "payroll_not_delinquent", crewId: "pherris" },
+    { type: "crew_unassigned_today", crewId: "pherris" },
+    { type: "planning_window_open" },
+    { type: "proof_flag", crewId: "pherris", key: "first_route" },
+    { type: "proof_counter_min", crewId: "pherris", key: "completed_routes", min: 3 },
+  ], baseFacts()],
+  ["first of two failures wins", [
+    { type: "crew_loyalty_min", crewId: "pherris", min: 9 },
+    { type: "planning_window_open" },
+  ], baseFacts({ timeSlotsToday: 2 })],
+  ["order decides the reason", [
+    { type: "planning_window_open" },
+    { type: "crew_loyalty_min", crewId: "pherris", min: 9 },
+  ], baseFacts({ timeSlotsToday: 2 })],
+  ["empty list passes", [], baseFacts()],
+  ["null list passes", null, baseFacts()],
+  ["an unsupported gate blocks the rest", [
+    { type: "future_magic_gate" },
+    { type: "crew_active", crewId: "pherris" },
+  ], baseFacts()],
+];
+
+const requirement_lists = LIST_CASES.map(([name, requirements, facts]) => ({
+  name,
+  requirements,
+  godot_requirements: requirements === null ? null : requirements.map(godotRequirement),
+  godot_facts: godotFacts(facts),
+  expected: encodeResult(Req.evaluateRequirements(requirements, facts)),
+}));
+
+const rank_labels = [0, 1, 2, 3, 4, 5, 6, 7, 99].map((rank) => ({
+  rank, label: Prog.crewRankLabel(rank),
+}));
+
+const CURVES = {
+  wage_deshawn: [50, 100, 200],
+  wage_tone: [85, 150, 250],
+  wage_pherris: [60, 120, 220],
+  tone_defense: { 1: 1.15, 2: 1.3, 3: 1.5 },
+  deshawn_heat: { 1: 0.8, 2: 0.6, 3: 0.4 },
+};
+const curve_lookups = [];
+for (const [name, curve] of Object.entries(CURVES)) {
+  for (const rank of [0, 1, 2, 3, 4, 5, 6, 12]) {
+    curve_lookups.push({ curve: name, rank, value: Prog.curveValueForRank(curve, rank) });
+  }
+}
+const curve_empty = {
+  array: Prog.curveValueForRank([], 3, 7),
+  object: Prog.curveValueForRank({}, 6, 7),
+};
+
+const CAPABILITY_CASES = [
+  ["pherris", "907list_run_board", 1], ["pherris", "907list_run_board", 2],
+  ["pherris", "907list_run_board", 3], ["pherris", "907list_run_board", 6],
+  ["pherris", "907list_run_board", 0], ["pherris", "unknown_capability", 3],
+  ["tone", "907list_run_board", 3], ["eli", "territory_operations", 3],
+  ["deshawn", "network_operations", 3], ["nobody", "907list_run_board", 3],
+];
+const capabilities = CAPABILITY_CASES.map(([crewId, capabilityId, rank]) => ({
+  crew_id: crewId, capability_id: capabilityId, rank,
+  has: Prog.crewHasCapability(crewId, capabilityId, rank),
+  summary: Prog.crewCapabilitySummary(crewId, capabilityId, rank),
+}));
+
+const fs001Fixtures = {
+  oracle_version: core.VERSION,
+  oracle_source: "web PR #98 (src/systems/requirements.js, src/data/crew-progression.js)",
+  generated_note: "run scripts/parity/gen_fixtures.mjs against the web oracle; do not hand-edit",
+  max_crew_rank: Prog.MAX_CREW_RANK,
+  base_crew_capacity: Prog.BASE_CREW_CAPACITY,
+  crew_capacity: Prog.crewCapacity(),
+  rank_labels,
+  curve_lookups,
+  curve_empty,
+  capabilities,
+  requirement_cases,
+  requirement_lists,
+};
+
+const fs001Path = join(
+  here, "..", "..", "tests", "parity", "fixtures", "requirements", "fs001_fixtures.json");
+mkdirSync(dirname(fs001Path), { recursive: true });
+writeFileSync(fs001Path, JSON.stringify(fs001Fixtures, null, 1) + "\n");
+console.log(
+  `wrote ${fs001Path}: ${requirement_cases.length} requirement cases, ` +
+  `${requirement_lists.length} list cases, ${rank_labels.length} rank labels, ` +
+  `${curve_lookups.length} curve lookups, ${capabilities.length} capability reads`
+);

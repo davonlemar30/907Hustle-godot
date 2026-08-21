@@ -1,0 +1,240 @@
+extends RefCounted
+## Requirements — the shared eligibility evaluator.
+##
+## Port of the web build's `src/systems/requirements.js` (FS-001 Phase 7,
+## Slice 1). One job: answer "can this happen yet, and if not, what is the
+## reason" in a form a UI can translate later without re-deriving eligibility.
+##
+## ## Why it is shaped like this
+##
+## A requirement record is SEMANTIC — `{type: "crew_loyalty_min", crew_id:
+## "pherris", min: 6}` — and the answer is STRUCTURED:
+##
+##   {ok, blocker_code, blocker_copy_key, current, required}
+##
+## `current` and `required` come back on the blocker itself, so a caller can say
+## "Needs loyalty 6, has 4" without knowing what a loyalty is. `blocker_copy_key`
+## is the translation hook: presentation swaps copy without touching this file.
+##
+## ## Purity is the whole point
+##
+## **This reads ONLY from the `facts` dictionary.** No GameState, no autoloads,
+## no `Engine.get_main_loop()`. It cannot be tested wrong because it cannot see
+## anything a test does not hand it, and it can be reused by any system that
+## needs to ask the same question. It has no `setup()` for the same reason.
+##
+## ## Nothing queries it yet, and that is deliberate
+##
+## FS-001.6 (Named Crew Operations) is the caller. This ships ahead of it as
+## infrastructure — unlike the resolver Attributes deferred in Phase 5c, this is
+## a small pure function table with exhaustive fixtures rather than a large
+## untested branch, so the cost of landing it early is close to zero and the
+## benefit is that FS-001.6 does not have to invent an eligibility contract
+## while it is also inventing delegation.
+##
+## ## Two deliberate divergences from the oracle, both mechanical
+##
+## **1. Fact keys are snake_case here, camelCase there.** The oracle reads
+## `facts.currentDay`, `facts.hustleTiers`, `facts.timeSlotsToday`,
+## `crew.recruitedDay`, `crew.wageMissedSince`. This build's crew records
+## already carry `recruited_day` and `wage_missed_since` on GameState, and the
+## whole codebase is snake_case, so translating at the boundary would mean every
+## future caller hand-mapping field names it already has. The OUTPUT shape is
+## byte-identical to the oracle, including its snake_case `blocker_code` /
+## `blocker_copy_key` — that half is a contract, not a convention.
+##
+## **2. A negative `wage_missed_since` reads as "no missed wage".** Canon uses
+## `null` for that; this build's crew records use `-1`. Accepting both is a
+## strict superset — canon's day numbers start at 1 and it never writes a
+## negative, so the two agree on every input canon can produce. Without this a
+## caller handing `crew_records` straight through would compute
+## `current_day - (-1)` days delinquent and silently block everything.
+
+## Canon's fallback grace when `facts.wage_grace_days` is absent. Duplicated as
+## a literal rather than read off GameState: this file stays resolvable without
+## an autoload, which is what lets the parity runner drive it in isolation.
+const DEFAULT_WAGE_GRACE_DAYS := 2
+
+## No actions of its own — this is a utility other systems call, never dispatch
+## to. Registered in GameManager so callers reach it the same way as any system.
+func can_handle(_action: String) -> bool:
+	return false
+
+func handle(_action: String, _payload: Dictionary) -> Dictionary:
+	return {"ok": false, "reason": "Requirements takes no actions."}
+
+# --- internals -------------------------------------------------------------
+
+## Canon's `Number(x) || 0`: a non-numeric, null, or non-finite value is 0.
+static func _num(value: Variant) -> float:
+	match typeof(value):
+		TYPE_INT, TYPE_FLOAT:
+			var f := float(value)
+			return f if is_finite(f) else 0.0
+		TYPE_BOOL:
+			return 1.0 if value else 0.0
+		TYPE_STRING, TYPE_STRING_NAME:
+			var s := str(value).strip_edges()
+			# JS Number("") is 0; Number("abc") is NaN, which `|| 0` makes 0.
+			if s.is_empty():
+				return 0.0
+			return s.to_float() if (s.is_valid_float() or s.is_valid_int()) else 0.0
+		_:
+			return 0.0
+
+func _crew_record(facts: Dictionary, crew_id: Variant) -> Variant:
+	var crew: Variant = facts.get("crew")
+	if not (crew is Dictionary):
+		return null
+	var record: Variant = (crew as Dictionary).get(str(crew_id))
+	return record if record is Dictionary else null
+
+func _proofs(crew: Variant) -> Dictionary:
+	if not (crew is Dictionary):
+		return {}
+	var proofs: Variant = (crew as Dictionary).get("proofs", {})
+	return proofs if proofs is Dictionary else {}
+
+## Canon's `result()`. On success both blocker fields are null; `current` and
+## `required` still report, because a caller often wants the numbers either way.
+##
+## The blocker code falls back through the record's own override to the
+## requirement type, which is what makes `requirements.<type>` a usable default
+## copy key for every gate that has not earned bespoke wording yet.
+func _result(requirement: Dictionary, ok: bool, current: Variant, required: Variant) -> Dictionary:
+	var type_name: String = str(requirement.get("type", ""))
+	var code: Variant = null
+	var copy_key: Variant = null
+	if not ok:
+		var override_code: String = str(requirement.get("blocker_code", ""))
+		code = override_code if not override_code.is_empty() else type_name
+		var override_copy: String = str(requirement.get("blocker_copy_key", ""))
+		copy_key = override_copy if not override_copy.is_empty() else "requirements.%s" % type_name
+	return {
+		"ok": ok,
+		"blocker_code": code,
+		"blocker_copy_key": copy_key,
+		"current": current,
+		"required": required,
+	}
+
+# --- the evaluator ---------------------------------------------------------
+
+## One requirement against one set of facts.
+##
+## **Unknown types fail CLOSED.** A typo in a requirement record must never read
+## as "no gate here" — an unrecognised gate is an impassable one, which is the
+## only safe direction for a system whose whole job is deciding what is allowed.
+func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dictionary:
+	if not (requirement is Dictionary) or (requirement as Dictionary).is_empty():
+		return {
+			"ok": false,
+			"blocker_code": "invalid_requirement",
+			"blocker_copy_key": "requirements.invalid_requirement",
+			"current": null,
+			"required": "requirement_record",
+		}
+	var req: Dictionary = requirement
+	var crew: Variant = _crew_record(facts, req.get("crew_id"))
+	var min_value: float = _num(req.get("min"))
+	var current_day: float = _num(facts.get("current_day"))
+
+	match str(req.get("type", "")):
+		"crew_active":
+			var active: bool = crew is Dictionary \
+				and bool((crew as Dictionary).get("recruited", false)) \
+				and str((crew as Dictionary).get("status", "")) == "active"
+			return _result(req, active, active, true)
+
+		"crew_loyalty_min":
+			var loyalty: float = _num((crew as Dictionary).get("loyalty")) if crew is Dictionary else 0.0
+			return _result(req, loyalty >= min_value, loyalty, min_value)
+
+		"crew_rank_min":
+			var rank: float = _num((crew as Dictionary).get("tier")) if crew is Dictionary else 0.0
+			return _result(req, rank >= min_value, rank, min_value)
+
+		"crew_tenure_days_min":
+			# A record with no recruited day reports INFINITE tenure and passes.
+			# That is canon (`Number.POSITIVE_INFINITY`) and it is the right
+			# direction: tenure gates exist to make somebody wait, and there is
+			# nobody to make wait if the record does not know when they arrived.
+			var recruited_day: Variant = (crew as Dictionary).get("recruited_day") if crew is Dictionary else null
+			var tenure: float = INF
+			if recruited_day != null:
+				tenure = maxf(0.0, current_day - _num(recruited_day))
+			return _result(req, tenure >= min_value, tenure, min_value)
+
+		"hustle_tier_min":
+			var tiers: Variant = facts.get("hustle_tiers")
+			var tier: float = 0.0
+			if tiers is Dictionary:
+				tier = _num((tiers as Dictionary).get(str(req.get("hustle_id"))))
+			return _result(req, tier >= min_value, tier, min_value)
+
+		"payroll_not_delinquent":
+			# No record, or nothing outstanding, is not a blocker — and canon
+			# reports `required` as a STRING here rather than a number, because
+			# there is no threshold to compare against when nothing is owed.
+			var missed_since: Variant = (crew as Dictionary).get("wage_missed_since") if crew is Dictionary else null
+			if crew == null or missed_since == null or _num(missed_since) < 0.0:
+				return _result(req, true, 0, "within_grace")
+			var grace: float = DEFAULT_WAGE_GRACE_DAYS
+			var supplied: Variant = facts.get("wage_grace_days")
+			if supplied is int or supplied is float:
+				if is_finite(float(supplied)):
+					grace = float(supplied)
+			var missed_days: float = maxf(0.0, current_day - _num(missed_since))
+			return _result(req, missed_days <= grace, missed_days, grace)
+
+		"crew_unassigned_today":
+			var assignments: Variant = facts.get("assignments")
+			var assigned_today := false
+			if assignments is Dictionary:
+				var entry: Variant = (assignments as Dictionary).get(str(req.get("crew_id")))
+				assigned_today = entry is Dictionary \
+					and _num((entry as Dictionary).get("day")) == current_day
+			# `current` is whether they ARE assigned; `required` is false.
+			return _result(req, not assigned_today, assigned_today, false)
+
+		"planning_window_open":
+			var slot: float = _num(facts.get("time_slots_today"))
+			return _result(req, slot == 0.0, slot, 0)
+
+		"proof_flag":
+			var flag: bool = bool(_proofs(crew).get(str(req.get("key")), false))
+			return _result(req, flag, flag, true)
+
+		"proof_counter_min":
+			var count: float = _num(_proofs(crew).get(str(req.get("key"))))
+			return _result(req, count >= min_value, count, min_value)
+
+	return {
+		"ok": false,
+		"blocker_code": "unsupported_requirement",
+		"blocker_copy_key": "requirements.unsupported_requirement",
+		"current": req.get("type") if req.has("type") else null,
+		"required": "supported_requirement_type",
+	}
+
+## Every requirement in order, stopping at the first failure.
+##
+## **Short-circuiting is a feature, not an optimisation.** The player is shown
+## one reason, and it must be the same reason every time for the same state —
+## so the ORDER of the requirements array is the authored priority of the
+## blockers, and evaluation must not keep going and pick a different one.
+##
+## An empty or missing list passes: no gates means no blockers.
+func evaluate_requirements(requirements: Variant, facts: Dictionary = {}) -> Dictionary:
+	if requirements is Array:
+		for requirement in (requirements as Array):
+			var evaluated: Dictionary = evaluate_requirement(requirement, facts)
+			if not bool(evaluated["ok"]):
+				return evaluated
+	return {
+		"ok": true,
+		"blocker_code": null,
+		"blocker_copy_key": null,
+		"current": null,
+		"required": null,
+	}

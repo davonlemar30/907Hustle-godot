@@ -38,7 +38,7 @@ var gm: Node
 func setup(game_state: Node, manager: Node) -> void:
 	gs = game_state
 	gm = manager
-	gs.day_crossed.connect(_on_day_crossed)
+	# Driven by DayLifecycle in declared order. See systems/day_lifecycle.gd.
 
 func can_handle(action: String) -> bool:
 	return action in ["claim_block", "abandon_block", "recruit_soldier", "post_soldier", "pull_soldier"]
@@ -169,7 +169,9 @@ func nightly_heat() -> float:
 		total += float(gs.block_by_id(str(id)).get("heat_exposure", 0))
 	return total
 
-func _on_day_crossed() -> void:
+## Nightly corner income and the heat of holding them. Reads no day at all, so
+## the parameter is accepted and unused — the interface is uniform on purpose.
+func settle_night(_ended_day: int) -> void:
 	if gs.game_over or gs.held_blocks.is_empty():
 		return
 

@@ -544,6 +544,119 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.2: the night gets an order  (added 2026-08-21)
+
+Two things: the Boost heat divergence FS-003.1 froze is corrected, and night
+settlement stops being an accident of signal-connection order. **Parity 7665 →
+7726 checks, 0 failures. No schema change.**
+
+### The freeze paid off immediately — and caught its own bug
+
+FS-003.1 pinned Boost's tier-1 heat at the port's 1.0 and named it a known
+divergence from canon's 0.5, so the correction could not land quietly. It did not
+land quietly: flipping the constant turned the assertion red on the first run,
+exactly as designed.
+
+**But the assertion was measuring the wrong thing.** It ran on a fixed probe day
+that happens to be a MISS — and a miss costs 1.0 at any tier — so it read 1.0 for
+the wrong reason and would have stayed green even if tier-1 *success* heat had
+been correct all along. The freeze it claimed to hold never held anything.
+
+The day is derived now: walk until the lift lands, then assert, and cover the
+miss branch separately with each saying which branch it is. Worth remembering
+that **a check on a fixed seed can be measuring a branch you did not intend** —
+and that a green freeze is not proof the frozen thing was ever observed.
+
+The fix itself: `_apply_heat` takes a `float`, the call site passes canon's
+`0.5 / 1.0 / 2.0`. The int signature was what forced the divergence — 0.5
+truncated to nothing, so the call site rounded up.
+
+### What was actually wrong with the old ordering
+
+Five systems connected to `day_crossed` in whatever order GameManager's
+`_ready()` happened to construct them. That is an ordering contract expressed as
+a side effect of construction order: invisible in review, untestable, and
+silently rewritten by moving a line in an unrelated file.
+
+`systems/day_lifecycle.gd` makes it a list:
+
+```
+PRE_SETTLE → SETTLE(crew · territory · shark · jobs · obligations)
+           → POST_SETTLE → INCREMENT → MARKET(evolve · day_crossed) → DAY_START
+```
+
+The trace is asserted as a literal. Reordering a phase is now a deliberate edit
+that breaks a test, which is the contract FS-003.3 through .12 inherit.
+
+### Hooks are Callables, not signals
+
+`post_settle_hooks` and `day_start_hooks` are Arrays of Callables running in
+index order. Signals have exactly the ordering problem this file exists to
+remove — the order handlers run in is the order they connected, which nothing
+declares and nothing tests.
+
+### `ended_day` is a parameter now
+
+Jobs and obligations derived `gs.day - 1`, which only worked because their
+handler happened to run after the increment. Canon passes the day explicitly for
+the same reason (`applyAttendance(state, oldDay)` carries the comment). That
+arithmetic is gone.
+
+### A second divergence found, and deliberately NOT fixed
+
+Canon's `confirmDayEnd` settles crew and shark **above** the increment, so both
+see the ending day. This port has always settled them below it, seeing the new
+day — so `crew.settle_night` and `shark.settle_night` now compute against
+`ended_day + 1` to keep their behaviour byte-identical.
+
+That is on purpose. This build creates the seam; moving when wages bite or a note
+comes due is a timing change with real consequences for a live save — the crew
+wage sentinel persists and is read by `payroll_not_delinquent`, so shifting it
+moves an eligibility gate that has already shipped. Filed as its own slice.
+
+The `+ 1` is commented at both call sites and, more importantly, **asserted**:
+a note due on the settling day comes due tonight, one due after it does not.
+Claiming a divergence is preserved is worth nothing if nothing checks it — that
+gap is what sabotage 8 found.
+
+### The refactor proved itself
+
+All 7665 inherited checks stayed green through the migration of five systems off
+`day_crossed`. That is the strongest thing a seam refactor can demonstrate, and
+it is only possible because FS-003.1 pinned the behaviour first. The freeze pass
+paid for itself one build later.
+
+### Sabotage log — 11 faults, all confirmed red
+
+| # | fault | result |
+|---|---|---|
+| 1 | crew and obligations swapped in `SETTLE_ORDER` | 2 failures |
+| 2 | `day_ending` never emitted | 8 |
+| 3 | `economy.evolve()` called twice | 1 |
+| 4 | `day_crossed` emitted before the increment | 2 |
+| 5 | boost tier-1 heat reverted to 1.0 | 1 |
+| 6 | jobs settles against the new day again | 1 |
+| 7 | crew wage clock shifted to the ending day | 1 |
+| 8 | shark note settlement shifted to the ending day | 0 → **1** |
+| 9 | a settler dropped from `SETTLE_ORDER` | 20 |
+| 10 | POST_SETTLE hooks moved after the increment | 1 |
+| 11 | obligations settles the new day | 10 |
+
+Number 8 escaped first time: nothing covered shark's settlement day, which is
+precisely the divergence this build claims to preserve. An untested claim.
+
+### And the tests were on the wrong path again
+
+The "settlement consumes no market RNG" check called the settlers directly,
+which tripped the dispatch-ownership guard twice and measured the right thing on
+a stack the game never produces. It measures from inside a **POST_SETTLE hook**
+now — the exact moment after every settler and before the market walk, on the
+real dispatch path. Back to the 4 baseline warnings, all from the ownership test
+that deliberately calls outside a dispatch to prove refusal.
+
+Fourth build running. The new hook turned out to be the right instrument for
+testing the thing it was added for, which is a good sign about the seam.
+
 ## FS-003.1: the freeze pass  (added 2026-08-21)
 
 Regression protection before the Consequence-Encounter Engine starts moving

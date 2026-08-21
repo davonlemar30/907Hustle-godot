@@ -62,14 +62,14 @@ func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node,
 	gm = manager
 	attributes = attribute_system
 
-func _apply_heat(amount: int) -> float:
+func _apply_heat(amount: float) -> float:
 	var mult: float = 1.0
 	var crew: Object = gm.system("crew") if gm != null else null
 	if crew != null:
 		mult = crew.heat_multiplier()
 	# Kept fractional deliberately: rounding here is what made the reduction
 	# invisible on small amounts.
-	var scaled: float = float(amount) * mult if amount > 0 else 0.0
+	var scaled: float = amount * mult if amount > 0.0 else 0.0
 	gs.heat = clampf(gs.heat + scaled, 0.0, float(gs.heat_max))
 	return scaled
 
@@ -136,8 +136,13 @@ func _run(target_id: String) -> Dictionary:
 		var band: Array = t["take"]
 		var take: int = rng.seeded_int_range(gs.run_seed, key + ":take", int(band[0]), int(band[1]))
 		gs.boost_technique += 1
-		# Canon scales heat by tier: 0.5 · 1 · 2, before district weighting.
-		_apply_heat(1 if tier == 1 else (1 if tier == 2 else 2))
+		# Canon scales heat by tier: 0.5 · 1 · 2 (game-core.js:2260). Matched.
+		#
+		# The int signature above used to truncate canon's 0.5 to nothing, so
+		# the call site rounded up to 1 and every tier-1 lift made DOUBLE the
+		# heat canon does — on the surface a player uses earliest and most.
+		# FS-003.1 froze that with an assertion naming it; this is the fix.
+		_apply_heat(0.5 if tier == 1 else (1.0 if tier == 2 else 2.0))
 		if tier == 3:
 			# Tier 3 comes out as merchandise, not cash. Slide fences it.
 			gs.boost_merchandise += take
@@ -147,7 +152,7 @@ func _run(target_id: String) -> Dictionary:
 			gs.log_activity("Left %s with goods worth $%d." % [str(t["name"]), take], GREEN)
 		result = {"ok": true, "success": true, "take": take, "tier": tier}
 	else:
-		_apply_heat(1)
+		_apply_heat(1.0)
 		gs.log_activity("Walked out of %s empty. Somebody clocked you." % str(t["name"]), RED)
 		result = {"ok": true, "success": false, "take": 0, "tier": tier}
 

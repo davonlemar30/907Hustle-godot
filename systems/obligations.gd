@@ -33,7 +33,7 @@ var phone: RefCounted
 func setup(game_state: Node, phone_system: RefCounted) -> void:
 	gs = game_state
 	phone = phone_system
-	gs.day_crossed.connect(_on_day_crossed)
+	# Driven by DayLifecycle in declared order. See systems/day_lifecycle.gd.
 
 func can_handle(action: String) -> bool:
 	return action in ["pay_rent", "pay_phone_bill"]
@@ -148,10 +148,12 @@ func days_until_rent() -> int:
 ## it behind a dayEndPending step for the same reason: a bill due on day 7 has to
 ## be payable during day 7. Comparing against gs.day would mark it missed the
 ## instant the day began.
-func _on_day_crossed() -> void:
+## Rent and the phone bill for the day that just ended. Settled LAST in the
+## declared order: these are what end a run, so everything that could still pay
+## them has already had its turn.
+func settle_night(ended_day: int) -> void:
 	if gs.game_over:
 		return
-	var ended_day: int = gs.day - 1
 	_settle_phone(ended_day)
 	_settle_rent(ended_day)
 

@@ -60,7 +60,8 @@ func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node,
 	time_system = time
 	gm = manager
 	attributes = attribute_system
-	gs.day_crossed.connect(_on_day_crossed)
+	# Settlement is driven by DayLifecycle in declared order, not by a signal
+	# whose handlers run in connection order. See systems/day_lifecycle.gd.
 
 
 ## The exposure layer, or null before it exists. Every system reaches it the
@@ -203,7 +204,12 @@ func _work(approach_id: String) -> Dictionary:
 
 ## Attendance settles when a day ends. Canon runs this inside the day-end
 ## settlement, counting the day that just finished.
-func _on_day_crossed() -> void:
+## Attendance for the day that just ended.
+##
+## `ended_day` arrives as a parameter — this used to derive `gs.day - 1`, which
+## only worked because the handler happened to run after the increment. Canon
+## passes it explicitly for the same reason (`applyAttendance(state, oldDay)`).
+func settle_night(ended_day: int) -> void:
 	if gs.game_over:
 		return
 	var job_id: String = gs.active_job_id
@@ -214,7 +220,6 @@ func _on_day_crossed() -> void:
 	if bool(job.get("day_labor", false)):
 		return
 	var rec: Dictionary = gs.job_records.get(job_id, {})
-	var ended_day: int = gs.day - 1
 	if int(rec.get("last_worked_day", -1)) == ended_day:
 		return
 	# Grace on the day you were hired.

@@ -1,0 +1,2903 @@
+{
+ "oracle_version": 11,
+ "generated_note": "run scripts/parity/gen_fixtures.mjs against the web oracle; do not hand-edit",
+ "hashes": [
+  {
+   "key": "",
+   "hash": 2166136261,
+   "unit": 0.5043428998906165,
+   "unit10k": 0.6261
+  },
+  {
+   "key": "a",
+   "hash": 3826002220,
+   "unit": 0.8908105595037341,
+   "unit10k": 0.222
+  },
+  {
+   "key": "907hustle",
+   "hash": 1455175330,
+   "unit": 0.33880940871313214,
+   "unit10k": 0.533
+  },
+  {
+   "key": "907hustle:market_evolve_day1_slot0_weed",
+   "hash": 1349121873,
+   "unit": 0.31411691405810416,
+   "unit10k": 0.1873
+  },
+  {
+   "key": "907hustle:market_evolve_day14_slot2_meth",
+   "hash": 3222417116,
+   "unit": 0.7502774512395263,
+   "unit10k": 0.7116
+  },
+  {
+   "key": "12345:meetup:3:1:0",
+   "hash": 366193808,
+   "unit": 0.08526114001870155,
+   "unit10k": 0.3808
+  },
+  {
+   "key": "seed:shark:default:nora:day4",
+   "hash": 2208612356,
+   "unit": 0.5142326364293694,
+   "unit10k": 0.2356
+  },
+  {
+   "key": "Curtis Foyer",
+   "hash": 2152024314,
+   "unit": 0.5010572061873972,
+   "unit10k": 0.4314
+  },
+  {
+   "key": "Yalonda Hernandez",
+   "hash": 2253783136,
+   "unit": 0.5247497782111168,
+   "unit10k": 0.3136
+  },
+  {
+   "key": "north_star_lot|financial|rent_paid",
+   "hash": 4270816096,
+   "unit": 0.9943768605589867,
+   "unit10k": 0.6096
+  },
+  {
+   "key": "wash_go:day7:slot2",
+   "hash": 2473037634,
+   "unit": 0.5757989441044629,
+   "unit10k": 0.7634
+  },
+  {
+   "key": "0",
+   "hash": 890022063,
+   "unit": 0.2072244097944349,
+   "unit10k": 0.2063
+  },
+  {
+   "key": "1",
+   "hash": 873244444,
+   "unit": 0.2033180659636855,
+   "unit10k": 0.4444
+  },
+  {
+   "key": "-1",
+   "hash": 348981803,
+   "unit": 0.08125365781597793,
+   "unit10k": 0.1803
+  },
+  {
+   "key": " spaces around ",
+   "hash": 76811011,
+   "unit": 0.01788395713083446,
+   "unit10k": 0.1011
+  },
+  {
+   "key": "long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:long:tail",
+   "hash": 375562371,
+   "unit": 0.08744242857210338,
+   "unit10k": 0.2371
+  },
+  {
+   "key": "midpoint·dot",
+   "hash": 2147487609,
+   "unit": 0.5000009222421795,
+   "unit10k": 0.7609
+  },
+  {
+   "key": "dash–em—dash",
+   "hash": 4176755624,
+   "unit": 0.9724767003208399,
+   "unit10k": 0.5624
+  },
+  {
+   "key": "café",
+   "hash": 856211068,
+   "unit": 0.19935217406600714,
+   "unit10k": 0.1068
+  },
+  {
+   "key": "emoji🎲roll",
+   "hash": 1726669708,
+   "unit": 0.4020216194912791,
+   "unit10k": 0.9708
+  }
+ ],
+ "seeds": [
+  {
+   "input": 907,
+   "normalized": 907
+  },
+  {
+   "input": 151461926,
+   "normalized": 151461926
+  },
+  {
+   "input": "907hustle",
+   "normalized": 151461926
+  },
+  {
+   "input": "12345",
+   "normalized": 12345
+  },
+  {
+   "input": "",
+   "normalized": 151461926
+  },
+  {
+   "input": "  ",
+   "normalized": 151461926
+  },
+  {
+   "input": 0,
+   "normalized": 151461926
+  },
+  {
+   "input": -1,
+   "normalized": 4294967295
+  },
+  {
+   "input": -907.75,
+   "normalized": 4294966389
+  },
+  {
+   "input": 4294967296,
+   "normalized": 151461926
+  },
+  {
+   "input": 4294967297,
+   "normalized": 1
+  },
+  {
+   "input": 1000000000000,
+   "normalized": 3567587328
+  },
+  {
+   "input": 3.99,
+   "normalized": 3
+  },
+  {
+   "input": "3.99",
+   "normalized": 3
+  },
+  {
+   "input": true,
+   "normalized": 1
+  }
+ ],
+ "streams": [
+  {
+   "seed": 907,
+   "normalized": 907,
+   "draws": [
+    {
+     "op": "next",
+     "value": 0.056107868207618594,
+     "state": 240981459
+    },
+    {
+     "op": "next",
+     "value": 0.18755099922418594,
+     "state": 805525408
+    },
+    {
+     "op": "int",
+     "min": 0,
+     "max": 9,
+     "value": 0,
+     "state": 68690363
+    },
+    {
+     "op": "next",
+     "value": 0.022574673406779766,
+     "state": 96957484
+    },
+    {
+     "op": "int",
+     "min": 40,
+     "max": 80,
+     "value": 60,
+     "state": 2199040045
+    },
+    {
+     "op": "int",
+     "min": 1,
+     "max": 1,
+     "value": 1,
+     "state": 2012753510
+    },
+    {
+     "op": "pick",
+     "items": [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e"
+     ],
+     "value": "b",
+     "state": 883833084
+    },
+    {
+     "op": "next",
+     "value": 0.5216353917494416,
+     "state": 2240406948
+    },
+    {
+     "op": "int",
+     "min": -3,
+     "max": 3,
+     "value": 1,
+     "state": 2660900474
+    },
+    {
+     "op": "next",
+     "value": 0.46855418756604195,
+     "state": 2012424912
+    }
+   ]
+  },
+  {
+   "seed": 151461926,
+   "normalized": 151461926,
+   "draws": [
+    {
+     "op": "next",
+     "value": 0.3025094436015934,
+     "state": 1299268167
+    },
+    {
+     "op": "next",
+     "value": 0.7579886752646416,
+     "state": 3255536571
+    },
+    {
+     "op": "int",
+     "min": 0,
+     "max": 9,
+     "value": 8,
+     "state": 3706385061
+    },
+    {
+     "op": "next",
+     "value": 0.8339298204518855,
+     "state": 3581701306
+    },
+    {
+     "op": "int",
+     "min": 40,
+     "max": 80,
+     "value": 51,
+     "state": 1166743855
+    },
+    {
+     "op": "int",
+     "min": 1,
+     "max": 1,
+     "value": 1,
+     "state": 4084442488
+    },
+    {
+     "op": "pick",
+     "items": [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e"
+     ],
+     "value": "c",
+     "state": 2084582486
+    },
+    {
+     "op": "next",
+     "value": 0.13897605682723224,
+     "state": 596897619
+    },
+    {
+     "op": "int",
+     "min": -3,
+     "max": 3,
+     "value": 0,
+     "state": 2437787023
+    },
+    {
+     "op": "next",
+     "value": 0.7322941909078509,
+     "state": 3145179601
+    }
+   ]
+  },
+  {
+   "seed": "907hustle",
+   "normalized": 151461926,
+   "draws": [
+    {
+     "op": "next",
+     "value": 0.3025094436015934,
+     "state": 1299268167
+    },
+    {
+     "op": "next",
+     "value": 0.7579886752646416,
+     "state": 3255536571
+    },
+    {
+     "op": "int",
+     "min": 0,
+     "max": 9,
+     "value": 8,
+     "state": 3706385061
+    },
+    {
+     "op": "next",
+     "value": 0.8339298204518855,
+     "state": 3581701306
+    },
+    {
+     "op": "int",
+     "min": 40,
+     "max": 80,
+     "value": 51,
+     "state": 1166743855
+    },
+    {
+     "op": "int",
+     "min": 1,
+     "max": 1,
+     "value": 1,
+     "state": 4084442488
+    },
+    {
+     "op": "pick",
+     "items": [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e"
+     ],
+     "value": "c",
+     "state": 2084582486
+    },
+    {
+     "op": "next",
+     "value": 0.13897605682723224,
+     "state": 596897619
+    },
+    {
+     "op": "int",
+     "min": -3,
+     "max": 3,
+     "value": 0,
+     "state": 2437787023
+    },
+    {
+     "op": "next",
+     "value": 0.7322941909078509,
+     "state": 3145179601
+    }
+   ]
+  },
+  {
+   "seed": -1,
+   "normalized": 4294967295,
+   "draws": [
+    {
+     "op": "next",
+     "value": 0.00005913502536714077,
+     "state": 253983
+    },
+    {
+     "op": "next",
+     "value": 0.9844969508703798,
+     "state": 4228382207
+    },
+    {
+     "op": "int",
+     "min": 0,
+     "max": 9,
+     "value": 4,
+     "state": 1958451267
+    },
+    {
+     "op": "next",
+     "value": 0.9445271999575198,
+     "state": 4056713434
+    },
+    {
+     "op": "int",
+     "min": 40,
+     "max": 80,
+     "value": 59,
+     "state": 2049502865
+    },
+    {
+     "op": "int",
+     "min": 1,
+     "max": 1,
+     "value": 1,
+     "state": 2560970988
+    },
+    {
+     "op": "pick",
+     "items": [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e"
+     ],
+     "value": "b",
+     "state": 1705115568
+    },
+    {
+     "op": "next",
+     "value": 0.06514751794748008,
+     "state": 279806459
+    },
+    {
+     "op": "int",
+     "min": -3,
+     "max": 3,
+     "value": 1,
+     "state": 2999224306
+    },
+    {
+     "op": "next",
+     "value": 0.3959967528935522,
+     "state": 1700793103
+    }
+   ]
+  },
+  {
+   "seed": 1755657600000,
+   "normalized": 3310943232,
+   "draws": [
+    {
+     "op": "next",
+     "value": 0.5069997860118747,
+     "state": 2177547500
+    },
+    {
+     "op": "next",
+     "value": 0.1122693510260433,
+     "state": 482193191
+    },
+    {
+     "op": "next",
+     "value": 0.5096804450731725,
+     "state": 2189060843
+    },
+    {
+     "op": "next",
+     "value": 0.17106261663138866,
+     "state": 734708344
+    },
+    {
+     "op": "next",
+     "value": 0.012612162623554468,
+     "state": 54168826
+    },
+    {
+     "op": "next",
+     "value": 0.023823777213692665,
+     "state": 102322344
+    },
+    {
+     "op": "next",
+     "value": 0.6778041976504028,
+     "state": 2911146862
+    },
+    {
+     "op": "next",
+     "value": 0.7607555300928652,
+     "state": 3267420122
+    },
+    {
+     "op": "next",
+     "value": 0.9932496340479702,
+     "state": 4265974695
+    },
+    {
+     "op": "next",
+     "value": 0.9183804315980524,
+     "state": 3944413919
+    },
+    {
+     "op": "next",
+     "value": 0.23598284251056612,
+     "state": 1013538591
+    },
+    {
+     "op": "next",
+     "value": 0.9017972708679736,
+     "state": 3873189786
+    },
+    {
+     "op": "next",
+     "value": 0.02643774007447064,
+     "state": 113549229
+    },
+    {
+     "op": "next",
+     "value": 0.199704383732751,
+     "state": 857723797
+    },
+    {
+     "op": "next",
+     "value": 0.893798068864271,
+     "state": 3838833475
+    },
+    {
+     "op": "next",
+     "value": 0.30597472563385963,
+     "state": 1314151440
+    },
+    {
+     "op": "next",
+     "value": 0.49636659654788673,
+     "state": 2131878299
+    },
+    {
+     "op": "next",
+     "value": 0.15415390068665147,
+     "state": 662085962
+    },
+    {
+     "op": "next",
+     "value": 0.5963823955971748,
+     "state": 2561442885
+    },
+    {
+     "op": "next",
+     "value": 0.049318952253088355,
+     "state": 211823287
+    },
+    {
+     "op": "next",
+     "value": 0.21556137781590223,
+     "state": 925829068
+    },
+    {
+     "op": "next",
+     "value": 0.17595534189604223,
+     "state": 755722439
+    },
+    {
+     "op": "next",
+     "value": 0.25937944976612926,
+     "state": 1114026254
+    },
+    {
+     "op": "next",
+     "value": 0.11182204191572964,
+     "state": 480272013
+    },
+    {
+     "op": "next",
+     "value": 0.9738666762132198,
+     "state": 4182725525
+    },
+    {
+     "op": "next",
+     "value": 0.45511981355957687,
+     "state": 1954724715
+    },
+    {
+     "op": "next",
+     "value": 0.36753231938928366,
+     "state": 1578539292
+    },
+    {
+     "op": "next",
+     "value": 0.17039008578285575,
+     "state": 731819846
+    },
+    {
+     "op": "next",
+     "value": 0.19024848123081028,
+     "state": 817111005
+    },
+    {
+     "op": "next",
+     "value": 0.8542962805368006,
+     "state": 3669174586
+    },
+    {
+     "op": "next",
+     "value": 0.30106979236006737,
+     "state": 1293084912
+    },
+    {
+     "op": "next",
+     "value": 0.0686186677776277,
+     "state": 294714934
+    },
+    {
+     "op": "next",
+     "value": 0.7678391181398183,
+     "state": 3297843901
+    },
+    {
+     "op": "next",
+     "value": 0.12158027989789844,
+     "state": 522183326
+    },
+    {
+     "op": "next",
+     "value": 0.5420868527144194,
+     "state": 2328245304
+    },
+    {
+     "op": "next",
+     "value": 0.7671404536813498,
+     "state": 3294843160
+    },
+    {
+     "op": "next",
+     "value": 0.3994255792349577,
+     "state": 1715519800
+    },
+    {
+     "op": "next",
+     "value": 0.6976356159429997,
+     "state": 2996322155
+    },
+    {
+     "op": "next",
+     "value": 0.10873031266964972,
+     "state": 466993137
+    },
+    {
+     "op": "next",
+     "value": 0.16142209712415934,
+     "state": 693302628
+    },
+    {
+     "op": "next",
+     "value": 0.5320986497681588,
+     "state": 2285346299
+    },
+    {
+     "op": "next",
+     "value": 0.04127167887054384,
+     "state": 177260511
+    },
+    {
+     "op": "next",
+     "value": 0.37132189655676484,
+     "state": 1594815402
+    },
+    {
+     "op": "next",
+     "value": 0.6797724941279739,
+     "state": 2919600631
+    },
+    {
+     "op": "next",
+     "value": 0.6067582764662802,
+     "state": 2606006954
+    },
+    {
+     "op": "next",
+     "value": 0.4188405522145331,
+     "state": 1798906474
+    },
+    {
+     "op": "next",
+     "value": 0.6327667124569416,
+     "state": 2717712336
+    },
+    {
+     "op": "next",
+     "value": 0.9955288588535041,
+     "state": 4275763891
+    },
+    {
+     "op": "next",
+     "value": 0.56282835197635,
+     "state": 2417329365
+    },
+    {
+     "op": "next",
+     "value": 0.19301836611703038,
+     "state": 829007570
+    },
+    {
+     "op": "next",
+     "value": 0.7023833643179387,
+     "state": 3016713579
+    },
+    {
+     "op": "next",
+     "value": 0.6998206139542162,
+     "state": 3005706650
+    },
+    {
+     "op": "next",
+     "value": 0.998412910848856,
+     "state": 4288150800
+    },
+    {
+     "op": "next",
+     "value": 0.025548713747411966,
+     "state": 109730890
+    },
+    {
+     "op": "next",
+     "value": 0.9273130695801228,
+     "state": 3982779307
+    },
+    {
+     "op": "next",
+     "value": 0.2625631846021861,
+     "state": 1127700291
+    },
+    {
+     "op": "next",
+     "value": 0.5710920197889209,
+     "state": 2452821548
+    },
+    {
+     "op": "next",
+     "value": 0.9303458163049072,
+     "state": 3995804855
+    },
+    {
+     "op": "next",
+     "value": 0.8634908667299896,
+     "state": 3708665033
+    },
+    {
+     "op": "next",
+     "value": 0.21877443115226924,
+     "state": 939629027
+    },
+    {
+     "op": "next",
+     "value": 0.4238655485678464,
+     "state": 1820488669
+    },
+    {
+     "op": "next",
+     "value": 0.49123516702093184,
+     "state": 2109838977
+    },
+    {
+     "op": "next",
+     "value": 0.6763258075807244,
+     "state": 2904797225
+    },
+    {
+     "op": "next",
+     "value": 0.7498976574279368,
+     "state": 3220785914
+    }
+   ]
+  }
+ ],
+ "market_static": {
+  "products": [
+   {
+    "id": "weed",
+    "base": 34,
+    "min": 18,
+    "max": 68,
+    "volatility": 0.12
+   },
+   {
+    "id": "shrooms",
+    "base": 82,
+    "min": 35,
+    "max": 180,
+    "volatility": 0.25
+   },
+   {
+    "id": "pills",
+    "base": 105,
+    "min": 55,
+    "max": 220,
+    "volatility": 0.18
+   },
+   {
+    "id": "lean",
+    "base": 155,
+    "min": 80,
+    "max": 330,
+    "volatility": 0.22
+   },
+   {
+    "id": "coke",
+    "base": 290,
+    "min": 145,
+    "max": 690,
+    "volatility": 0.3
+   },
+   {
+    "id": "molly",
+    "base": 215,
+    "min": 105,
+    "max": 480,
+    "volatility": 0.28
+   },
+   {
+    "id": "cocaine",
+    "base": 290,
+    "min": 145,
+    "max": 690,
+    "volatility": 0.3
+   },
+   {
+    "id": "meth",
+    "base": 185,
+    "min": 70,
+    "max": 560,
+    "volatility": 0.38
+   }
+  ],
+  "areas": [
+   {
+    "id": "north_star_lot",
+    "bias": {
+     "weed": 0.78,
+     "shrooms": 0.88,
+     "cocaine": 1.02,
+     "meth": 0.95
+    }
+   },
+   {
+    "id": "downtown",
+    "bias": {
+     "weed": 1.08,
+     "shrooms": 1.32,
+     "cocaine": 1.46,
+     "meth": 1.08
+    }
+   },
+   {
+    "id": "airport_industrial",
+    "bias": {
+     "weed": 1.12,
+     "shrooms": 1.18,
+     "cocaine": 1.32,
+     "meth": 1.62
+    }
+   }
+  ]
+ },
+ "market_walks": [
+  {
+   "seed": 907,
+   "normalized": 907,
+   "steps": [
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 24
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 61
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 87
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 122
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 292
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 211
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 244
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 179
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 38
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 107
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 97
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 142
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 218
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 178
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 436
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 268
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 39
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 76
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 97
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 135
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 254
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 245
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 330
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 227
+      }
+     ],
+     "state": 767318895
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 25
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 77
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 81
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 162
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 309
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 153
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 320
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 220
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 39
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 104
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 111
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 170
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 315
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 163
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 423
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 160
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 43
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 63
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 85
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 160
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 340
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 200
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 331
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 320
+      }
+     ],
+     "state": 3680888605
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 26
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 89
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 87
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 160
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 360
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 143
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 383
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 146
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 40
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 97
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 92
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 174
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 285
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 130
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 454
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 140
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 43
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 84
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 80
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 137
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 248
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 245
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 413
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 307
+      }
+     ],
+     "state": 2032658469
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 23
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 81
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 98
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 186
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 435
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 146
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 365
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 178
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 40
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 92
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 95
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 142
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 339
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 153
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 375
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 152
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 44
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 79
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 90
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 149
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 255
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 231
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 394
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 300
+      }
+     ],
+     "state": 2070100354
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 25
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 94
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 113
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 187
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 295
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 126
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 397
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 123
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 42
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 94
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 81
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 126
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 416
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 136
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 354
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 118
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 41
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 106
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 86
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 134
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 208
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 203
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 430
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 217
+      }
+     ],
+     "state": 586910567
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 23
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 95
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 111
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 196
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 259
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 126
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 272
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 123
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 45
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 91
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 87
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 116
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 325
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 204
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 411
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 93
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 39
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 101
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 81
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 116
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 180
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 220
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 442
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 320
+      }
+     ],
+     "state": 3875341455
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 24
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 96
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 100
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 189
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 284
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 155
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 219
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 153
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 37
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 113
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 98
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 156
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 244
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 224
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 496
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 149
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 42
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 75
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 104
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 152
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 177
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 244
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 459
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 409
+      }
+     ],
+     "state": 3871879786
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 27
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 77
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 118
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 176
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 266
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 199
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 235
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 108
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 37
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 130
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 92
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 166
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 300
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 222
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 587
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 189
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 41
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 92
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 122
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 142
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 209
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 247
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 418
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 333
+      }
+     ],
+     "state": 1552861299
+    }
+   ]
+  },
+  {
+   "seed": "907hustle",
+   "normalized": 151461926,
+   "steps": [
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 25
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 81
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 119
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 178
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 250
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 269
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 293
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 128
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 37
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 121
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 111
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 187
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 364
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 223
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 526
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 175
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 41
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 95
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 120
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 138
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 271
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 237
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 446
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 341
+      }
+     ],
+     "state": 2916855163
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 28
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 68
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 101
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 188
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 257
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 316
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 301
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 142
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 34
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 111
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 128
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 169
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 440
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 211
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 593
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 122
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 38
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 115
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 98
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 152
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 274
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 243
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 307
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 317
+      }
+     ],
+     "state": 1980658313
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 29
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 68
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 118
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 186
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 222
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 263
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 260
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 172
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 34
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 120
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 139
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 199
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 382
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 250
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 491
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 127
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 35
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 129
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 117
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 154
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 272
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 235
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 404
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 320
+      }
+     ],
+     "state": 2305317303
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 30
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 67
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 118
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 150
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 289
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 285
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 352
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 132
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 32
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 87
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 128
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 148
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 258
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 218
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 349
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 195
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 35
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 94
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 94
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 153
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 309
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 181
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 291
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 344
+      }
+     ],
+     "state": 2709148709
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 29
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 58
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 118
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 145
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 289
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 313
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 350
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 153
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 30
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 102
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 125
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 153
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 241
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 221
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 320
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 142
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 38
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 79
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 107
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 164
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 329
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 144
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 341
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 418
+      }
+     ],
+     "state": 3671800760
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 25
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 54
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 113
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 143
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 367
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 243
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 344
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 168
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 29
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 105
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 125
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 160
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 255
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 172
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 402
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 162
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 40
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 93
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 91
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 186
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 300
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 133
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 379
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 249
+      }
+     ],
+     "state": 222248545
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 27
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 68
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 122
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 161
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 362
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 196
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 394
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 189
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 28
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 87
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 132
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 148
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 234
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 236
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 344
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 117
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 41
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 102
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 105
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 181
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 271
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 205
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 372
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 185
+      }
+     ],
+     "state": 414857133
+    },
+    {
+     "frame": [
+      {
+       "area": "north_star_lot",
+       "product": "weed",
+       "price": 27
+      },
+      {
+       "area": "north_star_lot",
+       "product": "shrooms",
+       "price": 81
+      },
+      {
+       "area": "north_star_lot",
+       "product": "pills",
+       "price": 135
+      },
+      {
+       "area": "north_star_lot",
+       "product": "lean",
+       "price": 146
+      },
+      {
+       "area": "north_star_lot",
+       "product": "coke",
+       "price": 392
+      },
+      {
+       "area": "north_star_lot",
+       "product": "molly",
+       "price": 229
+      },
+      {
+       "area": "north_star_lot",
+       "product": "cocaine",
+       "price": 329
+      },
+      {
+       "area": "north_star_lot",
+       "product": "meth",
+       "price": 248
+      },
+      {
+       "area": "downtown",
+       "product": "weed",
+       "price": 29
+      },
+      {
+       "area": "downtown",
+       "product": "shrooms",
+       "price": 96
+      },
+      {
+       "area": "downtown",
+       "product": "pills",
+       "price": 134
+      },
+      {
+       "area": "downtown",
+       "product": "lean",
+       "price": 179
+      },
+      {
+       "area": "downtown",
+       "product": "coke",
+       "price": 215
+      },
+      {
+       "area": "downtown",
+       "product": "molly",
+       "price": 200
+      },
+      {
+       "area": "downtown",
+       "product": "cocaine",
+       "price": 438
+      },
+      {
+       "area": "downtown",
+       "product": "meth",
+       "price": 124
+      },
+      {
+       "area": "airport_industrial",
+       "product": "weed",
+       "price": 44
+      },
+      {
+       "area": "airport_industrial",
+       "product": "shrooms",
+       "price": 119
+      },
+      {
+       "area": "airport_industrial",
+       "product": "pills",
+       "price": 93
+      },
+      {
+       "area": "airport_industrial",
+       "product": "lean",
+       "price": 167
+      },
+      {
+       "area": "airport_industrial",
+       "product": "coke",
+       "price": 259
+      },
+      {
+       "area": "airport_industrial",
+       "product": "molly",
+       "price": 183
+      },
+      {
+       "area": "airport_industrial",
+       "product": "cocaine",
+       "price": 349
+      },
+      {
+       "area": "airport_industrial",
+       "product": "meth",
+       "price": 172
+      }
+     ],
+     "state": 830908994
+    }
+   ]
+  }
+ ]
+}

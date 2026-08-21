@@ -80,6 +80,10 @@ scripts/
   icon_to_mask.py          # alpha-masks flat icon art for self_modulate tinting
   check_glyph_coverage.py  # CI gate: fails the build on a glyph no font carries
   make_surface_screen.py   # derives a new surface screen from hustle.tscn's chrome
+  parity/gen_fixtures.mjs  # records oracle truth into tests/parity/fixtures/
+
+tests/parity/         # CI gate: replays recorded oracle fixtures through the
+                      # Godot port headless; also runs the save round-trip
 ```
 
 ## Architecture
@@ -151,7 +155,7 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| **5. Behavioral parity harness vs the JS oracle** | **next** |
+| **5. Behavioral parity harness vs the JS oracle** | **in progress** — RNG primitives + save round-trip enforced in CI; market-walk port next |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

@@ -495,6 +495,78 @@ that reasoning is most of the value. The Build State page can be reconstructed f
 - Any deliberate divergence from canon is named with the reason.
 - Any canon oddity found is recorded rather than silently corrected.
 
+## Phase 5 (part 1): the parity harness  (added 2026-08-20)
+
+The dual-run harness the Migration doc's plan-Phase 7 asks for, in its first
+working form: **the oracle's deterministic primitives are recorded as fixtures,
+and CI replays them through the Godot port on every push and PR.** A drifted
+primitive now fails a PR before it can merge.
+
+### The shape
+
+- **`scripts/parity/gen_fixtures.mjs`** (Node, run locally against the
+  read-only oracle checkout) records what the web build actually produces:
+  `stringHash` over game-shaped keys with BOTH normalisations (`/2^32` and
+  `%10000/10000`), `normalizeSeed`'s coercion table, and xorshift32 draw
+  sequences with the state cursor after every draw. Fixtures are committed
+  (`tests/parity/fixtures/rng_fixtures.json`), so CI never needs the oracle.
+  Regenerate on oracle version bumps; a fixture diff without a version bump is
+  a red flag.
+- **`tests/parity/parity_runner.gd`** runs headless
+  (`godot --headless --path . res://tests/parity/parity_runner.tscn`), compares
+  recorded truth, and quits non-zero on any mismatch. The `parity` CI job runs
+  it in the same godot-ci container as the export, with the same MCP-addon
+  strip. First run: **355 checks, 0 failures.**
+- **The Phase 4 acceptance test is now automated** — the runner replays the
+  save→scramble→load round-trip (real dispatches, exposure broadcast, Curtis
+  awareness, crew/territory/shark state, fractional heat, Color'd feed entry)
+  and deep-compares the full manifest. It restores whatever save file it found
+  before running, so a dev machine does not gain a phantom "Parity" run.
+
+### `RngManager` grew the stream half of canon's randomness
+
+Canon has TWO randomness shapes and they are not interchangeable: **keyed**
+(`stringHash(key)` → one value per unique key, order-independent) and
+**stream** (`makeRandom(rngState)`, xorshift32 — order and COUNT of draws
+matter, cursor carried in run state). The market walk and crew assignment
+resolution consume the stream. `make_stream()` / `Xorshift` port it exactly:
+masking each step to 32 bits is bit-equivalent to JS's int32 intermediates
+because XOR and logical shifts only read the low 32 bits. `normalize_seed`
+ports the full `Number()` coercion table (non-numeric strings → the 0x9072026
+fallback, negatives wrap ToUint32, zero → fallback) — and canon runs it on
+carried cursors too, so `make_stream` does as well.
+
+Also fixed while proving bit-exactness: JS `stringHash` iterates code points
+but hashes `charCodeAt(0)` — for an astral character that is the HIGH
+SURROGATE, not the code point. `string_hash` now reproduces that quirk (no
+game key contains one, but the fixture with an emoji key pins it).
+
+### The marketPrice copy is oracle-verified, and the walk fixtures wait
+
+`game-core` does not export `marketPrice`, so the generator carries a copy of
+the 6-line formula (game-core.js:1331) — **proven against the oracle, not
+trusted**: the generator replays `initialMarket` with the copy against a
+scanned stream offset and requires it to reproduce `createRun`'s actual market
+(every price AND every availability, 3 areas × 8 products) before writing
+anything. It verified at offset 0 — `initialMarket` is `createRun`'s first
+stream consumer.
+
+The recorded market walks (canon consumption order: area × product, one
+movement draw each, 0.34 mean-reversion, per-product volatility, clamp
+[min×0.72, max×1.2]) are **PENDING in the runner, counted but not compared** —
+they are the acceptance tests for part 2, the canon economy port. Today's
+`economy.evolve()` is still the simplified keyed ±20% model; part 2 replaces
+it with the stream-based walk and flips those fixtures from pending to
+enforced.
+
+### Gotchas
+
+- Godot's JSON parses every number as float. Fixture hashes/states are uint32
+  — exact in a double — so `int(row["hash"])` compares exactly; stream floats
+  agree at 0.0 and the runner's 1e-12 epsilon only absorbs printf noise.
+- `tests/*` joined the web export's `exclude_filter` — the runner and fixtures
+  have no business in the shipped .pck.
+
 ## Phase 4: save/load  (added 2026-08-20)
 
 `autoload/save_system.gd` (`SaveSystem`, the 7th autoload) — port of canon's

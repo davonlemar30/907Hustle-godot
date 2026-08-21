@@ -19,8 +19,14 @@ func _ready() -> void:
 	economy.setup(_gs, rng)
 	register_system("economy", economy)
 
+	# Phone is constructed before time because every slot advance asks it
+	# whether a paid-for line comes back on (canon advanceRun).
+	var phone = preload("res://systems/phone.gd").new()
+	phone.setup(_gs, rng)
+	register_system("phone", phone)
+
 	var time = preload("res://systems/time_system.gd").new()
-	time.setup(_gs, economy)
+	time.setup(_gs, economy, phone)
 	register_system("time", time)
 
 	var travel = preload("res://systems/travel.gd").new()
@@ -33,7 +39,7 @@ func _ready() -> void:
 	register_system("jobs", jobs)
 
 	var obligations = preload("res://systems/obligations.gd").new()
-	obligations.setup(_gs)
+	obligations.setup(_gs, phone)
 	register_system("obligations", obligations)
 
 	var stickup = preload("res://systems/stickup.gd").new()

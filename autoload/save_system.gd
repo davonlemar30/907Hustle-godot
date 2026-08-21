@@ -42,7 +42,7 @@ extends Node
 ## market prices as a {product_id: price} slice. Canon tables (districts,
 ## products' static fields, stick_targets, crew_roster, …) and the UI-scaffold
 ## placeholders that no system writes yet (todays_take, income_sources,
-## hustle_surfaces, active_operation, eli_report, pending_messages) are NOT
+## hustle_surfaces, active_operation, eli_report) are NOT
 ## saved: a data-tuning commit must win over a stale save, and a placeholder
 ## that persists becomes a fake fact.
 
@@ -52,7 +52,13 @@ const SAVE_PATH := "user://907hustle_run.save"
 ## migration arm only stamps the version, and a v1 save's missing fields
 ## default in; load_run() then walks fresh markets off the run seed, so an old
 ## save resumes with a coherent board instead of an empty one.
-const SAVE_VERSION := 2
+##
+## v3 (Phase 6): adds the phone inbox (`phone_inbox`, `phone_held_inbox`,
+## `phone_reactivate_at_slot`) and changes the SHAPE of `activity_log` rows,
+## which now carry the day they were logged on. The inbox fields are additive
+## and default in; the log rows are not, so the v2→v3 arm walks them and stamps
+## the ones that predate the field. See _migrate for what it stamps and why.
+const SAVE_VERSION := 3
 
 ## Every mutable GameState field, captured and applied by name. products.price
 ## is the one mutable value living inside a canon table; it rides separately as
@@ -71,6 +77,8 @@ const PERSIST_FIELDS: Array[String] = [
 	# Obligations + game over
 	"rent_due_day", "rent_missed", "household_warnings",
 	"phone_due_day", "phone_days_past_due", "phone_active",
+	# Phone inbox (v3)
+	"phone_inbox", "phone_held_inbox", "phone_reactivate_at_slot",
 	"game_over", "game_over_reason",
 	# Stickup
 	"stick_tier", "stick_daily_count", "stick_rep", "stick_attempts",
@@ -207,6 +215,20 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# transform — absent fields keep GameState's defaults, and
 				# load_run() walks fresh markets when none arrived.
 				pass
+			2:
+				# v2 → v3: the phone inbox fields are additive and default in.
+				# activity_log rows are not — they gained a `day`, and a row
+				# written before the field existed cannot have one recovered
+				# (the log never carried a date). They are stamped -1, which no
+				# real day equals, so an old entry is simply never "today".
+				# Better a row that is honestly undated than one back-dated to
+				# a day it did not happen on.
+				# Not named `log` — that is a GDScript built-in.
+				var feed: Variant = state.get("activity_log")
+				if feed is Array:
+					for row in (feed as Array):
+						if row is Dictionary and not (row as Dictionary).has("day"):
+							(row as Dictionary)["day"] = -1
 			_:
 				return {}
 		version += 1

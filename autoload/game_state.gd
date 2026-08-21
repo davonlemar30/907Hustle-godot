@@ -142,15 +142,14 @@ var active_operation: Dictionary = {
 }
 
 # --- Activity feed ---------------------------------------------------------------
+## Rows carry the day they were logged on so a screen can ask for "today" —
+## canon stamps every entry `Day N · SLOT` (game-core.js logEntry) and the Phone's
+## Today's Log filters on it. The editor-time preview rows below are dated to the
+## preview day.
 var activity_log: Array = [
-	{"text": "Afternoon: Sold 3 pills in Midtown.", "time": "3:46 PM", "color": Color(0.451, 0.722, 0.404)},
-	{"text": "Morning: Paid bus pass.", "time": "8:12 AM", "color": Color(0.373, 0.663, 0.847)},
-	{"text": "Night watch: No arrests yet.", "time": "9:31 PM", "color": Color(0.62, 0.5, 0.85)},
-]
-
-# --- People & events -------------------------------------------------------------
-var pending_messages: Array = [
-	{"npc_id": "yalonda", "name": "YALONDA", "preview": "\"You owe me a favor. Slide through when you're ready.\"", "timestamp": "12m ago"},
+	{"text": "Afternoon: Sold 3 pills in Midtown.", "day": 14, "time": "3:46 PM", "color": Color(0.451, 0.722, 0.404)},
+	{"text": "Morning: Paid bus pass.", "day": 14, "time": "8:12 AM", "color": Color(0.373, 0.663, 0.847)},
+	{"text": "Night watch: No arrests yet.", "day": 14, "time": "9:31 PM", "color": Color(0.62, 0.5, 0.85)},
 ]
 
 # --- Hustle hub (canon: web HustleScreen income surfaces + Curtis) --------------
@@ -269,6 +268,9 @@ func reset_to_new_game() -> void:
 	phone_due_day = 7
 	phone_days_past_due = 0
 	phone_active = true
+	phone_inbox = []
+	phone_held_inbox = []
+	phone_reactivate_at_slot = -1
 	game_over = false
 	game_over_reason = ""
 	stick_tier = 1
@@ -391,13 +393,32 @@ var phone_due_day: int = 7
 var phone_days_past_due: int = 0
 var phone_active: bool = true
 
+# --- Phone inbox (canon: state.phone.inbox / heldInbox / reactivateAtSlot) --
+## Canon keeps one object, `state.phone` = {active, billDueDay, daysPastDue,
+## inbox, heldInbox, reactivateAtSlot}. The three scalars above landed with the
+## obligations port under flat names and keep them; these are the rest of it.
+##
+## Row shape is canon's pushPhoneMessage item (game-core.js:735):
+##   {id, from, text, day, slot, read, action?}
+## `slot` is the SLOT INDEX, not the uppercase name — canon renders it as
+## SLOTS[message.slot] and the id is built from the index.
+##
+## Order matters and the two halves disagree on purpose: a live message is
+## unshifted (newest first), a held one is pushed (oldest first), and the flush
+## on restoration reverses the held half before prepending it.
+var phone_inbox: Array = []
+var phone_held_inbox: Array = []
+## Canon carries `null` here; -1 is the Godot stand-in for "nothing scheduled".
+## Set when a dead line is paid for, cleared by the next slot advance.
+var phone_reactivate_at_slot: int = -1
+
 var game_over: bool = false
 var game_over_reason: String = ""
 
 ## Prepend a feed entry. Home shows the newest three, so new events go on top.
 ## `time` is the slot rather than a clock reading — the run has no wall clock.
 func log_activity(text: String, color: Color = Color(0.608, 0.608, 0.608)) -> void:
-	activity_log.push_front({"text": text, "time": time_slot, "color": color})
+	activity_log.push_front({"text": text, "day": day, "time": time_slot, "color": color})
 	if activity_log.size() > 12:
 		activity_log.resize(12)
 

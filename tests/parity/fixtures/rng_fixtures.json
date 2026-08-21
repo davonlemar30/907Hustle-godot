@@ -2086,5 +2086,376 @@
     }
    }
   }
- ]
+ ],
+ "phone": {
+  "bill": 75,
+  "clock": {
+   "bill": 75,
+   "frames": [
+    {
+     "day": 1,
+     "slot": 0,
+     "phone": {
+      "active": true,
+      "bill_due_day": 7,
+      "days_past_due": 0,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 2,
+     "slot": 0,
+     "phone": {
+      "active": true,
+      "bill_due_day": 7,
+      "days_past_due": 0,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 3,
+     "slot": 0,
+     "phone": {
+      "active": true,
+      "bill_due_day": 7,
+      "days_past_due": 0,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 4,
+     "slot": 0,
+     "phone": {
+      "active": true,
+      "bill_due_day": 7,
+      "days_past_due": 0,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 5,
+     "slot": 0,
+     "phone": {
+      "active": true,
+      "bill_due_day": 7,
+      "days_past_due": 0,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 6,
+     "slot": 0,
+     "phone": {
+      "active": true,
+      "bill_due_day": 7,
+      "days_past_due": 0,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 7,
+     "slot": 0,
+     "phone": {
+      "active": true,
+      "bill_due_day": 7,
+      "days_past_due": 0,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 8,
+     "slot": 0,
+     "phone": {
+      "active": true,
+      "bill_due_day": 7,
+      "days_past_due": 1,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 9,
+     "slot": 0,
+     "phone": {
+      "active": true,
+      "bill_due_day": 7,
+      "days_past_due": 2,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 10,
+     "slot": 0,
+     "phone": {
+      "active": false,
+      "bill_due_day": 7,
+      "days_past_due": 3,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 11,
+     "slot": 0,
+     "phone": {
+      "active": false,
+      "bill_due_day": 7,
+      "days_past_due": 4,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 12,
+     "slot": 0,
+     "phone": {
+      "active": false,
+      "bill_due_day": 7,
+      "days_past_due": 5,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "day": 13,
+     "slot": 0,
+     "phone": {
+      "active": false,
+      "bill_due_day": 7,
+      "days_past_due": 6,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    }
+   ]
+  },
+  "restore": {
+   "steps": [
+    {
+     "label": "offline",
+     "day": 13,
+     "slot": 0,
+     "cash": 210,
+     "phone": {
+      "active": false,
+      "bill_due_day": 7,
+      "days_past_due": 6,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "label": "paid",
+     "day": 13,
+     "slot": 0,
+     "cash": 135,
+     "phone": {
+      "active": false,
+      "bill_due_day": 20,
+      "days_past_due": 0,
+      "reactivate_at_slot": 48,
+      "inbox": [],
+      "held": []
+     }
+    },
+    {
+     "label": "advanced",
+     "day": 13,
+     "slot": 1,
+     "cash": 135,
+     "phone": {
+      "active": true,
+      "bill_due_day": 20,
+      "days_past_due": 0,
+      "reactivate_at_slot": -1,
+      "inbox": [],
+      "held": []
+     }
+    }
+   ]
+  },
+  "message": {
+   "message": {
+    "id": "2:1:3213940972",
+    "from": "Spenard Chevron Clerk",
+    "text": "We have an offer for you. Call back when you're ready to commit.",
+    "day": 2,
+    "slot": 1,
+    "read": false
+   },
+   "inbox_before": [
+    "2:1:3213940972"
+   ],
+   "after_dismiss": [],
+   "after_clear": []
+  },
+  "held_flush": {
+   "at": {
+    "day": 13,
+    "slot": 0
+   },
+   "before": {
+    "active": false,
+    "bill_due_day": 7,
+    "days_past_due": 6,
+    "reactivate_at_slot": -1,
+    "inbox": [
+     "live-1"
+    ],
+    "held": [
+     "held-1",
+     "held-2",
+     "held-3"
+    ]
+   },
+   "after": {
+    "active": true,
+    "bill_due_day": 20,
+    "days_past_due": 0,
+    "reactivate_at_slot": -1,
+    "inbox": [
+     "held-3",
+     "held-2",
+     "held-1",
+     "live-1"
+    ],
+    "held": []
+   }
+  },
+  "intel": [
+   {
+    "area": "north_star_lot",
+    "slots": [
+     [
+      "Spenard: morning foot traffic is starting to settle.",
+      "Spenard: a bus driver says the next run is on time.",
+      "Spenard: somebody is asking who has reliable hands today.",
+      "Spenard: a warm counter is drawing a small crowd.",
+      "Spenard: road crews left one lane tighter than usual.",
+      "Spenard: the useful names are moving by text, not flyers."
+     ],
+     [
+      "Spenard: afternoon foot traffic is starting to settle.",
+      "Spenard: a bus driver says the next run is on time.",
+      "Spenard: somebody is asking who has reliable hands today.",
+      "Spenard: a warm counter is drawing a small crowd.",
+      "Spenard: road crews left one lane tighter than usual.",
+      "Spenard: the useful names are moving by text, not flyers."
+     ],
+     [
+      "Spenard: evening foot traffic is starting to settle.",
+      "Spenard: a bus driver says the next run is on time.",
+      "Spenard: somebody is asking who has reliable hands today.",
+      "Spenard: a warm counter is drawing a small crowd.",
+      "Spenard: road crews left one lane tighter than usual.",
+      "Spenard: the useful names are moving by text, not flyers."
+     ],
+     [
+      "Spenard: night foot traffic is starting to settle.",
+      "Spenard: a bus driver says the next run is on time.",
+      "Spenard: somebody is asking who has reliable hands today.",
+      "Spenard: a warm counter is drawing a small crowd.",
+      "Spenard: road crews left one lane tighter than usual.",
+      "Spenard: the useful names are moving by text, not flyers."
+     ]
+    ]
+   },
+   {
+    "area": "downtown",
+    "slots": [
+     [
+      "Downtown: morning foot traffic is starting to settle.",
+      "Downtown: a bus driver says the next run is on time.",
+      "Downtown: somebody is asking who has reliable hands today.",
+      "Downtown: a warm counter is drawing a small crowd.",
+      "Downtown: road crews left one lane tighter than usual.",
+      "Downtown: the useful names are moving by text, not flyers."
+     ],
+     [
+      "Downtown: afternoon foot traffic is starting to settle.",
+      "Downtown: a bus driver says the next run is on time.",
+      "Downtown: somebody is asking who has reliable hands today.",
+      "Downtown: a warm counter is drawing a small crowd.",
+      "Downtown: road crews left one lane tighter than usual.",
+      "Downtown: the useful names are moving by text, not flyers."
+     ],
+     [
+      "Downtown: evening foot traffic is starting to settle.",
+      "Downtown: a bus driver says the next run is on time.",
+      "Downtown: somebody is asking who has reliable hands today.",
+      "Downtown: a warm counter is drawing a small crowd.",
+      "Downtown: road crews left one lane tighter than usual.",
+      "Downtown: the useful names are moving by text, not flyers."
+     ],
+     [
+      "Downtown: night foot traffic is starting to settle.",
+      "Downtown: a bus driver says the next run is on time.",
+      "Downtown: somebody is asking who has reliable hands today.",
+      "Downtown: a warm counter is drawing a small crowd.",
+      "Downtown: road crews left one lane tighter than usual.",
+      "Downtown: the useful names are moving by text, not flyers."
+     ]
+    ]
+   },
+   {
+    "area": "airport_industrial",
+    "slots": [
+     [
+      "Industrial Service Roads: morning foot traffic is starting to settle.",
+      "Industrial Service Roads: a bus driver says the next run is on time.",
+      "Industrial Service Roads: somebody is asking who has reliable hands today.",
+      "Industrial Service Roads: a warm counter is drawing a small crowd.",
+      "Industrial Service Roads: road crews left one lane tighter than usual.",
+      "Industrial Service Roads: the useful names are moving by text, not flyers."
+     ],
+     [
+      "Industrial Service Roads: afternoon foot traffic is starting to settle.",
+      "Industrial Service Roads: a bus driver says the next run is on time.",
+      "Industrial Service Roads: somebody is asking who has reliable hands today.",
+      "Industrial Service Roads: a warm counter is drawing a small crowd.",
+      "Industrial Service Roads: road crews left one lane tighter than usual.",
+      "Industrial Service Roads: the useful names are moving by text, not flyers."
+     ],
+     [
+      "Industrial Service Roads: evening foot traffic is starting to settle.",
+      "Industrial Service Roads: a bus driver says the next run is on time.",
+      "Industrial Service Roads: somebody is asking who has reliable hands today.",
+      "Industrial Service Roads: a warm counter is drawing a small crowd.",
+      "Industrial Service Roads: road crews left one lane tighter than usual.",
+      "Industrial Service Roads: the useful names are moving by text, not flyers."
+     ],
+     [
+      "Industrial Service Roads: night foot traffic is starting to settle.",
+      "Industrial Service Roads: a bus driver says the next run is on time.",
+      "Industrial Service Roads: somebody is asking who has reliable hands today.",
+      "Industrial Service Roads: a warm counter is drawing a small crowd.",
+      "Industrial Service Roads: road crews left one lane tighter than usual.",
+      "Industrial Service Roads: the useful names are moving by text, not flyers."
+     ]
+    ]
+   }
+  ]
+ }
 }

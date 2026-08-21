@@ -228,6 +228,7 @@ regardless of how small the source file is.
 | FS-003.1. Consequence freeze | ✅ consequence-adjacent behavior pinned as regression fixtures; parity → 7665 checks |
 | FS-003.2. DayLifecycle seam | ✅ night settlement is a declared sequence, not signal-connection order; parity → 7726 checks |
 | FS-003.3. Wallet + Heat owners | ✅ every runtime Cash/Heat write routes through one owner, with automated writer audits; parity → 7889 checks |
+| FS-003.4. Consequence state | ✅ TI-003 §5 state persisted, save v8, v7 aggregate Cash migrates to Clean; parity → 8036 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

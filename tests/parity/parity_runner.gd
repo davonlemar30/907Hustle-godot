@@ -121,6 +121,7 @@ func _ready() -> void:
 		_check_frozen_behavior()
 		_check_day_lifecycle_order()
 		_check_wallet_and_heat()
+		_check_consequence_state()
 		_check_save_roundtrip()
 	_finish()
 
@@ -1630,8 +1631,8 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 
 	# Pinned deliberately, and bumped deliberately: this assertion exists so a
 	# schema change cannot land by accident, which means every real bump edits
-	# it on purpose. 6 → 7 in FS-001.6.
-	_expect_int("save version is 7", saves.SAVE_VERSION, 7)
+	# it on purpose. 6 → 7 in FS-001.6, 7 → 8 in FS-003.4.
+	_expect_int("save version is 8", saves.SAVE_VERSION, 8)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
 
 	# A v5 save mid-day 4: one listing bought today and still held (recoverable),
@@ -4947,6 +4948,640 @@ func _check_owner_rng_non_drift(gs: Node, gm: Node, wallet: RefCounted,
 	_expect_true("the night dispatches", gm.dispatch("advance_time", {}))
 	_expect_true("the market walk does move the cursor", int(gs.rng_state) != cursor)
 
+## FS-003.4 — the Consequence-Encounter Engine's persisted state, and the v8 arm.
+##
+## ## What this section deliberately does NOT re-cover
+##
+## The general round-trip machinery already covers every field in
+## `PERSIST_FIELDS` by name (`_check_save_roundtrip`), the coercion rules
+## (`_coerced`), and the malformed-payload posture (`_check_list_migration`'s
+## junk-holdings case). Those are not repeated.
+##
+## What is new:
+##
+##   1. the v7 → v8 arm, including the wallet transform that is its only one;
+##   2. determinism and idempotency of that arm;
+##   3. TI-003 §20's twelve required round-trip shapes, each staged and reloaded;
+##   4. the invariant `cash == dirty + clean` surviving a load;
+##   5. save data containing no Object references and no runtime adapters.
+func _check_consequence_state() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	_check_v8_field_manifest(saves)
+	_check_v8_migration(gs, saves)
+	_check_v8_roundtrips(gs, gm, saves)
+	_check_v8_save_carries_no_objects(gs, gm, saves)
+
+	if previous_save.is_empty():
+		DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+	gs.reset_to_new_game()
+
+## Every TI-003 §5 structure is actually in the manifest.
+##
+## Asserted by name rather than by round-tripping alone: a field missing from
+## `PERSIST_FIELDS` round-trips perfectly for as long as the test never changes
+## it from its default, which is exactly how a persistence gap ships.
+const V8_PERSISTED: Array[String] = [
+	"dirty_cash", "clean_cash", "financial_pressure",
+	"next_cause_sequence", "next_consequence_sequence",
+	"active_consequence", "consequence_history", "consequence_queue",
+	"last_blocking_delayed_day", "arrest_record", "boost_store_bans",
+	"district_pressure", "pressure_bleed_pending",
+]
+
+func _check_v8_field_manifest(saves: Node) -> void:
+	for field in V8_PERSISTED:
+		_expect_true("%s persists" % field, field in saves.PERSIST_FIELDS)
+
+## A v7 save, as v7 actually wrote them: one aggregate `cash`, and not one of
+## the consequence fields present at all.
+func _v7_payload(cash: int) -> Dictionary:
+	return {
+		"day": 12, "time_slot": "EVENING", "time_slots_today": 2,
+		"run_seed": "907hustle", "current_district_id": "downtown",
+		"street_name": "Legacy",
+		"cash": cash, "heat": 4.5, "health": 61, "debt": 300,
+		"respect": 5, "crew_power": 3,
+		"inventory": {"weed": 2},
+		"rent_due_day": 15, "phone_due_day": 14, "phone_active": true,
+		"crew_records": {}, "held_blocks": {}, "soldiers_idle": 0,
+		"list_holdings": [], "list_taken": {"day": 12, "ids": []},
+		"activity_log": [],
+	}
+
+func _write_save(saves: Node, version: int, state: Dictionary) -> void:
+	var file := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if file == null:
+		_fail("save write", "could not open %s" % saves.SAVE_PATH)
+		return
+	file.store_string(var_to_str({"save_version": version, "state": state}))
+	file.close()
+
+## The v7 → v8 arm. TI-003 §20, step by step.
+func _check_v8_migration(gs: Node, saves: Node) -> void:
+	# Scramble every target field first, so a load that silently no-ops cannot
+	# pass any of the assertions below by leaving them where the test put them.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.dirty_cash = 999
+	gs.clean_cash = 111
+	gs.financial_pressure = 7
+	gs.next_cause_sequence = 42
+	gs.active_consequence = {"stage": "decision", "cause_id": "cause:00000001"}
+	gs.consequence_history = {"cause:00000001": {"effect_receipts": ["x"]}}
+	gs.consequence_queue = [{"queue_id": "q1"}]
+	gs.last_blocking_delayed_day = 5
+	gs.arrest_record = {"priors": 3, "last_arrest_day": 9, "charges": [{"a": 1}]}
+	gs.boost_store_bans = ["some_store"]
+	gs.district_pressure = {"downtown": {"boost": {"score": 6.0}}}
+	gs.pressure_bleed_pending = [{"to": "downtown"}]
+
+	_write_save(saves, 7, _v7_payload(1500))
+	_expect_true("a v7 save loads into v8", saves.load_run())
+
+	# Step 1-3: the wallet transform, the arm's only one.
+	_expect_int("v7 migration keeps the visible total", int(gs.cash), 1500)
+	_expect_int("v7 migration classifies the aggregate clean", int(gs.clean_cash), 1500)
+	_expect_int("v7 migration leaves nothing dirty", int(gs.dirty_cash), 0)
+	# TI-003 acceptance: "aggregate visible Cash equals Clean + Dirty".
+	_expect_int("v7 migration keeps the wallet invariant",
+		int(gs.cash), int(gs.dirty_cash) + int(gs.clean_cash))
+
+	# Step 4-9: everything else seeds empty. A v7 save cannot hold any of it,
+	# so empty is the true history rather than a fallback.
+	_expect_int("v7 migration seeds no Financial Pressure", int(gs.financial_pressure), 0)
+	_expect_int("v7 migration seeds no cause sequence", int(gs.next_cause_sequence), 0)
+	_expect_int("v7 migration seeds no consequence sequence",
+		int(gs.next_consequence_sequence), 0)
+	_expect_true("v7 migration infers no active chain", gs.active_consequence.is_empty())
+	_expect_true("v7 migration seeds empty history", gs.consequence_history.is_empty())
+	_expect_true("v7 migration seeds an empty queue", gs.consequence_queue.is_empty())
+	_expect_int("v7 migration seeds no delayed-surface day",
+		int(gs.last_blocking_delayed_day), -1)
+	_expect_int("v7 migration seeds no priors", int(gs.arrest_record["priors"]), 0)
+	_expect_int("v7 migration seeds no last arrest",
+		int(gs.arrest_record["last_arrest_day"]), -1)
+	_expect_true("v7 migration seeds no charges",
+		(gs.arrest_record["charges"] as Array).is_empty())
+	_expect_true("v7 migration seeds no Boost bans", gs.boost_store_bans.is_empty())
+	_expect_true("v7 migration seeds no District Pressure", gs.district_pressure.is_empty())
+	_expect_true("v7 migration seeds an empty bleed queue",
+		gs.pressure_bleed_pending.is_empty())
+
+	# Step 10: everything a v7 save DID carry is preserved. The arm must not be
+	# a reset dressed as a migration — asserted on fields from four systems.
+	_expect_int("v7 migration preserves the day", gs.day, 12)
+	_expect_float("v7 migration preserves heat", float(gs.heat), 4.5)
+	_expect_int("v7 migration preserves health", gs.health, 61)
+	_expect_str("v7 migration preserves the district", gs.current_district_id, "downtown")
+	_expect_int("v7 migration preserves inventory", int(gs.inventory.get("weed", 0)), 2)
+	_expect_int("v7 migration preserves obligations", gs.rent_due_day, 15)
+
+	# Deterministic: the same payload produces the same result every time.
+	var first := "%d/%d/%d" % [int(gs.cash), int(gs.clean_cash), int(gs.dirty_cash)]
+	gs.reset_to_new_game()
+	_write_save(saves, 7, _v7_payload(1500))
+	_expect_true("the v7 arm reloads", saves.load_run())
+	_expect_str("the v7 arm is deterministic",
+		"%d/%d/%d" % [int(gs.cash), int(gs.clean_cash), int(gs.dirty_cash)], first)
+
+	# Idempotent: the run that just migrated saves as v8 and reloads unchanged.
+	# This is the case that would break if the classifier ran on every load
+	# rather than only where provenance is absent — a v8 save with real dirty
+	# money would be laundered by its own reload.
+	gs.dirty_cash = 400
+	gs.clean_cash = 1100
+	gs.cash = 1500
+	saves.save_run()
+	gs.dirty_cash = 0
+	gs.clean_cash = 0
+	gs.cash = 0
+	_expect_true("the migrated run saves and reloads as v8", saves.load_run())
+	_expect_int("a v8 reload keeps dirty money dirty", int(gs.dirty_cash), 400)
+	_expect_int("a v8 reload keeps clean money clean", int(gs.clean_cash), 1100)
+	_expect_int("a v8 reload keeps the visible total", int(gs.cash), 1500)
+
+	# A zero-cash v7 save is the boundary the maxi() guard exists for.
+	gs.reset_to_new_game()
+	_write_save(saves, 7, _v7_payload(0))
+	_expect_true("a broke v7 save migrates", saves.load_run())
+	_expect_int("a broke v7 save classifies nothing clean", int(gs.clean_cash), 0)
+	_expect_int("a broke v7 save classifies nothing dirty", int(gs.dirty_cash), 0)
+
+	# And a malformed one migrates rather than crashing — PR #36's posture,
+	# applied to the field this arm actually reads.
+	gs.reset_to_new_game()
+	var junk: Dictionary = _v7_payload(500)
+	junk["cash"] = "not a number"
+	_write_save(saves, 7, junk)
+	# REQUIRED_KEYS type-checks `cash`, so this is refused rather than migrated.
+	# Asserted so the refusal is a decision on the record: a save whose cash is
+	# not a number has no aggregate to classify, and guessing one would invent
+	# money.
+	_expect_true("a v7 save with non-numeric cash is refused", not saves.load_run())
+
+	# --- the arm in isolation ---
+	#
+	# Everything above goes through `load_run()`, which ALSO runs the load-time
+	# classifier — and that classifier reaches the same answer, so the arm's own
+	# transform is invisible through that path. A sabotage that deleted the arm's
+	# two lines entirely passed the whole section above.
+	#
+	# So the arm is called directly and its RETURNED payload inspected, before a
+	# byte of it reaches GameState. This is the only check that can tell the two
+	# apart, and it is the reason the arm is not dead code.
+	var migrated: Dictionary = saves._migrate({"save_version": 7, "state": _v7_payload(1500)})
+	_expect_true("the v7 arm returns a payload", not migrated.is_empty())
+	_expect_true("the v7 arm writes clean_cash itself", migrated.has("clean_cash"))
+	_expect_true("the v7 arm writes dirty_cash itself", migrated.has("dirty_cash"))
+	_expect_int("the v7 arm classifies clean in the payload",
+		int(migrated.get("clean_cash", -1)), 1500)
+	_expect_int("the v7 arm classifies dirty in the payload",
+		int(migrated.get("dirty_cash", -1)), 0)
+	_expect_int("the v7 arm leaves the aggregate alone", int(migrated.get("cash", -1)), 1500)
+	# The arm must not invent consequence state either — those fields default in
+	# through `_apply` rather than being written here.
+	_expect_true("the v7 arm invents no active chain", not migrated.has("active_consequence"))
+
+	# A v8 payload passes through untouched: the arm runs only for older ones.
+	var v8_state: Dictionary = _v7_payload(1500)
+	v8_state["clean_cash"] = 200
+	v8_state["dirty_cash"] = 1300
+	var untouched: Dictionary = saves._migrate({"save_version": 8, "state": v8_state})
+	_expect_int("a v8 payload keeps its dirty bucket",
+		int(untouched.get("dirty_cash", -1)), 1300)
+	_expect_int("a v8 payload keeps its clean bucket",
+		int(untouched.get("clean_cash", -1)), 200)
+
+	# The arm's arithmetic and WalletSystem's classifier must agree. They are
+	# two implementations of one TI-003 rule — the arm works on a Dictionary
+	# before any system exists, the classifier on live state — and a divergence
+	# between them would show up only on old saves.
+	var gm := get_node("/root/GameManager")
+	var wallet: RefCounted = gm.system("wallet") as RefCounted
+	gs.reset_to_new_game()
+	gs.cash = 1500
+	gs.dirty_cash = 900
+	gs.clean_cash = 600
+	wallet.classify_legacy_total()
+	_expect_int("the classifier agrees with the arm on clean", int(gs.clean_cash), 1500)
+	_expect_int("the classifier agrees with the arm on dirty", int(gs.dirty_cash), 0)
+
+## TI-003 §20's required round-trips, staged as state and reloaded.
+##
+## Each shape is written into GameState, saved, scrambled, and reloaded, and the
+## reload is asserted to restore the exact facts a later slice will read — the
+## stage, the committed choice, the shown odds, the queue order.
+##
+## These are STATE round-trips, not behaviour: FS-003.4 persists the shapes and
+## FS-003.5 onward fills them. A round-trip that passes here is the guarantee
+## those slices are building on.
+func _check_v8_roundtrips(gs: Node, gm: Node, saves: Node) -> void:
+	# --- 1. Caught decision, mid-chain ---
+	_stage_run(gs)
+	gs.next_cause_sequence = 142
+	gs.next_consequence_sequence = 143
+	gs.active_consequence = {
+		"consequence_id": "consequence:00000143",
+		"cause_id": "cause:00000142",
+		"chain_kind": "boost_caught",
+		"stage": "decision",
+		"created_day": 12, "created_slot": 2,
+		"district_id": "downtown", "return_route": "BOOST",
+		"source": {
+			"family": "boost", "action_id": "boost", "target_id": "corner_store",
+			"target_tier": 2, "source_day": 12, "source_slot": 2,
+			"source_rng_key": "boost:12:2:corner_store",
+			"pre_encounter_heat": 7.5, "contested_take": 240,
+		},
+		"decision": {
+			"definition_id": "boost_caught",
+			"allowed_choices": ["fight", "run", "talk", "yield"],
+			"committed_choice": "",
+			"resolver_inputs": {"combat": 3, "charisma": 2},
+			"shown_probabilities": {"fight": 0.42, "run": 0.55, "talk": 0.31},
+			"resolved_tier": "", "result": {},
+		},
+		"booking": {},
+		"time": {"source_slots_remaining": 1, "source_time_settled": false},
+	}
+	_roundtrip(gs, saves, "caught decision")
+	_expect_str("a Caught decision restores its stage",
+		str(gs.active_consequence.get("stage", "")), "decision")
+	_expect_str("a Caught decision restores its cause",
+		str(gs.active_consequence.get("cause_id", "")), "cause:00000142")
+	_expect_int("a Caught decision restores its contested take",
+		int((gs.active_consequence["source"] as Dictionary)["contested_take"]), 240)
+	# The float that a coercion bug would round away, and the one the arrest gate
+	# reads later.
+	_expect_float("a Caught decision restores pre-encounter heat",
+		float((gs.active_consequence["source"] as Dictionary)["pre_encounter_heat"]), 7.5)
+	# TI-003 §5: "Persist decision inputs and shown probabilities when the
+	# decision opens. Reload reproduces the same choice surface." Shown odds are
+	# floats inside a nested Dictionary — the deepest thing in this shape.
+	var shown: Dictionary = (gs.active_consequence["decision"] as Dictionary)["shown_probabilities"]
+	_expect_float("a reload reproduces the shown odds", float(shown["run"]), 0.55)
+	_expect_str("a Caught decision restores its allowed choices",
+		str((gs.active_consequence["decision"] as Dictionary)["allowed_choices"]),
+		str(["fight", "run", "talk", "yield"]))
+	_expect_true("a Caught decision restores its unsettled source time",
+		not bool((gs.active_consequence["time"] as Dictionary)["source_time_settled"]))
+	_expect_int("the cause sequence survives a reload", int(gs.next_cause_sequence), 142)
+
+	# --- 2. A committed result waiting on Continue ---
+	#
+	# The case TI-003 regression #4 names: a reload must not reroll a committed
+	# response. The committed choice and the resolved tier both have to come
+	# back, or the chain re-opens as a fresh decision.
+	_stage_run(gs)
+	gs.active_consequence = {
+		"consequence_id": "consequence:00000143", "cause_id": "cause:00000142",
+		"chain_kind": "boost_caught", "stage": "result",
+		"decision": {
+			"committed_choice": "run", "resolved_tier": "messy",
+			"result": {"health": -2, "heat": 1.0, "take_kept": 0, "banned": true},
+		},
+		"time": {"source_slots_remaining": 1, "source_time_settled": false},
+	}
+	_roundtrip(gs, saves, "committed result")
+	_expect_str("a committed result restores its stage",
+		str(gs.active_consequence.get("stage", "")), "result")
+	_expect_str("a committed choice survives a reload",
+		str((gs.active_consequence["decision"] as Dictionary)["committed_choice"]), "run")
+	_expect_str("a resolved tier survives a reload",
+		str((gs.active_consequence["decision"] as Dictionary)["resolved_tier"]), "messy")
+
+	# --- 3. Booking decision, with its quote ---
+	_stage_run(gs)
+	gs.active_consequence = {
+		"cause_id": "cause:00000142", "chain_kind": "boost_caught",
+		"stage": "booking",
+		"booking": {
+			"severity": "boost_t2", "bail_quote": 375, "base_bail": 250,
+			"prior_multiplier": 1.5, "processing_slots": 2, "heat_relief": 2,
+			"priors_at_quote": 1, "projected_release_day": 13,
+			"projected_release_slot": 0,
+		},
+		"time": {"source_slots_remaining": 1, "source_time_settled": false},
+	}
+	_roundtrip(gs, saves, "booking decision")
+	_expect_str("a Booking decision restores its stage",
+		str(gs.active_consequence.get("stage", "")), "booking")
+	_expect_int("a bail quote survives a reload",
+		int((gs.active_consequence["booking"] as Dictionary)["bail_quote"]), 375)
+	_expect_float("a prior multiplier survives a reload",
+		float((gs.active_consequence["booking"] as Dictionary)["prior_multiplier"]), 1.5)
+
+	# --- 4. Release stage ---
+	_stage_run(gs)
+	gs.active_consequence = {
+		"cause_id": "cause:00000142", "chain_kind": "boost_caught",
+		"stage": "release",
+		"booking": {"paid": 375, "clean_used": 375, "dirty_used": 0,
+			"slots_served": 2, "released_day": 13},
+		"time": {"source_slots_remaining": 0, "source_time_settled": true},
+	}
+	_roundtrip(gs, saves, "release stage")
+	_expect_str("a release stage survives a reload",
+		str(gs.active_consequence.get("stage", "")), "release")
+	# TI-003 regression #12: source time settles twice around Booking. The flag
+	# that prevents it is the thing that has to persist.
+	_expect_true("a settled source time survives a reload",
+		bool((gs.active_consequence["time"] as Dictionary)["source_time_settled"]))
+
+	# --- 5-7. Retaliation queue: before trigger, elsewhere, and blocked ---
+	#
+	# All three in one payload, because the property being tested is the QUEUE,
+	# and a queue with one row cannot demonstrate ordering.
+	_stage_run(gs)
+	gs.consequence_queue = [
+		{"queue_id": "ret:1", "cause_id": "cause:00000142", "actor_id": "goodie",
+		 "actor_label": "Goodie's people", "source_family": "stick",
+		 "source_target_id": "goodie_stash", "district_id": "north_star_lot",
+		 "created_day": 12, "trigger_day": 14, "expires_end_day": 17,
+		 "created_sequence": 1, "encounter_definition_id": "retaliation_street_crew",
+		 "status": "pending"},
+		{"queue_id": "ret:2", "cause_id": "cause:00000150", "actor_id": "till_crew",
+		 "actor_label": "The register crew", "source_family": "stick",
+		 "source_target_id": "downtown_fuel_till", "district_id": "downtown",
+		 "created_day": 11, "trigger_day": 13, "expires_end_day": 16,
+		 "created_sequence": 2, "encounter_definition_id": "retaliation_street_crew",
+		 "status": "pending"},
+		{"queue_id": "ret:3", "cause_id": "cause:00000151", "actor_id": "rec_crew",
+		 "actor_label": "The dice game", "source_family": "stick",
+		 "source_target_id": "rec_center_dice", "district_id": "airport_industrial",
+		 "created_day": 10, "trigger_day": 13, "expires_end_day": 15,
+		 "created_sequence": 3, "encounter_definition_id": "retaliation_street_crew",
+		 "status": "expired"},
+	]
+	gs.last_blocking_delayed_day = 12
+	_roundtrip(gs, saves, "retaliation queue")
+	_expect_int("the retaliation queue restores every row", gs.consequence_queue.size(), 3)
+	# TI-003 regression #32: "Queue order depends on Dictionary iteration order."
+	# An Array is what makes order a property of the storage, and the reload has
+	# to preserve it — asserted as the whole id sequence rather than one element.
+	var order: Array = []
+	for row in gs.consequence_queue:
+		order.append(str((row as Dictionary)["queue_id"]))
+	_expect_str("the retaliation queue restores its order", str(order),
+		str(["ret:1", "ret:2", "ret:3"]))
+	_expect_int("a queued row restores its trigger day",
+		int((gs.consequence_queue[0] as Dictionary)["trigger_day"]), 14)
+	_expect_int("a queued row restores its expiry",
+		int((gs.consequence_queue[0] as Dictionary)["expires_end_day"]), 17)
+	_expect_str("a queued row restores its actor",
+		str((gs.consequence_queue[0] as Dictionary)["actor_id"]), "goodie")
+	_expect_str("an expired row keeps its status",
+		str((gs.consequence_queue[2] as Dictionary)["status"]), "expired")
+	# TI-003 §15: one delayed blocking consequence per day, enforced across a
+	# reload — which needs the day it last happened to survive.
+	_expect_int("the delayed-surface day survives a reload",
+		int(gs.last_blocking_delayed_day), 12)
+
+	# A queue row alongside an ACTIVE chain: the "retaliation due while another
+	# chain is active" shape. Both have to coexist in one payload.
+	_stage_run(gs)
+	gs.active_consequence = {"cause_id": "cause:00000142", "stage": "decision",
+		"chain_kind": "boost_caught"}
+	gs.consequence_queue = [{"queue_id": "ret:1", "actor_id": "goodie",
+		"trigger_day": 12, "expires_end_day": 15, "status": "pending"}]
+	_roundtrip(gs, saves, "queue behind an active chain")
+	_expect_true("an active chain and a waiting queue both survive",
+		not gs.active_consequence.is_empty() and gs.consequence_queue.size() == 1)
+
+	# --- 8. District Pressure with a pending bleed ---
+	_stage_run(gs)
+	gs.district_pressure = {
+		"north_star_lot": {
+			"stick": {"score": 6.5, "last_gain_day": 12, "quiet_days": 0,
+				"market_gain_day": -1, "market_gain_today": 0.0},
+			"boost": {"score": 2.0, "last_gain_day": 10, "quiet_days": 2,
+				"market_gain_day": -1, "market_gain_today": 0.0},
+		},
+		"downtown": {
+			"market": {"score": 9.0, "last_gain_day": 12, "quiet_days": 0,
+				"market_gain_day": 12, "market_gain_today": 1.0},
+		},
+	}
+	gs.pressure_bleed_pending = [
+		{"cause_id": "cause:00000142", "to_district": "downtown", "family": "stick",
+		 "amount": 0.5, "due_day": 13},
+		{"cause_id": "cause:00000142", "to_district": "airport_industrial",
+		 "family": "stick", "amount": 0.5, "due_day": 13},
+	]
+	_roundtrip(gs, saves, "district pressure")
+	# The fractional score is the point: Pressure bands are keyed on it and an
+	# int coercion would move a 6.5 WATCHED into a different band entirely.
+	_expect_float("a Pressure score survives a reload as a float",
+		float(((gs.district_pressure["north_star_lot"] as Dictionary)["stick"] as Dictionary)["score"]),
+		6.5)
+	_expect_float("a second family's Pressure survives independently",
+		float(((gs.district_pressure["north_star_lot"] as Dictionary)["boost"] as Dictionary)["score"]),
+		2.0)
+	_expect_int("a quiet-day count survives a reload",
+		int(((gs.district_pressure["north_star_lot"] as Dictionary)["boost"] as Dictionary)["quiet_days"]),
+		2)
+	_expect_float("the Market daily cap counter survives a reload",
+		float(((gs.district_pressure["downtown"] as Dictionary)["market"] as Dictionary)["market_gain_today"]),
+		1.0)
+	# TI-003 §8: bleed rows carry Cause + destination identity so a reload cannot
+	# double-apply them. Both halves of that identity have to come back.
+	_expect_int("the bleed queue restores every row", gs.pressure_bleed_pending.size(), 2)
+	_expect_str("a bleed row restores its cause",
+		str((gs.pressure_bleed_pending[0] as Dictionary)["cause_id"]), "cause:00000142")
+	_expect_str("a bleed row restores its destination",
+		str((gs.pressure_bleed_pending[1] as Dictionary)["to_district"]), "airport_industrial")
+	# TI-003 regression #16: District Pressure and Global Heat sharing storage.
+	gs.heat = 3.0
+	saves.save_run()
+	gs.heat = 11.0
+	_expect_true("pressure/heat separation reloads", saves.load_run())
+	_expect_float("global Heat is stored apart from District Pressure",
+		float(gs.heat), 3.0)
+	_expect_float("District Pressure is unmoved by global Heat",
+		float(((gs.district_pressure["downtown"] as Dictionary)["market"] as Dictionary)["score"]),
+		9.0)
+
+	# --- 9. Financial Pressure >= 6, the fold threshold ---
+	_stage_run(gs)
+	gs.financial_pressure = 6
+	_roundtrip(gs, saves, "financial pressure")
+	_expect_int("Financial Pressure at the fold threshold survives a reload",
+		int(gs.financial_pressure), 6)
+	# And at the cap, which is the other boundary FS-003.9 will read.
+	_stage_run(gs)
+	gs.financial_pressure = 10
+	_roundtrip(gs, saves, "financial pressure cap")
+	_expect_int("Financial Pressure at the cap survives a reload",
+		int(gs.financial_pressure), 10)
+
+	# --- 10. A mixed Clean/Dirty wallet ---
+	_stage_run(gs)
+	gs.dirty_cash = 640
+	gs.clean_cash = 285
+	gs.cash = 925
+	_roundtrip(gs, saves, "mixed wallet")
+	_expect_int("a mixed wallet restores dirty", int(gs.dirty_cash), 640)
+	_expect_int("a mixed wallet restores clean", int(gs.clean_cash), 285)
+	_expect_int("a mixed wallet restores the visible total", int(gs.cash), 925)
+	var wallet: RefCounted = gm.system("wallet") as RefCounted
+	_expect_true("a reloaded wallet is balanced", wallet.is_balanced())
+	# The reload must not reclassify. This is the exact case the load-time
+	# classifier would break if it ran unconditionally rather than only where
+	# provenance is absent — dirty money laundered by its own save file.
+	_expect_true("a reload does not launder dirty money", int(gs.dirty_cash) > 0)
+
+	# --- 11. Prior arrest history ---
+	_stage_run(gs)
+	gs.arrest_record = {
+		"priors": 2, "last_arrest_day": 11,
+		"charges": [
+			{"cause_id": "cause:00000100", "day": 6, "severity": "boost_t1",
+			 "source_family": "boost", "source_target_id": "corner_store",
+			 "bail_quote": 150, "paid": 150, "processing_slots": 1, "heat_relief": 2},
+			{"cause_id": "cause:00000142", "day": 11, "severity": "stick_t2",
+			 "source_family": "stick", "source_target_id": "goodie_stash",
+			 "bail_quote": 900, "paid": 0, "processing_slots": 3, "heat_relief": 4},
+		],
+	}
+	_roundtrip(gs, saves, "arrest record")
+	_expect_int("priors survive a reload", int(gs.arrest_record["priors"]), 2)
+	_expect_int("the last arrest day survives a reload",
+		int(gs.arrest_record["last_arrest_day"]), 11)
+	_expect_int("every charge survives a reload",
+		(gs.arrest_record["charges"] as Array).size(), 2)
+	_expect_str("a charge restores its cause",
+		str(((gs.arrest_record["charges"] as Array)[1] as Dictionary)["cause_id"]),
+		"cause:00000142")
+	_expect_int("an unpaid charge restores its zero payment",
+		int(((gs.arrest_record["charges"] as Array)[1] as Dictionary)["paid"]), 0)
+
+	# --- 12. Persistent Boost bans. TI-003 regression #11. ---
+	_stage_run(gs)
+	gs.boost_store_bans = ["corner_store", "northern_value"]
+	_roundtrip(gs, saves, "boost bans")
+	_expect_str("Boost bans survive a reload", str(gs.boost_store_bans),
+		str(["corner_store", "northern_value"]))
+	# Regression #11 is "bans disappear on day-cross OR reload", so the day-cross
+	# half is asserted too — through a real dispatch, on the loaded state.
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	_expect_true("the night dispatches over a ban", gm.dispatch("advance_time", {}))
+	_expect_str("Boost bans survive a day-cross", str(gs.boost_store_bans),
+		str(["corner_store", "northern_value"]))
+
+	# --- the empty case, which is what most saves are ---
+	#
+	# Round-tripping only POPULATED shapes would miss a default that fails to
+	# serialise, and every save before FS-003.7 is the empty one.
+	_stage_run(gs)
+	_roundtrip(gs, saves, "empty consequence state")
+	_expect_true("an empty active chain round-trips", gs.active_consequence.is_empty())
+	_expect_true("an empty queue round-trips", gs.consequence_queue.is_empty())
+	_expect_true("an empty history round-trips", gs.consequence_history.is_empty())
+	_expect_true("empty Boost bans round-trip", gs.boost_store_bans.is_empty())
+	_expect_true("empty District Pressure round-trips", gs.district_pressure.is_empty())
+	_expect_int("an empty arrest record round-trips",
+		int(gs.arrest_record["priors"]), 0)
+
+## A run that is safe to save: named, reset, and mid-week.
+func _stage_run(gs: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 12
+	gs.time_slots_today = 2
+	gs.time_slot = "EVENING"
+
+## Save, wipe every consequence field, reload. The wipe is what stops a "restored"
+## assertion from passing on state the test never actually removed.
+func _roundtrip(gs: Node, saves: Node, label: String) -> void:
+	saves.save_run()
+	gs.active_consequence = {}
+	gs.consequence_history = {}
+	gs.consequence_queue = []
+	gs.last_blocking_delayed_day = -99
+	gs.arrest_record = {"priors": -1, "last_arrest_day": -99, "charges": []}
+	gs.boost_store_bans = []
+	gs.district_pressure = {}
+	gs.pressure_bleed_pending = []
+	gs.next_cause_sequence = -1
+	gs.next_consequence_sequence = -1
+	gs.financial_pressure = -1
+	gs.dirty_cash = -1
+	gs.clean_cash = -1
+	gs.cash = -1
+	gs.day = 1
+	_expect_true("%s reloads" % label, saves.load_run())
+
+## TI-003 §1 and §26: "Save data carries stable IDs and state facts, never Object
+## references", and "Runtime adapter registries stay outside persisted state."
+##
+## Checked against the serialised text rather than the live Dictionary, because
+## the failure mode is a payload that writes an Object and reads back as
+## something else — which the in-memory copy would never show.
+func _check_v8_save_carries_no_objects(gs: Node, gm: Node, saves: Node) -> void:
+	_stage_run(gs)
+	# A chain shaped the way FS-003.5 will write one: it names its source by
+	# adapter ID, which is the whole point of the rule.
+	gs.active_consequence = {
+		"cause_id": "cause:00000142", "chain_kind": "boost_caught",
+		"stage": "decision",
+		"source": {"family": "boost", "action_id": "boost", "target_id": "corner_store"},
+	}
+	gs.consequence_history = {"cause:00000142": {
+		"effect_receipts": ["boost_caught:heat", "boost_caught:pressure"],
+		"resolved_consequence_ids": ["consequence:00000143"],
+		"scheduled_actor_ids": ["goodie"],
+	}}
+	saves.save_run()
+
+	var file := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+	if file == null:
+		_fail("save inspection", "could not read the save back")
+		return
+	var text: String = file.get_as_text()
+	file.close()
+
+	# `var_to_str` writes an Object as `Object(...)` and a node path as
+	# `NodePath(...)`. Either in the payload means a runtime handle was
+	# serialised, which is the thing FS-001.7's adapter fix established must
+	# never happen.
+	_expect_true("the save carries no Object references", not "Object(" in text)
+	_expect_true("the save carries no NodePath references", not "NodePath(" in text)
+	# The adapter registry lives on the engine, not in state. Named explicitly
+	# because a later slice adding `"adapters"` to a persisted chain is exactly
+	# the regression TI-003 #38 describes.
+	_expect_true("the save carries no source-adapter registry",
+		not "source_adapters" in text)
+	# And the facts that REPLACE those references are present, so this is not
+	# passing by saving nothing at all.
+	_expect_true("the save carries the source adapter's id instead",
+		"\"action_id\"" in text or "action_id" in text)
+	_expect_true("the save carries the receipt keys",
+		"boost_caught:heat" in text)
+
+	# Receipts round-trip as the exactly-once ledger they are.
+	_roundtrip(gs, saves, "receipt history")
+	var receipts: Array = (gs.consequence_history["cause:00000142"] as Dictionary)["effect_receipts"]
+	_expect_str("effect receipts survive a reload", str(receipts),
+		str(["boost_caught:heat", "boost_caught:pressure"]))
+	_expect_str("scheduled actor ids survive a reload",
+		str((gs.consequence_history["cause:00000142"] as Dictionary)["scheduled_actor_ids"]),
+		str(["goodie"]))
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -4990,7 +5625,11 @@ func _fail(label: String, detail: String) -> void:
 ## — so the suite reported 7726 while six of its checks had never once run. The
 ## floor moving up by more than the checks added is the tell, and it is exactly
 ## the failure mode this constant exists to make visible.
-const MIN_CHECKS := 7889
+##
+## FS-003.4 raises it to 8036. Thirteen of those came for free: the round-trip
+## section walks `PERSIST_FIELDS` by name, so adding the TI-003 §5 state to the
+## manifest added coverage without a line of test being written for it.
+const MIN_CHECKS := 8036
 
 func _finish() -> void:
 	if _failures.is_empty():

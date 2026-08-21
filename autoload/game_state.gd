@@ -44,15 +44,14 @@ var cash: int = 847
 # the one number every blocker checks; these two ride underneath it, and
 # WalletSystem holds the invariant `cash == dirty_cash + clean_cash`.
 #
-# NOT in PERSIST_FIELDS yet — persisting them is FS-003.4, which also carries
-# the schema bump and the migration arm. Until then SaveSystem classifies the
-# loaded aggregate through `WalletSystem.classify_legacy_total()`, which is the
-# same rule that arm will apply. The defaults below match the `cash` default so
-# a fresh GameState is already balanced.
+# Persisted from v8 (FS-003.4). A v7 save carries neither, so its arm classifies
+# the whole aggregate through `WalletSystem.classify_legacy_total()` — TI-003
+# §20's rule, which deliberately differs from canon's. The defaults below match
+# the `cash` default so a fresh GameState is already balanced.
 var dirty_cash: int = 0
 var clean_cash: int = 847
-# Accumulated by high-visibility dirty spending (TI-003 §6). The decay-and-fold
-# rollover that reads it is §17, which is FS-003.9. Nothing reads it yet.
+# Accumulated by high-visibility dirty spending (TI-003 §6), persisted from v8.
+# The decay-and-fold rollover that reads it is §17, which is FS-003.9.
 var financial_pressure: int = 0
 # Heat is fractional. Canon carries it as a float and logs it to one decimal
 # (`Math.round(addedHeat * 10) / 10`), and it has to stay fractional here or the
@@ -306,6 +305,18 @@ func reset_to_new_game() -> void:
 	attribute_progress = {"combat": 0.0, "charisma": 0.0, "intelligence": 0.0}
 	crew_power = 0
 	inventory = {}
+	# TI-003 §5 consequence state. A new run has no history, which is not a
+	# fallback — it is the only true answer for a run that has not happened.
+	next_cause_sequence = 0
+	next_consequence_sequence = 0
+	active_consequence = {}
+	consequence_history = {}
+	consequence_queue = []
+	last_blocking_delayed_day = -1
+	arrest_record = {"priors": 0, "last_arrest_day": -1, "charges": []}
+	boost_store_bans = []
+	district_pressure = {}
+	pressure_bleed_pending = []
 	# Jobs and obligations reset with the run.
 	active_job_id = ""
 	job_records = {}
@@ -896,3 +907,61 @@ var npc_ledgers: Dictionary = {}
 ## Observations in transit. Channels that take days to carry news queue here and
 ## are delivered on day-cross.
 var observation_queue: Array = []
+
+# --- Consequence-Encounter Engine (TI-003 §5) ------------------------------
+## Everything below is state the ConsequenceEngine owns. It lands here rather
+## than in the engine because GameState owns persisted run facts (TI-003 §26)
+## and because a save must round-trip it without an engine instance existing.
+##
+## **Stable IDs and state facts only, never Object references.** TI-003 §1 makes
+## this the standing rule and FS-001.7's runtime adapter registry is the
+## precedent: `consequence_engine` re-registers its source adapters on every
+## boot, and nothing here can name one.
+##
+## FS-003.4 adds and persists these. Nothing writes them yet — the engine that
+## does is FS-003.5, and the behaviour that fills them is .7 onward. Empty IS
+## the honest history of a save that predates the system, which is the same
+## argument the v3 → v4 attributes arm makes.
+
+## Cause allocation. TI-003 §4: `cause_id = "cause:%08d" % next_cause_sequence`,
+## allocated with zero randomness so a reload cannot renumber a live chain.
+var next_cause_sequence: int = 0
+var next_consequence_sequence: int = 0
+
+## The one active blocking chain, or empty when nothing is blocking. TI-003 §10
+## is explicit that there is exactly one — the queue is how a second waits.
+var active_consequence: Dictionary = {}
+
+## cause_id -> {effect_receipts, resolved_consequence_ids, scheduled_actor_ids}.
+## The exactly-once ledger: an effect and its receipt land in the same dispatch,
+## so a reload mid-chain cannot apply either of them twice.
+var consequence_history: Dictionary = {}
+
+## Delayed consequences waiting for their day and their district. An Array, not
+## a Dictionary, because TI-003 regression #32 is "queue order depends on
+## Dictionary iteration order" — order has to be a property of the storage.
+var consequence_queue: Array = []
+
+## The day a delayed blocking consequence last surfaced. TI-003 §15 allows one
+## per day; this is what enforces it across a reload.
+var last_blocking_delayed_day: int = -1
+
+## TI-003 §5. Priors drive bail multipliers and processing time, so this is the
+## record that makes a second arrest cost more than the first.
+var arrest_record: Dictionary = {
+	"priors": 0, "last_arrest_day": -1, "charges": [],
+}
+
+## Boost-owned and persistent by target id (TI-003 §5). Kept here for the same
+## reason as everything else in this block: it has to survive a reload, and
+## TI-003 regression #11 is "Boost bans disappear on day-cross or reload".
+var boost_store_bans: Array = []
+
+## district_id -> family -> {score, last_gain_day, quiet_days, market_gain_day,
+## market_gain_today}. TI-003 §8. Separate storage from global `heat` on
+## purpose — regression #16 is the two sharing it.
+var district_pressure: Dictionary = {}
+
+## Pressure scheduled to bleed into adjacent districts tomorrow (TI-003 §8).
+## Rows carry Cause + destination identity so a reload cannot double-apply.
+var pressure_bleed_pending: Array = []

@@ -544,6 +544,98 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.4: the engine gets somewhere to live  (added 2026-08-21)
+
+Save schema **v7 → v8**. Everything TI-003 §5 declares now persists, and a v7
+save migrates into it deterministically. **Parity 7889 → 8036 checks, 0
+failures.** Nothing writes the new state yet — FS-003.5 is the engine that does.
+
+### The arm has one transform, and only one
+
+Thirteen fields are added and twelve of them simply default in. That is not
+laziness: a v7 save **cannot** contain an unfinished consequence, a prior arrest,
+a Boost ban or a Pressure score, because none of those systems existed while it
+was being played. Empty is the true history, not a fallback — the same argument
+the v3 → v4 attributes arm makes. TI-003 §20 says it too: *"A pre-TI-003 Godot
+save contains no unfinished consequence, so migration creates no inferred active
+chain."*
+
+The wallet is the exception, and it is the v6 → v7 `source: "player"` case again:
+**stamp what is knowable while it is still knowable.** A v7 save records one
+aggregate `cash` and nothing about where it came from. Every day it stays
+un-migrated is a day that number could be split by a rule nobody wrote down.
+
+TI-003 §20/§26 rules the whole aggregate **clean**, deliberately diverging from
+canon (game-core.js:2060, which rules dirty). The arm follows TI-003.
+
+### A sabotage that passed, and the dead code it found
+
+Deleting the arm's wallet transform outright — replacing both lines with `pass`
+— left the suite **green at 8036 / 0**.
+
+The reason: `_apply` fills the absent bucket fields from GameState's defaults,
+and the load-time classifier then sees no carried provenance and applies TI-003's
+rule anyway. Two independent paths, same answer, so neither is individually
+observable. Defence in depth that had quietly made the arm untestable.
+
+The fix is to test the arm where it actually lives: `_migrate()` is called
+directly and its **returned payload** inspected, before a byte reaches
+GameState. Nine checks now sit on that boundary, and the same sabotage produces
+4 failures.
+
+**Carry forward:** two mechanisms that agree are two mechanisms neither of which
+is tested. If a sabotage on one passes, look for the other one first.
+
+### Two more sabotages passed because the sabotages were no-ops
+
+Both are the `make_stream(cursor).state` mistake in a new costume:
+
+- **"Pressure score coerced to int"** added an unused variable, which changes
+  nothing. The real fault is rounding floats *inside* persisted Dictionaries —
+  the shape a "normalise save data" change actually takes. Rewritten that way it
+  produces 5 failures, and it matters because Pressure **bands** are keyed on
+  the fractional score: a 6.5 WATCHED rounds into a different band.
+- **"Objects in save"** added a `NodePath` field to GameState that was not in
+  `PERSIST_FIELDS`, so it never reached the payload. Adding it to the manifest is
+  the real regression (TI-003 #38) and produces 1 failure.
+
+Third build running where a first-attempt sabotage pass meant a bad sabotage
+rather than good code. Never once has it meant the code was fine.
+
+### The round-trips
+
+TI-003 §20's twelve required shapes are each staged, saved, **scrambled**, and
+reloaded. The scramble is what stops a "restored" assertion from passing on state
+the test never removed — `_roundtrip()` wipes every consequence field to a
+sentinel before the reload.
+
+The queue is an **Array**, and its restored order is asserted as a whole id
+sequence rather than one element: TI-003 regression #32 is "queue order depends
+on Dictionary iteration order", so ordering has to be a property of the storage.
+
+Two shapes are asserted that the brief did not ask for and that later slices
+would have been hurt by:
+
+- **The empty case.** Round-tripping only populated shapes misses a default that
+  fails to serialise — and every save before FS-003.7 is the empty one.
+- **A v8 reload does not launder.** A mixed wallet reloads with its dirty money
+  still dirty. This is exactly what breaks if the load-time classifier runs
+  unconditionally rather than only where provenance is absent, and that sabotage
+  produces 5 failures.
+
+Boost bans are checked against **both** halves of regression #11 — reload *and*
+day-cross, the latter through a real `advance_time` dispatch.
+
+### Verification
+
+- Parity **8036 / 0**, `MIN_CHECKS` 7889 → 8036. Thirteen of those came free:
+  the round-trip section walks `PERSIST_FIELDS` by name.
+- **15 sabotages**, all red after the three above were corrected.
+- Glyph coverage passes; 20/20 screens headless with zero script errors.
+- Save payload asserted to contain no `Object(` and no `NodePath(` — checked
+  against the serialised text, not the live Dictionary, because a payload that
+  writes a handle and reads back as something else would never show in memory.
+
 ## FS-003.3: cash and heat get owners  (added 2026-08-21)
 
 Twenty-one lines across eleven systems wrote `gs.cash`. Five wrote `gs.heat`,

@@ -544,6 +544,135 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-001.7: Pherris runs the board  (added 2026-08-21)
+
+The first thing a crew member does that you can measure in dollars. She picks
+listings off the same board the player sees, pays in the morning, and settles at
+night through the same path a personal sale uses. **Parity 7228 → 7308 checks,
+0 failures. No schema bump.**
+
+### Two moments, not one
+
+She buys when the assignment is made, not at settlement. The money leaves when
+the stock is picked up, which is what makes an assignment a real commitment
+rather than a bet — the cash is gone before anyone knows what the items are
+worth.
+
+It also closes an exploit a settle-time purchase would open: assign her, spend
+the day's cash elsewhere, and have her buy with money that was never there.
+
+### The line delegation must not cross
+
+Settlement runs through `nine07list.settle_holding(index, mode)`, one path for
+both modes. What is **identical**: the realised value (keyed on the item and the
+day it was bought, so the same object fetches the same price whoever holds it),
+the `financial / 907list_profit` rows, and the `market_meetup` outcome.
+
+That last part is the one worth defending. It would be easy to treat a delegated
+sale as quieter because the player was not there — but the money still moved and
+the block still counts it. Canon's rule is that what reaches Curtis is decided by
+the VALUE through his volume filter, not by whose hands carried it. **Making
+delegation launder visibility would turn a crew member into a way to hide
+income**, which is a different game.
+
+What is **not** shared: a slot, Intelligence training, and `list_flips`. All
+three are the player's own experience of the trade. A slot is spent by whoever
+went to the meet. Pherris reading value well teaches the player nothing. And
+`list_flips` is what earns Broker standing — *your* reputation on the board, not
+hers.
+
+Those three are the leak this build had to not spring. Delegation that fed
+progression would make the crew member strictly better than doing the work
+yourself, and the tier ladder would climb while the player learned nothing. The
+suite checks all three, and checks the control case — the same sale by the player
+DOES move them, which is what stops the assertions testing an inert path.
+
+### She buys cheap first, and refuses rough
+
+Cheapest-first is a choice, not an accident: a fixed cycle budget spread across
+more items is more chances at a good realised value, and the 907List's whole
+mechanic is that value is hidden. Volume beats one expensive guess. It also means
+a small spend limit produces a day's work rather than one purchase.
+
+Rough-condition stock is the one piece of taste in the selection. Broker standing
+is built on clean deals and a rough item is how a dispute happens.
+
+Stop reasons are checked in a fixed priority — **capacity → nothing acceptable →
+spend limit → cash → cycle cap** — so the reason reported is the most fundamental
+thing in her way rather than whichever happened to be true last. With both an
+empty wallet and a full shelf, the shelf is the answer.
+
+### One bug from FS-001.6, found by using it
+
+`crew_operations` kept its adapter registry inside `crew_operation_state`, which
+is **persisted**. `_apply()` replaces that dictionary with the saved copy on
+every load — and a saved copy can never contain an object. The adapter silently
+vanished on every CONTINUE RUN, and settlement would have quietly returned null
+forever.
+
+It lives in a runtime dictionary now. The persisted `adapters` key stays where it
+is so no schema bump is needed; it is vestigial and nothing reads it. Sabotage 11
+puts the registry back and 28 checks fail.
+
+### Two checks that could not tell the difference
+
+Thirteen sabotages, all eventually red. Two passed on the first attempt, and both
+were weak checks rather than working code:
+
+**The tie-break test used a three-item board.** GDScript's sort leaves an array
+that small alone, so removing the position tie-break changed nothing and the
+check could not tell the two implementations apart. Introsort only permutes equal
+keys once the array is big enough — the case now uses a twenty-item board of
+identical prices, and without the tie-break the order comes back fully scrambled.
+
+**The idempotency test never reached the adapter's guard.** The coordinator
+already refuses to settle a settled assignment, so emitting `day_ending` again
+stops one layer early. The adapter's own guard is defence in depth and was
+untested; it is now called directly. Paying a day out twice is the kind of bug
+that surfaces as a number nobody can account for.
+
+### The tests were taking a path the game never takes
+
+Worth recording as a method note. PR #40 added `_require_dispatch` ownership
+guards to the Curtis and Exposure mutators. A clean parity run was printing **24**
+of those warnings — from this build's own tests, which emitted `day_ending` by
+hand to settle without moving the clock.
+
+Real gameplay always crosses the night through `dispatch`, so the guard passes.
+The tests were exercising a stack the game never produces, which is exactly the
+false signal that guard exists to raise. They cross the night through dispatch
+now, and the leakage assertions are restated as *"settling adds nothing on top of
+what the night cross itself costs"* — with an empty-cross control to prove the
+comparison means something. **Zero warnings in a clean run.**
+
+Sequencing consequence worth knowing: dispatch autosaves on `state_changed`, so
+the reload test now snapshots the save bytes before settling. Otherwise the
+pre-night save is overwritten by the post-night state and "load the save from
+before the night" quietly stops meaning that.
+
+| # | fault | result |
+|---|---|---|
+| 1 | rough-condition filter removed | 5 failures |
+| 2 | stop-reason priority swapped | 3 |
+| 3 | Intelligence trains on the delegated path | 2 |
+| 4 | `_mark_taken` removed from her purchases | 3 |
+| 5 | delegated settlement advances time | 2 |
+| 6 | manual-sell guard removed | 2 |
+| 7 | selection sorts dearest first | 3 |
+| 8 | tie-break dropped | 0 → **1** after the board was widened |
+| 9 | cycle cap ignored | 8 |
+| 10 | spend limit allows crossing the line | 3 |
+| 11 | adapter registry back in persisted state | 28 |
+| 12 | settlement not idempotent | 0 → **1** after testing the adapter directly |
+| 13 | delegated sale counts a flip | 2 |
+
+### No schema bump, and why that is safe rather than lucky
+
+Her purchases live in `list_holdings` (already persisted, already carrying the
+`source` stamp the v6 → v7 migration made room for) and in
+`crew_assignments[crew_id]`, which persists whole. The adapter registry is
+runtime and deliberately not saved. Nothing new needed a field.
+
 ## FS-001.6: the day that ends before the clock moves  (added 2026-08-21)
 
 The delegation lifecycle, with no delegation in it yet. A `day_ending` signal, a

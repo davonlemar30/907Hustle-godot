@@ -95,6 +95,14 @@ func _ready() -> void:
 	crew_operations.setup(_gs, self, requirements)
 	register_system("crew_operations", crew_operations)
 
+	# The 907List domain adapter. Built after both halves it bridges: it needs
+	# the list system for the board and the shared settlement path, and the
+	# coordinator to register itself with. Registration is runtime, so this
+	# happens on every boot including after a load.
+	var list_adapter = preload("res://systems/list_adapter.gd").new()
+	list_adapter.setup(_gs, self, nine07list, crew_operations)
+	register_system("list_adapter", list_adapter)
+
 	var territory = preload("res://systems/territory.gd").new()
 	territory.setup(_gs, self)
 	register_system("territory", territory)

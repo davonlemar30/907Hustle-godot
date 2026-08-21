@@ -85,11 +85,28 @@ var gs: Node
 var gm: Node
 var requirements: RefCounted
 
+## operation_id -> adapter object. **Runtime wiring, not run state.**
+##
+## FS-001.6 kept these under `crew_operation_state.adapters`, which was wrong in
+## a way that only shows up after a load: that dictionary is persisted, so
+## `_apply()` replaces it with the saved copy — and a saved copy can never
+## contain an object. The adapter silently vanished on every CONTINUE RUN.
+##
+## Living here instead, they are re-registered by GameManager on boot and a load
+## cannot clear them. The persisted `adapters` key stays in `crew_operation_state`
+## so no schema bump is needed; it is vestigial and nothing reads it.
+var _adapters: Dictionary = {}
+
 func setup(game_state: Node, manager: Node, requirement_system: RefCounted) -> void:
 	gs = game_state
 	gm = manager
 	requirements = requirement_system
 	gs.day_ending.connect(_on_day_ending)
+
+## Wire a domain adapter to an operation. Any object with
+## `select(crew_id, assignment)` and `settle(crew_id, assignment, ended_day)`.
+func register_adapter(operation_id: String, adapter: Object) -> void:
+	_adapters[operation_id] = adapter
 
 func can_handle(action: String) -> bool:
 	return action == "assign_crew_operation"
@@ -97,7 +114,7 @@ func can_handle(action: String) -> bool:
 func handle(action: String, payload: Dictionary) -> Dictionary:
 	if action != "assign_crew_operation":
 		return {"ok": false, "reason": "Unknown crew operation action."}
-	return _assign(str(payload.get("crew_id", "")), str(payload.get("operation_id", "")))
+	return _assign(str(payload.get("crew_id", "")), str(payload.get("operation_id", "")), payload)
 
 # --- facts -----------------------------------------------------------------
 
@@ -211,7 +228,7 @@ func assignment_for(crew_id: String) -> Dictionary:
 	# A booking from a previous day is history, not a claim on today.
 	return entry if int((entry as Dictionary).get("day", -1)) == gs.day else {}
 
-func _assign(crew_id: String, operation_id: String) -> Dictionary:
+func _assign(crew_id: String, operation_id: String, payload: Dictionary = {}) -> Dictionary:
 	if gs.game_over:
 		return {"ok": false, "reason": "The run is over."}
 	var expected: Dictionary = OPERATION_CAPABILITY.get(operation_id, {})
@@ -225,14 +242,33 @@ func _assign(crew_id: String, operation_id: String) -> Dictionary:
 	if blocker != null:
 		return {"ok": false, "reason": _blocker_copy(blocker),
 			"blocker": blocker}
-	gs.crew_assignments[crew_id] = {
+	var assignment: Dictionary = {
 		"day": gs.day,
 		"operation_id": operation_id,
 		"settled": false,
 		"result": null,
+		# What the player was willing to let her spend. -1 is no limit; 0 is a
+		# real answer that commits her day for nothing, which is the player's
+		# right to choose.
+		"spend_limit": int(payload.get("spend_limit", -1)),
+		# What she picked this morning. Kept SEPARATE from `result`, which the
+		# coordinator defines as whatever settlement returned — writing the
+		# selection there would have it overwritten at midnight, losing the
+		# purchase record and the stop reason the summary reports.
+		"selection": null,
 	}
+	gs.crew_assignments[crew_id] = assignment
 	gs.log_activity("Pherris takes the day to work the board.", AMBER)
-	return {"ok": true, "crew_id": crew_id, "operation_id": operation_id}
+
+	# She shops immediately. The money leaves when the stock is picked up, which
+	# is what makes the assignment a commitment rather than a bet — and it stops
+	# the player spending the day's cash elsewhere and having her buy with money
+	# that was never there.
+	var adapter: Variant = _adapter_for(operation_id)
+	if adapter != null and (adapter as Object).has_method("select"):
+		assignment["selection"] = adapter.select(crew_id, assignment)
+	return {"ok": true, "crew_id": crew_id, "operation_id": operation_id,
+		"selection": assignment["selection"]}
 
 ## Player-facing wording for a structured blocker. Deliberately small: the
 ## evaluator's `blocker_copy_key` is the real translation seam, and this is the
@@ -285,12 +321,9 @@ func _settle(crew_id: String, assignment: Dictionary, ended_day: int) -> Variant
 	return adapter.settle(crew_id, assignment, ended_day)
 
 func _adapter_for(operation_id: String) -> Variant:
-	var adapters: Variant = gs.crew_operation_state.get("adapters", {})
-	if not (adapters is Dictionary):
-		return null
-	var adapter: Variant = (adapters as Dictionary).get(operation_id)
-	# A stored adapter must actually be able to settle. A save cannot carry an
-	# object, so anything found here that does not answer is stale data.
+	var adapter: Variant = _adapters.get(operation_id)
+	# Still checked rather than trusted: a half-built adapter that cannot settle
+	# should read as "nobody owns this" instead of erroring at midnight.
 	if adapter != null and adapter is Object and (adapter as Object).has_method("settle"):
 		return adapter
 	return null
@@ -326,11 +359,17 @@ func operation_summary(operation_id: String) -> Dictionary:
 		"assignment_settled": assigned_here and bool(assignment.get("settled", false)),
 		"assignment_result": assignment.get("result") if assigned_here else null,
 		"requested_cap": requested_cap,
-		# Both stay null until an adapter has an opinion. Declared now so the
-		# shape a screen reads does not change when FS-001.7 lands.
-		"spend_limit": null,
-		"stop_reason": null,
+		# Filled from the morning's selection once there is one. Null before an
+		# assignment exists, which is the honest answer rather than a zero.
+		"spend_limit": assignment.get("spend_limit") if assigned_here else null,
+		"stop_reason": _selection_field(assignment, "stop_reason") if assigned_here else null,
+		"selection": assignment.get("selection") if assigned_here else null,
 	}
+
+## One field out of the morning's selection, or null when she has not shopped.
+func _selection_field(assignment: Dictionary, field: String) -> Variant:
+	var selection: Variant = assignment.get("selection")
+	return (selection as Dictionary).get(field) if selection is Dictionary else null
 
 ## Every operation this build knows how to run, discovered or not.
 func operation_ids() -> Array:

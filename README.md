@@ -34,6 +34,7 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Travel between districts ($5 fare, one slot) | Street |
 | Work shifts for banded pay, get fired for ghosting | Hustle → Jobs |
 | Flip listings whose true value is hidden by your tier | Hustle → 907List |
+| Lose a listing to someone else the moment you pass on it | automatic, once a day's board is spent |
 | Get better at reading value, and watch the odds move | automatic, on a clean flip |
 | Lift stock from rooms that may be watching | Hustle → Boost |
 | Rob marks for fast money and real Heat | Hustle → Stickup |
@@ -121,6 +122,10 @@ tests/parity/         # CI gate: replays recorded oracle fixtures through the
 - **Day-cross is the heartbeat.** `time_system` emits `day_crossed`; jobs, obligations,
   crew, territory, shark, curtis and exposure all settle against it. Settlement is
   scoped to the day that *ended*, so a bill due on day 7 is payable during day 7.
+- **Curtis hears through a filter, not a firehose.** Only violence, defiance and
+  growth clear his network ear; a `financial` row reaches him on volume alone,
+  at $200. That is why a big 907List day gets his attention and a $40 space
+  heater never does — and why removing the filter quietly over-credits him.
 - **Outcomes are tiered, not binary.** A risky action resolves into clean /
   messy / failure / catastrophic. The attribute reads that pool with tabletop
   advantage — a second look at 3, catastrophe immunity at 6 — rather than a
@@ -182,6 +187,7 @@ regardless of how small the source file is.
 | 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
 | 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
 | 5e. Tiered outcomes | ✅ shared resolver + Stickup/Jobs/907List converted; parity 2399 → 6628 checks |
+| FS-001.2. 907List ownership | ✅ same-day opportunity consumption, Curtis volume filter, save v6; parity → 6702 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

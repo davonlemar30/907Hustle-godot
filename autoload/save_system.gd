@@ -71,7 +71,12 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## v5 (Phase 5d): adds `recovery_introduced`. Additive; a v4 save defaults to
 ## false and the flag re-arms the moment health or heat makes Recovery relevant
 ## again, which is the same thing canon's own flag does on a fresh load.
-const SAVE_VERSION := 5
+##
+## v6 (FS-001.2): adds `list_taken`, the same-day 907List consumption record.
+## The first arm in this chain that RECONSTRUCTS state rather than defaulting
+## it, and the first with a limit worth naming — see the v5 → v6 arm in
+## _migrate for what it can and cannot recover.
+const SAVE_VERSION := 6
 
 ## Every mutable GameState field, captured and applied by name. products.price
 ## is the one mutable value living inside a canon table; it rides separately as
@@ -102,8 +107,8 @@ const PERSIST_FIELDS: Array[String] = [
 	"stick_successes", "stick_organized_hits",
 	# Shark
 	"shark_loans", "shark_next_loan_id",
-	# 907List
-	"list_tier", "list_flips", "list_holdings",
+	# 907List (list_taken is v6)
+	"list_tier", "list_flips", "list_holdings", "list_taken",
 	# Boost
 	"boost_tier", "boost_technique", "boost_merchandise",
 	"boost_fence_standing", "boost_daily_hits",
@@ -267,6 +272,43 @@ func _migrate(payload: Dictionary) -> Dictionary:
 			4:
 				# v4 → v5: recovery_introduced is additive and defaults false.
 				pass
+			5:
+				# v5 → v6: `list_taken` records which 907List opportunities have
+				# been consumed today. A v5 save has no such field, and unlike
+				# every arm above it, defaulting is not simply correct — it
+				# would hand the player back an opportunity they already spent.
+				#
+				# So this arm reconstructs what it honestly can. A holding
+				# bought on the CURRENT day is proof that listing was taken
+				# today, and holdings persist, so those ids are recoverable
+				# exactly.
+				#
+				# KNOWN MIGRATION LIMIT, accepted deliberately: a listing bought
+				# AND sold on the same day leaves no trace in a v5 save. The
+				# holding is gone, and nothing else records the purchase. Those
+				# ids cannot be recovered and are not guessed at — the player
+				# gets that slot back for the rest of the loading day, once,
+				# and every day after behaves correctly.
+				#
+				# The alternative was suppressing the whole board for the
+				# loading day, which punishes every v5 save to be exact about a
+				# case most of them never hit. Recovering what is provable and
+				# naming what is not is the honest trade.
+				var day_value: Variant = state.get("day", 0)
+				var current_day := int(day_value) if (day_value is int or day_value is float) else 0
+				var recovered: Array = []
+				var holdings: Variant = state.get("list_holdings")
+				if holdings is Array:
+					for entry in (holdings as Array):
+						if not (entry is Dictionary):
+							continue
+						var held: Dictionary = entry
+						if int(held.get("bought_day", -1)) != current_day:
+							continue
+						var item_id := str(held.get("item_id", ""))
+						if not item_id.is_empty() and not item_id in recovered:
+							recovered.append(item_id)
+				state["list_taken"] = {"day": current_day, "ids": recovered}
 			_:
 				return {}
 		version += 1

@@ -40,6 +40,12 @@ extends Node
 ##              layer: one case per tier asserting the whole consequence
 ##              spread (cash, heat, health, Curtis, the Exposure footprint),
 ##              plus the reload replay and the market cursor holding still
+##   907list  — FS-001.2 opportunity ownership: boards pinned to literal
+##              ids, consumption excluded from the pool, the system-level
+##              duplicate guard, the lazy day reset, the v5 -> v6
+##              migration including the history it cannot recover, and the
+##              completed-flip financial observation on both channels with
+##              Curtis filtered by volume
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -73,6 +79,7 @@ func _ready() -> void:
 		_check_recovery(fixtures.get("recovery", {}))
 		_check_outcome_resolver(_load_json(OUTCOME_FIXTURES))
 		_check_stickup_tiers()
+		_check_907list_ownership()
 		_check_save_roundtrip()
 	_finish()
 
@@ -1138,10 +1145,17 @@ const STICKUP_EXPECTED := {
 	"clean": {"paid": true, "heat": 1.0, "injury": [0, 0], "awareness": 1},
 	"messy": {"paid": true, "heat": 2.0, "injury": [5, 10], "awareness": 2},
 	"failure": {"paid": false, "heat": 1.0, "injury": [0, 0], "awareness": 1},
-	# Four, not three: the catastrophic footprint carries a `network` row, and a
-	# network row that genuinely reaches Curtis is worth another point of
-	# awareness on its own. That compounding is canon's, in broadcast_tracked.
-	"catastrophic": {"paid": false, "heat": 3.0, "injury": [15, 25], "awareness": 4},
+	# Three, and the reason it is three is the whole point of FS-001.2's Curtis
+	# filter. The catastrophic footprint DOES carry a `network` row — but the row
+	# is `heat_exposure`, and heat_exposure does not clear Curtis's network
+	# filter (only violence / defiance / growth do, plus financial over $200).
+	# So it never lands on him and never credits the extra point.
+	#
+	# Build 5e recorded this as FOUR, and it was four, because the filter was not
+	# ported yet. That was the port over-crediting Curtis on every catastrophic
+	# robbery, and this is the correction. Verified against the oracle:
+	# `clearsCurtisFilter({type: "heat_exposure"})` is false.
+	"catastrophic": {"paid": false, "heat": 3.0, "injury": [15, 25], "awareness": 3},
 }
 
 func _check_stickup_tiers() -> void:
@@ -1279,8 +1293,14 @@ func _run_stickup_case(gs: Node, gm: Node, exposure: Node, target: Dictionary,
 		var channel: String = str(spec["channel"])
 		var listeners := 0
 		for npc_id in exposure.NPC_LENSES.keys():
-			if channel in exposure.NPC_CHANNELS.get(str(npc_id), []):
-				listeners += 1
+			if not channel in exposure.NPC_CHANNELS.get(str(npc_id), []):
+				continue
+			# Derived, not hardcoded: Curtis's network ear is filtered, so the
+			# expected row count has to ask the same question the broadcast does.
+			if npc_id == "curtis" and channel == "network" \
+					and not exposure.clears_curtis_filter(spec):
+				continue
+			listeners += 1
 		if int(exposure.CHANNELS[channel]["days"]) <= 0:
 			immediate += listeners
 		else:
@@ -1388,6 +1408,322 @@ func _check_stickup_rng_isolation(gs: Node, gm: Node, resolver: RefCounted) -> v
 	gs.day = 3
 	gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET})
 	_expect_int("market cursor unmoved by a dispatched robbery", gs.rng_state, cursor_before)
+
+## FS-001.2 — 907List opportunity ownership.
+##
+## A listing is a single opportunity, not a shelf. These checks hold the whole
+## contract: what the board offers, what consumption removes, what the system
+## refuses, what survives a reload, and what a v5 save can honestly recover.
+##
+## **On determinism.** Boards are pinned to LITERAL ids, not compared against a
+## second call. Comparing a generation to its own replay is a tautology that
+## passes whenever the generator is stable, including when it is stably wrong;
+## a literal pin fails the moment the walk, the seed handling, or the listing
+## table moves. The literals below were recorded off the real generator once and
+## are golden from here.
+const LIST_PROBE_SEED := "907hustle"
+## Fixed boards for the fresh-run seed at tier 1, day by day. Day 3 carries one
+## entry rather than the tier's two on purpose — see the note in
+## `_check_list_board_determinism`.
+const LIST_GOLDEN_BOARDS := {
+	1: ["camp_stove", "sagging_couch"],
+	2: ["space_heater", "dresser"],
+	3: ["space_heater"],
+	4: ["space_heater", "used_tv"],
+	5: ["sagging_couch", "cracked_tv"],
+}
+## Day 2 once `space_heater` has been taken. Not day 2 minus that id: the filter
+## runs on the POOL, so the board is regenerated from a smaller set and its
+## remaining composition moves. That is canon's `listingSlate` and this literal
+## is what pins it.
+const LIST_GOLDEN_AFTER_TAKE := ["winter_coat", "dresser"]
+
+func _check_907list_ownership() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var sys: RefCounted = gm.system("list") as RefCounted
+	if sys == null:
+		_fail("907list", "no list system registered")
+		return
+	_check_list_board_determinism(gs, sys)
+	_check_list_consumption(gs, gm, sys)
+	_check_list_persistence(gs, gm, sys)
+	_check_list_migration(gs, sys)
+	_check_list_flip_observation(gs, gm, sys)
+	_reset_list_probe(gs)
+
+## A fresh run at a known seed, standing in Spenard with money to spend.
+func _reset_list_probe(gs: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 2
+	gs.time_slots_today = 0
+	gs.cash = 5000
+	gs.current_district_id = "north_star_lot"
+
+func _board_ids(sys: RefCounted) -> Array:
+	var out: Array = []
+	for listing in sys.todays_listings():
+		out.append(str(listing["id"]))
+	return out
+
+## The board is a function of seed, day, tier and consumption — pinned literally.
+func _check_list_board_determinism(gs: Node, sys: RefCounted) -> void:
+	_reset_list_probe(gs)
+	_expect_str("907list probe seed", str(gs.run_seed), LIST_PROBE_SEED)
+	for day in LIST_GOLDEN_BOARDS.keys():
+		gs.day = int(day)
+		_expect_str("907list board day %d" % int(day),
+			str(_board_ids(sys)), str(LIST_GOLDEN_BOARDS[day]))
+	# Day 3 returns one listing where tier 1 asks for two, and that is a REAL
+	# pre-existing defect being pinned rather than papered over: the generator
+	# walks `seeded_int_range` over keys that differ only in a trailing counter,
+	# and FNV-1a over that shape clusters hard — every one of the 40 guard keys
+	# for day 3 lands in the same bucket, so the dedupe never finds a second
+	# item. Canon does not have this because it `seededShuffle`s the whole pool
+	# instead of sampling it. Fixing it moves every board in every existing save,
+	# so it is filed rather than fixed here; this assertion is what will fail
+	# loudly when it does get fixed.
+	gs.day = 3
+	_expect_int("907list day 3 is short (known generator defect)", _board_ids(sys).size(), 1)
+
+## Consumption: what it removes, what the system refuses, and when it clears.
+func _check_list_consumption(gs: Node, gm: Node, sys: RefCounted) -> void:
+	_reset_list_probe(gs)
+	_expect_true("907list nothing taken on a fresh run", sys.taken_today().is_empty())
+	var before: Array = _board_ids(sys)
+	_expect_true("907list probe day offers the target", "space_heater" in before)
+
+	var cash_before: int = gs.cash
+	_expect_true("907list buy dispatches", gm.dispatch("list_buy", {"item_id": "space_heater"}))
+	_expect_str("907list records the id as taken", str(sys.taken_today()), str(["space_heater"]))
+	_expect_int("907list taken day is today", int(gs.list_taken["day"]), gs.day)
+
+	# Board membership rejection — and the regenerated composition with it.
+	var after: Array = _board_ids(sys)
+	_expect_true("907list consumed id leaves the board", not "space_heater" in after)
+	_expect_str("907list board after the take", str(after), str(LIST_GOLDEN_AFTER_TAKE))
+
+	# Duplicate purchase rejection at the SYSTEM level, not the UI's.
+	var repeat: Dictionary = sys.handle("list_buy", {"item_id": "space_heater"})
+	_expect_true("907list rebuy is refused", not bool(repeat.get("ok", false)))
+	_expect_str("907list rebuy reason", str(repeat.get("reason", "")), "That one is gone.")
+	_expect_int("907list rebuy costs nothing",
+		gs.cash, cash_before - int(gs.listing_item_by_id("space_heater")["buy"]))
+	_expect_int("907list rebuy adds no holding", gs.list_holdings.size(), 1)
+
+	# An id that exists but was never on today's board is refused the same way —
+	# the guard validates against the board, not against the item table.
+	var off_board := ""
+	for item in gs.listing_items:
+		var id := str(item["id"])
+		if not id in after and id != "space_heater" and int(item["tier"]) <= gs.list_tier:
+			off_board = id
+			break
+	if off_board.is_empty():
+		_fail("907list off-board case", "every eligible id is on the board")
+	else:
+		var stray: Dictionary = sys.handle("list_buy", {"item_id": off_board})
+		_expect_true("907list off-board id refused", not bool(stray.get("ok", false)))
+
+	# The lazy day reset: nothing runs, the day field simply stops matching.
+	gs.day += 1
+	_expect_true("907list next day clears consumption", sys.taken_today().is_empty())
+	_expect_int("907list stale record is left alone until written",
+		int(gs.list_taken["day"]), gs.day - 1)
+	# And a day BEFORE the record reads empty too, which is what makes a save
+	# loaded out of order safe rather than merely lucky.
+	gs.day -= 2
+	_expect_true("907list an earlier day reads empty", sys.taken_today().is_empty())
+
+## Consumption survives a save/load round trip, and the board it produces is
+## still the pinned one.
+func _check_list_persistence(gs: Node, gm: Node, sys: RefCounted) -> void:
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	_reset_list_probe(gs)
+	_expect_true("907list persistence buy", gm.dispatch("list_buy", {"item_id": "space_heater"}))
+	var day_at_save: int = gs.day
+	saves.save_run()
+	_expect_true("907list wrote a save", FileAccess.file_exists(saves.SAVE_PATH))
+
+	# Scramble, so a load that silently no-ops cannot pass.
+	gs.list_taken = {"day": 0, "ids": []}
+	gs.day = 99
+	_expect_true("907list save reloads", saves.load_run())
+	_expect_int("907list day restored", gs.day, day_at_save)
+	_expect_str("907list consumption restored", str(sys.taken_today()), str(["space_heater"]))
+	# Literal, not a replay comparison: the reloaded run must produce the SAME
+	# pinned board, which is the deterministic-replay guarantee stated exactly.
+	_expect_str("907list board after reload", str(_board_ids(sys)), str(LIST_GOLDEN_AFTER_TAKE))
+	var repeat: Dictionary = sys.handle("list_buy", {"item_id": "space_heater"})
+	_expect_true("907list rebuy still refused after reload", not bool(repeat.get("ok", false)))
+
+	if previous_save.is_empty():
+		DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+
+## The v5 → v6 arm: what it reconstructs, and the history it honestly cannot.
+func _check_list_migration(gs: Node, sys: RefCounted) -> void:
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	_expect_int("save version is 6", saves.SAVE_VERSION, 6)
+	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
+
+	# A v5 save mid-day 4: one listing bought today and still held (recoverable),
+	# one bought on an earlier day (must NOT count as taken today), and — the
+	# case that cannot be recovered — one bought and sold today, which leaves no
+	# trace at all in a v5 payload.
+	gs.reset_to_new_game()
+	var v5_state := {
+		"day": 4, "cash": 300, "street_name": "Legacy",
+		"list_tier": 1, "list_flips": 0,
+		"list_holdings": [
+			{"item_id": "space_heater", "bought_day": 4},
+			{"item_id": "dresser", "bought_day": 1},
+		],
+	}
+	var file := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if file == null:
+		_fail("907list migration", "could not write the fixture save")
+		return
+	file.store_string(var_to_str({"save_version": 5, "state": v5_state}))
+	file.close()
+
+	_expect_true("v5 save loads into v6", saves.load_run())
+	_expect_int("v5 migration day", gs.day, 4)
+	_expect_int("v5 migration taken day", int(gs.list_taken["day"]), 4)
+	# Exactly the same-day holding. The day-1 purchase is not today's business.
+	_expect_str("v5 migration recovers today's holdings",
+		str(sys.taken_today()), str(["space_heater"]))
+	var refused: Dictionary = sys.handle("list_buy", {"item_id": "space_heater"})
+	_expect_true("v5 migrated consumption is enforced", not bool(refused.get("ok", false)))
+
+	# The documented limit, asserted rather than merely commented: a listing
+	# bought AND sold on day 4 left no holding, so v6 cannot know it was taken.
+	# `winter_coat` stands for that case — it is genuinely absent from the
+	# reconstruction, and the player gets that slot back once, on this day only.
+	_expect_true("v5 migration cannot recover bought-and-sold history",
+		not "winter_coat" in sys.taken_today())
+
+	# A v5 save with a MALFORMED holdings array must still migrate, not crash —
+	# PR #36's posture applied to the first arm that reads save data structurally.
+	var junk_state: Dictionary = v5_state.duplicate(true)
+	junk_state["list_holdings"] = ["not a dictionary", {"no_item_id": true}]
+	var junk := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if junk != null:
+		junk.store_string(var_to_str({"save_version": 5, "state": junk_state}))
+		junk.close()
+	_expect_true("v5 malformed holdings still migrates", saves.load_run())
+	_expect_true("v5 malformed holdings recovers nothing", sys.taken_today().is_empty())
+
+	if previous_save.is_empty():
+		DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+
+## The completed personal flip feeding the Exposure layer — and the volume
+## filter that decides whether Curtis is one of the people who hears about it.
+func _check_list_flip_observation(gs: Node, gm: Node, sys: RefCounted) -> void:
+	var exposure := get_node("/root/Exposure")
+
+	# The filter itself, at exact literal boundaries. Canon uses Math.abs, so a
+	# large LOSS is as audible as a large gain.
+	_expect_true("curtis filter passes violence",
+		exposure.clears_curtis_filter({"type": "violence"}))
+	_expect_true("curtis filter passes defiance",
+		exposure.clears_curtis_filter({"type": "defiance"}))
+	_expect_true("curtis filter passes growth",
+		exposure.clears_curtis_filter({"type": "growth"}))
+	_expect_true("curtis filter blocks heat_exposure",
+		not exposure.clears_curtis_filter({"type": "heat_exposure"}))
+	_expect_true("curtis filter blocks presence",
+		not exposure.clears_curtis_filter({"type": "presence"}))
+	_expect_true("curtis filter blocks a $199 flip",
+		not exposure.clears_curtis_filter({"type": "financial", "value": 199}))
+	_expect_true("curtis filter passes a $200 flip",
+		exposure.clears_curtis_filter({"type": "financial", "value": 200}))
+	_expect_true("curtis filter passes a $250 loss",
+		exposure.clears_curtis_filter({"type": "financial", "value": -250}))
+	_expect_true("curtis filter blocks a valueless financial row",
+		not exposure.clears_curtis_filter({"type": "financial"}))
+
+	# A small flip: household hears it, the network carries it to the money
+	# people, and Curtis is NOT among them.
+	var small: Dictionary = _run_flip(gs, gm, sys, "space_heater", 2)
+	_expect_true("small flip settled", bool(small["ok"]))
+	_expect_true("small flip is under the threshold", int(small["got"]) < 200)
+	_expect_true("small flip tells the household",
+		"yalonda" in small["household"] and "juan" in small["household"])
+	_expect_true("small flip rides the network to the money people",
+		"mina" in small["network"] and "dre" in small["network"])
+	_expect_true("small flip never reaches Curtis", not "curtis" in small["network"])
+	_expect_int("small flip raises no awareness", int(small["awareness_delta"]), 0)
+	_expect_float("small flip adds no heat", small["heat_delta"], 0.0)
+
+	# A big one clears the volume threshold, and the network arrival is what
+	# credits his awareness — the one way a flip is meant to reach him.
+	var big: Dictionary = _run_flip(gs, gm, sys, "dslr_camera", 3)
+	_expect_true("big flip settled", bool(big["ok"]))
+	_expect_true("big flip clears the threshold", int(big["got"]) >= 200)
+	_expect_true("big flip reaches Curtis", "curtis" in big["network"])
+	_expect_int("big flip raises awareness by one", int(big["awareness_delta"]), 1)
+	_expect_float("big flip still adds no heat", big["heat_delta"], 0.0)
+
+## Drive one sale end to end from a planted holding, and report who heard.
+## The holding is planted rather than bought so the sale — not the board — is
+## what is under test, and so a high-value item is reachable at tier 1.
+func _run_flip(gs: Node, gm: Node, sys: RefCounted, item_id: String, tier: int) -> Dictionary:
+	var exposure := get_node("/root/Exposure")
+	_reset_list_probe(gs)
+	gs.list_tier = tier
+	gs.day = 5
+	gs.time_slots_today = 0
+	gs.list_holdings = [{"item_id": item_id, "bought_day": 4}]
+	for npc_id in exposure.npc_ids():
+		exposure.ledger_of(str(npc_id)).clear()
+	gs.observation_queue.clear()
+	var awareness_before: int = gs.curtis_awareness
+	var heat_before: float = gs.heat
+	var result: Dictionary = sys.handle("list_sell", {"index": 0})
+
+	var household: Array = []
+	var network: Array = []
+	for npc_id in exposure.npc_ids():
+		for row in exposure.ledger_of(str(npc_id)):
+			if str(row["event"]) == "907list_profit" and str(row["source"]) == "household":
+				household.append(str(npc_id))
+	for entry in gs.observation_queue:
+		var spec: Dictionary = entry["spec"]
+		if str(spec.get("event", "")) == "907list_profit" and str(spec.get("channel", "")) == "network":
+			network.append(str(entry["npc_id"]))
+	return {
+		"ok": bool(result.get("ok", false)),
+		"got": int(result.get("got", 0)),
+		"household": household,
+		"network": network,
+		"awareness_delta": gs.curtis_awareness - awareness_before,
+		"heat_delta": gs.heat - heat_before,
+	}
 
 # --- plumbing ---------------------------------------------------------------
 

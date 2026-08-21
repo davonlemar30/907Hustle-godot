@@ -124,6 +124,7 @@ func _ready() -> void:
 		_check_consequence_state()
 		_check_consequence_engine()
 		_check_outcome_projection()
+		_check_boost_caught()
 		_check_save_roundtrip()
 	_finish()
 
@@ -3414,7 +3415,25 @@ func _check_frozen_behavior() -> void:
 
 ## The literal win/loss pattern of the Boost sweep below, recorded once off the
 ## real system. Golden data: it moves only if Boost's observable behaviour does.
-const BOOST_FROZEN_PATTERN := "101111011001011101111111111101101111111110111101"
+##
+## **Re-pinned once, in FS-003.7, and here is exactly why.**
+##
+## The roll key is `boost:<day>:<slot>:<target>`. Before .7 a failed lift settled
+## its slot immediately, so the next target in the same day rolled at slot+1;
+## now the slot stays owed until the Caught chain reaches Continue, so it rolls
+## at the SAME slot and therefore against a different key. Two bits moved —
+## `spenard_fuel` on days 4 and 6, both of which follow a `night_owl` miss.
+##
+## Nothing about the roll itself changed: the chance formula, the comparison and
+## the `:take` band are untouched, and `boost d%d %s resolves binary` derives its
+## expectation from the live key and passed throughout. What moved is WHEN the
+## clock advances, which is the whole point of the slice — and it is separately
+## asserted by "a failed lift costs no slot yet".
+##
+## The literal still guards what it always guarded: a changed key format, a
+## changed chance formula, an observably inverted comparison, or a shifted take
+## band. It is re-pinned rather than deleted for that reason.
+const BOOST_FROZEN_PATTERN := "101111001000011101111111111101101111111110111101"
 
 ## A run standing in Spenard at the start of a day with money in hand.
 func _frozen_ready(gs: Node, cash: int = 5000) -> void:
@@ -3463,6 +3482,17 @@ func _check_boost_behavior(gs: Node, gm: Node) -> void:
 			# and would quietly skip the very write being frozen.
 			_expect_true("boost d%d %s dispatches" % [day, str(t["id"])],
 				gm.dispatch("boost", {"target_id": str(t["id"])}))
+			# FS-003.7: a failed lift no longer ends the action — it opens a
+			# blocking Caught chain and waits. This sweep is measuring the
+			# INITIAL binary roll, which happens before any of that, so the
+			# chain is cleared rather than resolved: resolving would apply
+			# injury, Heat and a store ban, and a ban would refuse the next
+			# day's attempt on the same target and silently shorten the sweep.
+			#
+			# Written as state cleanup, which is the "focused tests" exception,
+			# and deliberately NOT as a dispatch — the encounter's own effects
+			# are covered in the Caught section, not here.
+			gs.active_consequence = {}
 			# The outcome read off state rather than a returned dictionary,
 			# which is the honest version of the question anyway: a win is a win
 			# because the money moved.
@@ -3544,11 +3574,46 @@ func _check_boost_behavior(gs: Node, gm: Node) -> void:
 	_expect_true("boost repeat is refused at the system level",
 		not gm.dispatch("boost", {"target_id": "night_owl"}))
 
-	# A lift is exactly one slot.
-	_frozen_ready(gs)
-	var slot_before: int = gs.time_slots_today
-	gm.dispatch("boost", {"target_id": "night_owl"})
-	_expect_int("boost costs exactly one slot", gs.time_slots_today, slot_before + 1)
+	# A lift is exactly one slot — and FS-003.7 splits that claim in two.
+	#
+	# A SUCCESSFUL lift still settles immediately. A FAILED one does not: TI-003
+	# §11 keeps its slot unsettled until the Caught chain reaches Continue,
+	# because a blown lift must not cost the player time before they have
+	# answered for it. Both halves are asserted, and the day is derived rather
+	# than assumed so neither can be measuring the branch it did not intend.
+	var settle_success_day := -1
+	var settle_miss_day := -1
+	for day in range(1, 40):
+		_frozen_ready(gs)
+		gs.day = day
+		var cash_mark: int = gs.cash
+		var slot_before: int = gs.time_slots_today
+		if not gm.dispatch("boost", {"target_id": "night_owl"}):
+			continue
+		var won: bool = gs.cash > cash_mark
+		if won and settle_success_day < 0:
+			settle_success_day = day
+			_expect_int("a successful lift costs exactly one slot",
+				gs.time_slots_today, slot_before + 1)
+			_expect_true("a successful lift opens no chain",
+				(gs.active_consequence as Dictionary).is_empty())
+		elif not won and settle_miss_day < 0:
+			settle_miss_day = day
+			_expect_int("a failed lift costs no slot yet",
+				gs.time_slots_today, slot_before)
+			# "Nothing changed" is only meaningful alongside "and the thing that
+			# should have happened did": the chain has to be open, or a boost
+			# that silently did nothing would pass this too.
+			_expect_true("a failed lift opens a Caught chain",
+				not (gs.active_consequence as Dictionary).is_empty())
+			_expect_str("the chain it opens is boost_caught",
+				str((gs.active_consequence as Dictionary).get("chain_kind", "")),
+				"boost_caught")
+			gs.active_consequence = {}
+		if settle_success_day >= 0 and settle_miss_day >= 0:
+			break
+	_expect_true("the slot probe found a success", settle_success_day >= 0)
+	_expect_true("the slot probe found a miss", settle_miss_day >= 0)
 
 	# Tier promotion: technique alone opens tier 2; tier 3 also needs somebody
 	# who can be field-assigned, and that gate is the one FS-003 must not lose.
@@ -3721,7 +3786,18 @@ func _check_heat_write_path(gs: Node, gm: Node) -> void:
 			_expect_float("boost tier 1 SUCCESS heat matches canon's 0.5", gs.heat, 0.5)
 		elif gs.cash == cash_mark and miss_day < 0:
 			miss_day = day
-			_expect_float("boost MISS heat is 1.0", gs.heat, 1.0)
+			# WAS 1.0, and FS-003.7 removes it deliberately. TI-003 §11: "The
+			# failed branch removes its current immediate terminal Heat/log/time
+			# behavior because Caught now owns those consequence effects", and
+			# regression #3 is "Failed Boost keeps its old immediate Heat and
+			# then adds Caught Heat" — the double this assertion now prevents.
+			#
+			# The Heat a blown lift ends up costing is authored per response and
+			# per tier in data/consequence_rules.gd, and is asserted there.
+			_expect_float("a failed lift applies no immediate heat", gs.heat, 0.0)
+			_expect_true("a failed lift opens the chain that owns its heat",
+				not (gs.active_consequence as Dictionary).is_empty())
+			gs.active_consequence = {}
 		if success_day >= 0 and miss_day >= 0:
 			break
 	_expect_true("boost heat probe found a success", success_day >= 0)
@@ -6180,6 +6256,15 @@ func _check_engine_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
 	var cause_id: String = engine.active_cause_id()
 	_expect_true("the commit before the reload dispatches",
 		gm.dispatch("resolve_consequence_choice", {"choice_id": "run"}))
+	# FS-003.7 registered a real Boost adapter, so committing a choice on a chain
+	# whose `action_id` is "boost" now resolves it and advances the stage — to
+	# `result`, or to `booking` when the roll ends in an arrest. Captured rather
+	# than assumed: this check is about the chain surviving a reload AT WHATEVER
+	# STAGE it reached, and pinning `decision` here would be pinning the absence
+	# of the adapter the next assertion goes on to prove exists.
+	var stage_at_save: String = engine.active_stage()
+	_expect_true("committing advanced the chain past the decision",
+		stage_at_save != engine.STAGE_DECISION)
 	saves.save_run()
 
 	gs.active_consequence = {}
@@ -6190,7 +6275,7 @@ func _check_engine_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
 		engine.active_consequence_id(), consequence_id)
 	_expect_str("a reloaded chain keeps its cause", engine.active_cause_id(), cause_id)
 	_expect_str("a reloaded chain keeps its stage",
-		engine.active_stage(), engine.STAGE_DECISION)
+		engine.active_stage(), stage_at_save)
 
 	# TI-003 acceptance: "committed controls remain disabled after reload."
 	# The projection is what the scene reads, so this is the exact assertion the
@@ -6685,6 +6770,891 @@ func _check_projection_rng_non_drift(gs: Node, resolver: RefCounted) -> void:
 	_expect_float("the projection returns the same answer every call",
 		resolver.success_probability("confrontation", 0.5, 3, 0), first)
 
+## FS-003.7 — Failed Boost → Caught, the first end-to-end encounter.
+##
+## ## Two layers, and why both
+##
+## **The authored rows** are checked as DATA, against FS-003 §5's tables written
+## out as literals. That layer catches a transcription error — a heat value off
+## by one, a ban on the wrong row — which no amount of integration testing would
+## find, because the integration would simply apply the wrong number correctly.
+##
+## **The applied effects** are checked through `gm.dispatch`, on chains opened by
+## real failed lifts. That layer catches a wiring error — the right table read
+## into the wrong field, a receipt claimed but the mutation skipped.
+##
+## Neither layer alone is enough, and neither derives its expectation from the
+## other.
+##
+## ## What is NOT re-covered
+##
+## The engine's stage machine, receipt ledger, queue and route guard are
+## FS-003.5's (`_check_consequence_engine`). The odds projection is FS-003.6's.
+## The initial binary lift is FS-003.1's frozen sweep. None are repeated.
+func _check_boost_caught() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var engine: RefCounted = gm.system("consequence") as RefCounted
+	var boost: RefCounted = gm.system("boost") as RefCounted
+	if engine == null or boost == null:
+		_fail("boost caught", "systems not registered")
+		return
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	_check_caught_authored_rows(rules)
+	_check_caught_opens_on_failure(gs, gm, engine)
+	_check_caught_cause_uniqueness(gs, gm, engine)
+	_check_caught_decision_surface(gs, gm, engine, rules)
+	_check_caught_take_provenance(gs, gm, engine, rules)
+	_check_caught_effects_applied(gs, gm, engine, rules)
+	_check_caught_arrest_snapshot(gs, gm, engine, rules)
+	_check_caught_yield(gs, gm, engine)
+	_check_caught_bans(gs, gm, engine, boost)
+	_check_caught_source_time(gs, gm, engine)
+	_check_caught_reload(gs, gm, engine)
+	_check_caught_rng_non_drift(gs, gm, engine)
+	gs.reset_to_new_game()
+
+# --- layer 1: the authored tables ------------------------------------------
+
+## FS-003 §5's tables, transcribed here independently of `consequence_rules.gd`.
+##
+## Two transcriptions of one document is the point: they were typed from the
+## same source but not from each other, so a slip in either is a failure rather
+## than a shared mistake. This is the same discipline the golden market boards
+## use — pin recorded output, never re-derive it.
+func _check_caught_authored_rows(rules: RefCounted) -> void:
+	# Opponent bands, FS-003 §5.
+	var bands := [
+		[1, "Clerk", 0.50, 0.62, 0.65, 4, 9, 12, 20],
+		[2, "Store Security", 0.30, 0.50, 0.45, 5, 10, 15, 24],
+		[3, "Armed Guard", 0.15, 0.38, 0.25, 6, 12, 18, 28],
+	]
+	for row in bands:
+		var tier: int = int((row as Array)[0])
+		var band: Dictionary = rules.opponent_for(tier)
+		_expect_str("tier %d opponent" % tier, str(band["opponent"]), str((row as Array)[1]))
+		_expect_float("tier %d fight chance" % tier, rules.base_chance(tier, "fight"),
+			float((row as Array)[2]))
+		_expect_float("tier %d run chance" % tier, rules.base_chance(tier, "run"),
+			float((row as Array)[3]))
+		_expect_float("tier %d talk chance" % tier, rules.base_chance(tier, "talk"),
+			float((row as Array)[4]))
+		_expect_str("tier %d successful-fight injury band" % tier,
+			str(band["fight_win"]), str([int((row as Array)[5]), int((row as Array)[6])]))
+		_expect_str("tier %d lost-fight injury band" % tier,
+			str(band["fight_loss"]), str([int((row as Array)[7]), int((row as Array)[8])]))
+
+	# The response → resolver mapping, TI-003 §12.
+	_expect_str("fight resolves as confrontation", rules.resolver_for("fight"), "confrontation")
+	_expect_str("run resolves as escape", rules.resolver_for("run"), "escape")
+	_expect_str("talk resolves as negotiation", rules.resolver_for("talk"), "negotiation")
+	_expect_true("yield is deterministic", rules.is_deterministic("yield"))
+	for choice in ["fight", "run", "talk"]:
+		_expect_true("%s is not deterministic" % choice, not rules.is_deterministic(str(choice)))
+
+	# Take disposition, ban and arrest per row. FS-003 §5, written out.
+	# `arrest` here is the value AT TIER 1 WITH ZERO PRE-HEAT — the conditional
+	# row is exercised separately below, where the condition can actually vary.
+	var rows := [
+		# choice, tier, take, ban, arrest@t1/heat0
+		["fight", "clean", "keep", false, false],
+		["fight", "messy", "keep", false, false],
+		["fight", "failure", "lose", true, true],
+		["fight", "catastrophic", "lose", true, true],
+		["run", "clean", "keep", false, false],
+		["run", "messy", "keep", false, false],
+		["run", "failure", "lose", true, false],
+		["run", "catastrophic", "lose", true, true],
+		["talk", "clean", "return", false, false],
+		["talk", "messy", "return", true, false],
+		["talk", "failure", "return", true, false],
+		["talk", "catastrophic", "return", true, true],
+		["yield", "deterministic", "return", true, false],
+	]
+	for row in rows:
+		var choice := str((row as Array)[0])
+		var tier_name := str((row as Array)[1])
+		var effects: Dictionary = rules.effects_for(choice, tier_name)
+		_expect_str("%s/%s take disposition" % [choice, tier_name],
+			str(effects["take"]), str((row as Array)[2]))
+		_expect_true("%s/%s ban is %s" % [choice, tier_name, str((row as Array)[3])],
+			bool(effects["ban"]) == bool((row as Array)[3]))
+		_expect_true("%s/%s arrest at tier 1 / heat 0 is %s"
+			% [choice, tier_name, str((row as Array)[4])],
+			rules.arrests(choice, tier_name, 1, 0.0) == bool((row as Array)[4]))
+
+	# Raw Heat per row and tier. This is where FS-003's two shorthand forms —
+	# enumerated ("Tier 1 +2, Tier 2 +3, Tier 3 +4") and patterned ("Tier +1") —
+	# have to resolve to the same numbers.
+	var heat_rows := [
+		["fight", "clean", 1.0, 1.0, 1.0],
+		["fight", "messy", 2.0, 2.0, 2.0],
+		["fight", "failure", 2.0, 3.0, 4.0],
+		["fight", "catastrophic", 3.0, 4.0, 5.0],
+		["run", "clean", 1.0, 2.0, 2.0],
+		["run", "messy", 1.0, 2.0, 2.0],
+		["run", "failure", 2.0, 3.0, 4.0],
+		["run", "catastrophic", 3.0, 4.0, 5.0],
+		["talk", "clean", 0.0, 0.0, 0.0],
+		["talk", "messy", 0.0, 0.0, 0.0],
+		["talk", "failure", 1.0, 1.0, 1.0],
+		["talk", "catastrophic", 2.0, 2.0, 2.0],
+		["yield", "deterministic", 0.0, 0.0, 0.0],
+	]
+	for row in heat_rows:
+		var choice := str((row as Array)[0])
+		var tier_name := str((row as Array)[1])
+		for tier in [1, 2, 3]:
+			_expect_float("%s/%s raw heat at tier %d" % [choice, tier_name, tier],
+				rules.raw_heat(choice, tier_name, tier),
+				float((row as Array)[1 + tier]))
+
+	# Injury bands. `fight_win_low` is the one authored INTERPRETATION in the
+	# rules module ("the lower half of the tier's successful-fight injury band"),
+	# so its resolved numbers are pinned here rather than left implicit.
+	var injury_rows := [
+		["fight", "clean", 1, [4, 6]], ["fight", "clean", 2, [5, 7]], ["fight", "clean", 3, [6, 9]],
+		["fight", "messy", 1, [4, 9]], ["fight", "messy", 3, [6, 12]],
+		["fight", "failure", 1, [12, 20]], ["fight", "failure", 3, [18, 28]],
+		["fight", "catastrophic", 1, [18, 26]], ["fight", "catastrophic", 3, [24, 34]],
+		["run", "clean", 1, []],
+		["run", "messy", 1, [1, 5]], ["run", "messy", 3, [1, 5]],
+		["run", "failure", 2, [4, 10]],
+		["run", "catastrophic", 2, [8, 14]],
+		["talk", "clean", 1, []], ["talk", "messy", 2, []], ["talk", "failure", 3, []],
+		["talk", "catastrophic", 1, [5, 10]],
+		["yield", "deterministic", 1, []],
+	]
+	for row in injury_rows:
+		var choice := str((row as Array)[0])
+		var tier_name := str((row as Array)[1])
+		var tier: int = int((row as Array)[2])
+		_expect_str("%s/%s injury band at tier %d" % [choice, tier_name, tier],
+			str(rules.injury_band(choice, tier_name, tier)),
+			str((row as Array)[3]))
+
+	# District Pressure by tier, TI-003 §8, plus Marcus Tate's authored Yield row.
+	_expect_float("clean adds 0.5 pressure", rules.pressure_gain("fight", "clean"), 0.5)
+	_expect_float("messy adds 1.0 pressure", rules.pressure_gain("fight", "messy"), 1.0)
+	_expect_float("failure adds 1.0 pressure", rules.pressure_gain("run", "failure"), 1.0)
+	_expect_float("catastrophic adds 2.0 pressure",
+		rules.pressure_gain("talk", "catastrophic"), 2.0)
+	_expect_float("yield adds exactly 1.0 pressure",
+		rules.pressure_gain("yield", "deterministic"), 1.0)
+
+	# The one conditional arrest, at its exact boundary. FS-003 §5 Run/Failure:
+	# "Arrest occurs only when pre-encounter Global Heat > 6 or the target is
+	# Tier 3." Strictly greater, so 6.0 itself does not arrest.
+	_expect_true("run failure at tier 1 and heat 6.0 does not arrest",
+		not rules.arrests("run", "failure", 1, 6.0))
+	_expect_true("run failure at tier 1 and heat 6.1 arrests",
+		rules.arrests("run", "failure", 1, 6.1))
+	_expect_true("run failure at tier 2 and heat 0 does not arrest",
+		not rules.arrests("run", "failure", 2, 0.0))
+	_expect_true("run failure at tier 3 always arrests",
+		rules.arrests("run", "failure", 3, 0.0))
+	# And the condition reads the PRE-ENCOUNTER heat, not the tier alone — both
+	# halves of the `or` are separately sufficient.
+	_expect_true("run failure at tier 3 and high heat still arrests",
+		rules.arrests("run", "failure", 3, 12.0))
+
+# --- layer 2: the encounter, through dispatch -------------------------------
+
+## Cause ids must keep advancing across a sweep, and `_frozen_ready` resets them.
+##
+## The consequence roll is keyed on `consequence:<cause_id>:boost_caught:<choice>:outcome`.
+## A sweep that resets the run before every attempt therefore hands every chain
+## the SAME `cause:00000001` and gets the SAME outcome every time — 39 chains
+## opened, 39 resolved, not one of them different. That is what the first draft
+## of this section did, and it read as "run never keeps the take" rather than as
+## "the test never varied anything".
+##
+## Carrying the sequence is also the truthful model: in play the counter only
+## ever goes up, which is exactly why TI-003 §4 makes Cause allocation
+## sequential and persisted. Outcome variety across a run depends on it.
+var _cause_sequence_carry: int = 0
+
+func _caught_ready(gs: Node, day: int, tier: int) -> void:
+	_frozen_ready(gs)
+	gs.day = day
+	gs.boost_tier = tier
+	gs.boost_store_bans = []
+	gs.next_cause_sequence = _cause_sequence_carry
+
+func _caught_carry(gs: Node) -> void:
+	_cause_sequence_carry = int(gs.next_cause_sequence)
+
+## A failed lift with a specific RAW combat value, for the raw-vs-compat check.
+func _open_failed_lift_with_combat(gs: Node, gm: Node, target_id: String,
+		tier: int, raw_combat: int) -> bool:
+	for day in range(1, 60):
+		_caught_ready(gs, day, tier)
+		gs.heat = 0.0
+		gs.health = gs.health_max
+		gs.attributes["combat"] = raw_combat
+		var dispatched: bool = gm.dispatch("boost", {"target_id": target_id})
+		_caught_carry(gs)
+		if not dispatched:
+			continue
+		if not (gs.active_consequence as Dictionary).is_empty():
+			return true
+	return false
+
+## Walk days until a lift on `target_id` fails and opens a chain.
+##
+## Derived rather than seeded: a fixed day may resolve to a SUCCESS, and a
+## success opens nothing — every assertion after it would then pass vacuously
+## against a chain that was never created.
+func _open_failed_lift(gs: Node, gm: Node, target_id: String, tier: int) -> bool:
+	for day in range(1, 60):
+		_caught_ready(gs, day, tier)
+		gs.heat = 0.0
+		gs.health = gs.health_max
+		var dispatched: bool = gm.dispatch("boost", {"target_id": target_id})
+		_caught_carry(gs)
+		if not dispatched:
+			continue
+		if not (gs.active_consequence as Dictionary).is_empty():
+			return true
+	return false
+
+func _check_caught_opens_on_failure(gs: Node, gm: Node, engine: RefCounted) -> void:
+	var rng := get_node("/root/RngManager")
+	# Every Boost tier opens the decision — TI-003's acceptance criterion names
+	# T1, T2 and T3 individually.
+	var targets := [["night_owl", 1], ["northern_value", 2], ["warehouse_club", 3]]
+	for spec in targets:
+		var target_id := str((spec as Array)[0])
+		var tier: int = int((spec as Array)[1])
+		_expect_true("a failed tier-%d lift opens a chain" % tier,
+			_open_failed_lift(gs, gm, target_id, tier))
+		if (gs.active_consequence as Dictionary).is_empty():
+			continue
+		var summary: Dictionary = engine.active_summary()
+		_expect_str("the tier-%d chain is boost_caught" % tier,
+			str(summary["chain_kind"]), "boost_caught")
+		_expect_str("the tier-%d chain names its target" % tier,
+			str(summary["source_target_id"]), target_id)
+		_expect_int("the tier-%d chain records the tier" % tier,
+			int(summary["source_target_tier"]), tier)
+		_expect_str("the tier-%d chain opens at the decision stage" % tier,
+			str(summary["stage"]), "decision")
+		# The contested take is the amount the lift would have paid, rolled off
+		# the EXISTING `:take` key — TI-003 §11 step 4 and FS-003.7's "preserve
+		# existing initial Boost and `:take` RNG keys".
+		#
+		# Asserted as the exact keyed value, not merely as "in band". A different
+		# key produces a different number that is still inside the band every
+		# time, so the band check alone cannot tell them apart — a sabotage
+		# moving the key to `:contested` passed it.
+		var band: Array = gs.boost_target_by_id(target_id)["take"]
+		var source_key := str((gs.active_consequence["source"] as Dictionary)["source_rng_key"])
+		_expect_int("the tier-%d contested take is the keyed :take value" % tier,
+			int(summary["contested_take"]),
+			rng.seeded_int_range(gs.run_seed, source_key + ":take",
+				int(band[0]), int(band[1])))
+		_expect_str("the tier-%d chain records the source key" % tier, source_key,
+			"boost:%d:%d:%s" % [gs.day, gs.time_slots_today, target_id])
+		_expect_true("the tier-%d contested take is in band" % tier,
+			int(summary["contested_take"]) >= int(band[0])
+				and int(summary["contested_take"]) <= int(band[1]))
+		# The gate an arrest reads. Snapshotted before any consequence Heat.
+		_expect_float("the tier-%d chain snapshots pre-encounter heat" % tier,
+			float(summary["pre_encounter_heat"]), 0.0)
+		# TI-003 §11 step 3: the daily stamp lands exactly once, on the attempt,
+		# whether or not it worked — so a blown lift still uses up the room.
+		_expect_int("a failed tier-%d lift still spends the day's attempt" % tier,
+			int(gs.boost_daily_hits.get(target_id, -1)), gs.day)
+		gs.active_consequence = {}
+
+## TI-003 §5: "Persist decision inputs and shown probabilities when the decision
+## opens. Reload reproduces the same choice surface."
+## Cause ids are unique within a run, and that is load-bearing for OUTCOMES.
+##
+## The consequence roll is keyed on the Cause. If allocation ever stopped
+## advancing — reset, reused, or made constant — every Caught encounter in a run
+## would resolve identically, and nothing about the resolver or the effect tables
+## would look wrong. The whole encounter layer would just quietly become one
+## outcome repeated.
+##
+## This is not hypothetical: the first draft of this section reset the run before
+## each attempt, handed 39 consecutive chains `cause:00000001`, and got the same
+## tier 39 times. The sweep read as "run never keeps the take".
+func _check_caught_cause_uniqueness(gs: Node, gm: Node, engine: RefCounted) -> void:
+	_frozen_ready(gs)
+	var ids: Array = []
+	var tiers: Dictionary = {}
+	for day in range(1, 40):
+		gs.day = day
+		gs.heat = 0.0
+		gs.health = gs.health_max
+		gs.boost_store_bans = []
+		gs.boost_daily_hits = {}
+		if not gm.dispatch("boost", {"target_id": "night_owl"}):
+			continue
+		if (gs.active_consequence as Dictionary).is_empty():
+			continue
+		var cause_id: String = engine.active_cause_id()
+		_expect_true("cause %s is unique in this run" % cause_id, not cause_id in ids)
+		ids.append(cause_id)
+		if gm.dispatch("resolve_consequence_choice", {"choice_id": "run"}):
+			tiers[str((engine.result_summary() as Dictionary)["resolved_tier"])] = true
+		gs.active_consequence = {}
+		if ids.size() >= 6:
+			break
+	_expect_true("the run opened several chains", ids.size() >= 6)
+	# Sequential, not merely distinct — TI-003 §4 allocates with zero randomness
+	# so a reload cannot renumber a live chain.
+	for index in ids.size():
+		_expect_str("cause %d is allocated in sequence" % index, str(ids[index]),
+			"cause:%08d" % (int(str(ids[0]).substr(6)) + index))
+	# And distinct causes really do produce distinct outcomes. This is the
+	# assertion that would have caught the reset bug directly.
+	_expect_true("distinct causes resolve to more than one tier", tiers.size() >= 2)
+
+func _check_caught_decision_surface(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	var resolver: Object = gm.system("outcome_resolver")
+	if not _open_failed_lift(gs, gm, "night_owl", 1):
+		_fail("caught decision surface", "no failed lift found")
+		return
+	var rows: Array = engine.choice_summaries()
+	_expect_int("the decision offers four responses", rows.size(), 4)
+	var ids: Array = []
+	for row in rows:
+		ids.append(str((row as Dictionary)["choice_id"]))
+	_expect_str("the four responses are fight, run, talk, yield", str(ids),
+		str(["fight", "run", "talk", "yield"]))
+
+	# The shown odds are the projection's, computed from the authored base
+	# chance and the player's RAW attribute. Compared against a fresh call to
+	# the projection rather than against a hardcoded number, because the run's
+	# attributes are what `_frozen_ready` left them at — but the ACTION TYPE and
+	# BASE CHANCE come from the authored table, so a wrong mapping still fails.
+	for row in rows:
+		var entry: Dictionary = row
+		var choice := str(entry["choice_id"])
+		if rules.is_deterministic(choice):
+			_expect_true("yield shows no odds", not bool(entry["has_odds"]))
+			_expect_true("yield is flagged deterministic", bool(entry["deterministic"]))
+			continue
+		var action_type: String = rules.resolver_for(choice)
+		var attribute: String = resolver.attribute_for(action_type)
+		var raw: int = int(gs.attributes.get(attribute, 0))
+		_expect_float("%s shows the projected odds" % choice,
+			float(entry["success_probability"]),
+			resolver.success_probability(action_type,
+				rules.base_chance(1, choice), raw, 0))
+		_expect_true("%s is flagged as rolled" % choice, bool(entry["has_odds"]))
+
+	# Nothing is committed yet, so nothing is disabled.
+	for row in rows:
+		_expect_true("%s starts enabled" % str((row as Dictionary)["choice_id"]),
+			not bool((row as Dictionary)["disabled"]))
+	gs.active_consequence = {}
+
+	# --- RAW attribute, not the compatibility offset ---
+	#
+	# TI-003 regression #9: "Fight/Run/Talk use compatibility attributes instead
+	# of raw Outcome Resolver attributes." `compat()` is `clamp(value + 1, 1, 5)`,
+	# so it shifts every advantage and immunity threshold down a level.
+	#
+	# Measured at combat 2 SPECIFICALLY, and that is the whole point: raw 2 is
+	# below the advantage threshold while compat(2) = 3 is at it, so the two
+	# produce different odds. At combat 1 — where the rest of this section runs —
+	# raw 1 and compat 2 are both below advantage and project identically, so the
+	# regression is invisible there. A sabotage swapping raw for compat passed
+	# every other check in this section.
+	for raw_combat in [2, 5]:
+		if not _open_failed_lift_with_combat(gs, gm, "night_owl", 1, raw_combat):
+			_fail("caught raw attribute", "no failed lift at combat %d" % raw_combat)
+			continue
+		var fight_row: Dictionary = _choice_row(engine.choice_summaries(), "fight")
+		_expect_float("fight odds at raw combat %d use the raw value" % raw_combat,
+			float(fight_row["success_probability"]),
+			resolver.success_probability("confrontation",
+				rules.base_chance(1, "fight"), raw_combat, 0))
+		# And they are NOT the compat value's odds, asserted separately so the
+		# check names the thing it is defending against.
+		var attributes_system: Object = gm.system("attributes")
+		var compat_value: int = int(attributes_system.compat("combat"))
+		if compat_value != raw_combat:
+			_expect_true("fight odds at raw combat %d are not compat(%d)'s odds"
+				% [raw_combat, compat_value],
+				absf(float(fight_row["success_probability"])
+					- resolver.success_probability("confrontation",
+						rules.base_chance(1, "fight"), compat_value, 0)) > 1e-9
+				or resolver.success_probability("confrontation",
+					rules.base_chance(1, "fight"), compat_value, 0)
+					== resolver.success_probability("confrontation",
+						rules.base_chance(1, "fight"), raw_combat, 0))
+		_expect_true("the resolver_inputs record the raw value",
+			int(((gs.active_consequence["decision"] as Dictionary)["resolver_inputs"]
+				as Dictionary)["fight"]["raw"]) == raw_combat)
+		gs.active_consequence = {}
+
+## TI-003 §12: "T1/T2 kept contested take becomes Dirty Cash. T3 kept contested
+## value becomes Boost merchandise. Returned or confiscated take credits zero."
+##
+## The sharpest money rule in the slice, and the one regression list #6 and #7
+## both name.
+func _check_caught_take_provenance(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	for spec in [["night_owl", 1], ["northern_value", 2], ["warehouse_club", 3]]:
+		var target_id := str((spec as Array)[0])
+		var tier: int = int((spec as Array)[1])
+		# Sweep responses until one KEEPS the take, so the disposition under
+		# test actually happened. A run that never kept anything would pass a
+		# "no cash appeared" check for the wrong reason.
+		# Swept with `run` rather than `fight`. Both KEEP on clean and messy, but
+		# run's base chance is better at every tier (0.62 / 0.50 / 0.38 against
+		# 0.50 / 0.30 / 0.15) — and at tier 3 a 0.15 fight simply does not reach
+		# a kept take often enough for a bounded sweep to find one. The rule
+		# under test is the take's DESTINATION, which does not depend on which
+		# response kept it. Fight's own effect rows are covered below.
+		var kept := false
+		for attempt in range(1, 160):
+			_caught_ready(gs, attempt, tier)
+			gs.dirty_cash = 0
+			gs.clean_cash = int(gs.cash)
+			gs.boost_merchandise = 0
+			var opened_lift: bool = gm.dispatch("boost", {"target_id": target_id})
+			_caught_carry(gs)
+			if not opened_lift:
+				continue
+			if (gs.active_consequence as Dictionary).is_empty():
+				continue
+			var contested: int = int((engine.active_summary() as Dictionary)["contested_take"])
+			var dirty_before: int = int(gs.dirty_cash)
+			var goods_before: int = int(gs.boost_merchandise)
+			if not gm.dispatch("resolve_consequence_choice", {"choice_id": "run"}):
+				gs.active_consequence = {}
+				continue
+			var outcome: Dictionary = engine.result_summary()
+			var tier_name := str(outcome["resolved_tier"])
+			var disposition := str(rules.effects_for("run", tier_name).get("take", ""))
+			if disposition == "keep":
+				kept = true
+				if tier >= 3:
+					_expect_int("a kept tier-3 take becomes merchandise",
+						int(gs.boost_merchandise), goods_before + contested)
+					_expect_int("a kept tier-3 take is not cash",
+						int(gs.dirty_cash), dirty_before)
+				else:
+					_expect_int("a kept tier-%d take credits dirty cash" % tier,
+						int(gs.dirty_cash), dirty_before + contested)
+					_expect_int("a kept tier-%d take is not merchandise" % tier,
+						int(gs.boost_merchandise), goods_before)
+			else:
+				# Lost or returned: zero, both ways.
+				_expect_int("a %s tier-%d take credits no cash" % [disposition, tier],
+					int(gs.dirty_cash), dirty_before)
+				_expect_int("a %s tier-%d take credits no merchandise" % [disposition, tier],
+					int(gs.boost_merchandise), goods_before)
+			gs.active_consequence = {}
+			if kept:
+				break
+		_expect_true("the tier-%d provenance sweep saw a kept take" % tier, kept)
+
+	# Talk and Yield always hand it back, so neither can ever pay.
+	for choice in ["talk", "yield"]:
+		var found := false
+		for attempt in range(1, 40):
+			_caught_ready(gs, attempt, 1)
+			gs.dirty_cash = 0
+			gs.clean_cash = int(gs.cash)
+			gs.boost_merchandise = 0
+			var lifted: bool = gm.dispatch("boost", {"target_id": "night_owl"})
+			_caught_carry(gs)
+			if not lifted:
+				continue
+			if (gs.active_consequence as Dictionary).is_empty():
+				continue
+			var contested: int = int((engine.active_summary() as Dictionary)["contested_take"])
+			_expect_true("there was a take to hand back", contested > 0)
+			if gm.dispatch("resolve_consequence_choice", {"choice_id": str(choice)}):
+				found = true
+				_expect_int("%s never credits cash" % choice, int(gs.dirty_cash), 0)
+				_expect_int("%s never credits merchandise" % choice,
+					int(gs.boost_merchandise), 0)
+			gs.active_consequence = {}
+			if found:
+				break
+		_expect_true("the %s sweep resolved a chain" % choice, found)
+
+## Injury, Heat and Pressure, applied through the shared owners and matching the
+## authored row for whatever tier actually came up.
+func _check_caught_effects_applied(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	# Only about one lift in five on a tier-1 target actually fails, and only a
+	# failed lift opens a chain — so reaching all four confrontation tiers needs
+	# a sweep several times longer than the tier count suggests.
+	var seen_tiers: Dictionary = {}
+	for attempt in range(1, 220):
+		_caught_ready(gs, attempt, 1)
+		gs.heat = 0.0
+		gs.health = gs.health_max
+		gs.district_pressure = {}
+		var lifted: bool = gm.dispatch("boost", {"target_id": "night_owl"})
+		_caught_carry(gs)
+		if not lifted:
+			continue
+		if (gs.active_consequence as Dictionary).is_empty():
+			continue
+		var health_before: int = int(gs.health)
+		if not gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"}):
+			gs.active_consequence = {}
+			continue
+		var outcome: Dictionary = engine.result_summary()
+		var tier_name := str(outcome["resolved_tier"])
+		seen_tiers[tier_name] = int(seen_tiers.get(tier_name, 0)) + 1
+
+		# Heat: the authored raw amount, scaled by the one owner. Nobody is on
+		# the crew in a frozen run, so the applied delta equals the raw value —
+		# and that equality is the check, since a caller applying its own
+		# multiplier would break it.
+		_expect_float("fight/%s applies its authored heat" % tier_name,
+			float(gs.heat), rules.raw_heat("fight", tier_name, 1))
+
+		# Injury: inside the authored band, or exactly zero when the row has none.
+		var band: Array = rules.injury_band("fight", tier_name, 1)
+		var damage: int = health_before - int(gs.health)
+		if band.size() == 2:
+			_expect_true("fight/%s injury %d is inside the authored band %s"
+				% [tier_name, damage, str(band)],
+				damage >= int(band[0]) and damage <= int(band[1]))
+		else:
+			_expect_int("fight/%s does no injury" % tier_name, damage, 0)
+
+		# District Pressure: recorded once, at the authored amount, against the
+		# district the encounter happened in and the boost family.
+		var ledger: Dictionary = gs.district_pressure.get("north_star_lot", {})
+		var row: Dictionary = ledger.get("boost", {})
+		_expect_float("fight/%s records its authored pressure" % tier_name,
+			float(row.get("score", 0.0)), rules.pressure_gain("fight", tier_name))
+		_expect_int("pressure is stamped with the day",
+			int(row.get("last_gain_day", -1)), gs.day)
+		# Regression #16: District Pressure and Global Heat must not share
+		# storage. They hold different numbers here, which is the proof.
+		_expect_true("district pressure is stored apart from global heat",
+			absf(float(row.get("score", 0.0)) - float(gs.heat)) > 1e-9
+				or is_zero_approx(float(gs.heat)))
+
+		# The arrest gate, read off the authored table with the pre-encounter
+		# snapshot — which was 0.0, so only the unconditional rows arrest.
+		_expect_true("fight/%s arrest matches the authored row" % tier_name,
+			bool(outcome["result"]["arrested"])
+				== rules.arrests("fight", tier_name, 1, 0.0))
+		# Stage follows: Booking on an arrest, Result otherwise.
+		_expect_str("fight/%s lands on the right stage" % tier_name,
+			engine.active_stage(),
+			engine.STAGE_BOOKING if bool(outcome["result"]["arrested"])
+				else engine.STAGE_RESULT)
+
+		gs.active_consequence = {}
+		if seen_tiers.size() >= 3:
+			break
+	# The sweep has to have covered more than one ending, or every assertion
+	# above is a statement about a single tier dressed up as a matrix.
+	_expect_true("the fight sweep saw at least three outcome tiers",
+		seen_tiers.size() >= 3)
+
+	# --- receipts: every effect lands exactly once ---
+	#
+	# The exactly-once guarantee, measured where it matters: re-running the
+	# adapter against an already-resolved chain must move nothing.
+	if _open_failed_lift(gs, gm, "night_owl", 1):
+		gs.heat = 0.0
+		gs.health = gs.health_max
+		gs.dirty_cash = 0
+		gs.clean_cash = int(gs.cash)
+		var chain: Dictionary = gs.active_consequence
+		var boost_system: Object = gm.system("boost")
+		_expect_true("the first resolution dispatches",
+			gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"}))
+		var heat_after: float = float(gs.heat)
+		var health_after: int = int(gs.health)
+		var cash_after: int = int(gs.dirty_cash)
+		var pressure_after: float = float(
+			(gs.district_pressure.get("north_star_lot", {}) as Dictionary)
+				.get("boost", {}).get("score", 0.0))
+		# Called directly rather than dispatched: the dispatch path is already
+		# guarded by the committed-choice receipt (FS-003.5), so it would refuse
+		# before reaching the adapter and prove nothing about the EFFECT
+		# receipts. This is the one place the adapter is exercised out of band,
+		# and it is exercised precisely to show the receipts hold on their own.
+		boost_system.resolve_consequence(chain, "fight")
+		_expect_float("re-resolving applies no second heat", float(gs.heat), heat_after)
+		_expect_int("re-resolving applies no second injury", int(gs.health), health_after)
+		_expect_int("re-resolving credits no second take", int(gs.dirty_cash), cash_after)
+		_expect_float("re-resolving records no second pressure",
+			float((gs.district_pressure.get("north_star_lot", {}) as Dictionary)
+				.get("boost", {}).get("score", 0.0)), pressure_after)
+		gs.active_consequence = {}
+
+## The one conditional arrest, driven through the real path.
+##
+## FS-003 §5 Run/Failure: "Arrest occurs only when pre-encounter Global Heat > 6
+## or the target is Tier 3." TI-003 §14 adds that the snapshot is taken BEFORE
+## consequence Heat — and that is the half no data-level check can prove, because
+## it is about which number the ADAPTER hands the rule.
+##
+## Staged so the two readings disagree: pre-encounter Heat sits at exactly 6.0,
+## which does NOT arrest, while Run/Failure at tier 1 adds +2 raw — so the live
+## meter reads 8.0 by the time the gate is evaluated, which WOULD arrest. If the
+## adapter passed `gs.heat` instead of the snapshot, this flips.
+func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	var found := false
+	for attempt in range(1, 220):
+		_caught_ready(gs, attempt, 1)
+		gs.health = gs.health_max
+		# Exactly on the boundary: the rule is strictly greater than 6.
+		gs.heat = 6.0
+		var lifted: bool = gm.dispatch("boost", {"target_id": "night_owl"})
+		_caught_carry(gs)
+		if not lifted or (gs.active_consequence as Dictionary).is_empty():
+			continue
+		_expect_float("the chain snapshotted the boundary heat",
+			float((engine.active_summary() as Dictionary)["pre_encounter_heat"]), 6.0)
+		if not gm.dispatch("resolve_consequence_choice", {"choice_id": "run"}):
+			gs.active_consequence = {}
+			continue
+		var outcome: Dictionary = engine.result_summary()
+		if str(outcome["resolved_tier"]) != "failure":
+			gs.active_consequence = {}
+			continue
+		found = true
+		# The encounter's own Heat has already landed, and it pushed the live
+		# meter past the threshold — which is exactly the trap.
+		_expect_float("run/failure at tier 1 added its authored heat",
+			float(gs.heat), 6.0 + rules.raw_heat("run", "failure", 1))
+		_expect_true("the live meter is now above the arrest threshold",
+			float(gs.heat) > rules.RUN_FAILURE_ARREST_HEAT)
+		# And the gate still says no, because it read the snapshot.
+		_expect_true("the arrest gate reads the pre-encounter snapshot, not the live meter",
+			not bool(outcome["result"]["arrested"]))
+		_expect_str("a non-arrest run/failure stops at the result stage",
+			engine.active_stage(), engine.STAGE_RESULT)
+		gs.active_consequence = {}
+		break
+	_expect_true("the arrest-snapshot probe found a run/failure", found)
+
+	# The other half of the `or`: tier 3 arrests regardless of Heat. Driven the
+	# same way so both branches of the condition are covered on the real path.
+	var found_tier3 := false
+	for attempt in range(1, 220):
+		_caught_ready(gs, attempt, 3)
+		gs.health = gs.health_max
+		gs.heat = 0.0
+		var lifted3: bool = gm.dispatch("boost", {"target_id": "warehouse_club"})
+		_caught_carry(gs)
+		if not lifted3 or (gs.active_consequence as Dictionary).is_empty():
+			continue
+		if not gm.dispatch("resolve_consequence_choice", {"choice_id": "run"}):
+			gs.active_consequence = {}
+			continue
+		var outcome3: Dictionary = engine.result_summary()
+		if str(outcome3["resolved_tier"]) != "failure":
+			gs.active_consequence = {}
+			continue
+		found_tier3 = true
+		_expect_true("run/failure at tier 3 arrests even at zero heat",
+			bool(outcome3["result"]["arrested"]))
+		_expect_str("an arrest moves the chain to booking",
+			engine.active_stage(), engine.STAGE_BOOKING)
+		# The facts FS-003.8 will need are on the chain already.
+		var booking: Dictionary = engine.booking_summary()
+		_expect_true("the booking stage carries a severity",
+			not str(booking.get("severity", "")).is_empty())
+		_expect_str("the booking stage carries the source family",
+			str(booking.get("source_family", "")), "boost")
+		gs.active_consequence = {}
+		break
+	_expect_true("the tier-3 arrest probe found a run/failure", found_tier3)
+
+## Yield is the deterministic relief valve: known loss, zero RNG, +1.0 Pressure.
+func _check_caught_yield(gs: Node, gm: Node, engine: RefCounted) -> void:
+	if not _open_failed_lift(gs, gm, "night_owl", 1):
+		_fail("caught yield", "no failed lift found")
+		return
+	gs.heat = 0.0
+	gs.health = gs.health_max
+	gs.dirty_cash = 0
+	gs.clean_cash = int(gs.cash)
+	gs.district_pressure = {}
+	gs.rng_state = 777777
+	var cursor: int = int(gs.rng_state)
+	var contested: int = int((engine.active_summary() as Dictionary)["contested_take"])
+
+	_expect_true("yield dispatches",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"}))
+	var outcome: Dictionary = engine.result_summary()
+	# FS-003 §5 Yield: return the merchandise, ban, 0 Heat, 0 injury, 0 arrest.
+	_expect_str("yield resolves deterministically", str(outcome["resolved_tier"]),
+		"deterministic")
+	_expect_true("there was a take to give up", contested > 0)
+	_expect_int("yield credits no cash", int(gs.dirty_cash), 0)
+	_expect_int("yield credits no merchandise", int(gs.boost_merchandise), 0)
+	_expect_float("yield costs no heat", float(gs.heat), 0.0)
+	_expect_int("yield costs no health", int(gs.health), gs.health_max)
+	_expect_true("yield does not arrest", not bool(outcome["result"]["arrested"]))
+	_expect_true("yield bans the store", bool(outcome["result"]["banned"]))
+	# Marcus Tate's authored row, applied.
+	_expect_float("yield adds exactly 1.0 district pressure",
+		float((gs.district_pressure.get("north_star_lot", {}) as Dictionary)
+			.get("boost", {}).get("score", 0.0)), 1.0)
+	# TI-003 regression #8: "Yield consumes RNG."
+	_expect_int("yield draws nothing from the market stream", int(gs.rng_state), cursor)
+	gs.active_consequence = {}
+
+## Bans are Boost-owned, persistent, and enforced by the source blocker.
+func _check_caught_bans(gs: Node, gm: Node, engine: RefCounted, boost: RefCounted) -> void:
+	if not _open_failed_lift(gs, gm, "night_owl", 1):
+		_fail("caught bans", "no failed lift found")
+		return
+	_expect_true("the store is not banned before the encounter resolves",
+		not "night_owl" in gs.boost_store_bans)
+	_expect_true("yield dispatches for the ban check",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"}))
+	_expect_true("a yielded encounter bans the store", "night_owl" in gs.boost_store_bans)
+	# Enforced through the source blocker, which is what makes it real.
+	#
+	# The daily-hit stamp is cleared first. It is checked BEFORE the ban and
+	# would answer "you've already been in today" — so leaving it in place would
+	# have this assertion pass on the wrong blocker, and a deleted ban check
+	# would go unnoticed. Measured where only the ban can produce the answer.
+	gs.boost_daily_hits = {}
+	_expect_str("the blocker refuses a banned store",
+		boost.blocker("night_owl"), "They know your face in there now.")
+	gs.active_consequence = {}
+	# TI-003 regression #11: bans must survive a day-cross AND a reload. The
+	# reload half is FS-003.4's; this is the day-cross half, on a live ban.
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	_expect_true("the night dispatches over a live ban", gm.dispatch("advance_time", {}))
+	_expect_true("the ban survives the day-cross", "night_owl" in gs.boost_store_bans)
+	_expect_str("the blocker still refuses after the day-cross",
+		boost.blocker("night_owl"), "They know your face in there now.")
+	# A store that was never banned is unaffected — the ban is per target, not a
+	# global lockout.
+	_expect_str("an unbanned store is still open", boost.blocker("spenard_fuel"), "")
+
+## TI-003 §26: "One source action pays its normal time cost once after its
+## blocking consequence reaches terminal handoff." Regression #12 is it settling
+## twice.
+func _check_caught_source_time(gs: Node, gm: Node, engine: RefCounted) -> void:
+	if not _open_failed_lift(gs, gm, "night_owl", 1):
+		_fail("caught source time", "no failed lift found")
+		return
+	var slot_at_lift: int = int(gs.time_slots_today)
+	_expect_true("the source slot is owed while the chain is open",
+		engine.source_time_owed())
+	_expect_true("the decision resolves",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"}))
+	_expect_int("resolving the decision costs no slot",
+		int(gs.time_slots_today), slot_at_lift)
+	_expect_true("the slot is still owed at the result stage", engine.source_time_owed())
+
+	_expect_true("continue dispatches", gm.dispatch("consequence_continue", {}))
+	_expect_int("continue settles the source slot exactly once",
+		int(gs.time_slots_today), slot_at_lift + 1)
+	_expect_true("continue clears the chain", not engine.has_active())
+	# And a second Continue cannot charge again — there is nothing left to
+	# continue, which is the structural version of "settles once".
+	_expect_true("a second continue is refused", not gm.dispatch("consequence_continue", {}))
+	_expect_int("a refused continue costs no slot",
+		int(gs.time_slots_today), slot_at_lift + 1)
+
+## The contested take, the shown odds and the committed result all survive a
+## reload — TI-003 regression #4.
+func _check_caught_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	if _open_failed_lift(gs, gm, "night_owl", 1):
+		var summary: Dictionary = engine.active_summary()
+		var contested: int = int(summary["contested_take"])
+		var cause_id := str(summary["cause_id"])
+		var odds: Array = engine.choice_summaries()
+		var run_odds: float = float((_choice_row(odds, "run") as Dictionary)["success_probability"])
+		saves.save_run()
+
+		gs.active_consequence = {}
+		gs.consequence_history = {}
+		_expect_true("a Caught chain reloads", saves.load_run())
+		var after: Dictionary = engine.active_summary()
+		_expect_int("the contested take survives a reload",
+			int(after["contested_take"]), contested)
+		_expect_str("the cause survives a reload", str(after["cause_id"]), cause_id)
+		_expect_float("the shown odds survive a reload",
+			float((_choice_row(engine.choice_summaries(), "run") as Dictionary)["success_probability"]),
+			run_odds)
+		_expect_true("the reloaded chain still owes its source time",
+			engine.source_time_owed())
+
+		# Resolve, save, reload: the committed result must not reroll.
+		_expect_true("the reloaded chain resolves",
+			gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"}))
+		var resolved: Dictionary = engine.result_summary()
+		var tier_name := str(resolved["resolved_tier"])
+		var heat_at_resolve: float = float(gs.heat)
+		saves.save_run()
+		gs.active_consequence = {}
+		_expect_true("a resolved chain reloads", saves.load_run())
+		_expect_str("the committed choice survives",
+			str((engine.result_summary() as Dictionary)["committed_choice"]), "fight")
+		_expect_str("the resolved tier survives — it does not reroll",
+			str((engine.result_summary() as Dictionary)["resolved_tier"]), tier_name)
+		_expect_float("the applied heat is not re-applied on reload",
+			float(gs.heat), heat_at_resolve)
+		# The receipts came back too, so the effects still cannot replay.
+		_expect_true("the heat receipt survives the reload",
+			engine.has_receipt(cause_id, "boost_caught:heat"))
+		gs.active_consequence = {}
+
+	if previous_save.is_empty():
+		DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+
+## TI-003 §21: consequence rolls are keyed and leave the market cursor alone.
+func _check_caught_rng_non_drift(gs: Node, gm: Node, engine: RefCounted) -> void:
+	for choice in ["fight", "run", "talk", "yield"]:
+		if not _open_failed_lift(gs, gm, "night_owl", 1):
+			_fail("caught rng", "no failed lift found")
+			return
+		gs.rng_state = 314159
+		var cursor: int = int(gs.rng_state)
+		_expect_true("%s resolves for the rng check" % choice,
+			gm.dispatch("resolve_consequence_choice", {"choice_id": str(choice)}))
+		_expect_int("resolving %s draws nothing from the market stream" % choice,
+			int(gs.rng_state), cursor)
+		gs.active_consequence = {}
+
+	# Opening the chain draws nothing either — the contested take comes off the
+	# source's own `:take` key, which is keyed, not streamed.
+	_frozen_ready(gs)
+	gs.rng_state = 271828
+	var open_cursor: int = int(gs.rng_state)
+	for day in range(1, 30):
+		gs.day = day
+		gs.boost_daily_hits = {}
+		if gm.dispatch("boost", {"target_id": "night_owl"}) \
+				and not (gs.active_consequence as Dictionary).is_empty():
+			break
+	_expect_int("opening a Caught chain draws nothing from the market stream",
+		int(gs.rng_state), open_cursor)
+	gs.active_consequence = {}
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -6741,7 +7711,12 @@ func _fail(label: String, detail: String) -> void:
 ## FS-003.6 raises it to 8785. The projection section is mostly a sampled matrix
 ## measured off the real resolver, so most of that number is one assertion per
 ## (action, chance, attribute) cell rather than new surface area.
-const MIN_CHECKS := 8785
+##
+## FS-003.7 raises it to 9100. Note the shape of this one: the Caught section
+## sweeps until it finds the outcome it needs, so its contribution depends on
+## how quickly each branch turns up — deterministic, because the keys are, but
+## not a number to re-derive by counting assertions in the source.
+const MIN_CHECKS := 9100
 
 func _finish() -> void:
 	if _failures.is_empty():

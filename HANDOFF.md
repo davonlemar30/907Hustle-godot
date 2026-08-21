@@ -544,6 +544,131 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.7: the first thing that answers back  (added 2026-08-21)
+
+A failed Boost no longer ends in a toast. It opens a Caught encounter, holds the
+take in dispute, and waits. **Parity 8785 → 9100 checks, 0 failures. No schema
+change** — .4 already persists everything this writes.
+
+### Three deliberate removals from the source path
+
+TI-003 §11: *"The failed branch removes its current immediate terminal
+Heat/log/time behavior because Caught now owns those consequence effects."*
+
+- **No immediate +1.0 Heat.** Regression #3 is a failed Boost keeping its old
+  Heat and then adding Caught's on top.
+- **No empty-handed toast.**
+- **No `advance_time`.** The slot stays owed until Continue — a blown lift must
+  not cost the player time before they have answered for it.
+
+FS-003.1's freeze caught all three the moment they changed, which is exactly
+what it was built for. Those assertions are updated rather than deleted, each
+saying what it now protects and why it moved.
+
+### The frozen Boost pattern moved, and the reason is worth reading
+
+`BOOST_FROZEN_PATTERN` is re-pinned — two bits, `spenard_fuel` on days 4 and 6,
+both following a `night_owl` miss.
+
+Nothing about the roll changed. The key is `boost:<day>:<slot>:<target>`, and
+before this slice a failed lift settled its slot immediately, so the next target
+in the same day rolled at slot+1. Now the slot stays owed, so it rolls at the
+**same slot** and therefore against a different key.
+
+The derived check (`resolves binary`, which reads the live key) passed
+throughout. What moved is *when the clock advances*, which is the point of the
+slice — and which is separately asserted by "a failed lift costs no slot yet".
+
+### `data/consequence_rules.gd`
+
+TI-003 §3's static module. Every value from FS-003 §5 or TI-003 §8, no state, no
+RNG, no judgement calls made while coding. A balance change is an edit there and
+nowhere else.
+
+**Two shorthand forms FS-003 uses are resolved in one place.** The document
+writes Fight/Failure as "Tier 1 +2, Tier 2 +3, Tier 3 +4" and Run/Failure as
+"Tier +1" — the same rule, enumerated once and patterned once. `raw_heat()`
+resolves both, and a sabotage breaking the pattern form produces 13 failures.
+
+**One interpretation is stated rather than buried.** Fight/Clean takes "the lower
+half of the tier's successful-fight injury band". Halved at the midpoint rounded
+DOWN, both ends inclusive — tier 1's 4-9 becomes 4-6. Rounding up would make
+"the lower half" of 4-9 reach 7, which is more than half of it. The alternatives
+differ by one point of damage and the choice is on the record.
+
+**One ambiguity resolved in TI-003's favour.** FS-003 §5 says a ban lasts "the
+current Boost ban duration used by the source system" — there was no ban system
+to inherit a duration from. TI-003 §5 rules bans "persistent by target ID", which
+is later, more specific, and implementable. Bans are permanent.
+
+### Two layers of test, neither deriving from the other
+
+**The authored rows** are checked as data, against FS-003 §5 transcribed a
+*second* time into the parity runner. Two transcriptions of one document, typed
+from the source rather than from each other — a slip in either is a failure
+rather than a shared mistake. That layer catches a heat value off by one, which
+no integration test would find because it would apply the wrong number correctly.
+
+**The applied effects** are checked through `gm.dispatch`, on chains opened by
+real failed lifts. That layer catches the right table read into the wrong field.
+
+### The bug that made 39 encounters identical
+
+The first draft reset the run before every sweep attempt. The consequence roll is
+keyed on `consequence:<cause_id>:boost_caught:<choice>:outcome`, and
+`reset_to_new_game()` resets `next_cause_sequence` — so **39 consecutive chains
+all got `cause:00000001` and all resolved the same way.** The sweep read as "Run
+never keeps the take".
+
+The sequence is carried across sweeps now, which is also the truthful model: in
+play the counter only goes up. And a new check pins the property directly —
+cause ids are unique and sequential within a run, **and distinct causes resolve
+to more than one tier.**
+
+That last assertion is the one that matters. Cause-id uniqueness is load-bearing
+for outcome VARIETY: if allocation ever stopped advancing, every encounter in a
+run would resolve identically and nothing about the resolver or the effect tables
+would look wrong. It is why TI-003 §4 makes allocation sequential and persisted.
+
+### Three sabotages passed, and all three were real coverage gaps
+
+- **`arrest-gate-reads-live-heat`.** Swapping the pre-encounter snapshot for the
+  live meter changed nothing, because every case the sweep reached arrested
+  unconditionally. Now driven at the exact boundary: pre-encounter Heat 6.0
+  (which does not arrest, the rule is strictly greater) while Run/Failure adds +2
+  raw, so the live meter reads 8.0 by the time the gate runs. If the adapter
+  passed `gs.heat`, it flips. **2 failures.**
+- **`contested-take-rerolled-on-key`.** Moving the take key from `:take` to
+  `:contested` passed, because "in band" is true for any key. Now asserted as the
+  exact keyed value. **3 failures.**
+- **`odds-use-compat-not-raw`.** TI-003 regression #9. Passed because the sweep
+  ran at combat 1, where raw 1 and `compat(1) = 2` are *both* below the advantage
+  threshold and project identically. Now measured at **combat 2 specifically** —
+  raw 2 is below advantage, `compat(2) = 3` is at it, and the odds differ.
+  **3 failures.**
+
+Sixth build running. Still never once has a first-attempt sabotage pass meant the
+code was fine.
+
+### And the parse-error-as-hang trap, twice in one session
+
+A GDScript parse error means `_ready` never runs, so `quit()` is never called and
+the headless process sits forever — indistinguishable from an infinite loop. It
+cost time in FS-003.5 (`:=` off an untyped return) and again here (a probe
+counter declared against `var _checks: int = 0` when the source reads
+`var _checks := 0`, so the edit silently did not apply).
+
+**Read the first ten lines of the log before hunting for a loop.**
+
+### Verification
+
+- Parity **9100 / 0**, deterministic across three consecutive runs.
+  `MIN_CHECKS` 8785 → 9100.
+- **27 sabotages**, all red after the three above were corrected.
+- Glyph coverage passes; **21/21** screens headless with zero script errors.
+- Dispatch-guard warnings still **2**; zero parse errors.
+- Market RNG non-drift asserted around chain opening and all four responses.
+
 ## FS-003.6: the odds the player is deciding on  (added 2026-08-21)
 
 `success_probability()` and `tier_probabilities()` on the outcome resolver.

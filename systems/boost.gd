@@ -76,6 +76,10 @@ func _apply_heat(amount: float) -> float:
 func _wallet() -> Object:
 	return gm.system("wallet")
 
+## The shared heat owner.
+func _heat() -> Object:
+	return gm.system("heat")
+
 func can_handle(action: String) -> bool:
 	return action in ["boost", "fence_goods"]
 
@@ -119,6 +123,13 @@ func blocker(target_id: String) -> String:
 		return "You're not smooth enough yet."
 	if int(gs.boost_daily_hits.get(target_id, -1)) == gs.day:
 		return "You've already been in today."
+	# TI-003 §5: "Boost owns ban semantics. The current source behavior is
+	# persistent by target ID." FS-003 §5 says "the current Boost ban duration
+	# used by the source system" — there was no ban system to inherit a duration
+	# from, and TI-003 is the later and more specific ruling, so a ban is
+	# permanent rather than timed. Named in the PR as a resolved ambiguity.
+	if target_id in gs.boost_store_bans:
+		return "They know your face in there now."
 	return ""
 
 func _run(target_id: String) -> Dictionary:
@@ -155,19 +166,281 @@ func _run(target_id: String) -> Dictionary:
 			gs.log_activity("Left %s with goods worth $%d." % [str(t["name"]), take], GREEN)
 		result = {"ok": true, "success": true, "take": take, "tier": tier}
 	else:
-		_apply_heat(1.0)
-		gs.log_activity("Walked out of %s empty. Somebody clocked you." % str(t["name"]), RED)
-		result = {"ok": true, "success": false, "take": 0, "tier": tier}
+		# TI-003 §11: "The failed branch removes its current immediate terminal
+		# Heat/log/time behavior because Caught now owns those consequence
+		# effects."
+		#
+		# So no `_apply_heat(1.0)`, no empty-handed toast, and — the one that
+		# matters most — no `advance_time`. The slot stays owed until the chain
+		# reaches Continue, which is what stops a blown lift from costing the
+		# player time before they have answered for it.
+		#
+		# The contested take is rolled HERE, off the existing `:take` key, so
+		# the amount in dispute is the amount the lift would have produced and
+		# a reload cannot reroll it (TI-003 regression #4).
+		var band: Array = t["take"]
+		var contested: int = rng.seeded_int_range(
+			gs.run_seed, key + ":take", int(band[0]), int(band[1]))
+		# Curtis hears about the attempt whether or not it worked, and exactly
+		# once for the source action (TI-003 §11 step 9) — marked before the
+		# handoff so a chain that never resolves still counted the activity.
+		_mark_criminal_activity()
+		var opened: Dictionary = _open_caught(t, tier, contested, key)
+		if not bool(opened.get("ok", false)):
+			return opened
+		# No `_update_tier()` and no time advance: the lift is not over.
+		return {"ok": true, "success": false, "take": 0, "tier": tier,
+			"caught": true, "contested_take": contested,
+			"cause_id": str(opened.get("cause_id", ""))}
 
-	# Not loud enough to raise awareness on its own, but it is criminal activity,
-	# which is what stops the quiet streak from bleeding awareness down.
+	_mark_criminal_activity()
+	_update_tier()
+	time_system.handle("advance_time", {})
+	return result
+
+## Not loud enough to raise awareness on its own, but it is criminal activity,
+## which is what stops the quiet streak from bleeding awareness down.
+func _mark_criminal_activity() -> void:
 	var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
 	if curtis != null:
 		curtis.mark_criminal_activity()
 
-	_update_tier()
-	time_system.handle("advance_time", {})
-	return result
+# --- the Caught adapter (TI-003 §§10-12) -----------------------------------
+#
+# Boost is a consequence SOURCE, so it owns the source-specific half: what the
+# contested take is worth, what happens to it, and who gets banned. The engine
+# owns the chain, the stages and the receipts.
+#
+# Registered by name (`"boost"`) in GameManager on every boot. Nothing here is
+# ever serialised — a chain names this adapter by String and the registry
+# resolves it after a load (TI-003 §1, §26).
+
+const RULES := preload("res://data/consequence_rules.gd")
+
+func _rules() -> RefCounted:
+	return RULES.new()
+
+func _engine() -> Object:
+	return gm.system("consequence") if gm != null else null
+
+## TI-003 §11 steps 5-12. Snapshot everything the decision needs, then hand the
+## blocking slot to the engine.
+##
+## The odds are snapshotted HERE rather than computed by the screen, because
+## §5 requires a reload to reproduce the same choice surface — and the player's
+## attributes can change between the decision opening and the decision being
+## made (a crew member leaves, an injury lands). The numbers they decided on are
+## the numbers that must come back.
+func _open_caught(target: Dictionary, tier: int, contested: int,
+		source_key: String) -> Dictionary:
+	var engine: Object = _engine()
+	if engine == null:
+		return {"ok": false, "reason": "Nothing to answer to."}
+	var rules: RefCounted = _rules()
+	var resolver: Object = gm.system("outcome_resolver")
+
+	var shown: Dictionary = {}
+	var inputs: Dictionary = {}
+	for choice_id in rules.CAUGHT_CHOICES:
+		if rules.is_deterministic(str(choice_id)):
+			continue
+		var action_type: String = rules.resolver_for(str(choice_id))
+		var attribute: String = resolver.attribute_for(action_type)
+		# The RAW stored attribute, not the compatibility offset — see the
+		# outcome resolver's header. Feeding compat() here would shift every
+		# advantage and immunity threshold down a level.
+		var raw: int = int(gs.attributes.get(attribute, 0))
+		inputs[choice_id] = {"attribute": attribute, "raw": raw}
+		shown[choice_id] = resolver.success_probability(
+			action_type, rules.base_chance(tier, str(choice_id)), raw, 0)
+
+	return engine.open_chain(engine.KIND_BOOST_CAUGHT, {
+		"district_id": gs.current_district_id,
+		"return_route": "BOOST",
+		"source": {
+			"family": "boost",
+			"action_id": "boost",
+			"target_id": str(target["id"]),
+			"target_name": str(target["name"]),
+			"target_tier": tier,
+			"opponent": str((rules.opponent_for(tier) as Dictionary).get("opponent", "")),
+			"source_day": int(gs.day),
+			"source_slot": int(gs.time_slots_today),
+			"source_rng_key": source_key,
+			# The gate an arrest reads later. Snapshotted before any consequence
+			# Heat lands, because otherwise the encounter's own Heat would
+			# decide whether the encounter ends in an arrest (TI-003 §14).
+			"pre_encounter_heat": float(gs.heat),
+			"contested_take": contested,
+		},
+		"decision": {
+			"definition_id": "boost_caught",
+			"allowed_choices": rules.CAUGHT_CHOICES.duplicate(),
+			"deterministic_choices": rules.CAUGHT_DETERMINISTIC.duplicate(),
+			"resolver_inputs": inputs,
+			"shown_probabilities": shown,
+		},
+	})
+
+## TI-003 §12's effect order, in order. Called by the engine once it has
+## revalidated identity, stage and the allowed choice.
+##
+## Every mutating step claims a receipt first. A reload between a mutation and
+## the autosave that follows cannot replay it, because the receipt and the
+## mutation land in the same dispatch.
+func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
+	var engine: Object = _engine()
+	if engine == null:
+		return {"ok": false, "reason": "Nothing to answer to."}
+	var rules: RefCounted = _rules()
+	var source: Dictionary = chain.get("source", {})
+	var cause_id := str(chain.get("cause_id", ""))
+	var boost_tier: int = int(source.get("target_tier", 1))
+	var contested: int = int(source.get("contested_take", 0))
+	var pre_heat: float = float(source.get("pre_encounter_heat", 0.0))
+
+	# 1. Resolve the tier, or take Yield's single authored row.
+	var tier_name: String = "deterministic"
+	if not rules.is_deterministic(choice_id):
+		var action_type: String = rules.resolver_for(choice_id)
+		var resolver: Object = gm.system("outcome_resolver")
+		var attribute: String = resolver.attribute_for(action_type)
+		var raw: int = int(gs.attributes.get(attribute, 0))
+		var outcome: Dictionary = resolver.resolve_action(
+			action_type, rules.base_chance(boost_tier, choice_id), raw,
+			gs.run_seed, "consequence:%s:boost_caught:%s:outcome" % [cause_id, choice_id])
+		tier_name = str(outcome["tier"])
+
+	var effects: Dictionary = rules.effects_for(choice_id, tier_name)
+	var result: Dictionary = {
+		"choice_id": choice_id, "tier": tier_name,
+		"cash": 0, "goods": 0, "health": 0, "heat": 0.0,
+		"banned": false, "arrested": false, "take_disposition": str(effects.get("take", "")),
+	}
+
+	# 2. Take disposition, through this adapter because only Boost knows that a
+	#    tier-3 haul is merchandise rather than cash (TI-003 §12).
+	if str(effects.get("take", "")) == "keep" and contested > 0:
+		if engine.record_receipt(cause_id, "boost_caught:take_disposition"):
+			if boost_tier >= 3:
+				gs.boost_merchandise += contested
+				result["goods"] = contested
+			else:
+				_wallet().credit(contested, _wallet().DIRTY,
+					{"source_id": "boost_caught_take"})
+				result["cash"] = contested
+	# "lose" and "return" both credit zero. They stay separate words because the
+	# fiction differs and a later slice may want to tell them apart.
+
+	# 3. The persistent ban.
+	if bool(effects.get("ban", false)):
+		if engine.record_receipt(cause_id, "boost_caught:ban"):
+			var target_id := str(source.get("target_id", ""))
+			if not target_id.is_empty() and not target_id in gs.boost_store_bans:
+				gs.boost_store_bans.append(target_id)
+			result["banned"] = true
+
+	# 4. Injury, rolled on its own key so the outcome and the damage are
+	#    independent draws (TI-003 §12).
+	var band: Array = rules.injury_band(choice_id, tier_name, boost_tier)
+	if band.size() == 2 and engine.record_receipt(cause_id, "boost_caught:injury"):
+		var damage: int = rng.seeded_int_range(gs.run_seed,
+			"consequence:%s:boost_caught:%s:injury" % [cause_id, choice_id],
+			int(band[0]), int(band[1]))
+		gs.health = clampi(gs.health - damage, 0, gs.health_max)
+		result["health"] = -damage
+
+	# 5. Criminal Heat, through the one owner. Raw here; HeatSystem applies
+	#    Deshawn (and, from FS-003.9, the district multiplier).
+	var raw_heat: float = rules.raw_heat(choice_id, tier_name, boost_tier)
+	if raw_heat > 0.0 and engine.record_receipt(cause_id, "boost_caught:heat"):
+		result["heat"] = _heat().apply_gain(raw_heat, _heat().FAMILY_BOOST,
+			str(chain.get("district_id", "")), {"source_id": "boost_caught"})
+
+	# 6. District Pressure, once.
+	#
+	#    The ledger is written here; the bleed, quiet recovery and difficulty
+	#    penalty that READ it are FS-003.9. Recording the gain now rather than
+	#    later is deliberate — .9 inherits a ledger with real history in it
+	#    instead of starting from zero on every existing save.
+	var pressure: float = rules.pressure_gain(choice_id, tier_name)
+	if pressure > 0.0 and engine.record_receipt(cause_id, "boost_caught:pressure"):
+		_add_district_pressure(str(chain.get("district_id", "")), "boost", pressure)
+		result["pressure"] = pressure
+
+	# 7. The consequence's own observation, once. Reuses the resolver's authored
+	#    footprint for the shape that was rolled, which is what FS-003 means by
+	#    "existing street_fight neighborhood observation applies".
+	if not rules.is_deterministic(choice_id) \
+			and engine.record_receipt(cause_id, "boost_caught:observation"):
+		var resolver_obs: Object = gm.system("outcome_resolver")
+		resolver_obs.broadcast_outcome(rules.resolver_for(choice_id), tier_name,
+			str(chain.get("district_id", "")))
+
+	# 8. The arrest gate, read off the PRE-ENCOUNTER snapshot.
+	var arrested: bool = rules.arrests(choice_id, tier_name, boost_tier, pre_heat)
+	result["arrested"] = arrested
+
+	# 9. Store the result on the chain.
+	var decision: Dictionary = chain.get("decision", {})
+	decision["resolved_tier"] = tier_name
+	decision["result"] = result
+	chain["decision"] = decision
+
+	# 10. Booking when arrested, Result when not. Booking EXECUTION is FS-003.8;
+	#     what this slice does is hand the chain over at the right stage with the
+	#     facts that slice needs already on it.
+	engine.advance_stage(engine.STAGE_RESULT)
+	if arrested:
+		chain["booking"] = {
+			"pending": true,
+			"severity": "boost_t1" if boost_tier <= 1 else "boost_t2",
+			"source_family": "boost",
+			"source_target_id": str(source.get("target_id", "")),
+			"cause_id": cause_id,
+		}
+		engine.advance_stage(engine.STAGE_BOOKING)
+
+	gs.log_activity(_caught_line(source, choice_id, tier_name, result), _caught_tone(tier_name))
+	return {"ok": true, "tier": tier_name, "arrested": arrested}
+
+## Write a District Pressure gain into the ledger .4 made room for.
+##
+## Kept here rather than on the engine because FS-003.9 owns the Pressure SYSTEM
+## — bands, bleed, recovery, difficulty penalties — and will move this. What it
+## must not have to do is reconstruct the history that happened before it landed.
+func _add_district_pressure(district_id: String, family: String, amount: float) -> void:
+	if district_id.is_empty():
+		return
+	if not gs.district_pressure.has(district_id):
+		gs.district_pressure[district_id] = {}
+	var by_family: Dictionary = gs.district_pressure[district_id]
+	if not by_family.has(family):
+		by_family[family] = {"score": 0.0, "last_gain_day": -1, "quiet_days": 0,
+			"market_gain_day": -1, "market_gain_today": 0.0}
+	var row: Dictionary = by_family[family]
+	# Clamped to TI-003 §8's 0-9 scale. The bands read it, and a score above 9
+	# has no band.
+	row["score"] = clampf(float(row.get("score", 0.0)) + amount, 0.0, 9.0)
+	row["last_gain_day"] = int(gs.day)
+	row["quiet_days"] = 0
+
+func _caught_line(source: Dictionary, choice_id: String, tier_name: String,
+		result: Dictionary) -> String:
+	var place := str(source.get("target_name", "the store"))
+	if choice_id == "yield":
+		return "Handed it back at %s and took the walk." % place
+	var verb: String = str({"fight": "swung", "run": "ran", "talk": "talked"}.get(choice_id, "answered"))
+	if tier_name in ["clean", "messy"]:
+		return "You %s at %s and kept it." % [verb, place] if int(result.get("cash", 0)) \
+			+ int(result.get("goods", 0)) > 0 else "You %s at %s." % [verb, place]
+	return "You %s at %s and it went badly." % [verb, place]
+
+func _caught_tone(tier_name: String) -> Color:
+	match tier_name:
+		"clean": return GREEN
+		"messy": return AMBER
+	return RED
 
 ## Canon boostFenceRate: 0.40 + standing*0.05, 0.55 from 3, 0.60 from 5.
 func fence_rate() -> float:

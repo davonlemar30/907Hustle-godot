@@ -1,14 +1,10 @@
 extends Node
 ## GameState — the single source of truth for the run.
 ##
-## For now this is a static mid-game snapshot (DAY 14, EVENING) sourced from the
-## web build v1.35 (src/data/*). It is deliberately plain data + a couple of
-## helpers: the reducer port (Phase 3) will make these fields mutate via a
-## dispatch, and screens that read them today will update for free.
-##
-## Screens read from here in _ready() instead of hardcoding values — Street is
-## the first consumer. Retrofitting Home/Market/Hustle onto GameState is a
-## follow-up pass.
+## Runtime state is mutated by systems through GameManager.dispatch(); screens
+## read it and refresh from state_changed. Static tables remain alongside the
+## mutable run fields for now, while SaveSystem explicitly persists only the
+## mutable manifest.
 
 ## Emitted after any batch of state changes. Screens connect to this and re-render
 ## everything in one pass (the web-reducer pattern). Call notify_changed() after
@@ -432,6 +428,20 @@ var phone_reactivate_at_slot: int = -1
 ## the menu, so a run that heals back to 100 does not lose the screen it just
 ## used. Set the first time the feature becomes available, never cleared.
 var recovery_introduced: bool = false
+
+## Recovery is visible while it is relevant and remains visible after the first
+## time it matters. The UI only reads this selector; the persistent latch is
+## reconciled by the action/load layers before they announce changed state.
+func recovery_available() -> bool:
+	return recovery_introduced or health < health_max or heat > 1.0
+
+## Restore invariants whose persisted representation includes a historical
+## latch. This must run before notify_changed(): SaveSystem is one listener on
+## that signal, so repairing the flag during a screen refresh is already too
+## late for the autosave triggered by the same action.
+func reconcile_persistent_invariants() -> void:
+	if health < health_max or heat > 1.0:
+		recovery_introduced = true
 
 var game_over: bool = false
 var game_over_reason: String = ""

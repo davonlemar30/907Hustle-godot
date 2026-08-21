@@ -1,6 +1,6 @@
 # 907Hustle — Godot Port: Session Handoff
 
-_Last updated: 2026-08-20. Living doc — update as screens land._
+_Last updated: 2026-08-21. Living doc — update as screens land._
 
 ## What this is
 907Hustle ("One Good Run") is a mobile-first (375×812), dark-theme street sim
@@ -10,7 +10,7 @@ driven through the **Godot AI MCP** (dlight plugin; server at
 
 - **Godot project:** `/Users/damusthadon/Documents/907HustleGodot/907-hustle-godot/`
 - **GitHub:** https://github.com/davonlemar30/907Hustle-godot (PUBLIC, branch `main`)
-- **Web source (design authority, read-only):** `/Users/damusthadon/Documents/907HustleGame/907Hustle-game/` — palette/fonts in `v05.css`; game data in `ui.built.js`.
+- **Web source (historical parity reference, read-only):** `/Users/damusthadon/Documents/907HustleGame/907Hustle-game/` — useful for migration history and legacy formulas, but newer approved ClickUp/Godot decisions win.
 
 ## Design system  (`ui/theme/hustle_theme.tres`)
 - **Palette:** black `#070707`, panels `#111`/`#181818`/`#202020`, line `#333`, muted `#9b9b9b`, white `#f2f0eb`, red `#d32920`, red2 `#ff4a3d`, green `#73b867`, amber `#e1a63a`, cyan `#79bbc1`, clean `#5fa9d8`. Crew-power purple `#9e80d9` (added; not in web).
@@ -496,6 +496,33 @@ that reasoning is most of the value. The Build State page can be reconstructed f
 - Any term pinned at a canon neutral is named, with the system that will unpin it.
 - Any deliberate divergence from canon is named with the reason.
 - Any canon oddity found is recorded rather than silently corrected.
+
+## Hardening pass 01: save isolation + presentation purity  (added 2026-08-21)
+
+Independent review branch `codex/godot-hardening-pass-01`, based on `main` at
+`c5e88af` (PR #35). No Claude branch was present locally or remotely, so the
+pass stayed narrow in state/save/presentation plumbing.
+
+- **Legacy loads no longer inherit the live run.** `SaveSystem._apply()` now
+  starts from a fresh `GameState` template and overlays the saved fields. A v1
+  save missing markets rebuilds its own deterministic opening board instead of
+  retaining whichever board was in memory; v2-v4 additive fields likewise use
+  their declared defaults.
+- **Autosaves replace atomically.** The complete payload is written and flushed
+  to `907hustle_run.save.tmp`, then renamed over the final path. An interrupted
+  write no longer truncates the last valid run first.
+- **Recovery's persistent latch settles before autosave.** The More screen is a
+  pure reader again. `GameManager` reconciles the latch before `state_changed`,
+  and load reconciles legacy saves before exposing them to screens.
+- **Exposure reads are pure.** Asking for an empty ledger, disposition, or the
+  People summary no longer inserts persistent empty arrays into `GameState`.
+- **Malformed top-level saves fail closed.** Invalid version and required-field
+  types are refused without applying partial state.
+
+Save schema remains **v5**: no persisted field or existing payload shape changed.
+Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
+coverage passes, and headless import/startup remain clean. Full findings and the
+system map are in `HARDENING_PASS_01.md`.
 
 ## Build 5e: tiered outcome resolution — the resolver Attributes deferred  (added 2026-08-21)
 

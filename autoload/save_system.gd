@@ -47,6 +47,10 @@ extends Node
 ## that persists becomes a fake fact.
 
 const SAVE_PATH := "user://907hustle_run.save"
+## Write the complete payload here, then atomically replace SAVE_PATH. Opening
+## the only save with WRITE truncates it immediately; a crash or interrupted web
+## flush during store_string would otherwise destroy the last valid run.
+const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## v2 (Phase 5 part 2): adds `markets` (per-area prices/availability/history)
 ## and `rng_state` (the xorshift stream cursor). Both additive — the v1→v2
 ## migration arm only stamps the version, and a v1 save's missing fields
@@ -142,12 +146,18 @@ func _on_state_changed() -> void:
 
 func save_run() -> void:
 	var payload := {"save_version": SAVE_VERSION, "state": capture()}
-	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var file := FileAccess.open(SAVE_TEMP_PATH, FileAccess.WRITE)
 	if file == null:
-		push_warning("SaveSystem: could not open %s for write (error %d)" % [SAVE_PATH, FileAccess.get_open_error()])
+		push_warning("SaveSystem: could not open %s for write (error %d)" % [SAVE_TEMP_PATH, FileAccess.get_open_error()])
 		return
 	file.store_string(var_to_str(payload))
+	file.flush()
 	file.close()
+	var err := DirAccess.rename_absolute(
+		ProjectSettings.globalize_path(SAVE_TEMP_PATH),
+		ProjectSettings.globalize_path(SAVE_PATH))
+	if err != OK:
+		push_warning("SaveSystem: could not replace %s (error %d)" % [SAVE_PATH, err])
 
 ## Snapshot every persisted field. Deep-duplicated so the snapshot cannot alias
 ## live state a later mutation would silently rewrite.
@@ -192,6 +202,9 @@ func load_run() -> bool:
 		return false
 	_suspended = true
 	_apply(state)
+	# A legacy save may predate a persistent latch while already satisfying its
+	# trigger. Reconcile before the loaded state is exposed to screens.
+	gs.reconcile_persistent_invariants()
 	# A pre-v2 save carries no markets. Walk a fresh board off the run seed so
 	# the run resumes priced rather than empty; the next day-cross re-walks it.
 	if gs.markets.is_empty():
@@ -216,7 +229,10 @@ func _read_payload() -> Dictionary:
 ## adds one `match` arm transforming version N state to N+1; a version this
 ## build has never heard of (0, or newer than itself) is invalid, not a guess.
 func _migrate(payload: Dictionary) -> Dictionary:
-	var version := int(payload.get("save_version", 0))
+	var encoded_version: Variant = payload.get("save_version", 0)
+	if not (encoded_version is int or encoded_version is float):
+		return {}
+	var version := int(encoded_version)
 	var raw: Variant = payload.get("state")
 	if version < 1 or version > SAVE_VERSION or not (raw is Dictionary):
 		return {}
@@ -257,17 +273,26 @@ func _migrate(payload: Dictionary) -> Dictionary:
 	for key in REQUIRED_KEYS:
 		if not state.has(key):
 			return {}
+	if not (state["day"] is int or state["day"] is float):
+		return {}
+	if not (state["cash"] is int or state["cash"] is float):
+		return {}
+	if not (state["street_name"] is String):
+		return {}
 	return state
 
-## Write the saved fields back. A field absent from the save keeps GameState's
-## declared default — canon's mergeDefaults, done by omission. Values are
-## coerced to the type the live field already has, so a hand-edited or migrated
-## save cannot feed a float into a typed int var and fail the assignment.
+## Write the saved fields back. Every field begins from a fresh GameState
+## instance, then the save overlays fields it carries — canon's mergeDefaults.
+## Reading defaults from the current singleton is unsafe: a legacy load can
+## happen after a run has already mutated it (game over routes back to Title),
+## and omitted additive fields would inherit that live run instead of defaults.
 func _apply(state: Dictionary) -> void:
+	var defaults: Node = preload("res://autoload/game_state.gd").new()
 	for field in PERSIST_FIELDS:
-		if not state.has(field):
-			continue
-		gs.set(field, _coerced(gs.get(field), _deep(state[field])))
+		var default_value: Variant = defaults.get(field)
+		var incoming: Variant = state.get(field, default_value)
+		gs.set(field, _coerced(default_value, _deep(incoming)))
+	defaults.free()
 	var prices: Dictionary = state.get("product_prices", {})
 	for prod in gs.products:
 		var id := str(prod.id)
@@ -284,12 +309,24 @@ func _deep(value: Variant) -> Variant:
 func _coerced(current: Variant, incoming: Variant) -> Variant:
 	match typeof(current):
 		TYPE_INT:
+			if not (incoming is int or incoming is float or incoming is bool or incoming is String):
+				return current
 			return int(incoming)
 		TYPE_FLOAT:
+			if not (incoming is int or incoming is float or incoming is bool or incoming is String):
+				return current
 			return float(incoming)
 		TYPE_BOOL:
+			if not (incoming is bool):
+				return current
 			return bool(incoming)
 		TYPE_STRING:
+			if not (incoming is String):
+				return current
 			return str(incoming)
+		TYPE_DICTIONARY:
+			return incoming if incoming is Dictionary else _deep(current)
+		TYPE_ARRAY:
+			return incoming if incoming is Array else _deep(current)
 		_:
 			return incoming

@@ -256,6 +256,7 @@ func _check_recovery(fixture: Dictionary) -> void:
 		_expect_int("recovery cards visible @health %d (doctor closed)" % int(spec[0]),
 			rec.visible_treatments().size(), int(spec[1]))
 	_expect_true("doctor closed on a fresh ledger", not rec.doctor_open())
+	_expect_true("exposure reads do not create empty ledgers", gs.npc_ledgers.is_empty())
 
 	# Mina at TRUSTED opens the third rung. Written straight onto the ledger so
 	# the check does not depend on which events happen to carry her weights.
@@ -648,6 +649,23 @@ func _check_save_roundtrip() -> void:
 			previous_save = prior.get_as_text()
 			prior.close()
 
+	# Recovery's permanent menu latch used to be written by More._bind_content,
+	# after SaveSystem had already handled state_changed. Prove a successful
+	# action reconciles it before autosave, and that the saved latch survives once
+	# the immediate health/Heat trigger is no longer live.
+	gs.street_name = "Latch"
+	gs.reset_to_new_game()
+	gs.health = 90
+	gs.recovery_introduced = false
+	_expect_true("recovery latch action succeeds",
+		gm.dispatch("market_buy", {"product_id": "weed", "quantity": 1}))
+	_expect_true("recovery latch set before notification", gs.recovery_introduced)
+	gs.health = gs.health_max
+	gs.heat = 0.0
+	gs.recovery_introduced = false
+	_expect_true("recovery latch save reloads", saves.load_run())
+	_expect_true("recovery latch persisted after trigger clears", gs.recovery_introduced)
+
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 	_expect_true("dispatch market_buy", gm.dispatch("market_buy", {"product_id": "weed", "quantity": 2}))
@@ -698,6 +716,7 @@ func _check_save_roundtrip() -> void:
 
 	var before: Dictionary = saves.capture()
 	saves.save_run()
+	_expect_true("atomic save leaves no temp file", not FileAccess.file_exists(saves.SAVE_TEMP_PATH))
 
 	# Scramble WITHOUT notify so the autosave on disk stays the good one.
 	gs.street_name = "WRONG"
@@ -753,21 +772,35 @@ func _check_save_roundtrip() -> void:
 ## than back-dated to a day they did not happen on, and the phone inbox fields
 ## default in absent.
 ##
-## The reset first is not decoration. `_apply` SKIPS a field the save does not
-## carry, which keeps whatever is live rather than GameState's declared default
-## — the two are the same thing only on a fresh boot, and a fresh boot is the
-## only place load_run() is ever called from. Loading a legacy save over the
-## lived-in run this function runs after would leak that run's inbox into the
-## assertion and prove nothing about the migration.
+## Every additive field omitted by a legacy save must come from a fresh
+## GameState template, never from the run that happens to be live when Load is
+## pressed. The test deliberately contaminates every omitted field before load;
+## a skip-on-missing loader leaks all of them into the restored run.
 func _check_v2_migration(gs: Node, saves: Node) -> void:
+	# Build a historically plausible v2 save: all fields that existed then, with
+	# the later phone/attribute/Recovery additions removed.
 	gs.reset_to_new_game()
-	var v2_state: Dictionary = {
-		"day": 5, "cash": 300, "street_name": "Legacy",
-		"activity_log": [
-			{"text": "old row", "time": "MORNING", "color": Color(1, 1, 1)},
-			{"text": "dated row", "day": 4, "time": "NIGHT", "color": Color(1, 1, 1)},
-		],
-	}
+	var opening_markets: Dictionary = gs.markets.duplicate(true)
+	var opening_rng_state: int = gs.rng_state
+	var v2_state: Dictionary = saves.capture()
+	v2_state["day"] = 5
+	v2_state["cash"] = 300
+	v2_state["street_name"] = "Legacy"
+	v2_state["activity_log"] = [
+		{"text": "old row", "time": "MORNING", "color": Color(1, 1, 1)},
+		{"text": "dated row", "day": 4, "time": "NIGHT", "color": Color(1, 1, 1)},
+	]
+	for added in ["phone_inbox", "phone_held_inbox", "phone_reactivate_at_slot",
+			"attributes", "attribute_progress", "recovery_introduced"]:
+		v2_state.erase(added)
+
+	# Contaminate the live singleton. None of this belongs to Legacy.
+	gs.phone_inbox = [{"id": "wrong"}]
+	gs.phone_held_inbox = [{"id": "also-wrong"}]
+	gs.phone_reactivate_at_slot = 999
+	gs.attributes = {"combat": 9, "charisma": 9, "intelligence": 9}
+	gs.attribute_progress = {"combat": 0.9, "charisma": 0.9, "intelligence": 0.9}
+	gs.recovery_introduced = true
 	var file := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
 	if file == null:
 		_fail("v2 migration", "could not write the fixture save")
@@ -785,12 +818,43 @@ func _check_v2_migration(gs: Node, saves: Node) -> void:
 	# trained anything, so canon's fresh-run defaults ARE its history.
 	_expect_int("v2 migration attributes default", int(gs.attributes["combat"]), 1)
 	_expect_float("v2 migration progress default", float(gs.attribute_progress["combat"]), 0.0)
+	_expect_true("v2 migration recovery latch default", not gs.recovery_introduced)
+
+	# v1 predates markets and the stream cursor. A lived-in board must not leak
+	# through omission; load_run reconstructs the opening board from run_seed.
+	var v1_state: Dictionary = v2_state.duplicate(true)
+	v1_state.erase("markets")
+	v1_state.erase("rng_state")
+	gs.markets = {"contaminated": {}}
+	gs.rng_state = 123456789
+	var v1_file := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if v1_file == null:
+		_fail("v1 migration", "could not write the fixture save")
+		return
+	v1_file.store_string(var_to_str({"save_version": 1, "state": v1_state}))
+	v1_file.close()
+	_expect_true("v1 migration loads", saves.load_run())
+	_expect_true("v1 migration rebuilds markets", gs.markets == opening_markets)
+	_expect_int("v1 migration rebuilds rng cursor", gs.rng_state, opening_rng_state)
+	_expect_true("v1 migration drops live market", not gs.markets.has("contaminated"))
+
 	# A version this build has never heard of stays invalid, arm or no arm.
 	var future := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
 	if future != null:
 		future.store_string(var_to_str({"save_version": saves.SAVE_VERSION + 1, "state": v2_state}))
 		future.close()
 	_expect_true("future version refused", not saves.load_run())
+	var malformed_version := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if malformed_version != null:
+		malformed_version.store_string(var_to_str({"save_version": "five", "state": v2_state}))
+		malformed_version.close()
+	_expect_true("malformed version refused", not saves.load_run())
+	var malformed_state := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if malformed_state != null:
+		malformed_state.store_string(var_to_str({"save_version": saves.SAVE_VERSION,
+			"state": {"day": [], "cash": 300, "street_name": "Broken"}}))
+		malformed_state.close()
+	_expect_true("malformed required field refused", not saves.load_run())
 
 ## Build 5e — the tiered outcome resolver, against recorded oracle truth.
 ##

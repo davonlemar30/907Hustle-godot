@@ -119,12 +119,10 @@ func _finance_summary() -> String:
 ## Canon features.recovery.available: `health < 100 || heat > 1 ||
 ## flags.recoveryIntroduced`. The latch is the interesting third: once Recovery
 ## has mattered it stays on the menu, so healing back to 100 does not take away
-## the screen you just used. Reading it here is also what SETS it, which is
-## canon's own arrangement — featureAvailability is called on every render.
+## the screen you just used. GameState reconciles the latch before notification;
+## this presentation selector remains a read and cannot mutate after autosave.
 func _recovery_available() -> bool:
-	if gs.health < gs.health_max or gs.heat > 1.0:
-		gs.recovery_introduced = true
-	return gs.recovery_introduced
+	return gs.recovery_available()
 
 ## Canon's More shows the Street Identity as this row's status, which is the
 ## only place in the build it appears outside the Character screen itself.

@@ -104,6 +104,9 @@ func dispatch(action: String, payload: Dictionary = {}) -> bool:
 		if sys.can_handle(action):
 			var result: Dictionary = sys.handle(action, payload)
 			if result.get("ok", false):
+				# Persistent latches must settle before state_changed. SaveSystem
+				# autosaves from that signal, before a screen gets to refresh.
+				_gs.reconcile_persistent_invariants()
 				_gs.notify_changed()
 				return true
 			action_failed.emit(action, result.get("reason", "Action failed."))

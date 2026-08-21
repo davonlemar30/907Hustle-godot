@@ -101,6 +101,34 @@ func _pay_phone(payload: Dictionary) -> Dictionary:
 	gs.log_activity("Phone bill paid: -$%d." % gs.PHONE_BILL, BLUE)
 	return {"ok": true, "surface": str(payload.get("surface", "phone"))}
 
+## Why the Pay button is dead, in canon's own words (the `reason` strings on
+## phoneBills' rows, ui.built.js:15738). Empty means the payment will go through.
+##
+## `surface` matters here in a way it does not in the reducer: canon's Bills row
+## sits ON the phone, so it refuses while the line is dead and points at the
+## Phone Store instead. The store's own button has no such check — that is the
+## whole point of walking there.
+func pay_phone_blocker(surface: String = "phone") -> String:
+	if gs.game_over:
+		return "The run is over"
+	if surface != "store":
+		if not gs.phone_active:
+			return "Pay at the Phone Store"
+		if gs.day < gs.phone_due_day and gs.phone_days_past_due == 0:
+			return "Due Day %d" % gs.phone_due_day
+	if gs.cash < gs.PHONE_BILL:
+		return "Need $%d" % gs.PHONE_BILL
+	return ""
+
+func pay_rent_blocker() -> String:
+	if gs.game_over:
+		return "The run is over"
+	if gs.day < gs.rent_due_day:
+		return "Due Day %d" % gs.rent_due_day
+	if gs.cash < gs.WEEKLY_RENT:
+		return "Need $%d" % gs.WEEKLY_RENT
+	return ""
+
 ## Canon's currentRentDue: the due day, rolled forward in whole periods for as
 ## long as it has been sitting unpaid.
 func _current_rent_due() -> int:

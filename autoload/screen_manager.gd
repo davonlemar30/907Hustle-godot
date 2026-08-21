@@ -25,15 +25,16 @@ const BOOST := "res://ui/screens/boost.tscn"
 const CREW := "res://ui/screens/crew.tscn"
 const TURF := "res://ui/screens/turf.tscn"
 const PEOPLE := "res://ui/screens/people.tscn"
+const PHONE := "res://ui/screens/phone.tscn"
 const GAME_OVER := "res://ui/screens/game_over.tscn"
 
-## Screens the bottom nav can reach today. Phone and More have no scene yet, so
-## the nav treats them as no-ops rather than routing into a broken load.
+## Screens the bottom nav can reach today. More has no scene yet, so the nav
+## treats it as a no-op rather than routing into a broken load.
 const NAV_ROUTES := {
 	"Street": STREET,
 	"Hustle": HUSTLE,
 	"Home": HOME,
-	"Phone": "",
+	"Phone": PHONE,
 	"More": "",
 }
 

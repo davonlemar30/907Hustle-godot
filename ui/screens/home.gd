@@ -163,13 +163,34 @@ func _bind_activity() -> void:
 			if e.has("color"):
 				m.add_theme_color_override("font_color", e.color)
 
+## The real phone inbox, since Phase 6 — this card used to read a hardcoded
+## `pending_messages` placeholder, which is retired. An empty inbox now says so
+## instead of leaving the scene's editor-time preview text standing as a fact,
+## and a dead line reports what it is holding.
 func _bind_people() -> void:
-	if gs.pending_messages.is_empty():
-		return
-	var msg: Dictionary = gs.pending_messages[0]
-	_set_text("Shell/Scroll/Pad/Content/People/H/Txt/Name", str(msg.get("name", "")) + " TEXTED")
-	_set_text("Shell/Scroll/Pad/Content/People/H/Txt/Msg", str(msg.get("preview", "")))
-	_set_text("Shell/Scroll/Pad/Content/People/H/Txt/Ago", str(msg.get("timestamp", "")))
+	var base := "Shell/Scroll/Pad/Content/People/H/Txt/"
 	var chat := get_node_or_null("Shell/Scroll/Pad/Content/People/H/Chat") as Button
+	if gs.phone_inbox.is_empty():
+		var held: int = gs.phone_held_inbox.size()
+		if not gs.phone_active and held > 0:
+			_set_text(base + "Name", "NO SERVICE")
+			_set_text(base + "Msg", "%d held until the line comes back." % held)
+		elif not gs.phone_active:
+			_set_text(base + "Name", "NO SERVICE")
+			_set_text(base + "Msg", "The line is dead. Pay the bill to hear from anyone.")
+		else:
+			_set_text(base + "Name", "NO TEXTS")
+			_set_text(base + "Msg", "Nobody has needed you today.")
+		_set_text(base + "Ago", "")
+		if chat:
+			chat.text = str(held)
+		return
+	var msg: Dictionary = gs.phone_inbox[0]
+	_set_text(base + "Name", str(msg.get("from", "")).to_upper() + " TEXTED")
+	_set_text(base + "Msg", str(msg.get("text", "")))
+	_set_text(base + "Ago", _phone().stamp(msg))
 	if chat:
-		chat.text = str(gs.pending_messages.size())
+		chat.text = str(gs.phone_inbox.size())
+
+func _phone() -> RefCounted:
+	return _gm.system("phone") as RefCounted

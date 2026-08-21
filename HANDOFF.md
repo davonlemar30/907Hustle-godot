@@ -1,6 +1,6 @@
 # 907Hustle — Godot Port: Session Handoff
 
-_Last updated: 2026-08-19. Living doc — update as screens land._
+_Last updated: 2026-08-20. Living doc — update as screens land._
 
 ## What this is
 907Hustle ("One Good Run") is a mobile-first (375×812), dark-theme street sim
@@ -307,7 +307,8 @@ moves between the four game screens.
   Ind/Ico/L. The raised HOME FAB has a transparent `HomeBtn` over it. Connections are made
   once in `screen_base.gd::_wire_nav()` from `_ready()` — never `_bind_content()`, which
   re-runs on every state change.
-- **Phone and More are `disabled`**, not wired to a missing scene.
+- **Phone and More are `disabled`**, not wired to a missing scene. (Phase 5b
+  part 1 built the Phone's substrate; the screen and its nav route are part 2.)
 - **New-run state is canon.** `GameState.reset_to_new_game()` mirrors the web reducer's
   START_RUN branch: `$100`, heat 0, health 100, debt 0, Spenard, Day 1 MORNING. Not the
   CHOOSE_BACKGROUND branch ($375 + a $620 note from Dre, `run.premise = legacy_established`)
@@ -494,6 +495,158 @@ that reasoning is most of the value. The Build State page can be reconstructed f
 - Any term pinned at a canon neutral is named, with the system that will unpin it.
 - Any deliberate divergence from canon is named with the reason.
 - Any canon oddity found is recorded rather than silently corrected.
+
+## Phase 5b (part 1): the phone substrate  (added 2026-08-20)
+
+The phone is a real object now, not three loose scalars. The inbox, the held
+inbox and the deferred restoration are ported, the payment reducer was brought
+back to canon after the first pass simplified it, and the whole lifecycle is
+enforced against oracle-recorded truth — **1212 → 1442 checks, 0 failures**.
+The Phone SCREEN is part 2; this is everything it will read.
+
+**On the number:** the build log and the ClickUp migration plan share one phase
+sequence, and **6 is Cutover** in both. The Phone is screen work that lands
+after the harness and before cutover, so it takes a letter suffix the way
+3a-3f did rather than renumbering a plan that is already agreed.
+
+### The idea the rest hangs off: a dead line holds, it does not drop
+
+Canon's `pushPhoneMessage` (game-core.js:735) routes by service state. Live goes
+to `inbox` (unshift, newest first); dead goes to `heldInbox` (push, oldest
+first). The two halves disagree on order on purpose, because restoration
+reconciles them: `[...heldInbox.reverse(), ...inbox]`, so the newest held text
+lands on top and the flush reads like the inbox always did. `systems/phone.gd`
+ports that, and the order is pinned by a fixture — the oracle's own
+`restorePhoneIfReady`, reached through `advanceRun`, produced
+`held-3, held-2, held-1, live-1` and the Godot side has to match it exactly.
+
+### Three canon corrections the port needed
+
+The first pass of `_pay_phone` (Phase 3c) was a reasonable-looking
+simplification. The oracle disagrees on all three counts:
+
+1. **You cannot pay early.** Canon gates PAY_PHONE_BILL on `due` — the day has
+   reached the bill date, OR the counter is already running, OR the line is
+   dead. Paying a week ahead to bank a due day is not a move the game offers,
+   and the port was offering it.
+2. **Paying does not turn the phone back on.** Canon stamps
+   `reactivateAtSlot = slotNumber(day, slot)` and leaves `active` false; the
+   NEXT slot advance flips it (`restorePhoneIfReady`'s strictly-greater
+   comparison against `max(previousAbsolute, reactivateAtSlot)`). Pay and stand
+   still and you are still offline. The port restored instantly, which also
+   meant it had nowhere to flush a held inbox from.
+3. **The due day rolls off TODAY, not off the old due day.** Rent rolls in whole
+   periods from the date it was owed; the phone bill just moves a week out from
+   when you paid it. Both periods are 7 days, which is exactly why the
+   difference is easy to miss — the constants are separate for this reason and
+   `obligations.gd` already said so in a comment nobody had cause to test.
+
+`_settle_phone` needed no correction. The clock fixture walks 12 unpaid days and
+the Godot side reproduces it frame for frame: counter starts the morning after
+the day that ENDED on the due date, line dies once it exceeds two days of grace.
+
+### Restoration hangs off the time system, which is where canon puts it
+
+Canon calls `restorePhoneIfReady` from `advanceRun`. Every time cost in this
+build — travel, a shift, a stickup, a boost, a flip — routes through
+`time_system.handle("advance_time")`, so that one call site covers all of them,
+the same way `advanceRun` does. The absolute slot from BEFORE the move is what
+gets passed, which is what stops a line paid for this slot coming back in the
+same slot.
+
+### The verification ladder (all in the `parity` CI job)
+
+Everything is driven through EXPORTED oracle surfaces — `createRun`,
+`reduceGame`, `advanceRun` — so the fixtures record what canon's own reducer
+did, not what a re-implementation thinks it should do.
+
+- **The bill clock** — 12 day-end frames from a real run, unpaid. Pins the grace
+  arithmetic against an off-by-one in either direction.
+- **The deferred restoration** — offline → paid → advanced, three recorded
+  steps. `reactivateAtSlot` came back 48 at day 13 slot 0, which is
+  `slotNumber(13, 0)`, and `active` stayed false until the advance.
+- **The message id format** — `day:slot:stringHash(from:text)` is a one-line
+  copy (game-core does not export `pushPhoneMessage`), and it is **proven, not
+  trusted**: the generator drives three `EXPLORE_SPENARD` calls and an
+  `APPLY_JOB`, waits for the offer text to land, and requires the copy to
+  reproduce the id canon actually minted (`2:1:3213940972`) before writing
+  anything. Same discipline the marketPrice copy got in Phase 5.
+- **DISMISS / CLEAR** — run against that real inbox.
+- **The held flush and its order** — described above. Nothing in a fresh run
+  pushes to a dead line (job offers require service), so the held stack is
+  seeded by hand and canon's own restoration does the work. The logic under
+  test is entirely the oracle's; only the input is supplied.
+- **PHONE_INTEL** — exported outright, so Word Around Town is pure oracle data:
+  3 areas x 4 slots x 6 lines, compared string for string.
+
+### Save schema v3, and the chain's first arm that actually transforms
+
+`phone_inbox`, `phone_held_inbox` and `phone_reactivate_at_slot` joined
+`PERSIST_FIELDS`. Those three are additive and default in. `activity_log` is
+not — its rows gained a `day`, because canon stamps every log entry
+`Day N · SLOT` and the Phone's Today's Log filters on it, and a row written
+before the field existed has no date to recover. The v2→v3 arm walks them and
+stamps `-1`: honestly undated, never equal to a real day, never "today". Back-
+dating them to the day the save was made would have been a fabricated fact in a
+feed whose whole job is to say what happened when.
+
+**Found while writing that test:** `_apply` SKIPS a field the save does not
+carry, which keeps whatever is LIVE — not GameState's declared default. Those
+are the same thing only on a fresh boot, and a fresh boot is the only place
+`load_run()` is called from, so nothing is wrong today. It is a sharp edge for
+whoever adds a mid-run load (a slot picker, a restart-without-relaunch), and the
+migration test resets first with a comment saying why.
+
+### `-1` is the null
+
+Canon's `reactivateAtSlot` is `null` when nothing is scheduled. A typed
+GDScript int cannot hold that, so `-1` is the stand-in — chosen because
+`slotNumber` is `(day - 1) * 4 + slot`, which is 0 at the very first slot of the
+run and never negative. The fixture generator does the same coercion on the way
+out, so the comparison is exact rather than "close enough".
+
+### Two placeholders retired
+
+- **`pending_messages`** is gone. It was a hardcoded Yalonda text that Home's
+  People card read as though it were real, and it collides by shape with the
+  inbox — the exact collision this session was warned about. The card now reads
+  `phone_inbox`, and an empty inbox says so ("NO TEXTS · Nobody has needed you
+  today") instead of leaving the scene's editor-time preview standing as a fact.
+  A dead line reports what it is holding.
+- The Home card's badge is a real count now, and a dead line's badge counts the
+  held stack.
+
+### Named, not silently dropped
+
+- **`read` is written and never set true.** Canon does not read it either
+  (v1.35 has no read-receipt UI). It is carried so a future unread badge does
+  not need a save migration.
+- **`action` descriptors** are carried verbatim, but the only kind canon has is
+  `job_offer` and this build's `jobs.gd` hires directly — there is no
+  application → offer pipeline, so nothing pushes one yet.
+- **`retireOfferMessages`** (game-core.js:745) and the `resolveJobApplications`
+  call inside restoration, for the same reason: no offers to retire or resolve.
+- **The online payment surface.** Canon refuses it without a laptop, an active
+  line and knowledge of 907List; no laptop item exists here, so the surface is
+  not offered and the reducer does not gate on it. `surface` is still carried
+  and returned, because canon's other difference between store and phone is
+  time cost — paying at the Phone Store burns a slot — and this build has no
+  store screen to spend it from yet.
+
+### Verified live (editor run, game log clean)
+
+New run → phone active, due day 7, both inboxes empty, `reactivate_at_slot` -1.
+Push a text → id `1:0:1500448875`, stamp "DAY 1 · MORNING". Pay on day 1 →
+**refused** (the new `due` gate). Nine days of advances → day 10, line dead,
+3 days past due — frame-identical to the oracle clock. Two texts pushed while
+dead → held, inbox untouched. Pay → cash 100→25, due day 17,
+`reactivate_at_slot` 36 (= `slotNumber(10, 0)`), **still offline**. One advance
+→ active, flush order Mina · Goodie · Night Owl (newest held first), held empty.
+Word Around Town interpolates the standing area and part of day, and changes on
+travel ("Spenard: afternoon…" → "Industrial Service Roads: evening…"). Home's
+People card renders all four states: a live text with its stamp, empty-and-live,
+dead-with-held, dead-and-empty. Autosave never fired (`street_name` held empty
+for the duration) and no phantom run was left on the machine.
 
 ## Phase 5 (part 2): the canon market walk  (added 2026-08-20)
 

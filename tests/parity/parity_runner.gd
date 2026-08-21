@@ -20,6 +20,10 @@ extends Node
 ##              through economy.gd's own walk statics (formula parity), and
 ##              GameState.init_markets() must reproduce createRun's actual
 ##              opening market and cursor byte-for-byte (end-to-end parity)
+##   phone    — the Phase 6 substrate: the bill clock day by day, the deferred
+##              restoration a payment schedules, the message-id format (proven
+##              in the generator against a message canon actually minted), the
+##              held-inbox flush and its order, and the Word Around Town pool
 ##   saveload — the Phase 4 acceptance test, automated: a lived-in run through
 ##              the real dispatch layer → save → scramble → load → deep-compare
 ##
@@ -45,6 +49,7 @@ func _ready() -> void:
 		_check_market_static(fixtures.get("market_static", {}))
 		_check_market_walks(fixtures.get("market_walks", []))
 		_check_initial_markets(fixtures.get("initial_markets", []))
+		_check_phone(fixtures.get("phone", {}))
 		_check_save_roundtrip()
 	_finish()
 
@@ -184,6 +189,176 @@ func _check_initial_markets(rows: Array) -> void:
 		_expect_int(label + " rng_state", gs.rng_state, int(row["rng_state"]))
 	gs.run_seed = original_seed
 
+## Phase 6 phone substrate, against oracle-recorded truth.
+##
+## Everything here runs through the real dispatch layer, the same way the save
+## round-trip does. `street_name` is held empty for the duration so no autosave
+## fires — the save file belongs to _check_save_roundtrip, which backs it up and
+## puts it back, and a stray autosave from this section would poison that backup.
+func _check_phone(phone_fixture: Dictionary) -> void:
+	if phone_fixture.is_empty():
+		_fail("phone", "no phone fixtures")
+		return
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var phone: RefCounted = gm.system("phone") as RefCounted
+	if phone == null:
+		_fail("phone", "no phone system registered")
+		return
+	var original_name: String = gs.street_name
+	gs.street_name = ""
+
+	_expect_int("phone bill", int(gs.PHONE_BILL), int(phone_fixture["bill"]))
+	_check_phone_clock(gs, gm, phone_fixture.get("clock", {}))
+	_check_phone_restore(gs, gm, phone_fixture.get("restore", {}))
+	_check_phone_message(gs, gm, phone, phone_fixture.get("message", {}))
+	_check_phone_held_flush(gs, gm, phone_fixture.get("held_flush", {}))
+	_check_phone_intel(gs, phone, phone_fixture.get("intel", []))
+
+	gs.street_name = original_name
+
+## Advance one whole day through the real time system (four slots, the fourth
+## crossing), which is what the oracle's advanceRun-to-dayEndPending +
+## CONFIRM_END_DAY pair adds up to.
+func _cross_day(gm: Node) -> void:
+	for i in range(4):
+		gm.dispatch("advance_time", {})
+
+func _expect_phone_state(label: String, gs: Node, want: Dictionary) -> void:
+	_expect_true(label + " active", gs.phone_active == bool(want["active"]))
+	_expect_int(label + " bill_due_day", gs.phone_due_day, int(want["bill_due_day"]))
+	_expect_int(label + " days_past_due", gs.phone_days_past_due, int(want["days_past_due"]))
+	_expect_int(label + " reactivate_at_slot", gs.phone_reactivate_at_slot, int(want["reactivate_at_slot"]))
+	_expect_str(label + " inbox", str(_ids(gs.phone_inbox)), str(want["inbox"]))
+	_expect_str(label + " held", str(_ids(gs.phone_held_inbox)), str(want["held"]))
+
+func _ids(messages: Array) -> Array:
+	var out: Array = []
+	for m in messages:
+		out.append(str(m.get("id", "")))
+	return out
+
+## The unpaid bill clock, day by day: the counter starts the morning after the
+## day that ENDED on the due date, and the line dies once it passes two days of
+## grace. This is the fixture that would catch an off-by-one in _settle_phone.
+func _check_phone_clock(gs: Node, gm: Node, clock: Dictionary) -> void:
+	var frames: Array = clock.get("frames", [])
+	if frames.is_empty():
+		_fail("phone clock", "no frames")
+		return
+	gs.reset_to_new_game()
+	var index := 0
+	for frame in frames:
+		var row: Dictionary = frame
+		if index > 0:
+			_cross_day(gm)
+		_expect_int("phone clock frame %d day" % index, gs.day, int(row["day"]))
+		_expect_phone_state("phone clock frame %d" % index, gs, row["phone"])
+		index += 1
+
+## Paying a dead line does not turn it back on — it schedules the restoration
+## for the next slot. Three recorded steps: offline, paid, advanced.
+func _check_phone_restore(gs: Node, gm: Node, restore: Dictionary) -> void:
+	var steps: Array = restore.get("steps", [])
+	if steps.size() < 3:
+		_fail("phone restore", "expected 3 steps, got %d" % steps.size())
+		return
+	# The clock check left the run at the same day the oracle paid on.
+	var offline: Dictionary = steps[0]
+	_expect_int("phone restore day", gs.day, int(offline["day"]))
+	_expect_phone_state("phone restore offline", gs, offline["phone"])
+
+	var cash_before: int = gs.cash
+	_expect_true("phone restore pay dispatch", gm.dispatch("pay_phone_bill", {"surface": "store"}))
+	_expect_int("phone restore cash spent", cash_before - gs.cash, int(gs.PHONE_BILL))
+	_expect_phone_state("phone restore paid", gs, steps[1]["phone"])
+
+	_expect_true("phone restore advance dispatch", gm.dispatch("advance_time", {}))
+	_expect_phone_state("phone restore advanced", gs, steps[2]["phone"])
+
+## The message id is `day:slot:string_hash(from:text)`. The generator proved
+## that format against a message the oracle actually minted; this replays the
+## same from/text at the same day and slot and requires the same id.
+func _check_phone_message(gs: Node, gm: Node, phone: RefCounted, fixture: Dictionary) -> void:
+	if fixture.is_empty():
+		_fail("phone message", "no fixture")
+		return
+	var want: Dictionary = fixture["message"]
+	gs.reset_to_new_game()
+	gs.day = int(want["day"])
+	var slot_index: int = int(want["slot"])
+	gs.time_slot = phone.SLOTS[slot_index]
+	gs.time_slots_today = slot_index
+
+	var minted: Dictionary = phone.push_message(str(want["from"]), str(want["text"]))
+	_expect_str("phone message id", str(minted["id"]), str(want["id"]))
+	_expect_str("phone message from", str(minted["from"]), str(want["from"]))
+	_expect_str("phone message text", str(minted["text"]), str(want["text"]))
+	_expect_int("phone message day", int(minted["day"]), int(want["day"]))
+	_expect_int("phone message slot", int(minted["slot"]), slot_index)
+	_expect_true("phone message unread", minted["read"] == want["read"])
+	_expect_true("phone message carries no action", not minted.has("action"))
+	_expect_str("phone message inbox", str(_ids(gs.phone_inbox)), str(fixture["inbox_before"]))
+
+	_expect_true("phone dismiss dispatch", gm.dispatch("dismiss_phone_message", {"id": str(want["id"])}))
+	_expect_str("phone after dismiss", str(_ids(gs.phone_inbox)), str(fixture["after_dismiss"]))
+	# Canon returns the input state unchanged when there is nothing to remove;
+	# the action layer says so out loud instead, so a re-dismiss must fail.
+	_expect_true("phone re-dismiss refused", not gm.dispatch("dismiss_phone_message", {"id": str(want["id"])}))
+
+	phone.push_message(str(want["from"]), str(want["text"]))
+	_expect_true("phone clear dispatch", gm.dispatch("clear_phone_inbox", {}))
+	_expect_str("phone after clear", str(_ids(gs.phone_inbox)), str(fixture["after_clear"]))
+	_expect_true("phone re-clear refused", not gm.dispatch("clear_phone_inbox", {}))
+
+## Restoration flushes the held stack REVERSED onto the front of the live inbox,
+## so the newest held text lands on top. Order is the whole point of this one.
+func _check_phone_held_flush(gs: Node, gm: Node, flush: Dictionary) -> void:
+	if flush.is_empty():
+		_fail("phone held flush", "no fixture")
+		return
+	var at: Dictionary = flush["at"]
+	var before: Dictionary = flush["before"]
+	gs.reset_to_new_game()
+	gs.day = int(at["day"])
+	gs.time_slots_today = int(at["slot"])
+	gs.phone_active = bool(before["active"])
+	gs.phone_due_day = int(before["bill_due_day"])
+	gs.phone_days_past_due = int(before["days_past_due"])
+	gs.phone_inbox = _stub_messages(before["inbox"], gs.day, int(at["slot"]))
+	gs.phone_held_inbox = _stub_messages(before["held"], gs.day, int(at["slot"]))
+	gs.cash = 500
+
+	_expect_true("phone flush pay dispatch", gm.dispatch("pay_phone_bill", {"surface": "store"}))
+	_expect_true("phone flush advance dispatch", gm.dispatch("advance_time", {}))
+	_expect_phone_state("phone flush after", gs, flush["after"])
+
+func _stub_messages(ids: Array, day: int, slot_index: int) -> Array:
+	var out: Array = []
+	for id in ids:
+		out.append({"id": str(id), "from": "Fixture", "text": str(id),
+			"day": day, "slot": slot_index, "read": false})
+	return out
+
+## The Word Around Town pool, straight out of the oracle's exported PHONE_INTEL.
+func _check_phone_intel(gs: Node, phone: RefCounted, rows: Array) -> void:
+	if rows.is_empty():
+		_fail("phone intel", "no fixture")
+		return
+	for row in rows:
+		var area: String = str(row["area"])
+		gs.current_district_id = area
+		var slots: Array = row["slots"]
+		for slot_index in range(slots.size()):
+			gs.time_slot = phone.SLOTS[slot_index]
+			var want: Array = slots[slot_index]
+			var got: Array = phone.intel()
+			_expect_int("phone intel %s slot %d count" % [area, slot_index], got.size(), want.size())
+			for line_index in range(mini(got.size(), want.size())):
+				_expect_str("phone intel %s slot %d line %d" % [area, slot_index, line_index],
+					str(got[line_index]), str(want[line_index]))
+	gs.current_district_id = "north_star_lot"
+
 ## The Phase 4 acceptance test, automated. Mirrors the manual verification the
 ## save/load PR shipped with: real dispatches, exposure + curtis + crew +
 ## territory + shark state, a Color-carrying feed entry and fractional heat —
@@ -219,6 +394,13 @@ func _check_save_roundtrip() -> void:
 	gs.held_blocks["wash_and_go_lot"] = {"soldiers": 1, "claimed_day": 1, "income_collected": 55}
 	gs.soldiers_idle = 1
 	gs.shark_loans.append({"id": 1, "borrower": "nora", "principal": 100, "due_day": 3, "term": 2})
+	# Phone inbox (v3): a live message, a held one, and a pending restoration —
+	# all three fields have to survive the round-trip.
+	var phone_sys: RefCounted = gm.system("phone") as RefCounted
+	phone_sys.push_message("Night Owl", "Shift covered. Come by.")
+	gs.phone_held_inbox.append({"id": "held:1", "from": "Goodie", "text": "Hit me when the bars are back.",
+		"day": gs.day, "slot": 0, "read": false})
+	gs.phone_reactivate_at_slot = 9
 	gs.log_activity("Parity entry", Color(1, 0.29, 0.239))
 	gs.heat = 1.6
 	gs.notify_changed()
@@ -244,6 +426,9 @@ func _check_save_roundtrip() -> void:
 	gs.curtis_phase = "invisible"
 	gs.markets = {}
 	gs.rng_state = 0
+	gs.phone_inbox = []
+	gs.phone_held_inbox = []
+	gs.phone_reactivate_at_slot = -1
 
 	_expect_true("load_run", saves.load_run())
 	var after: Dictionary = saves.capture()
@@ -257,6 +442,8 @@ func _check_save_roundtrip() -> void:
 	_expect_true("heat restored as float", gs.heat is float)
 	_expect_true("day restored as int", gs.day is int)
 
+	_check_v2_migration(gs, saves)
+
 	if previous_save.is_empty():
 		DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
 	else:
@@ -264,6 +451,47 @@ func _check_save_roundtrip() -> void:
 		if restore != null:
 			restore.store_string(previous_save)
 			restore.close()
+
+## The v2 → v3 arm, which is the migration chain's first arm that actually
+## transforms data rather than stamping a version. A v2 save's activity_log rows
+## predate the `day` field; they come back stamped -1 (honestly undated) rather
+## than back-dated to a day they did not happen on, and the phone inbox fields
+## default in absent.
+##
+## The reset first is not decoration. `_apply` SKIPS a field the save does not
+## carry, which keeps whatever is live rather than GameState's declared default
+## — the two are the same thing only on a fresh boot, and a fresh boot is the
+## only place load_run() is ever called from. Loading a legacy save over the
+## lived-in run this function runs after would leak that run's inbox into the
+## assertion and prove nothing about the migration.
+func _check_v2_migration(gs: Node, saves: Node) -> void:
+	gs.reset_to_new_game()
+	var v2_state: Dictionary = {
+		"day": 5, "cash": 300, "street_name": "Legacy",
+		"activity_log": [
+			{"text": "old row", "time": "MORNING", "color": Color(1, 1, 1)},
+			{"text": "dated row", "day": 4, "time": "NIGHT", "color": Color(1, 1, 1)},
+		],
+	}
+	var file := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if file == null:
+		_fail("v2 migration", "could not write the fixture save")
+		return
+	file.store_string(var_to_str({"save_version": 2, "state": v2_state}))
+	file.close()
+
+	_expect_true("v2 migration loads", saves.load_run())
+	_expect_int("v2 migration day", gs.day, 5)
+	_expect_int("v2 migration undated row", int(gs.activity_log[0].get("day", 0)), -1)
+	_expect_int("v2 migration dated row kept", int(gs.activity_log[1].get("day", 0)), 4)
+	_expect_true("v2 migration inbox defaults empty", gs.phone_inbox.is_empty())
+	_expect_int("v2 migration reactivate defaults", gs.phone_reactivate_at_slot, -1)
+	# A version this build has never heard of stays invalid, arm or no arm.
+	var future := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if future != null:
+		future.store_string(var_to_str({"save_version": saves.SAVE_VERSION + 1, "state": v2_state}))
+		future.close()
+	_expect_true("future version refused", not saves.load_run())
 
 # --- plumbing ---------------------------------------------------------------
 

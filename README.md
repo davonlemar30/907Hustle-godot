@@ -39,12 +39,14 @@ the oracle won; those divergences are listed in `HANDOFF.md`.
 | Claim corners, post soldiers, collect nightly | Home → Turf |
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
+| Texts arrive; miss the bill and the line dies holding them | Home → People card |
 | Pick up where you left off | automatic autosave · title → CONTINUE RUN |
 
 ### Not built yet
 
-Phone and More screens (their nav cells are disabled), venue interiors, combat
-encounters, equipment, attributes, and the behavioral parity harness.
+Phone and More screens (their nav cells are disabled — the Phone's substrate is
+built and tested, the screen that surfaces it is next), venue interiors, combat
+encounters, equipment, and attributes.
 
 ## Project layout
 
@@ -64,6 +66,7 @@ systems/              # the ONLY writers of GameState
   travel.gd           # district change: fare + a slot
   jobs.gd             # apply / work / quit + attendance
   obligations.gd      # rent + phone bill, settled nightly
+  phone.gd            # the inbox, the held inbox, and the line coming back
   stickup.gd          # armed robbery, tiers, the two-a-day cap
   shark.gd            # lending, terms, defaults
   nine07list.gd       # the flip board and its tiers
@@ -155,7 +158,8 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (1212 checks); fixtures grow with each system |
+| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (1442 checks); fixtures grow with each system |
+| 5b. Phone + More screens | 🔨 substrate shipped (inbox, held inbox, deferred restoration); screens next |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

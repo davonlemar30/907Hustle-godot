@@ -279,6 +279,154 @@ const market_static = {
 };
 
 // ---------------------------------------------------------------------------
+// Phone — the bill clock, the deferred restoration, and the inbox.
+//
+// Everything below is driven through EXPORTED oracle surfaces (createRun,
+// reduceGame, advanceRun) and records what canon's own reducer did. Nothing
+// here re-implements phone logic; the one small copy — the message id format —
+// is proven against a real message the oracle produced before it is used.
+const PHONE_BILL = core.PHONE_BILL;
+const snapshotPhone = (state) => ({
+  active: state.phone.active,
+  bill_due_day: state.phone.billDueDay,
+  days_past_due: state.phone.daysPastDue,
+  // Canon carries null for "nothing scheduled"; the Godot side carries -1.
+  reactivate_at_slot: state.phone.reactivateAtSlot == null ? -1 : state.phone.reactivateAtSlot,
+  inbox: state.phone.inbox.map((m) => m.id),
+  held: state.phone.heldInbox.map((m) => m.id),
+});
+function driveToDayEnd(state) {
+  for (let guard = 0; guard < 30 && !state.run.dayEndPending; guard += 1) {
+    if (state.run.pendingEvent) {
+      state = core.reduceGame(state, { type: "RESOLVE_EVENT", choiceIndex: 0 }) || state;
+      continue;
+    }
+    state = core.advanceRun(state, { reason: "REST" });
+  }
+  if (!state.run.dayEndPending) throw new Error("phone: could not reach dayEndPending");
+  return core.reduceGame(state, { type: "CONFIRM_END_DAY" }) || state;
+}
+function freshRun(seed) {
+  const run = core.createRun({ seed });
+  return core.reduceGame(run, { type: "START_RUN", streetName: "Parity" }) || run;
+}
+
+// (a) The bill clock, unpaid, day by day. This is the fixture that pins the
+// grace arithmetic: due day 7, the counter starts the morning after the day
+// that ENDED on the due date, and the line dies once it exceeds two days.
+function recordPhoneClock(days) {
+  let state = freshRun(907);
+  const frames = [{ day: state.run.day, slot: state.run.slot, phone: snapshotPhone(state) }];
+  for (let i = 0; i < days; i += 1) {
+    state = driveToDayEnd(state);
+    frames.push({ day: state.run.day, slot: state.run.slot, phone: snapshotPhone(state) });
+  }
+  return { bill: PHONE_BILL, frames };
+}
+
+// (b) Paying a dead line, and the beat before it comes back. Canon stamps
+// reactivateAtSlot and leaves `active` false; the NEXT advance flips it.
+function recordPhoneRestore() {
+  let state = freshRun(907);
+  for (let i = 0; i < 12; i += 1) state = driveToDayEnd(state);
+  if (state.phone.active) throw new Error("phone: line did not die in 12 days");
+  const steps = [];
+  const mark = (label) => steps.push({
+    label, day: state.run.day, slot: state.run.slot,
+    cash: state.player.cash, phone: snapshotPhone(state),
+  });
+  mark("offline");
+  state = core.reduceGame(state, { type: "PAY_PHONE_BILL", surface: "store" }) || state;
+  mark("paid");
+  if (state.run.pendingEvent) state = core.reduceGame(state, { type: "RESOLVE_EVENT", choiceIndex: 0 }) || state;
+  state = core.advanceRun(state, { reason: "REST" });
+  mark("advanced");
+  return { steps };
+}
+
+// (c) A real message out of the oracle, used to PROVE the id-format copy.
+// game-core does not export pushPhoneMessage, so the Godot port builds the id
+// from the format at game-core.js:735 — `day:slot:stringHash(from:text)`. The
+// generator recomputes that format from the exported stringHash and requires
+// it to equal the id canon actually minted on a message the reducer produced
+// (a job offer, three EXPLORE_SPENARD calls and an APPLY_JOB later). A wrong
+// format cannot pass that.
+function recordPhoneMessage() {
+  let state = freshRun(907);
+  const step = (action) => {
+    state = core.reduceGame(state, action) || state;
+    if (state.run.pendingEvent) state = core.reduceGame(state, { type: "RESOLVE_EVENT", choiceIndex: 0 }) || state;
+  };
+  for (let i = 0; i < 3; i += 1) step({ type: "EXPLORE_SPENARD" });
+  const jobId = state.jobs.discovered.find((id) => id !== "day_labor");
+  if (!jobId) throw new Error("phone: no non-day-labor job discovered to apply to");
+  step({ type: "APPLY_JOB", jobId });
+  for (let guard = 0; guard < 8 && !state.phone.inbox.length; guard += 1) {
+    if (state.run.dayEndPending) { state = core.reduceGame(state, { type: "CONFIRM_END_DAY" }) || state; continue; }
+    if (state.run.pendingEvent) { state = core.reduceGame(state, { type: "RESOLVE_EVENT", choiceIndex: 0 }) || state; continue; }
+    state = core.advanceRun(state, { reason: "REST" });
+  }
+  const message = state.phone.inbox[0];
+  if (!message) throw new Error("phone: no message ever reached the inbox");
+  const rebuilt = `${message.day}:${message.slot}:${stringHash(`${message.from}:${message.text}`)}`;
+  if (rebuilt !== message.id) {
+    throw new Error(`phone: id-format copy failed oracle verification (${rebuilt} != ${message.id})`);
+  }
+  // The dismiss/clear reducers, run against that real inbox.
+  const afterDismiss = core.reduceGame(state, { type: "DISMISS_PHONE_MESSAGE", id: message.id });
+  const afterClear = core.reduceGame(state, { type: "CLEAR_PHONE_INBOX" });
+  return {
+    message: {
+      id: message.id, from: message.from, text: message.text,
+      day: message.day, slot: message.slot, read: message.read,
+    },
+    inbox_before: state.phone.inbox.map((m) => m.id),
+    after_dismiss: (afterDismiss || state).phone.inbox.map((m) => m.id),
+    after_clear: (afterClear || state).phone.inbox.map((m) => m.id),
+  };
+}
+
+// (d) The held-inbox flush, and its ORDER. Canon holds a message sent to a dead
+// line and, on restoration, prepends `[...heldInbox.reverse(), ...inbox]` — so
+// the newest held text lands on top. Nothing in a fresh run pushes to a dead
+// line (job offers require service), so the held stack is seeded by hand and
+// canon's own restorePhoneIfReady, reached through advanceRun, does the work.
+// The logic under test is entirely the oracle's; only the input is supplied.
+function recordHeldFlush() {
+  let state = freshRun(907);
+  for (let i = 0; i < 12; i += 1) state = driveToDayEnd(state);
+  if (state.phone.active) throw new Error("phone: line did not die in 12 days");
+  const held = ["held-1", "held-2", "held-3"].map((id, index) => ({
+    id, from: `Sender ${index}`, text: `Held text ${index}`,
+    day: state.run.day, slot: state.run.slot, read: false,
+  }));
+  state.phone.inbox = [{ id: "live-1", from: "Live", text: "Live text", day: state.run.day, slot: state.run.slot, read: false }];
+  state.phone.heldInbox = held.map((item) => ({ ...item }));
+  const before = snapshotPhone(state);
+  const at = { day: state.run.day, slot: state.run.slot };
+  state = core.reduceGame(state, { type: "PAY_PHONE_BILL", surface: "store" }) || state;
+  if (state.run.pendingEvent) state = core.reduceGame(state, { type: "RESOLVE_EVENT", choiceIndex: 0 }) || state;
+  state = core.advanceRun(state, { reason: "REST" });
+  return { at, before, after: snapshotPhone(state) };
+}
+
+// (e) PHONE_INTEL, pure exported oracle data: the Word Around Town pool for
+// every area and every slot. The Godot side rebuilds these from the same six
+// templates and must land on the identical strings.
+const phone_intel = core.NEIGHBORHOODS
+  .filter((area) => ["north_star_lot", "downtown", "airport_industrial"].includes(area.id))
+  .map((area) => ({ area: area.id, slots: core.PHONE_INTEL[area.id] }));
+
+const phone = {
+  bill: PHONE_BILL,
+  clock: recordPhoneClock(12),
+  restore: recordPhoneRestore(),
+  message: recordPhoneMessage(),
+  held_flush: recordHeldFlush(),
+  intel: phone_intel,
+};
+
+// ---------------------------------------------------------------------------
 const fixtures = {
   oracle_version: core.VERSION,
   generated_note: "run scripts/parity/gen_fixtures.mjs against the web oracle; do not hand-edit",
@@ -288,6 +436,7 @@ const fixtures = {
   market_static,
   market_walks,
   initial_markets,
+  phone,
 };
 
 const outPath = join(here, "..", "..", "tests", "parity", "fixtures", "rng_fixtures.json");
@@ -296,7 +445,9 @@ writeFileSync(outPath, JSON.stringify(fixtures, null, 1) + "\n");
 console.log(
   `wrote ${outPath}: ${hashes.length} hashes, ${seeds.length} seeds, ` +
   `${streams.length} streams, ${market_walks.length} lifecycle walks, ` +
-  `${initial_markets.length} oracle initial markets (oracle v${core.VERSION}; ` +
+  `${initial_markets.length} oracle initial markets, ` +
+  `${phone.clock.frames.length} phone clock frames (oracle v${core.VERSION}; ` +
   `initialMarket copy verified at offset ${verifiedAtBurn}, ` +
-  `evolveMarkets copy verified at offset ${evolveVerifiedAtBurn})`
+  `evolveMarkets copy verified at offset ${evolveVerifiedAtBurn}; ` +
+  `phone message-id format verified against oracle message ${phone.message.message.id})`
 );

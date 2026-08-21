@@ -11,13 +11,13 @@ extends "res://ui/screens/surface_base.gd"
 ## already own. The statuses are one-line reads of live state so the menu can be
 ## scanned instead of walked.
 ##
-## Canon has six rows. This build ships five; the one it drops is dropped rather
-## than stubbed:
+## All six of canon's rows ship as of Phase 5d. Recovery is conditional, exactly
+## as canon has it:
 ##
-##   - **Recovery** (canon: treat injuries, lay low to shed Heat) — there is no
-##     recovery system. Canon itself hides this row until the feature is
-##     relevant (`features.recovery.available`), so an absent row is the shape
-##     canon already uses for it.
+##   - ~~Recovery~~ — **shipped in Phase 5d**. It keeps canon's availability gate
+##     rather than showing always: the row appears once health has dropped or
+##     Heat has risen above 1, and then stays for the rest of the run
+##     (`features.recovery.available`, latched by `recovery_introduced`).
 ##   - ~~Character~~ — **shipped in Phase 5c part 2**, once attributes were real
 ##     enough for it to say anything. Its arrest record and reputation history
 ##     are still absent, and the screen names both.
@@ -74,6 +74,14 @@ func _build_body() -> void:
 		"Wages, loyalty, tiers, and who answers when it gets loud.",
 		nav.CREW))
 
+	# Canon shows Recovery only once it is relevant, and then keeps showing it.
+	if _recovery_available():
+		body.add_child(_menu_row(
+			"Recovery",
+			"Health %d" % gs.health,
+			"Treat injuries or lay low to reduce Heat.",
+			nav.RECOVERY))
+
 	body.add_child(_menu_row(
 		"Character",
 		_identity_label(),
@@ -107,6 +115,16 @@ func _finance_summary() -> String:
 	if gs.debt_due_days <= 0:
 		return "Debt due"
 	return "Debt Day %d" % (gs.day + gs.debt_due_days)
+
+## Canon features.recovery.available: `health < 100 || heat > 1 ||
+## flags.recoveryIntroduced`. The latch is the interesting third: once Recovery
+## has mattered it stays on the menu, so healing back to 100 does not take away
+## the screen you just used. Reading it here is also what SETS it, which is
+## canon's own arrangement — featureAvailability is called on every render.
+func _recovery_available() -> bool:
+	if gs.health < gs.health_max or gs.heat > 1.0:
+		gs.recovery_introduced = true
+	return gs.recovery_introduced
 
 ## Canon's More shows the Street Identity as this row's status, which is the
 ## only place in the build it appears outside the Character screen itself.

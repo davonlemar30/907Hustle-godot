@@ -29,6 +29,7 @@ const PHONE := "res://ui/screens/phone.tscn"
 const MORE := "res://ui/screens/more.tscn"
 const HELP := "res://ui/screens/help.tscn"
 const CHARACTER := "res://ui/screens/character.tscn"
+const RECOVERY := "res://ui/screens/recovery.tscn"
 const GAME_OVER := "res://ui/screens/game_over.tscn"
 
 ## Every bottom-nav cell has a scene now. The empty-route branch in

@@ -35,6 +35,10 @@ func _ready() -> void:
 	time.setup(_gs, economy, phone)
 	register_system("time", time)
 
+	var recovery = preload("res://systems/recovery.gd").new()
+	recovery.setup(_gs, time)
+	register_system("recovery", recovery)
+
 	var travel = preload("res://systems/travel.gd").new()
 	travel.setup(_gs, time)
 	register_system("travel", travel)

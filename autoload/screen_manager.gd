@@ -92,18 +92,41 @@ func blocking_route() -> String:
 
 ## Where a request for `scene_path` actually lands once priority is applied.
 ## Pure, so the route guard is testable without changing scenes.
+##
+## Two guards, in order. The blocking priority above outranks everything,
+## including a locked route — a consequence has to open whatever the player was
+## reaching for. Under it sits the ACCESS guard: a destination whose surface the
+## player has not earned is not somewhere `go_to` can land, and the request is
+## refused by returning "" rather than by picking a substitute, because
+## substituting a screen the player did not ask for is worse than doing nothing.
+##
+## This exists so the gate is on the DESTINATION rather than on each button. The
+## Crew screen has three doors (More's row, Street's People row, and any deep
+## link a later build adds); the design pass's Improvement 2 is that all three
+## get the same answer, and they do because they all come through here.
 func resolved_route(scene_path: String) -> String:
 	if scene_path == GAME_OVER or scene_path == CONSEQUENCE:
 		return scene_path
 	var blocking: String = blocking_route()
-	return blocking if not blocking.is_empty() else scene_path
+	if not blocking.is_empty():
+		return blocking
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	if access != null and not access.route_allowed(scene_path):
+		return ""
+	return scene_path
 
 func go_to(scene_path: String) -> void:
 	if scene_path.is_empty():
 		return
+	var destination: String = resolved_route(scene_path)
+	# A refused route is silent, the same as a tap on a locked card: the lock
+	# and its hint have already said why, and a toast on top of them reads as a
+	# malfunction rather than a rule.
+	if destination.is_empty():
+		return
 	# Deferred because a nav button is mid-signal when it calls this, and
 	# freeing the scene that owns that button inside its own handler crashes.
-	_change.call_deferred(resolved_route(scene_path))
+	_change.call_deferred(destination)
 
 ## Enter the game proper. Named separately from go_to(HOME) because callers mean
 ## "start playing", and where that lands may stop being Home later.

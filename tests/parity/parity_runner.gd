@@ -133,6 +133,7 @@ func _ready() -> void:
 		_check_consequence_presentation()
 		_check_ti003_integration()
 		_check_save_roundtrip()
+		_check_v010()
 	_finish()
 
 func _load_fixtures() -> Dictionary:
@@ -668,6 +669,46 @@ func _stub_messages(ids: Array, day: int, slot_index: int) -> Array:
 			"day": day, "slot": slot_index, "read": false})
 	return out
 
+## Prose district names this port has deliberately renamed away from the oracle.
+##
+## The fixture is generated from the web build's exported PHONE_INTEL, so it
+## carries the oracle's own strings — including "Industrial Service Roads",
+## which the location registry lists as a working title for the district it
+## calls Ship Creek ("Ship Creek (formerly Industrial Service Roads)"). v0.1.0
+## renamed it everywhere the player can see it.
+##
+## Applied as a translation at COMPARE TIME rather than by editing the fixture,
+## and the difference matters: `scripts/parity/gen_fixtures.mjs` would put the
+## oracle's spelling straight back on the next regeneration, and a divergence
+## that silently reverts is worse than no divergence at all. Every other word in
+## the pool stays oracle-locked byte for byte — only the place name moves, and
+## it moves in exactly one place, here.
+const ORACLE_PROSE_RENAMES := {
+	"Industrial Service Roads": "Ship Creek",
+}
+
+func _oracle_prose(line: String) -> String:
+	var out := line
+	for stale in ORACLE_PROSE_RENAMES:
+		out = out.replace(str(stale), str(ORACLE_PROSE_RENAMES[stale]))
+	return out
+
+## Put a run past every progression gate, for checks that are measuring
+## something other than the gates.
+##
+## It writes FACTS, never verdicts — there is no `unlocked` boolean anywhere to
+## set, which is exactly the property the gate system is built on. A check that
+## wants an open city says so by holding corners' worth of discovery and having
+## somebody on the crew, the same way a player does.
+func _unlock_every_surface(gs: Node) -> void:
+	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+	gs.job_contacts = 1
+	gs.list_flips = maxi(int(gs.list_flips), 1)
+	if not gs.is_recruited("eli"):
+		gs.crew_records["eli"] = {"recruited": true, "loyalty": 6, "tier": 1,
+			"wage_due": 45, "wage_missed_since": -1, "recruited_day": 1,
+			"status": "active"}
+
 ## The Word Around Town pool, straight out of the oracle's exported PHONE_INTEL.
 func _check_phone_intel(gs: Node, phone: RefCounted, rows: Array) -> void:
 	if rows.is_empty():
@@ -684,7 +725,7 @@ func _check_phone_intel(gs: Node, phone: RefCounted, rows: Array) -> void:
 			_expect_int("phone intel %s slot %d count" % [area, slot_index], got.size(), want.size())
 			for line_index in range(mini(got.size(), want.size())):
 				_expect_str("phone intel %s slot %d line %d" % [area, slot_index, line_index],
-					str(got[line_index]), str(want[line_index]))
+					str(got[line_index]), _oracle_prose(str(want[line_index])))
 	gs.current_district_id = "north_star_lot"
 
 ## The Phase 4 acceptance test, automated. Mirrors the manual verification the
@@ -747,6 +788,10 @@ func _check_save_roundtrip() -> void:
 		gm.dispatch("advance_time", {})
 	_expect_true("dispatch work_shift", gm.dispatch("work_shift", {"approach": "work_hard"}))
 	_expect_true("dispatch advance_time", gm.dispatch("advance_time", {}))
+	# Travel is gated on discovery as of v0.1.0, and this run has not earned
+	# Downtown yet. Unlocked here rather than by claiming corners first: the
+	# check is about what survives a save, not about how the city opens.
+	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
 	_expect_true("dispatch travel", gm.dispatch("travel", {"district_id": "downtown"}))
 	# Exposure and Curtis are exercised by the dispatched systems above. Keep a
 	# persisted awareness value for the round-trip without bypassing the dispatch
@@ -770,6 +815,13 @@ func _check_save_roundtrip() -> void:
 	# progress float is the half that a coercion bug would silently round away.
 	gs.attributes["intelligence"] = 3
 	gs.attribute_progress["intelligence"] = 0.45
+	# The block and the crew record above were assigned DIRECTLY, which is not a
+	# path real play has — every real mutation arrives through a dispatch, and a
+	# dispatch settles the persistent latches before anything captures. Settling
+	# them here is what makes the baseline a state the game can actually be in;
+	# without it the reload correctly derives a Downtown the baseline never had,
+	# and the round-trip reads that as drift.
+	gs.reconcile_persistent_invariants()
 	gs.notify_changed()
 
 	var before: Dictionary = saves.capture()
@@ -1519,18 +1571,26 @@ func _check_stickup_rng_isolation(gs: Node, gm: Node, resolver: RefCounted) -> v
 ## canon's seeded Fisher-Yates shuffle.
 const LIST_PROBE_SEED := "907hustle"
 ## Fixed boards for the fresh-run seed at tier 1, day by day.
+##
+## RE-PINNED in v0.1.0. The board key was `"907list:%d:%d" % [day, tier]`, whose
+## only fast-varying component sat two characters from the end — the tail-varying
+## pattern the seeded-key audit swept out. It is `"%d:%d:907list"` now, which
+## re-rolls every board. The values below are the new literals, and they are
+## still literals: the point of this check is that the board is a pure function
+## of seed/day/tier, and it would prove nothing computed the same way the
+## system computes it.
 const LIST_GOLDEN_BOARDS := {
-	1: ["space_heater", "winter_coat"],
-	2: ["winter_coat", "dresser"],
-	3: ["camp_stove", "shop_vac"],
-	4: ["cracked_tv", "space_heater"],
-	5: ["dresser", "sagging_couch"],
+	1: ["used_tv", "space_heater"],
+	2: ["used_tv", "dresser"],
+	3: ["cracked_tv", "winter_coat"],
+	4: ["shop_vac", "cracked_tv"],
+	5: ["winter_coat", "dresser"],
 }
-## Day 6 once `used_tv` has been taken. Not day 6 minus that id: the filter
+## Day 2 once `used_tv` has been taken. Not day 2 minus that id: the filter
 ## runs on the POOL, so the board is regenerated from a smaller set and its
 ## remaining composition moves. That is canon's `listingSlate` and this literal
 ## is what pins it.
-const LIST_GOLDEN_AFTER_TAKE := ["shop_vac", "space_heater"]
+const LIST_GOLDEN_AFTER_TAKE := ["camp_stove", "dresser"]
 
 func _check_907list_ownership() -> void:
 	var gs := get_node("/root/GameState")
@@ -1550,9 +1610,10 @@ func _check_907list_ownership() -> void:
 func _reset_list_probe(gs: Node) -> void:
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
-	# Day 6 is the first pinned probe day whose new keyed shuffle includes
-	# `used_tv`, so the consumption test can exercise a real offered listing.
-	gs.day = 6
+	# Day 2 is the first pinned probe day past day one whose keyed shuffle
+	# offers `used_tv`, so the consumption test can exercise a real listing.
+	# It moved from 6 to 2 when the v0.1.0 key audit re-rolled every board.
+	gs.day = 2
 	gs.time_slots_today = 0
 	gs.cash = 5000
 	gs.current_district_id = "north_star_lot"
@@ -1675,7 +1736,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# Pinned deliberately, and bumped deliberately: this assertion exists so a
 	# schema change cannot land by accident, which means every real bump edits
 	# it on purpose. 6 → 7 in FS-001.6, 7 → 8 in FS-003.4, 8 → 9 in FS-003.13.
-	_expect_int("save version is 9", saves.SAVE_VERSION, 9)
+	_expect_int("save version is 10", saves.SAVE_VERSION, 10)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
 
 	# A v5 save mid-day 4: one listing bought today and still held (recoverable),
@@ -2676,10 +2737,14 @@ func _check_run_the_board() -> void:
 	gs.reset_to_new_game()
 
 ## Broker tier, Pherris loyal, morning, money in hand.
-func _rb_ready(gs: Node, cash: int = 5000) -> void:
+## `day` is a parameter because ONE check needs a different board and the rest
+## must not move. Day 12's tier-3 slate offers a single acceptable listing after
+## the v0.1.0 key audit re-rolled it — three of its four items are `rough`, which
+## `acceptable_board()` refuses — and the cumulative-cash check needs two.
+func _rb_ready(gs: Node, cash: int = 5000, day: int = 12) -> void:
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
-	gs.day = 12
+	gs.day = day
 	gs.time_slots_today = 0
 	gs.time_slot = "MORNING"
 	gs.cash = cash
@@ -3782,10 +3847,6 @@ func _fs001_exposure_rows(exposure: Node) -> int:
 ## wider than the phone. A blocker string that overflows 375pt is invisible in
 ## the editor and unreadable on the device.
 const FS001_VIEWPORT := Vector2(375.0, 812.0)
-const PHONE_SCREEN := "res://ui/screens/phone.tscn"
-## The dismiss glyph on each rendered message. Two texts in the inbox when this
-## runs, so two controls — see the note in `_fs001_render`.
-const PHONE_UNDERSIZED_CONTROLS := 2
 
 func _check_fs001_ui(gs: Node, gm: Node, ops: RefCounted) -> void:
 	# --- assigned: every delegation surface says so ---
@@ -3863,33 +3924,19 @@ func _fs001_render(path: String, label_text: String) -> void:
 	if widest > FS001_VIEWPORT.x:
 		_fail("fs001 ui", "%s declares %.0fpt on %s" % [path.get_file(), widest, offender])
 	# Every tappable is at least 44pt tall, the same rule the consequence scene is
-	# held to — with one NAMED exception, below.
+	# held to. There is no exception any more: the Phone's dismiss glyph was the
+	# one named carve-out (34x28, pinned by an assertion so it could not be
+	# forgotten), and v0.1.0 corrected it to 44x44 and deleted the carve-out.
 	var buttons: Array = []
 	_collect_buttons(screen, buttons)
-	var undersized: int = 0
 	for entry in buttons:
 		var pressable := entry as Button
 		if not pressable.visible:
 			continue
 		var tall_enough: bool = pressable.custom_minimum_size.y >= 44.0 \
 			or pressable.size.y >= 44.0
-		if not tall_enough:
-			undersized += 1
-		if path == PHONE_SCREEN:
-			continue
 		_expect_true("%s (%s): %s is tappable"
 			% [path.get_file(), label_text, str(pressable.name)], tall_enough)
-	if path == PHONE_SCREEN:
-		# FS-001.10 found this and is not allowed to fix it: the milestone's
-		# scope forbids Phone UI changes beyond rendering the new messages.
-		#
-		# So it is PINNED rather than skipped. The dismiss glyph declares 34x28,
-		# which is under the 44pt rule, and this check asserts that it is exactly
-		# that — so the day somebody corrects it, this fails and gets deleted
-		# instead of the exception quietly outliving the problem. Filed as a
-		# follow-up.
-		_expect_int("the phone's dismiss control is the known undersized one",
-			undersized, PHONE_UNDERSIZED_CONTROLS)
 	_free_screen(screen)
 
 ## Every label a screen renders, joined — built and freed in one call so a caller
@@ -4197,7 +4244,10 @@ func _check_preview_context(gs: Node, gm: Node, ops: RefCounted, adapter: RefCou
 	# anything", which passes whether or not the plan tracks what it has already
 	# committed — and a plan that forgets would promise a spend the player
 	# cannot make.
-	_rb_ready(gs)
+	# Day 11 rather than the suite's day 12: this check needs a slate with two
+	# affordable acceptable listings on it, and day 12's has one.
+	const CUMULATIVE_CASH_DAY := 11
+	_rb_ready(gs, 5000, CUMULATIVE_CASH_DAY)
 	ops.reconcile()
 	var whole: Dictionary = adapter.preview(RB_CREW, -1)
 	if int(whole["cycles_used"]) < 2:
@@ -4206,7 +4256,7 @@ func _check_preview_context(gs: Node, gm: Node, ops: RefCounted, adapter: RefCou
 		var first_cost: int = int((whole["items"][0] as Dictionary)["cost"])
 		var second_cost: int = int((whole["items"][1] as Dictionary)["cost"])
 		# Exactly enough for one, one dollar short of both.
-		_rb_ready(gs, first_cost + second_cost - 1)
+		_rb_ready(gs, first_cost + second_cost - 1, CUMULATIVE_CASH_DAY)
 		ops.reconcile()
 		var tight: Dictionary = adapter.preview(RB_CREW, -1)
 		_expect_int("preview stops when the running total empties the wallet",
@@ -4980,6 +5030,10 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	"PRE_SETTLE",
 	"SETTLE:crew", "SETTLE:territory", "SETTLE:shark", "SETTLE:jobs", "SETTLE:obligations",
 	"POST_SETTLE",
+	# v0.1.0's declared POST_SETTLE work. The HOT escape lever pays back the
+	# Pressure the day's CLEAN outcomes earned, after every gain from those same
+	# actions has landed and before the clock moves.
+	"POST_SETTLE:pressure_clean_recovery",
 	"INCREMENT",
 	# FS-003.9's post-increment lifecycle, TI-003 §9. Two of these six positions
 	# are regressions in their own right: #25 is the Financial Pressure fold
@@ -6116,6 +6170,7 @@ func _check_source_provenance(gs: Node, gm: Node) -> void:
 	_wallet_ready(gs, 5000, 5000)
 	dirty_start = int(gs.dirty_cash)
 	clean_start = int(gs.clean_cash)
+	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
 	_expect_true("travel dispatches", gm.dispatch("travel", {"district_id": "downtown"}))
 	_expect_true("travel actually charged a fare", int(gs.dirty_cash) < dirty_start)
 	_expect_int("a travel fare leaves clean alone", int(gs.clean_cash), clean_start)
@@ -7459,8 +7514,15 @@ func _check_blocking_route_guard(gs: Node, gm: Node) -> void:
 		nav.TITLE, nav.NAME_ENTRY,
 	]
 
-	# Nothing blocking: every route resolves to itself.
+	# Nothing blocking AND nothing gated: every route resolves to itself.
+	#
+	# The access guard v0.1.0 added sits UNDER the blocking priority and is a
+	# separate rule, so this half of the check unlocks the two gated surfaces
+	# first — otherwise it would be measuring the gate instead of the priority
+	# it exists to measure. The gate has its own checks; see
+	# `_check_surface_visibility`.
 	_engine_ready(gs)
+	_unlock_every_surface(gs)
 	_expect_str("no blocking route at rest", nav.blocking_route(), "")
 	for path in ordinary:
 		_expect_str("%s routes to itself when nothing blocks" % str(path).get_file(),
@@ -12597,7 +12659,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is at FS-003.13's version", saves.SAVE_VERSION, 9)
+	_expect_int("the schema is at v0.1.0's version", saves.SAVE_VERSION, 10)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -13072,6 +13134,11 @@ func _simulate(gs: Node, gm: Node, engine: RefCounted, profile: Dictionary) -> D
 	gs.boost_tier = 3
 	gs.stick_tier = 3
 	gs.rng_state = 246810
+	# Seeded past the discovery gate for the same reason the tiers are seeded
+	# past their progression: these profiles measure the consequence layer over
+	# 29 days, not how long a player takes to earn a bus route. Without it the
+	# travelling profile never leaves Spenard and stops being a second reading.
+	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
 
 	var days: int = int(profile.get("days", 30))
 	var policy := str(profile.get("policy", "yield"))
@@ -13317,6 +13384,883 @@ func _check_long_run_simulations(gs: Node, gm: Node, engine: RefCounted) -> void
 					score >= 0.0 and score <= 9.0)
 	gs.reset_to_new_game()
 
+# =============================================================================
+# v0.1.0 — Playtest Polish
+# =============================================================================
+#
+# Six checks, one per task. Every assertion below was sabotage-tested before it
+# was believed: the fault is named in the comment above each block, and the
+# results are recorded in HANDOFF.md.
+
+func _check_v010() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	_check_version_stamp(gs)
+	_check_surface_visibility(gs, gm)
+	_check_v10_migration(gs, get_node("/root/SaveSystem"))
+	_check_seeded_key_independence()
+	_check_clean_pressure_recovery(gs, gm)
+	_check_phone_dismiss_target(gs, gm)
+	_check_canonical_location_names(gs)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- Task 1: the build stamp ------------------------------------------------
+#
+# SABOTAGE: set VERSION to "0.1" -> "the version is three numbered parts" fails.
+# SABOTAGE: hardcode "v0.0.9" into title.gd -> "the title screen shows the one
+#           version" fails.
+
+func _check_version_stamp(gs: Node) -> void:
+	var version: Node = get_node_or_null("/root/Version")
+	if version == null:
+		_fail("version", "no Version autoload registered")
+		return
+	_expect_str("the build is stamped 0.1.0", str(version.VERSION), "0.1.0")
+
+	# Shape, not value: this half survives every future bump, so the convention
+	# README documents stays enforced rather than merely written down.
+	var parts: PackedStringArray = str(version.VERSION).split(".")
+	_expect_int("the version is three numbered parts", parts.size(), 3)
+	for part in parts:
+		_expect_true("version part '%s' is numeric" % part, str(part).is_valid_int())
+	_expect_int("MAJOR reads back", version.major(), 0)
+	_expect_int("MINOR reads back", version.minor(), 1)
+	_expect_int("PATCH reads back", version.patch(), 0)
+	_expect_str("the display form prefixes a v", version.display(), "v0.1.0")
+
+	# The title screen renders it, from the singleton rather than from the
+	# scene's editor-time preview.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	var screen: Node = _instantiate_screen("res://ui/screens/title.tscn")
+	if screen == null:
+		_fail("version", "the title screen would not instantiate")
+		return
+	var stamp := screen.get_node_or_null("VersionStamp") as Label
+	if stamp == null:
+		_fail("version", "the title screen has no VersionStamp")
+		_free_screen(screen)
+		return
+	_expect_str("the title screen shows the one version", stamp.text, version.display())
+	_expect_true("the version stamp is visible", stamp.visible)
+	# Bottom-right, and inside the phone. Anchored, so the numbers are offsets.
+	_expect_true("the version stamp is anchored bottom-right",
+		is_equal_approx(stamp.anchor_left, 1.0) and is_equal_approx(stamp.anchor_top, 1.0))
+	_expect_true("the version stamp sits inside the viewport",
+		stamp.offset_right <= 0.0 and stamp.offset_bottom <= 0.0)
+	_free_screen(screen)
+
+# --- Task 2: the surface visibility system ----------------------------------
+#
+# The design pass asks for gate tests to be DATA-DRIVEN rather than one bespoke
+# test per button, and lists the minimum cases. `GATE_CASES` is that list, and
+# the loop below runs all of them against every registered gate.
+#
+# SABOTAGE: flip `home.market_snapshot`'s min to 0 -> "a fresh run locks
+#           home.market_snapshot" fails.
+# SABOTAGE: make `verdict()` return available for an unknown requirement type ->
+#           "an unknown requirement type fails closed" fails.
+# SABOTAGE: drop the access guard out of `resolved_route` -> "a locked route is
+#           refused" fails.
+# SABOTAGE: persist an `unlocked` boolean instead of deriving -> "the verdict
+#           survives save and load" fails once the boolean and the fact differ.
+
+## Every registered gate, and the fact that opens it. `raise` puts the run one
+## step past the threshold; `lower` puts it one step short.
+const GATE_CASES: Array[Dictionary] = [
+	{"id": "home.market_snapshot", "mode": "locked", "fact": "list_flips"},
+	{"id": "home.turf_crew", "mode": "locked", "fact": "crew"},
+	{"id": "menu.crew", "mode": "locked", "fact": "crew"},
+	{"id": "menu.jobs", "mode": "locked", "fact": "job_contacts"},
+	{"id": "street.downtown", "mode": "locked", "fact": "downtown"},
+	{"id": "street.ship_creek", "mode": "locked", "fact": "ship_creek"},
+	{"id": "home.tonights_operation", "mode": "hidden", "fact": "operation"},
+	{"id": "home.text_messages", "mode": "hidden", "fact": "phone"},
+	{"id": "home.activity_feed", "mode": "hidden", "fact": "feed"},
+]
+
+## Put one gate's fact past its threshold. Facts only — see `_unlock_every_surface`.
+func _raise_gate_fact(gs: Node, fact: String) -> void:
+	match fact:
+		"list_flips":
+			gs.list_flips = 1
+		"crew":
+			gs.crew_records["eli"] = {"recruited": true, "loyalty": 6, "tier": 1,
+				"wage_due": 45, "wage_missed_since": -1, "recruited_day": 1,
+				"status": "active"}
+		"job_contacts":
+			gs.job_contacts = 1
+		"downtown":
+			if not "downtown" in gs.districts_unlocked:
+				gs.districts_unlocked.append("downtown")
+		"ship_creek":
+			if not "airport_industrial" in gs.districts_unlocked:
+				gs.districts_unlocked.append("airport_industrial")
+		"phone":
+			gs.phone_inbox = [{"id": "m1", "from": "Mina", "text": "Come by.",
+				"day": 1, "slot": 0, "read": false}]
+		"feed":
+			gs.log_activity("Parity feed row")
+		"operation":
+			# The only gate whose fact is not a plain field. Rent inside two days
+			# with nothing in the pocket is one of the three things the card
+			# carries, and the cheapest of them to arrange.
+			gs.cash = 0
+			gs.rent_due_day = gs.day
+
+func _fresh_gate_run(gs: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 3
+	gs.cash = 400
+
+func _check_surface_visibility(gs: Node, gm: Node) -> void:
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	if access == null:
+		_fail("surface visibility", "no SurfaceVisibility autoload registered")
+		return
+
+	# 1. FRESH RUN — every gate closed, and closed in its authored mode.
+	_fresh_gate_run(gs)
+	for entry in GATE_CASES:
+		var case: Dictionary = entry
+		var surface_id := str(case["id"])
+		var answer: Dictionary = access.verdict(surface_id)
+		_expect_true("a fresh run locks %s" % surface_id, not bool(answer["ok"]))
+		_expect_str("%s fails in its authored mode" % surface_id,
+			str(answer["mode"]), str(case["mode"]))
+		_expect_str("%s reports its own id" % surface_id,
+			str(answer["feature_id"]), surface_id)
+		# A closed gate always says why, in the structured form the design pass
+		# specifies — a blocker with no code is a blocker no UI can translate.
+		_expect_true("%s names a blocker" % surface_id,
+			answer["blocker_code"] != null and answer["blocker_copy_key"] != null)
+		# The two modes differ in exactly one place: whether the surface is in
+		# the layout at all.
+		if str(case["mode"]) == "hidden":
+			_expect_true("%s is hidden, not locked" % surface_id,
+				not access.is_visible(surface_id))
+			_expect_str("%s is in the hidden state" % surface_id,
+				str(answer["state"]), access.STATE_HIDDEN)
+			_expect_str("%s offers no hint" % surface_id, str(answer["hint"]), "")
+		else:
+			_expect_true("%s stays visible while locked" % surface_id,
+				access.is_visible(surface_id))
+			_expect_str("%s is in the locked state" % surface_id,
+				str(answer["state"]), access.STATE_LOCKED)
+			_expect_true("%s carries one line of hint" % surface_id,
+				not str(answer["hint"]).is_empty())
+
+	# 2. THRESHOLD — each gate opens on its own fact and takes no other with it.
+	for entry in GATE_CASES:
+		var case: Dictionary = entry
+		var surface_id := str(case["id"])
+		_fresh_gate_run(gs)
+		_raise_gate_fact(gs, str(case["fact"]))
+		_expect_true("%s unlocks at its trigger" % surface_id,
+			access.is_unlocked(surface_id))
+		_expect_str("%s is available once unlocked" % surface_id,
+			str(access.verdict(surface_id)["state"]), access.STATE_AVAILABLE)
+		_expect_true("%s is visible once unlocked" % surface_id,
+			access.is_visible(surface_id))
+		_expect_str("%s drops its hint once unlocked" % surface_id,
+			access.hint_for(surface_id), "")
+		# Nothing else moved. Gates that SHARE a fact are expected to move
+		# together — Crew's two doors are one rule with two entrances.
+		for other_entry in GATE_CASES:
+			var other: Dictionary = other_entry
+			if str(other["id"]) == surface_id or str(other["fact"]) == str(case["fact"]):
+				continue
+			_expect_true("%s does not open %s" % [surface_id, str(other["id"])],
+				not access.is_unlocked(str(other["id"])))
+
+	# 3. SAVE / LOAD — the verdict is derived, so it cannot drift from the run.
+	var saves := get_node("/root/SaveSystem")
+	_fresh_gate_run(gs)
+	for entry in GATE_CASES:
+		_raise_gate_fact(gs, str((entry as Dictionary)["fact"]))
+	gs.reconcile_persistent_invariants()
+	var unlocked_before: Array = []
+	for entry in GATE_CASES:
+		unlocked_before.append(access.is_unlocked(str((entry as Dictionary)["id"])))
+	saves.save_run()
+	# Scrambled field by field rather than through `_fresh_gate_run`, which ends
+	# in the `reset_to_new_game()` -> `notify_changed()` that SaveSystem
+	# autosaves from. Resetting here would overwrite the file this check is
+	# about to read back, and the round-trip would be comparing a fresh run
+	# against itself.
+	gs.list_flips = 0
+	gs.crew_records = {}
+	gs.job_contacts = 0
+	gs.districts_unlocked = ["north_star_lot"]
+	gs.phone_inbox = []
+	gs.activity_log = []
+	gs.cash = 400
+	gs.rent_due_day = gs.day + 7
+	_expect_true("the scrambled run is locked again",
+		not access.is_unlocked("home.market_snapshot"))
+	_expect_true("gate save reloads", saves.load_run())
+	for index in range(GATE_CASES.size()):
+		var surface_id := str(GATE_CASES[index]["id"])
+		_expect_true("%s survives save and load" % surface_id,
+			access.is_unlocked(surface_id) == bool(unlocked_before[index]))
+
+	# 4. ROUTE PROTECTION — the door and the button give the same answer.
+	var nav := get_node("/root/ScreenManager")
+	_fresh_gate_run(gs)
+	_expect_str("a locked route is refused", nav.resolved_route(nav.CREW), "")
+	_expect_true("a locked route reads locked", not access.route_allowed(nav.CREW))
+	_expect_str("a locked jobs route is refused", nav.resolved_route(nav.JOBS), "")
+	_expect_str("an ungated route is untouched",
+		nav.resolved_route(nav.STREET), nav.STREET)
+	_raise_gate_fact(gs, "crew")
+	_expect_str("an unlocked route resolves to itself",
+		nav.resolved_route(nav.CREW), nav.CREW)
+	_expect_true("the route and the surface agree",
+		access.route_allowed(nav.CREW) == access.is_unlocked("menu.crew"))
+
+	# 5. THE ACTION IS GATED TOO — travel is refused for an unknown district.
+	_fresh_gate_run(gs)
+	gs.cash = 500
+	_expect_true("travel to an undiscovered district is refused",
+		not gm.dispatch("travel", {"district_id": "downtown"}))
+	_expect_str("and the player did not move", str(gs.current_district_id),
+		"north_star_lot")
+	_raise_gate_fact(gs, "downtown")
+	_expect_true("travel to a discovered district goes through",
+		gm.dispatch("travel", {"district_id": "downtown"}))
+
+	# 6. FAIL CLOSED — a typo in a requirement is an impassable gate, never an
+	#    open one. Asked of the evaluator directly, because that is where the
+	#    rule lives and the registry has no typo in it to read.
+	var requirements: RefCounted = preload("res://systems/requirements.gd").new()
+	var unknown: Dictionary = requirements.evaluate_requirements(
+		[{"type": "district_discoverd", "district_id": "downtown"}], access.facts())
+	_expect_true("an unknown requirement type fails closed", not bool(unknown["ok"]))
+	_expect_str("an unknown requirement type says so",
+		str(unknown["blocker_code"]), "unsupported_requirement")
+	# An UNREGISTERED surface is the other direction and deliberately so: the
+	# registry restricts what somebody chose to restrict.
+	_expect_true("an unregistered surface is open",
+		access.is_unlocked("home.nothing_registered"))
+
+	# 7. AUTHORED BLOCKER ORDER — the first failure is the reported one, every
+	#    time, so the player is never shown two different reasons for one state.
+	var ordered: Dictionary = requirements.evaluate_requirements([
+		{"type": "crew_count_min", "min": 9},
+		{"type": "list_flips_min", "min": 9},
+	], {"crew_count": 0, "list_flips": 0})
+	_expect_str("the authored first blocker is the reported one",
+		str(ordered["blocker_code"]), "crew_count_min")
+	var reversed_order: Dictionary = requirements.evaluate_requirements([
+		{"type": "list_flips_min", "min": 9},
+		{"type": "crew_count_min", "min": 9},
+	], {"crew_count": 0, "list_flips": 0})
+	_expect_str("reversing the authored order reverses the blocker",
+		str(reversed_order["blocker_code"]), "list_flips_min")
+
+	# 8. THE SCREENS RENDER IT — a fresh Home hides what it should hide, and the
+	#    locked cards are dimmed with a hint rather than merely present.
+	_fresh_gate_run(gs)
+	var home: Node = _instantiate_screen("res://ui/screens/home.tscn")
+	if home == null:
+		_fail("surface visibility", "Home would not instantiate")
+		return
+	(home as Control).size = FS001_VIEWPORT
+	home.refresh()
+	var hidden_paths := {
+		"Shell/Scroll/Pad/Content/OpCard": "Tonight's Operation",
+		"Shell/Scroll/Pad/Content/People": "the text card",
+		"Shell/Scroll/Pad/Content/Activity": "the activity feed",
+	}
+	for path in hidden_paths:
+		var node := home.get_node_or_null(str(path)) as Control
+		_expect_true("a fresh Home hides %s" % str(hidden_paths[path]),
+			node != null and not node.visible)
+	var locked_paths := {
+		"Shell/Scroll/Pad/Content/Columns/Market": "the market snapshot",
+		"Shell/Scroll/Pad/Content/Columns/Turf": "Turf & Crew",
+	}
+	for path in locked_paths:
+		var node := home.get_node_or_null(str(path)) as Control
+		var what := str(locked_paths[path])
+		if node == null:
+			_fail("surface visibility", "%s is missing from Home" % what)
+			continue
+		_expect_true("%s stays on a fresh Home" % what, node.visible)
+		_expect_true("%s is dimmed while locked" % what, node.modulate.a < 1.0)
+		_expect_true("%s refuses a tap while locked" % what,
+			bool(node.get_meta("surface_locked", false)))
+		var badge: Node = _find_lock_badge(node)
+		_expect_true("%s carries a lock hint" % what, badge != null)
+		if badge != null:
+			var hint := badge.get_node_or_null("Hint") as Label
+			_expect_true("%s's hint says something" % what,
+				hint != null and not hint.text.is_empty())
+	_free_screen(home)
+
+	# The unlocked pass: the same screen, past every gate, renders everything at
+	# full opacity and carries no badges. A gate that never re-opens is as
+	# broken as one that never closes.
+	_fresh_gate_run(gs)
+	_unlock_every_surface(gs)
+	_raise_gate_fact(gs, "phone")
+	_raise_gate_fact(gs, "feed")
+	_raise_gate_fact(gs, "operation")
+	var open_home: Node = _instantiate_screen("res://ui/screens/home.tscn")
+	if open_home == null:
+		_fail("surface visibility", "Home would not instantiate unlocked")
+		return
+	(open_home as Control).size = FS001_VIEWPORT
+	open_home.refresh()
+	for path in hidden_paths:
+		var node := open_home.get_node_or_null(str(path)) as Control
+		_expect_true("an earned Home shows %s" % str(hidden_paths[path]),
+			node != null and node.visible)
+	for path in locked_paths:
+		var node := open_home.get_node_or_null(str(path)) as Control
+		var what := str(locked_paths[path])
+		_expect_true("%s is undimmed once earned" % what,
+			node != null and is_equal_approx(node.modulate.a, 1.0))
+		_expect_true("%s takes a tap once earned" % what,
+			node != null and not bool(node.get_meta("surface_locked", false)))
+		_expect_true("%s drops its lock hint once earned" % what,
+			node != null and _find_lock_badge(node) == null)
+	_free_screen(open_home)
+
+## The lock row `screen_base` appends, wherever in the surface it landed.
+func _find_lock_badge(node: Node) -> Node:
+	if str(node.name) == "SurfaceLockRow":
+		return node
+	for child in node.get_children():
+		var found: Node = _find_lock_badge(child)
+		if found != null:
+			return found
+	return null
+
+## --- Task 2b: the v9 -> v10 save migration ---------------------------------
+##
+## SABOTAGE: make the arm default `districts_unlocked` to `["north_star_lot"]`
+##           instead of deriving it -> "a v9 run keeps the city it opened" fails.
+## SABOTAGE: drop `districts_unlocked` from PERSIST_FIELDS -> "the migrated run
+##           saves and reloads unchanged" fails.
+
+## A v9 payload with a real past on it: two corners held and Deshawn recruited.
+## Those two facts are exactly what the arm has to read, and a v9 save is the
+## only place they can come from — the fields it derives did not exist yet.
+func _v9_payload(gs: Node, saves: Node) -> Dictionary:
+	gs.street_name = "Legacy"
+	gs.reset_to_new_game()
+	gs.day = 14
+	gs.cash = 900
+	gs.clean_cash = 900
+	gs.dirty_cash = 0
+	gs.list_flips = 4
+	gs.held_blocks = {
+		"wash_and_go_lot": {"soldiers": 1, "claimed_day": 3, "income_collected": 55},
+		"fourth_ave_strip": {"soldiers": 1, "claimed_day": 8, "income_collected": 80},
+	}
+	gs.crew_records["deshawn"] = {"recruited": true, "loyalty": 5, "tier": 1,
+		"wage_due": 50, "wage_missed_since": -1, "recruited_day": 6,
+		"status": "active"}
+	var state: Dictionary = saves.capture()
+	# A v9 save cannot carry v10's fields. Erasing them is what makes this a
+	# migration test rather than a round-trip with a different version number
+	# stamped on it.
+	for added in ["districts_unlocked", "job_contacts", "pressure_clean_credits"]:
+		state.erase(added)
+	return state
+
+func _check_v10_migration(gs: Node, saves: Node) -> void:
+	var payload: Dictionary = _v9_payload(gs, saves)
+
+	# Contaminate the singleton so a load that silently no-ops cannot pass.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.districts_unlocked = ["downtown", "airport_industrial", "somewhere_else"]
+	gs.job_contacts = 99
+	gs.pressure_clean_credits = {"downtown": {"boost": 3.0}}
+
+	# --- the ARM, in isolation ---
+	#
+	# Asked of `_migrate` directly, before a load can mask it. `load_run` also
+	# calls `reconcile_persistent_invariants()`, which re-derives both latches
+	# from the same facts — so a load-level assertion cannot tell a working arm
+	# from a missing one, and an arm nothing can prove is an arm nobody will
+	# notice breaking. This is the check that actually holds it.
+	var migrated: Dictionary = saves._migrate({"save_version": 9, "state": payload})
+	_expect_true("the v9 payload migrates", not migrated.is_empty())
+	_expect_str("the arm derives the city from the corners held",
+		str(migrated.get("districts_unlocked", [])),
+		str(["north_star_lot", "downtown", "airport_industrial"]))
+	_expect_int("the arm derives the contact from the crew",
+		int(migrated.get("job_contacts", -1)), 1)
+	_expect_true("the arm invents no banked recovery",
+		not migrated.has("pressure_clean_credits"))
+	# A v9 save with nothing behind it derives the fresh-run answer.
+	var barren_state: Dictionary = _v9_payload(gs, saves)
+	barren_state["held_blocks"] = {}
+	barren_state["crew_records"] = {}
+	var barren_migrated: Dictionary = saves._migrate(
+		{"save_version": 9, "state": barren_state})
+	_expect_str("the arm gives an untravelled v9 save home turf only",
+		str(barren_migrated.get("districts_unlocked", [])), str(["north_star_lot"]))
+	_expect_int("the arm gives an untravelled v9 save no contacts",
+		int(barren_migrated.get("job_contacts", -1)), 0)
+	# One corner is Downtown and not the port: the arm reads a THRESHOLD, not a
+	# boolean, and an off-by-one here would open the whole city on the first
+	# claim.
+	var one_corner: Dictionary = _v9_payload(gs, saves)
+	one_corner["held_blocks"] = {"wash_and_go_lot": {"soldiers": 1}}
+	var one_migrated: Dictionary = saves._migrate(
+		{"save_version": 9, "state": one_corner})
+	_expect_str("one corner opens Downtown and no further",
+		str(one_migrated.get("districts_unlocked", [])),
+		str(["north_star_lot", "downtown"]))
+
+	# --- and the same payload through a real load ---
+	_write_save(saves, 9, payload)
+	_expect_true("a v9 save loads into v10", saves.load_run())
+
+	# The arm DERIVES rather than defaults. Two corners means the whole city was
+	# already open to this run, and a migration that took it away would be a
+	# regression dressed as a new feature.
+	_expect_true("a v9 run keeps the city it opened",
+		"downtown" in gs.districts_unlocked
+		and "airport_industrial" in gs.districts_unlocked)
+	_expect_true("a v9 run does not gain a district it never had",
+		not "somewhere_else" in gs.districts_unlocked)
+	_expect_int("a v9 run keeps the contact it recruited", int(gs.job_contacts), 1)
+	# The within-day ledger is the one field that DOES default: it empties every
+	# night, so empty is a v9 run's honest history rather than a fallback.
+	_expect_true("a v9 run banks no clean recovery",
+		(gs.pressure_clean_credits as Dictionary).is_empty())
+
+	# And the gates read the migrated facts, which is the whole point of the arm
+	# running at all — the surfaces must not flicker locked on a loaded run.
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	if access != null:
+		_expect_true("a migrated run sees Downtown", access.is_unlocked("street.downtown"))
+		_expect_true("a migrated run sees Ship Creek",
+			access.is_unlocked("street.ship_creek"))
+		_expect_true("a migrated run sees Jobs", access.is_unlocked("menu.jobs"))
+		_expect_true("a migrated run sees Crew", access.is_unlocked("menu.crew"))
+		_expect_true("a migrated run sees the market snapshot",
+			access.is_unlocked("home.market_snapshot"))
+
+	# Everything a v9 save DID carry survives. The arm must not be a reset.
+	_expect_int("v9 migration preserves the day", gs.day, 14)
+	_expect_int("v9 migration preserves cash", int(gs.cash), 900)
+	_expect_int("v9 migration preserves flips", int(gs.list_flips), 4)
+	_expect_int("v9 migration preserves the corners", gs.held_blocks.size(), 2)
+	_expect_str("v9 migration preserves the name", str(gs.street_name), "Legacy")
+
+	# Deterministic, and idempotent: the migrated run saves as v10 and reloads
+	# unchanged. A derivation that ran again on a v10 load would be visible here.
+	var before: String = "%s/%d" % [str(gs.districts_unlocked), int(gs.job_contacts)]
+	saves.save_run()
+	_expect_true("the migrated run reloads", saves.load_run())
+	_expect_str("the migrated run saves and reloads unchanged",
+		"%s/%d" % [str(gs.districts_unlocked), int(gs.job_contacts)], before)
+	_write_save(saves, 9, payload)
+	_expect_true("the v9 arm reloads", saves.load_run())
+	_expect_str("the v9 arm is deterministic",
+		"%s/%d" % [str(gs.districts_unlocked), int(gs.job_contacts)], before)
+
+	# A v9 save with NO past derives the fresh-run answer, not a lucky one.
+	gs.street_name = "Legacy"
+	gs.reset_to_new_game()
+	var barren: Dictionary = saves.capture()
+	for added in ["districts_unlocked", "job_contacts", "pressure_clean_credits"]:
+		barren.erase(added)
+	_write_save(saves, 9, barren)
+	_expect_true("an untravelled v9 save loads", saves.load_run())
+	_expect_str("an untravelled v9 run starts on home turf",
+		str(gs.districts_unlocked), str(["north_star_lot"]))
+	_expect_int("an untravelled v9 run has met nobody", int(gs.job_contacts), 0)
+
+# --- Task 3: seeded key independence ----------------------------------------
+#
+# FNV-1a's last rounds barely move the high bits, and `seeded_random` reads the
+# hash as `hash / 2^32`. A small counter appended to the TAIL of a key therefore
+# moves the roll by roughly `delta / 256`, so eight consecutive values land on
+# top of each other. Every call site was swept in v0.1.0; this is the permanent
+# assertion that keeps them swept.
+#
+# SABOTAGE: swap the probe to the tail form (`"parity:...:%d"`) -> the spread
+#           reads 0.0273 and "eight leading counters cover the band" fails. That
+#           exact number is asserted below, so the sabotage is standing in the
+#           file rather than remembered.
+
+## Eight rolls from keys differing only in a LEADING counter, and what a
+## well-distributed set of eight looks like: at least 60% of the 0..1 band.
+const KEY_PROBE_SEED := "907hustle"
+const KEY_PROBE_FRONT := "%d:parity:seeded_key_independence"
+const KEY_PROBE_TAIL := "parity:seeded_key_independence:%d"
+const KEY_PROBE_COUNT := 8
+const KEY_SPREAD_FLOOR := 0.60
+## Exact expected values, per the determinism rule: a spread assertion alone
+## would pass on any well-distributed change to the hash, and the hash is
+## oracle-locked. These pin BOTH properties at once.
+const KEY_PROBE_EXPECTED: Array[float] = [
+	0.85995722794905305, 0.32166027347557247, 0.039933132007718086,
+	0.22709582955576479, 0.54809588519856334, 0.68530664010904729,
+	0.66320506762713194, 0.39288499508984387,
+]
+## What the same eight keys produce with the counter at the tail. Asserted so
+## the sabotage case is a permanent fixture rather than a note.
+const KEY_TAIL_SPREAD := 0.02734440681524575
+
+func _spread(values: Array[float]) -> float:
+	var low: float = values[0]
+	var high: float = values[0]
+	for value in values:
+		low = minf(low, value)
+		high = maxf(high, value)
+	return high - low
+
+func _check_seeded_key_independence() -> void:
+	var rng := get_node("/root/RngManager")
+
+	var front: Array[float] = []
+	for index in range(KEY_PROBE_COUNT):
+		front.append(rng.seeded_random(KEY_PROBE_SEED, KEY_PROBE_FRONT % index))
+	for index in range(KEY_PROBE_COUNT):
+		_expect_float("leading-counter roll %d" % index,
+			front[index], KEY_PROBE_EXPECTED[index])
+	var front_spread: float = _spread(front)
+	_expect_true("eight leading counters cover the band (%.4f >= %.2f)"
+		% [front_spread, KEY_SPREAD_FLOOR], front_spread >= KEY_SPREAD_FLOOR)
+
+	# The failure mode itself, pinned. If a future change to the hash made a
+	# trailing counter safe, this goes red and the audit can be retired on
+	# evidence rather than on a hunch.
+	var tail: Array[float] = []
+	for index in range(KEY_PROBE_COUNT):
+		tail.append(rng.seeded_random(KEY_PROBE_SEED, KEY_PROBE_TAIL % index))
+	var tail_spread: float = _spread(tail)
+	_expect_float("eight trailing counters still cluster", tail_spread, KEY_TAIL_SPREAD)
+	_expect_true("the trailing form is below the floor", tail_spread < KEY_SPREAD_FLOOR)
+
+	# The audit's own result: no live call site ends its key with a varying
+	# integer. Read off the SOURCE, so a new call site written the old way is
+	# caught by this suite rather than by a playtester wondering why the same
+	# ambient line fires four nights running.
+	_check_no_tail_varying_keys()
+
+## Every `.gd` under autoload/ and systems/, scanned for a seeded-RNG key whose
+## last format specifier is a `%d`.
+##
+## Deliberately a source scan and not a behavioural check: the property is about
+## how keys are COMPOSED, and no amount of sampling proves the absence of a call
+## site nobody thought to sample.
+const KEY_SCAN_DIRS: Array[String] = ["res://autoload", "res://systems"]
+const KEY_BUILDERS: Array[String] = ["seeded_random", "seeded_int_range",
+	"seeded_unit_10k", "seeded_shuffle"]
+
+func _check_no_tail_varying_keys() -> void:
+	var offenders: Array[String] = []
+	var scanned: int = 0
+	for directory in KEY_SCAN_DIRS:
+		var dir := DirAccess.open(directory)
+		if dir == null:
+			continue
+		dir.list_dir_begin()
+		var entry: String = dir.get_next()
+		while entry != "":
+			if entry.ends_with(".gd"):
+				scanned += 1
+				_scan_keys_in("%s/%s" % [directory, entry], offenders)
+			entry = dir.get_next()
+		dir.list_dir_end()
+	_expect_true("the key audit read some source", scanned > 0)
+	_expect_int("no seeded key ends in a varying integer", offenders.size(), 0)
+	for offender in offenders:
+		_fail("seeded key audit", offender)
+
+func _scan_keys_in(path: String, offenders: Array[String]) -> void:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return
+	var text: String = file.get_as_text()
+	file.close()
+	var line_number: int = 0
+	for raw in text.split("\n"):
+		line_number += 1
+		var line := str(raw).strip_edges()
+		# Comments describe the rule; only code is held to it.
+		if line.begins_with("#"):
+			continue
+		# A key is only interesting where a format string meets a seeded draw or
+		# a `var key :=` that one of them will read.
+		var builds_key: bool = line.contains("var key :=") \
+			or line.contains("var swap_key :=")
+		for builder in KEY_BUILDERS:
+			if line.contains(builder):
+				builds_key = true
+		if not builds_key or not line.contains("%"):
+			continue
+		var quoted: String = _first_quoted(line)
+		if quoted.is_empty() or not quoted.contains("%"):
+			continue
+		# `seeded_shuffle` composes `"<index>:<key>"` itself, so a key handed to
+		# it is already led by a varying integer.
+		if quoted.ends_with("%d"):
+			offenders.append("%s:%d ends in %%d — %s" % [path, line_number, quoted])
+
+## The first double-quoted run on a line, or "" when there is none.
+func _first_quoted(line: String) -> String:
+	var open_index: int = line.find("\"")
+	if open_index < 0:
+		return ""
+	var close_index: int = line.find("\"", open_index + 1)
+	if close_index < 0:
+		return ""
+	return line.substr(open_index + 1, close_index - open_index - 1)
+
+# --- Task 4: the HOT escape lever -------------------------------------------
+#
+# SABOTAGE: set PRESSURE_CLEAN_RECOVERY to 0.0 -> "a clean outcome pays pressure
+#           back" fails, and the aggressive profile returns to exactly 19 worst-
+#           family HOT days (measured; recorded in HANDOFF.md).
+# SABOTAGE: give `messy` a non-zero recovery -> "a messy outcome pays nothing
+#           back" fails.
+# SABOTAGE: drop `pressure_clean_recovery` from POST_SETTLE_ORDER -> the
+#           lifecycle trace assertion fails AND "the night pays the credit" fails.
+
+func _check_clean_pressure_recovery(gs: Node, gm: Node) -> void:
+	var engine: RefCounted = gm.system("consequence") as RefCounted
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+
+	# The authored table. Only `clean` recovers, and the other three are zero
+	# rather than absent — a missing row and a zero row read the same to
+	# `clean_recovery()`, and the point of the constants is that the decision is
+	# written down.
+	_expect_float("a clean outcome is worth 0.5 back",
+		float(rules.PRESSURE_CLEAN_RECOVERY), 0.5)
+	_expect_float("a messy outcome recovers nothing",
+		float(rules.PRESSURE_MESSY_RECOVERY), 0.0)
+	_expect_float("a failure recovers nothing",
+		float(rules.PRESSURE_FAILURE_RECOVERY), 0.0)
+	_expect_float("a catastrophe recovers nothing",
+		float(rules.PRESSURE_CATASTROPHIC_RECOVERY), 0.0)
+	_expect_float("clean_recovery reads the table",
+		rules.clean_recovery("clean"), float(rules.PRESSURE_CLEAN_RECOVERY))
+	for tier in ["messy", "failure", "catastrophic", "not_a_tier", ""]:
+		_expect_float("clean_recovery(%s) is nothing" % tier,
+			rules.clean_recovery(tier), 0.0)
+
+	# The credit, banked and then paid. Every family, because the mechanism is
+	# family-agnostic even where no source action wires it yet.
+	for family in rules.PRESSURE_FAMILIES:
+		gs.street_name = "Parity"
+		gs.reset_to_new_game()
+		gs.day = 5
+		engine.add_pressure("north_star_lot", str(family), 4.0, "parity:%s" % str(family))
+		var before: float = engine.pressure_score("north_star_lot", str(family))
+		_expect_float("%s pressure went on" % str(family), before, 4.0)
+		_expect_float("a clean %s outcome banks a credit" % str(family),
+			engine.credit_clean_outcome("north_star_lot", str(family), "clean"),
+			float(rules.PRESSURE_CLEAN_RECOVERY))
+		_expect_float("banking a credit does not move the score yet",
+			engine.pressure_score("north_star_lot", str(family)), before)
+		engine.apply_clean_recovery(5)
+		_expect_float("the night pays the credit",
+			engine.pressure_score("north_star_lot", str(family)),
+			before - float(rules.PRESSURE_CLEAN_RECOVERY))
+		_expect_true("the ledger empties once paid",
+			(gs.pressure_clean_credits as Dictionary).is_empty())
+
+	# The three tiers that must NOT pay anything back.
+	for tier in ["messy", "failure", "catastrophic"]:
+		gs.street_name = "Parity"
+		gs.reset_to_new_game()
+		gs.day = 5
+		engine.add_pressure("north_star_lot", "stick", 4.0, "parity:%s" % tier)
+		_expect_float("a %s outcome banks nothing" % tier,
+			engine.credit_clean_outcome("north_star_lot", "stick", tier), 0.0)
+		engine.apply_clean_recovery(5)
+		_expect_float("a %s outcome pays nothing back" % tier,
+			engine.pressure_score("north_star_lot", "stick"), 4.0)
+
+	# Recovery is not a gain: it must not stamp the day or reset the quiet count,
+	# or a district would recover twice for one clean night — once here and again
+	# on the quiet-day rule that thinks nothing happened.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 5
+	engine.add_pressure("north_star_lot", "boost", 4.0, "parity:quiet")
+	var row: Dictionary = engine.pressure_row("north_star_lot", "boost")
+	engine.credit_clean_outcome("north_star_lot", "boost", "clean")
+	engine.apply_clean_recovery(5)
+	_expect_int("recovery leaves the gain day alone", int(row["last_gain_day"]), 5)
+	_expect_int("recovery leaves the quiet count alone", int(row["quiet_days"]), 0)
+
+	# The floor holds, and a credit spent against it is spent rather than owed.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 5
+	engine.add_pressure("north_star_lot", "stick", 0.25, "parity:floor")
+	engine.credit_clean_outcome("north_star_lot", "stick", "clean")
+	engine.apply_clean_recovery(5)
+	_expect_float("recovery cannot push pressure below the floor",
+		engine.pressure_score("north_star_lot", "stick"),
+		float(rules.PRESSURE_MIN))
+	_expect_true("a credit spent at the floor is not carried forward",
+		(gs.pressure_clean_credits as Dictionary).is_empty())
+
+	# A district nobody has worked has no row, and crediting one must not create
+	# a ledger entry out of nothing.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_expect_float("recovering an untouched district does nothing",
+		engine.recover_pressure("downtown", "boost", 1.0), 0.0)
+	_expect_true("and it allocated no row",
+		not (gs.district_pressure as Dictionary).has("downtown"))
+
+	# The source action banks it. A clean lift gains 0.5 and pays 0.5, which is
+	# the authored wash — the whole design of the lever in one assertion.
+	_expect_float("a clean lift's gain and its credit are the same size",
+		float(rules.PRESSURE_BOOST_SUCCESS), float(rules.PRESSURE_CLEAN_RECOVERY))
+	_expect_float("a clean stick's gain and its credit are the same size",
+		float(rules.PRESSURE_BY_TIER["clean"]), float(rules.PRESSURE_CLEAN_RECOVERY))
+
+	# And the lifecycle runs it, in the declared place.
+	var lifecycle: RefCounted = gm.system("day_lifecycle") as RefCounted
+	_expect_str("POST_SETTLE declares the clean-recovery step",
+		str(lifecycle.POST_SETTLE_ORDER), str(["pressure_clean_recovery"]))
+
+# --- Task 5: the phone's dismiss control ------------------------------------
+#
+# SABOTAGE: put the dismiss back to 34x28 -> "the phone's dismiss control is a
+#           44pt target" fails, and so does the standard tap-target sweep the
+#           v0.1.0 build deleted the Phone's exemption from.
+
+## The widest realistic message head: a long sender and the longest timestamp
+## the stamp can produce.
+const PHONE_WIDEST_SENDER := "Yalonda Hernandez"
+const PHONE_WIDEST_DAY := 30
+
+func _check_phone_dismiss_target(gs: Node, gm: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = PHONE_WIDEST_DAY
+	gs.time_slot = "AFTERNOON"
+	gs.time_slots_today = 1
+	var phone_system: RefCounted = gm.system("phone") as RefCounted
+	phone_system.push_message(PHONE_WIDEST_SENDER,
+		"The rent is late and I have been patient about it for longer than I should have been.")
+	var screen: Node = _instantiate_screen("res://ui/screens/phone.tscn")
+	if screen == null:
+		_fail("phone dismiss", "the phone screen would not instantiate")
+		return
+	(screen as Control).size = FS001_VIEWPORT
+	# The Texts accordion is closed by default and the dismiss control only
+	# exists inside it, so the section is opened the way a finger opens it.
+	screen._on_toggle("texts")
+	screen.refresh()
+
+	var buttons: Array = []
+	_collect_buttons(screen, buttons)
+	var dismiss_seen: int = 0
+	for entry in buttons:
+		var pressable := entry as Button
+		if pressable.text != "×":
+			continue
+		dismiss_seen += 1
+		_expect_true("the phone's dismiss control is a 44pt target",
+			pressable.custom_minimum_size.x >= 44.0
+			and pressable.custom_minimum_size.y >= 44.0)
+	_expect_true("the widest message still rendered a dismiss control", dismiss_seen > 0)
+
+	# Nothing on the widest case declares itself wider than the phone. The same
+	# rule `_fs001_render` applies, asserted against the widest content rather
+	# than against whatever the delegation fixture happened to produce.
+	var controls: Array = []
+	_fs001_controls(screen, controls)
+	var widest: float = 0.0
+	var offender: String = ""
+	for entry in controls:
+		var control := entry as Control
+		if control.custom_minimum_size.x > widest:
+			widest = control.custom_minimum_size.x
+			offender = str(control.name)
+	_expect_true("the widest phone message overflows nothing (%s at %.0fpt)"
+		% [offender, widest], widest <= FS001_VIEWPORT.x)
+	_free_screen(screen)
+
+# --- Task 6: canonical location names ---------------------------------------
+#
+# SABOTAGE: put "Industrial Service Roads" back into phone.gd's prose table ->
+#           "no working-title location name reaches the player" fails.
+
+## Working titles the location registry has superseded. A name here must not
+## appear in anything the player can read.
+const RETIRED_LOCATION_NAMES: Array[String] = [
+	"Industrial Service Roads",
+	"Night Owl Mini-Mart",
+	"North Star Garage",
+]
+
+func _check_canonical_location_names(gs: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+	# The registry's own names, as the district table carries them.
+	var by_id: Dictionary = {}
+	for district in gs.districts:
+		by_id[str((district as Dictionary)["id"])] = district
+	_expect_str("Spenard keeps its name",
+		str((by_id["north_star_lot"] as Dictionary)["name"]), "SPENARD")
+	_expect_str("Downtown keeps its name",
+		str((by_id["downtown"] as Dictionary)["name"]), "DOWNTOWN")
+	_expect_str("the third district is Ship Creek",
+		str((by_id["airport_industrial"] as Dictionary)["name"]), "SHIP CREEK")
+
+	# Every player-facing string this build can produce from the location data,
+	# swept for a retired name.
+	var visible: Array[String] = []
+	for district in gs.districts:
+		var row: Dictionary = district
+		visible.append(str(row["name"]))
+		visible.append(str(row["role"]))
+		visible.append(str(row["blurb"]))
+	for venue in gs.spenard_venues:
+		visible.append(str((venue as Dictionary)["name"]))
+		visible.append(str((venue as Dictionary)["desc"]))
+	for target in gs.boost_targets:
+		visible.append(str((target as Dictionary)["name"]))
+	for target in gs.stick_targets:
+		visible.append(str((target as Dictionary)["name"]))
+	for product in gs.products:
+		visible.append(str((product as Dictionary)["hint"]))
+		visible.append(str((product as Dictionary)["route"]))
+	var phone_names: Dictionary = preload("res://systems/phone.gd").AREA_PROSE_NAMES
+	for key in phone_names:
+		visible.append(str(phone_names[key]))
+	var joined: String = "\n".join(visible)
+	for retired in RETIRED_LOCATION_NAMES:
+		_expect_true("no working-title location name reaches the player (%s)" % retired,
+			not joined.contains(retired))
+
+	# The Street screen renders the canonical names rather than the scene's
+	# editor-time previews.
+	var street: Node = _instantiate_screen("res://ui/screens/street.tscn")
+	if street == null:
+		_fail("location names", "the street screen would not instantiate")
+		return
+	(street as Control).size = FS001_VIEWPORT
+	street.refresh()
+	var labels: Array[String] = []
+	_collect_labels(street, labels)
+	var rendered: String = "\n".join(labels)
+	_expect_true("the Street menu names Ship Creek", rendered.contains("SHIP CREEK"))
+	for retired in RETIRED_LOCATION_NAMES:
+		_expect_true("the Street menu is free of '%s'" % retired,
+			not rendered.contains(retired))
+	_free_screen(street)
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -13418,7 +14362,17 @@ func _fail(label: String, detail: String) -> void:
 ## layers it exists in, and PX-003 §8's ambient signal — including its
 ## hidden-information audit, which is the only thing standing between "a warning"
 ## and "a countdown with adjectives".
-const MIN_CHECKS := 10600
+##
+## v0.1.0 raises it to 11000. FS-001 and FS-003 both closed before it, so this
+## is the first slice whose additions are not a milestone's own coverage but a
+## PLAYTEST's: what a new run shows, what the version says, whether eight
+## consecutive seeded keys are actually eight different rolls, and whether an
+## aggressive player has a way out of HOT. Its 295 checks are mostly the gate
+## table walked in every direction the design pass names -- fresh run, threshold,
+## save/load, route bypass, fail-closed, blocker order -- because a gate is a
+## claim about what the player CANNOT see, and the only way to prove that is to
+## look at what the screen actually rendered.
+const MIN_CHECKS := 11000
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

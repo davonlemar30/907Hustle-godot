@@ -14,6 +14,7 @@ func _ready() -> void:
 		_gm.action_failed.connect(_on_action_failed)
 
 func _bind_content() -> void:
+	_fill_tabs()
 	_fill_context()
 	_fill_products()
 
@@ -36,6 +37,35 @@ const POLICE_MAX := 3
 const RIVAL_MAX := 3
 const POLICE_TINT := Color(0.475, 0.733, 0.757, 1)
 const RIVAL_TINT := Color(0.827, 0.161, 0.125, 1)
+
+## The district strip above the board.
+##
+## These three labels used to be baked into the .tscn and never bound, which is
+## the same rule-4 hole `_fill_context` closed one row below: the strip always
+## read SPENARD in accent with the other two greyed, wherever the player was
+## actually standing. Now the names come from `gs.districts` in districts order
+## and the accent follows `current_district_id`, so renaming a district in one
+## place renames it everywhere the player can see it.
+const TAB_ACTIVE := Color(1, 0.29, 0.239, 1)
+const TAB_IDLE := Color(0.522, 0.522, 0.522, 1)
+const TAB_RULE_OFF := Color(0, 0, 0, 0)
+
+func _fill_tabs() -> void:
+	var tabs := get_node_or_null("Shell/Scroll/Pad/Content/Districts/V/Tabs")
+	if tabs == null:
+		return
+	for i in range(mini(tabs.get_child_count(), gs.districts.size())):
+		var district: Dictionary = gs.districts[i]
+		var here: bool = str(district.get("id", "")) == gs.current_district_id
+		var tab: Node = tabs.get_child(i)
+		var name_label := tab.get_node_or_null("L") as Label
+		if name_label:
+			name_label.text = str(district.get("name", ""))
+			name_label.add_theme_color_override("font_color",
+				TAB_ACTIVE if here else TAB_IDLE)
+		var rule := tab.get_node_or_null("Ind") as ColorRect
+		if rule:
+			rule.color = TAB_ACTIVE if here else TAB_RULE_OFF
 
 func _fill_context() -> void:
 	var district: Dictionary = gs.current_district()

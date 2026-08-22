@@ -22,6 +22,9 @@ extends Control
 @onready var _continue: Button = $Pad/V/ContinueRun
 @onready var _last_run: Label = $Pad/V/LastRun
 @onready var _confirm: VBoxContainer = $Pad/V/Confirm
+## The build stamp. Bottom-right, deliberately quiet: it exists so a playtest
+## report can name the build it came from, not to be read during play.
+@onready var _version: Label = $VersionStamp
 
 ## The last inspect() result, so the buttons and the preview always describe
 ## the same read of the file.
@@ -34,6 +37,9 @@ func _ready() -> void:
 	_continue.pressed.connect(_on_continue)
 	$Pad/V/Confirm/StartNew.pressed.connect(_on_confirm_new)
 	$Pad/V/Confirm/KeepSave.pressed.connect(_on_cancel_new)
+	# The scene's baked "v0.0.0" is an editor-time preview, the same convention
+	# every other screen uses. Version.VERSION is the only real source.
+	_version.text = get_node("/root/Version").display()
 	_refresh_save_state()
 
 func _refresh_save_state() -> void:

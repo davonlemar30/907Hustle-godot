@@ -151,7 +151,10 @@ func todays_listings() -> Array:
 	if eligible.is_empty():
 		return []
 	var want: int = int(tier["listings"])
-	var key := "907list:%d:%d" % [gs.day, int(gs.list_tier)]
+	# v0.1.0 seeded-key audit: day and tier lead the key (see realised_value).
+	# seeded_shuffle prefixes its own swap index, so the hashed string reads
+	# "<index>:<day>:<tier>:907list" -- everything that varies, up front.
+	var key := "%d:%d:907list" % [gs.day, int(gs.list_tier)]
 	var order: Array = rng.seeded_shuffle(gs.run_seed, key, eligible)
 	return order.slice(0, mini(want, order.size()))
 
@@ -213,7 +216,15 @@ func realised_value(holding: Dictionary) -> int:
 	if item.is_empty():
 		return 0
 	var band: Array = item["true_value"]
-	var key := "907list:value:%s:%d" % [str(holding["item_id"]), int(holding["bought_day"])]
+	# v0.1.0 seeded-key audit: the varying components lead the key.
+	#
+	# FNV-1a's final rounds barely move the high bits, and `seeded_random` reads
+	# the hash as `hash / 2^32` -- the high bits. A small counter appended to the
+	# TAIL of a key therefore moves the roll by about `delta / 256`: eight
+	# consecutive values spanned 2.7% of the band instead of covering it. The fix
+	# is the one `RngManager.seeded_shuffle` already uses -- put the varying
+	# component FIRST, so every remaining round diffuses it.
+	var key := "%d:907list:value:%s" % [int(holding["bought_day"]), str(holding["item_id"])]
 	return rng.seeded_int_range(gs.run_seed, key, int(band[0]), int(band[1]))
 
 func sell_blocker(index: int) -> String:

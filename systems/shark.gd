@@ -234,7 +234,8 @@ func settle_night(ended_day: int) -> void:
 		var b: Dictionary = gs.borrower_by_id(str(loan["borrower_id"]))
 		# Canon keys this on seed:shark:loanId:dueDay and normalises with
 		# `% 10000 / 10000` rather than / 2^32 — see RngManager.seeded_unit_10k.
-		var key := "shark:%d:%d" % [int(loan["id"]), int(loan["due_day"])]
+		# v0.1.0 seeded-key audit: loan id and due day lead the key.
+		var key := "%d:%d:shark" % [int(loan["id"]), int(loan["due_day"])]
 		var roll: float = rng.seeded_unit_10k(gs.run_seed, key)
 		if roll < default_probability(loan):
 			loan["status"] = "defaulted"

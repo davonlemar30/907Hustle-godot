@@ -107,7 +107,7 @@ var districts: Array = [
 		"market_role": "Commercial",
 		"bias": {"weed": 1.08, "shrooms": 1.32, "cocaine": 1.46, "meth": 1.08},
 		"availability": {"weed": 0.9, "shrooms": 0.9, "pills": 0.82, "lean": 0.78, "coke": 0.8, "molly": 0.86, "cocaine": 0.78, "meth": 0.58}},
-	{"id": "airport_industrial", "name": "INDUSTRIAL", "role": "SERVICE ROADS", "risk": 4, "police": 2, "rival": 3, "accent": Color(0.604, 0.114, 0.094), "blurb": "Loading yards, rare supply, and expensive mistakes.",
+	{"id": "airport_industrial", "name": "SHIP CREEK", "role": "PORT CORRIDOR", "risk": 4, "police": 2, "rival": 3, "accent": Color(0.604, 0.114, 0.094), "blurb": "Loading yards, rare supply, and expensive mistakes.",
 		"market_role": "Outer",
 		"bias": {"weed": 1.12, "shrooms": 1.18, "cocaine": 1.32, "meth": 1.62},
 		"availability": {"weed": 0.72, "shrooms": 0.7, "pills": 0.7, "lean": 0.74, "coke": 0.78, "molly": 0.72, "cocaine": 0.7, "meth": 0.86}},
@@ -138,8 +138,8 @@ func init_markets() -> void:
 
 # --- Spenard local venues (canon: Locations doc + jobs/gambling data) -------
 var spenard_venues: Array = [
-	{"name": "North Star Garage", "tag": "BASE", "desc": "Your operation. Recruit crew, stash product."},
-	{"name": "Night Owl Mini-Mart", "tag": "SHOP", "desc": "Mina's counter. Tools, a shift, word around town."},
+	{"name": "Home", "tag": "BASE", "desc": "Your unit off Spenard Road. Rent weekly, Yalonda next door."},
+	{"name": "Night Owl", "tag": "SOCIAL", "desc": "Mina's counter. A shift, a coffee, word around town."},
 	{"name": "Spenard Gym", "tag": "TRAIN", "desc": "Build strength. Let some heat cool off."},
 	{"name": "The Nile", "tag": "CARDS", "desc": "Biniam's game. Gamble and hear what's moving."},
 ]
@@ -152,14 +152,14 @@ var personal_contacts: int = 3
 # trend ("up"/"flat") drives the hint's arrow icon — it is a field rather than a
 # glyph in the hint string because no theme font carries an arrow.
 var products: Array = [
-	{"id": "weed", "name": "WEED", "role": "DEPENDABLE · OWN 4oz", "owned": "4oz", "route": "+$11 Industrial", "color": Color(0.451, 0.722, 0.404), "price": 27, "base": 34, "volatility": 0.12, "min": 18, "max": 68, "hint": "SELL INDUSTRIAL  +$11", "trend": "up", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
+	{"id": "weed", "name": "WEED", "role": "DEPENDABLE · OWN 4oz", "owned": "4oz", "route": "+$11 Ship Creek", "color": Color(0.451, 0.722, 0.404), "price": 27, "base": 34, "volatility": 0.12, "min": 18, "max": 68, "hint": "SELL SHIP CREEK  +$11", "trend": "up", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
 	{"id": "shrooms", "name": "SHROOMS", "role": "VOLATILE · OWN 2", "owned": "2", "route": "+$36 Downtown", "color": Color(0.373, 0.663, 0.847), "price": 72, "base": 82, "volatility": 0.25, "min": 35, "max": 180, "hint": "SELL DOWNTOWN  +$36", "trend": "up", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
 	{"id": "pills", "name": "PILLS", "role": "STEADY MARGIN · OWN 3", "owned": "3", "route": "Stable citywide", "color": Color(0.882, 0.651, 0.227), "price": 105, "base": 105, "volatility": 0.18, "min": 55, "max": 220, "hint": "— STABLE CITYWIDE", "trend": "flat", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
 	{"id": "lean", "name": "LEAN", "role": "PREMIUM", "owned": "0", "route": "Downtown margin", "color": Color(0.62, 0.5, 0.85), "price": 155, "base": 155, "volatility": 0.22, "min": 80, "max": 330, "hint": "+30% MARGIN DOWNTOWN", "trend": "up", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
 	{"id": "coke", "name": "COKE", "role": "HIGH MARGIN", "owned": "0", "route": "Stable citywide", "color": Color(0.9, 0.89, 0.86), "price": 290, "base": 290, "volatility": 0.3, "min": 145, "max": 690, "hint": "— STABLE CITYWIDE", "trend": "flat", "hint_color": Color(0.608, 0.608, 0.608), "locked": false},
 	{"id": "molly", "name": "MOLLY", "role": "CLUB DEMAND", "owned": "0", "route": "Downtown margin", "color": Color(1, 0.29, 0.239), "price": 215, "base": 215, "volatility": 0.28, "min": 105, "max": 480, "hint": "+30% MARGIN DOWNTOWN", "trend": "up", "hint_color": Color(0.373, 0.663, 0.847), "locked": false},
 	{"id": "cocaine", "name": "COCAINE", "role": "PREMIUM", "owned": "0", "route": "+$127 Downtown", "color": Color(0.85, 0.72, 0.42), "price": 296, "base": 290, "volatility": 0.3, "min": 145, "max": 690, "hint": "SELL DOWNTOWN  +$127", "trend": "up", "hint_color": Color(0.451, 0.722, 0.404), "locked": false},
-	{"id": "meth", "name": "METH", "role": "EXTREME RISK", "owned": "0", "route": "Locked", "color": Color(0.6, 0.6, 0.6), "price": 176, "base": 185, "volatility": 0.38, "min": 70, "max": 560, "hint": "NEEDS INDUSTRIAL TURF", "trend": "flat", "hint_color": Color(0.827, 0.161, 0.125), "locked": true},
+	{"id": "meth", "name": "METH", "role": "EXTREME RISK", "owned": "0", "route": "Locked", "color": Color(0.6, 0.6, 0.6), "price": 176, "base": 185, "volatility": 0.38, "min": 70, "max": 560, "hint": "NEEDS SHIP CREEK TURF", "trend": "flat", "hint_color": Color(0.827, 0.161, 0.125), "locked": true},
 ]
 
 # Which products the Home "Market Snapshot" summarizes (by id), in display order.
@@ -319,7 +319,11 @@ func reset_to_new_game() -> void:
 	boost_store_bans = []
 	district_pressure = {}
 	pressure_bleed_pending = []
+	pressure_clean_credits = {}
 	consequence_flags = {}
+	# Progression starts where the player does: home turf, nobody met.
+	districts_unlocked = ["north_star_lot"]
+	job_contacts = 0
 	# Jobs and obligations reset with the run.
 	active_job_id = ""
 	job_records = {}
@@ -497,6 +501,44 @@ func recovery_available() -> bool:
 func reconcile_persistent_invariants() -> void:
 	if health < health_max or heat > 1.0:
 		recovery_introduced = true
+	_reconcile_progression_latches()
+
+## The two v0.1.0 discovery latches, re-derived from canonical facts.
+##
+## Written as "add when the fact is true", never "remove when it is false" —
+## that is what makes them one-way. The design pass is explicit about it: once
+## the player knows Downtown exists, losing the corner that taught them does not
+## take the knowledge back.
+##
+## Living here rather than in the systems that own the facts is deliberate. Both
+## latches read facts from MORE THAN ONE system (territory for blocks, crew for
+## the roster), so no single owner can settle them, and this function is already
+## the declared place where persistent invariants settle before autosave.
+func _reconcile_progression_latches() -> void:
+	# Territory expansion is what opens the city. The gate table's own rationale
+	# for the two locked districts is "territory not yet expanded", so the fact
+	# it reads is the held-block count: one corner earns Downtown, a second
+	# earns Ship Creek.
+	var corners: int = held_blocks.size()
+	if corners >= 1 and not "downtown" in districts_unlocked:
+		districts_unlocked.append("downtown")
+	if corners >= 2 and not "airport_industrial" in districts_unlocked:
+		districts_unlocked.append("airport_industrial")
+
+	# A job contact is somebody recruited whose ROLE is putting people together.
+	# Deshawn is the fixer/recruiter and Pherris is the connector; Eli runs
+	# bundles and Tone stands at a door, and neither of them knows anybody
+	# hiring. Counted rather than latched to a bool so a second contact can
+	# raise a later gate without another field.
+	var met: int = 0
+	for contact_id in JOB_CONTACT_CREW_IDS:
+		if is_recruited(str(contact_id)):
+			met += 1
+	job_contacts = maxi(job_contacts, met)
+
+## Crew whose canon role is connecting people to work (see the character pages:
+## Deshawn "Fixer / Recruiter", Pherris "Connector").
+const JOB_CONTACT_CREW_IDS: Array[String] = ["deshawn", "pherris"]
 
 var game_over: bool = false
 var game_over_reason: String = ""
@@ -632,7 +674,7 @@ func market_tier() -> Dictionary:
 
 # --- Boost (canon: game-core.js BOOST_TARGETS) -----------------------------
 var boost_targets: Array = [
-	{"id": "night_owl", "name": "Night Owl Mini-Mart", "area": "north_star_lot", "tier": 1, "take": [15, 40], "window": -1, "desc": "The counter you already know. The camera by the back aisle has a blind spot everyone in Spenard learned first."},
+	{"id": "night_owl", "name": "Night Owl", "area": "north_star_lot", "tier": 1, "take": [15, 40], "window": -1, "desc": "The counter you already know. The camera by the back aisle has a blind spot everyone in Spenard learned first."},
 	{"id": "spenard_fuel", "name": "Spenard Chevron", "area": "north_star_lot", "tier": 1, "take": [15, 40], "window": -1, "desc": "Two pumps and a cooler aisle. The clerk watches the lot, never the shelves."},
 	{"id": "fourth_ave_market", "name": "Rebel Convenience on 4th", "area": "downtown", "tier": 1, "take": [15, 40], "window": -1, "desc": "One camera, aimed at the register, exactly like the sticker on the door promises."},
 	{"id": "downtown_fuel", "name": "Holiday on C Street", "area": "downtown", "tier": 1, "take": [15, 40], "window": -1, "desc": "The snack aisle sits behind a pillar the security mirror cannot see around."},
@@ -974,6 +1016,51 @@ var district_pressure: Dictionary = {}
 ## Pressure scheduled to bleed into adjacent districts tomorrow (TI-003 §8).
 ## Rows carry Cause + destination identity so a reload cannot double-apply.
 var pressure_bleed_pending: Array = []
+
+# --- Progression facts (v0.1.0, surface visibility) ------------------------
+#
+# Two durable facts the access layer reads. Both are DISCOVERY LATCHES: they
+# only ever move forwards, because what they record is knowledge, and a player
+# does not un-learn that Downtown exists by abandoning a corner. Derived
+# eligibility is never stored beside them — a gate reads these facts live, so
+# there is no second copy to contradict them.
+#
+# Reconciled in `reconcile_persistent_invariants()`, which runs inside every
+# successful dispatch before `state_changed`, so an unlock reaches the screen on
+# the same refresh as the action that earned it.
+
+## District ids the player has learned they can travel to.
+##
+## Ids, not display names: `north_star_lot` / `downtown` / `airport_industrial`
+## are what `districts`, the market keys, `district_pressure` and the save all
+## already use, and a second vocabulary of pretty names would be one rename away
+## from silently gating nothing.
+##
+## Plain `Array` rather than `Array[String]` for the reason every other
+## persisted array here is: `SaveSystem._apply` overlays a decoded Variant onto
+## the field, and a typed array rejects the untyped one it gets back.
+var districts_unlocked: Array = ["north_star_lot"]
+
+## How many named contacts capable of putting WORK in front of the player have
+## been met. Gates the Jobs surface.
+##
+## Yalonda deliberately does not count. The player starts knowing her and she is
+## housing, not a referral — a job gate she satisfies is a gate that is open on
+## day one, which is the thing this build exists to stop.
+var job_contacts: int = 0
+
+## district_id -> family -> float. Pressure a CLEAN outcome has earned back
+## today and not yet been paid (v0.1.0, the HOT escape lever).
+##
+## Credits accrue as actions resolve during the day and are drained at
+## POST_SETTLE, which is why they are state rather than a local: the autosave
+## fires once per dispatch, so a player who lifts cleanly at noon and closes the
+## tab must still be holding that credit when the run reopens. A counter that
+## reset on load would silently withhold the recovery the outcome earned — the
+## same failure `market_gain_today` is stored on the Pressure row to avoid.
+##
+## Always empty between days. `apply_clean_recovery` clears it as it pays.
+var pressure_clean_credits: Dictionary = {}
 
 ## Run-level one-shot flags owned by the consequence layer (FS-003.13 Task 5).
 ##

@@ -103,13 +103,17 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## Dictionary is the honest history for a v8 run, because a flag that records
 ## "this has already been shown once" is false for a run that has never shown it.
 ##
+## v10 (v0.1.0): adds `districts_unlocked`, `job_contacts` and
+## `pressure_clean_credits`. All three are additive, and the arm re-derives the
+## first two rather than defaulting them blindly -- see the arm for why.
+##
 ## The arrest cooldown FS-003.13 also added rides inside `arrest_record`, which
 ## v8 already persists whole — so it needs no arm and no default here. A v8 save
 ## comes back with the key absent, and `ArrestSystem.cooldown_until_day()` reads
 ## a missing key as -1: no cooldown, which is the correct history for arrests
 ## that predate the mechanic. One bump, one arm, both new pieces of state
 ## covered.
-const SAVE_VERSION := 9
+const SAVE_VERSION := 10
 
 ## Every mutable GameState field, captured and applied by name. products.price
 ## is the one mutable value living inside a canon table; it rides separately as
@@ -165,9 +169,11 @@ const PERSIST_FIELDS: Array[String] = [
 	"active_consequence", "consequence_history", "consequence_queue",
 	"last_blocking_delayed_day",
 	"arrest_record", "boost_store_bans",
-	"district_pressure", "pressure_bleed_pending",
+	"district_pressure", "pressure_bleed_pending", "pressure_clean_credits",
 	# The consequence layer's run-level one-shot flags (v9, FS-003.13).
 	"consequence_flags",
+	# Progression discovery latches (v10, surface visibility).
+	"districts_unlocked", "job_contacts",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -434,6 +440,47 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# be worse than doing nothing: it would suppress arrests on a
 				# loaded run for a booking the mechanic did not exist during.
 				pass
+			9:
+				# v9 -> v10: the surface-visibility facts, plus the HOT lever's
+				# banked recovery.
+				#
+				# `pressure_clean_credits` needs no arm. It is a WITHIN-DAY ledger
+				# that empties every night, and a v9 save was written by a build with
+				# no clean-recovery lever at all, so empty is not a default standing
+				# in for history -- it is the history.
+				#
+				# The other two are stamped rather than defaulted, and the difference
+				# matters. A v9 run has a real past: it may hold six corners and have
+				# Deshawn on the crew. Defaulting `districts_unlocked` to
+				# `["north_star_lot"]` would take Downtown away from somebody who has
+				# been trading there for a fortnight, and defaulting `job_contacts`
+				# to 0 would re-lock Jobs on a run that has been working them.
+				#
+				# So the arm derives both from state v9 already carries -- the same
+				# derivation `GameState._reconcile_progression_latches()` runs on
+				# every dispatch, applied once to the loading save. That also makes
+				# this arm redundant-by-design rather than load-bearing: the reconcile
+				# would settle both on the next action anyway, and the arm only stops
+				# the surfaces reading locked for the frame in between.
+				var blocks: Variant = state.get("held_blocks")
+				var corners: int = (blocks as Dictionary).size() \
+					if blocks is Dictionary else 0
+				var known: Array = ["north_star_lot"]
+				if corners >= 1:
+					known.append("downtown")
+				if corners >= 2:
+					known.append("airport_industrial")
+				state["districts_unlocked"] = known
+				var records: Variant = state.get("crew_records")
+				var contacts: int = 0
+				if records is Dictionary:
+					for contact_id in ["deshawn", "pherris"]:
+						var record: Variant = (records as Dictionary).get(contact_id)
+						if record is Dictionary \
+								and bool((record as Dictionary).get("recruited", false)) \
+								and str((record as Dictionary).get("status", "active")) == "active":
+							contacts += 1
+				state["job_contacts"] = contacts
 			_:
 				return {}
 		version += 1

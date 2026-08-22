@@ -41,6 +41,12 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 	var district: Dictionary = gs.district_by_id(target)
 	if district.is_empty():
 		return {"ok": false, "reason": "No such district."}
+	# The same gate the Street card wears, enforced on the ACTION rather than
+	# only on the button (v0.1.0). A locked card cannot be tapped, but a travel
+	# dispatch can arrive from anywhere, and "may the player go here" must have
+	# one answer regardless of who asked.
+	if not target in gs.districts_unlocked:
+		return {"ok": false, "reason": "You don't know your way around there yet."}
 	if gs.cash < FARE:
 		return {"ok": false, "reason": "Need $%d fare." % FARE}
 

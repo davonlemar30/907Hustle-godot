@@ -140,8 +140,19 @@ func _on_tap_gui_input(event: InputEvent, target: Control, handler: Callable) ->
 		return
 	var origin: Vector2 = target.get_meta("tap_origin")
 	target.remove_meta("tap_origin")
-	if mb.position.distance_to(origin) <= TAP_SLOP:
-		handler.call()
+	if mb.position.distance_to(origin) > TAP_SLOP:
+		return
+	# A LOCKED surface swallows the tap and says nothing. Not a toast, not an
+	# error — the lock and its hint are already the whole answer, and a screen
+	# that also complains reads as a bug rather than as a gate.
+	#
+	# Enforced here rather than by disconnecting the handler because the
+	# connection is made once in `_ready` while the gate is re-evaluated on
+	# every refresh: connecting and disconnecting per refresh is how a surface
+	# ends up either dead after it unlocks or wired twice.
+	if bool(target.get_meta(LOCKED_META, false)):
+		return
+	handler.call()
 
 ## Make a card tappable without restructuring the scene.
 ##
@@ -158,6 +169,136 @@ func make_tappable(path: String, handler: Callable) -> Control:
 		return null
 	tap_connect(card, handler)
 	return card
+
+# --- surface gates (v0.1.0) -------------------------------------------------
+#
+# One renderer for both modes, so every gated surface on every screen looks and
+# behaves the same. Screens name a surface and a node; `SurfaceVisibility` owns
+# the condition and this owns the pixels.
+
+## Padlock art rather than a glyph. U+1F512 is in none of the three theme fonts,
+## which means it draws in the editor (macOS lends a system font) and as a tofu
+## box in the browser — the exact failure the meter dots and the trend arrow
+## were both converted away from, and the one `scripts/check_glyph_coverage.py`
+## exists to catch.
+const LOCK_ICON := preload("res://assets/icons/ui/icon-lock.svg")
+## Name of the appended lock row, so a re-bind updates it instead of stacking
+## another one under the card every time GameState changes.
+const LOCK_BADGE := "SurfaceLockRow"
+## Set on a gated node while its surface is locked; read by the tap handler.
+const LOCKED_META := "surface_locked"
+
+## Show, lock, or remove one surface. Returns the verdict, so a caller that
+## wants to say more about a blocker has the numbers without asking twice.
+##
+## Idempotent by construction: it is called from `_bind_content()`, which runs on
+## every state change, and each of the three states fully undoes the other two.
+func apply_surface_gate(surface_id: String, node: Control) -> Dictionary:
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	if access == null or node == null:
+		return {}
+	var answer: Dictionary = access.verdict(surface_id)
+	var state: String = str(answer.get("state", access.STATE_AVAILABLE))
+
+	if state == access.STATE_HIDDEN:
+		# Out of the layout, not merely invisible: `visible = false` makes a
+		# Container skip the child entirely, so the surfaces below it close the
+		# gap rather than leaving a hole where the feature will be.
+		node.visible = false
+		_clear_lock_badge(node)
+		node.set_meta(LOCKED_META, false)
+		return answer
+
+	node.visible = true
+	var locked: bool = state == access.STATE_LOCKED \
+		or state == access.STATE_TEMPORARILY_BLOCKED
+	node.set_meta(LOCKED_META, locked)
+	if not locked:
+		node.modulate.a = 1.0
+		_clear_lock_badge(node)
+		return answer
+
+	node.modulate.a = float(_locked_opacity_pct()) / 100.0
+	_show_lock_badge(node, str(answer.get("hint", "")))
+	return answer
+
+## 40, from the theme. A locked surface's opacity is a design token, not a
+## number three screens each remember differently.
+func _locked_opacity_pct() -> int:
+	var pct: int = get_theme_constant("opacity_pct", "Locked")
+	return pct if pct > 0 else 40
+
+## Where the hint goes: the surface's own main column, so the line sits under
+## the content it explains rather than beside it.
+##
+## A card is `PanelContainer > VBoxContainer` and resolves on the second rule; a
+## row is `PanelContainer > HBoxContainer > [icon, column, status]` and resolves
+## on the third, which picks the column that expands — the one carrying the
+## title. A surface with no column at all is dimmed without a hint rather than
+## having one wedged somewhere it does not belong.
+func _lock_host(node: Control) -> Control:
+	if node is VBoxContainer:
+		return node
+	if node.get_child_count() == 1 and node.get_child(0) is VBoxContainer:
+		return node.get_child(0) as Control
+	var queue: Array[Node] = [node]
+	while not queue.is_empty():
+		var current: Node = queue.pop_front()
+		for child in current.get_children():
+			if child is VBoxContainer \
+					and (child as Control).size_flags_horizontal == Control.SIZE_EXPAND_FILL:
+				return child as Control
+			queue.append(child)
+	return null
+
+func _show_lock_badge(node: Control, hint: String) -> void:
+	var host: Control = _lock_host(node)
+	if host == null:
+		return
+	var row := host.get_node_or_null(LOCK_BADGE) as HBoxContainer
+	if row == null:
+		row = HBoxContainer.new()
+		row.name = LOCK_BADGE
+		row.add_theme_constant_override("separation", 5)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var icon := TextureRect.new()
+		icon.name = "Ico"
+		icon.texture = LOCK_ICON
+		icon.custom_minimum_size = Vector2(11, 11)
+		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.self_modulate = Color(1, 1, 1, 0.6)
+		row.add_child(icon)
+		var text := Label.new()
+		text.name = "Hint"
+		text.theme_type_variation = &"LockHint"
+		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		row.add_child(text)
+		host.add_child(row)
+	var hint_label := row.get_node_or_null("Hint") as Label
+	if hint_label:
+		hint_label.text = hint
+	row.visible = not hint.is_empty()
+
+func _clear_lock_badge(node: Control) -> void:
+	var host: Control = _lock_host(node)
+	if host == null:
+		return
+	var row := host.get_node_or_null(LOCK_BADGE)
+	if row != null:
+		host.remove_child(row)
+		row.queue_free()
+
+## Show or remove a surface by path, for the common case where the caller has
+## nothing else to say about it. Returns the node when it is still in play.
+func gate_surface(surface_id: String, path: String) -> Control:
+	var node := get_node_or_null(path) as Control
+	if node == null:
+		return null
+	apply_surface_gate(surface_id, node)
+	return node if node.visible else null
 
 ## Screens override this to bind their own content. Base is a no-op.
 func _bind_content() -> void:

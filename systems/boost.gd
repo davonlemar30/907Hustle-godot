@@ -180,6 +180,14 @@ func _run(target_id: String) -> Dictionary:
 		# than a clean one rather than double-charging for the same attempt.
 		_add_district_pressure(gs.current_district_id, "boost",
 			_rules().PRESSURE_BOOST_SUCCESS, "")
+		# v0.1.0's HOT escape lever. FS-003 §6 calls this branch "a clean initial
+		# Boost success" and that is the tier the credit is authored against, so
+		# the success path banks CLEAN and the failed path banks nothing — the
+		# blown lift's tier is decided later, by the Caught encounter.
+		#
+		# Banked, not applied: it is paid at POST_SETTLE, so the day's gains land
+		# first. Net effect of a clean lift on this district is zero.
+		_credit_clean_outcome(gs.current_district_id, "boost", "clean")
 		if tier == 3:
 			# Tier 3 comes out as merchandise, not cash. Slide fences it.
 			gs.boost_merchandise += take
@@ -461,6 +469,16 @@ func _add_district_pressure(district_id: String, family: String, amount: float,
 	if engine == null or district_id.is_empty():
 		return
 	engine.add_pressure(district_id, family, amount, cause_id)
+
+## The gain-side half, forwarded the same way and for the same reason. Sits
+## beside `_add_district_pressure` so a reader sees both sides of the ledger in
+## one place, and so neither can be added without the other being obvious.
+func _credit_clean_outcome(district_id: String, family: String,
+		tier_name: String) -> void:
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine == null or district_id.is_empty():
+		return
+	engine.credit_clean_outcome(district_id, family, tier_name)
 
 func _caught_line(source: Dictionary, choice_id: String, tier_name: String,
 		result: Dictionary) -> String:

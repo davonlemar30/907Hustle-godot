@@ -482,7 +482,7 @@ layout_mode = 2
 theme_type_variation = &"CardTitle"
 theme_override_colors/font_color = Color(0.522, 0.522, 0.522, 1)
 horizontal_alignment = 1
-text = "INDUSTRIAL"
+text = "SHIP CREEK"
 
 [node name="Ind" type="ColorRect" parent="Shell/Scroll/Pad/Content/Districts/V/Tabs/Industrial"]
 custom_minimum_size = Vector2(0, 2)
@@ -705,7 +705,7 @@ self_modulate = Color(0.451, 0.722, 0.404, 1)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
 theme_override_font_sizes/font_size = 10
-text = "SELL INDUSTRIAL  +$11"
+text = "SELL SHIP CREEK  +$11"
 
 [node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R0/H"]
 layout_mode = 2
@@ -1345,7 +1345,7 @@ self_modulate = Color(0.827, 0.161, 0.125, 1)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.827, 0.161, 0.125, 1)
 theme_override_font_sizes/font_size = 10
-text = "NEEDS INDUSTRIAL TURF"
+text = "NEEDS SHIP CREEK TURF"
 
 [node name="Right" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R7/H"]
 layout_mode = 2

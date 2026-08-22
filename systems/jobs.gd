@@ -102,7 +102,10 @@ func _apply(job_id: String) -> Dictionary:
 		return {"ok": false, "reason": "You already work there."}
 
 	# Canon keys the interview on the job and the day/slot it was applied for.
-	var key := "job_interview:%s:%d:%d" % [job_id, gs.day, gs.time_slots_today]
+	# v0.1.0 seeded-key audit: day and slot lead the key. Canon keys the
+	# interview on the job and the day/slot it was applied for; the components
+	# are unchanged, only their order.
+	var key := "%d:%d:job_interview:%s" % [gs.day, gs.time_slots_today, job_id]
 	var resolver: Object = gm.system("outcome_resolver") if gm != null else null
 	if resolver == null:
 		return {"ok": false, "reason": "No outcome resolver."}

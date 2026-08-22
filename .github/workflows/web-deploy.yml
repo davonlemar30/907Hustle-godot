@@ -107,6 +107,17 @@ jobs:
           touch build/web/.nojekyll
           ls -lh build/web
 
+      - name: Stamp the build version into the HTML shell
+        # Godot writes <title> from config/name, which carries no version. The
+        # deployed page is what a playtester has open, so the tab has to say
+        # which build they are reporting against. autoload/version.gd is the one
+        # source -- read, never retyped.
+        run: |
+          VERSION=$(sed -n 's/^const VERSION := "\(.*\)"$/\1/p' autoload/version.gd)
+          test -n "$VERSION"
+          sed -i "s#<title>.*</title>#<title>907Hustle v${VERSION}</title>#" build/web/index.html
+          grep -o "<title>.*</title>" build/web/index.html
+
       - uses: actions/upload-artifact@v4
         with:
           name: web-build

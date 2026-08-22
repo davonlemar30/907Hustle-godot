@@ -23,14 +23,20 @@ extends RefCounted
 ## anything a test does not hand it, and it can be reused by any system that
 ## needs to ask the same question. It has no `setup()` for the same reason.
 ##
-## ## Nothing queries it yet, and that is deliberate
+## ## Who queries it
 ##
-## FS-001.6 (Named Crew Operations) is the caller. This ships ahead of it as
-## infrastructure — unlike the resolver Attributes deferred in Phase 5c, this is
-## a small pure function table with exhaustive fixtures rather than a large
-## untested branch, so the cost of landing it early is close to zero and the
-## benefit is that FS-001.6 does not have to invent an eligibility contract
-## while it is also inventing delegation.
+## FS-001.6 (Named Crew Operations) was the first caller. v0.1.0 added the
+## second: `autoload/surface_visibility.gd` authors every progression gate as a
+## requirement record and evaluates it here, which is why the type table below
+## grew a block of fact-reading types. There is deliberately no second
+## eligibility engine anywhere in the build — one gate language, one evaluator.
+##
+## It shipped one slice ahead of that first caller, deliberately — unlike the
+## resolver Attributes deferred in Phase 5c, this is a small pure function table
+## with exhaustive fixtures rather than a large untested branch, so the cost of
+## landing it early was close to zero and the benefit was that FS-001.6 did not
+## have to invent an eligibility contract while it was also inventing
+## delegation. v0.1.0 is the payoff: the gate system needed no engine of its own.
 ##
 ## ## Two deliberate divergences from the oracle, both mechanical
 ##
@@ -208,6 +214,57 @@ func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dicti
 		"proof_counter_min":
 			var count: float = _num(_proofs(crew).get(str(req.get("key"))))
 			return _result(req, count >= min_value, count, min_value)
+
+		# --- v0.1.0 surface-visibility types --------------------------------
+		#
+		# Added for the progression gates, and added HERE rather than in a
+		# second evaluator beside this one: the access layer authors semantic
+		# requirement records and this file is the one thing that reads them.
+		# Every type below resolves against a fact that already exists on
+		# GameState, which is the standing condition for a new type landing at
+		# all — a gate whose fact has not been built yet stays unbuilt.
+		#
+		# They read facts rather than crew records, so `crew` and `crew_id` go
+		# unused; the shape of the answer is identical either way.
+
+		"crew_count_min":
+			# Recruited and active, counted by the adapter. Not `crew.size()`:
+			# a record exists for anybody ever considered, and a crew member
+			# who quit is not a crew member.
+			var recruited: float = _num(facts.get("crew_count"))
+			return _result(req, recruited >= min_value, recruited, min_value)
+
+		"district_discovered":
+			# Membership, not a threshold. `current` reports the boolean so a
+			# caller can render "not yet" without knowing what a district is.
+			var known: Variant = facts.get("districts_unlocked")
+			var district_id := str(req.get("district_id", ""))
+			var found: bool = known is Array \
+				and district_id in (known as Array)
+			return _result(req, found, found, true)
+
+		"list_flips_min":
+			# Completed 907List flips — the build's "has traded at all" fact.
+			var flips: float = _num(facts.get("list_flips"))
+			return _result(req, flips >= min_value, flips, min_value)
+
+		"job_contacts_min":
+			var contacts: float = _num(facts.get("job_contacts"))
+			return _result(req, contacts >= min_value, contacts, min_value)
+
+		"collection_non_empty":
+			# One type for every "is there anything to show" gate, keyed on a
+			# named count the adapter supplies. A population check is not a
+			# progression fact and does not deserve a semantic type each.
+			var size: float = _num(facts.get(str(req.get("collection", ""))))
+			return _result(req, size > 0.0, size, 1)
+
+		"fact_true":
+			# The narrow escape hatch: a named boolean fact, for a surface whose
+			# condition is a live flag rather than a count. Absent reads FALSE,
+			# which is the closed direction.
+			var flag: bool = bool(facts.get(str(req.get("fact", "")), false))
+			return _result(req, flag, flag, true)
 
 	return {
 		"ok": false,

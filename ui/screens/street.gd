@@ -57,10 +57,36 @@ func _on_people() -> void:
 func _on_action_failed(_action: String, reason: String) -> void:
 	nav.show_toast(reason)
 
+## Street's gates, keyed to the district each card is for.
+##
+## Spenard has no entry: home turf is never gated, and giving it a gate that
+## always passes would be a row in the registry that can only ever be wrong.
+const ACCESS := preload("res://autoload/surface_visibility.gd")
+const DISTRICT_SURFACES := {
+	"downtown": ACCESS.STREET_DOWNTOWN,
+	"airport_industrial": ACCESS.STREET_SHIP_CREEK,
+}
+
 func _bind_content() -> void:
 	_fill_districts()
 	_fill_venues()
 	_fill_people()
+	_bind_gates()
+
+## Run AFTER the fills, not before. A locked card still shows the district's
+## real name, risk and blurb underneath the dimming — the player is meant to see
+## what they have not reached yet, which is the whole difference between LOCKED
+## and HIDDEN — so the card is filled first and then dimmed.
+func _bind_gates() -> void:
+	for i in range(3):
+		var district: Dictionary = gs.districts[i] if i < gs.districts.size() else {}
+		var surface_id: Variant = DISTRICT_SURFACES.get(str(district.get("id", "")))
+		if surface_id == null:
+			continue
+		gate_surface(str(surface_id), "Shell/Scroll/Pad/Content/Districts/Dist%d" % i)
+	# The People row is this screen's only door to the Crew screen, so it wears
+	# the same gate the route does.
+	gate_surface(ACCESS.MENU_CREW, "Shell/Scroll/Pad/Content/People")
 
 func _fill_districts() -> void:
 	for i in range(3):

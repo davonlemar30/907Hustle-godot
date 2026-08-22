@@ -521,6 +521,40 @@ const DISTRICT_ADJACENCY := {
 ##     "counterplay produces visible results within a week" the tuning brief
 ##     asks for.
 ##
+## v0.1.0's gain-side recovery: the HOT escape lever.
+##
+## FS-003.13 retuned the QUIET-day rates above and it was not enough for one
+## profile. Recovery only ever fired on a day with NO gain on it, and an
+## aggressive player produces a gain every day by definition — so the aggressive
+## profile sat at HOT for 19 of 29 days with no counterplay available except
+## stopping, which is not a strategy so much as an absence of one.
+##
+## So a CLEAN outcome now pays pressure back. The values are deliberately set so
+## a clean source action is a WASH rather than a discount: Boost's clean success
+## gains +0.5 (`PRESSURE_BOOST_SUCCESS`) and Stick's clean tier gains +0.5
+## (`PRESSURE_BY_TIER`), and both recover the same 0.5 at settlement. Work a
+## district all month without a single mess and it stays where it started; eat
+## one messy outcome and the +1.0 has nothing to answer it.
+##
+## Marcus's tuning note: the lever rewards reading the odds, not volume. Nothing
+## about it lets a reckless player out — messy, failure and catastrophic recover
+## NOTHING, and the last two are already gaining while they do it. The tradeoff
+## is real: play carefully inside high activity, or accept HOT as the cost of
+## volume.
+const PRESSURE_CLEAN_RECOVERY := 0.5
+const PRESSURE_MESSY_RECOVERY := 0.0
+const PRESSURE_FAILURE_RECOVERY := 0.0
+const PRESSURE_CATASTROPHIC_RECOVERY := 0.0
+
+## The four above as a table, so `clean_recovery()` is a lookup and the
+## constants stay findable by the names the decision was recorded under.
+const PRESSURE_RECOVERY_BY_TIER := {
+	"clean": PRESSURE_CLEAN_RECOVERY,
+	"messy": PRESSURE_MESSY_RECOVERY,
+	"failure": PRESSURE_FAILURE_RECOVERY,
+	"catastrophic": PRESSURE_CATASTROPHIC_RECOVERY,
+}
+
 ## Set to 0 rather than deleted: the grace mechanism stays expressed, so
 ## restoring a hold day is a constant change rather than a code change.
 const PRESSURE_QUIET_GRACE_DAYS := 0
@@ -590,6 +624,12 @@ func quiet_recovery(score: float) -> float:
 	if pressure_band(score) == PRESSURE_ACCELERATED_FROM_BAND:
 		return PRESSURE_ACCELERATED_RECOVERY
 	return PRESSURE_QUIET_RECOVERY
+
+## Pressure paid back by one resolved outcome. Unknown tiers recover NOTHING —
+## the safe direction for a lever whose whole job is letting pressure down: a
+## typo must never hand the player free recovery.
+func clean_recovery(tier_name: String) -> float:
+	return float(PRESSURE_RECOVERY_BY_TIER.get(tier_name, 0.0))
 
 func adjacent_districts(district_id: String) -> Array:
 	return (DISTRICT_ADJACENCY.get(district_id, []) as Array).duplicate()

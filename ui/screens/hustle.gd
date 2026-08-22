@@ -31,10 +31,16 @@ func _on_surface(row: String, label: String) -> void:
 		return
 	nav.go_to(route)
 
+## The Hustle hub is where Jobs is reached from, so the Jobs row carries the
+## gate. Filled first, then locked, for the same reason Street's cards are: a
+## locked row still reports what the surface is.
+const ACCESS := preload("res://autoload/surface_visibility.gd")
+
 func _bind_content() -> void:
 	_bind_take()
 	_bind_surfaces()
 	_bind_curtis()
+	gate_surface(ACCESS.MENU_JOBS, "Shell/Scroll/Pad/Content/Rows/Jobs")
 
 func _bind_take() -> void:
 	_set_text("Shell/Scroll/Pad/Content/Take/V/Big", "$%s" % _commas(gs.todays_take))

@@ -334,6 +334,14 @@ func _run(target_id: String) -> Dictionary:
 	# more Heat than the tier tolerates; a catastrophe books at every tier.
 	var rules: RefCounted = RULES.new()
 	var arrested: bool = rules.stick_arrests(int(t["tier"]), tier, pre_source_heat)
+	# FS-003.13's post-arrest cooldown. Applied AFTER the authored gate for the
+	# same reason Boost applies it after its own: the gate answers "were you
+	# already hot when you tried this", and the cooldown answers the separate
+	# question of whether the same precinct is picking you up two days running.
+	var arrest_owner: Object = gm.system("arrest") if gm != null else null
+	if arrested and arrest_owner != null and arrest_owner.in_cooldown(int(gs.day)):
+		arrested = false
+		result["arrest_suppressed"] = "cooldown"
 	result["arrested"] = arrested
 	if arrested and engine != null and not engine.has_active():
 		var opened: Dictionary = _open_booking(t, tier, cause_id, pre_source_heat, result)

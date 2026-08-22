@@ -138,6 +138,112 @@ func schedule(target_id: String, tier_name: String, cause_id: String,
 	gs.log_activity("Somebody made a call before you cleared out.", AMBER)
 	return row
 
+# --- ambient signals (PX-003 §8, FS-003.13 Task 5) -------------------------
+
+## The one ambient warning today's feed is allowed to carry, if anything is live
+## here. Returns the number of lines written, which is 0 or 1.
+##
+## ## Why this exists at all
+##
+## Leaving the district is the only counterplay a queued retaliation has, and
+## before this the queue was completely silent until it surfaced. FS-003.12
+## measured what that produces: three long-run profiles, eleven threats between
+## them, zero avoided. Not because avoidance was hard — because nothing in the
+## game ever suggested there was something to avoid.
+##
+## ## What it may and may not say
+##
+## PX-003 §8 keeps the window hidden, and the lines are written so that hiding it
+## is structural rather than a matter of care. Nothing here reads `trigger_day`
+## or `expires_end_day` for anything except deciding whether a row is still live,
+## the copy never varies with how much time is left, and the line is chosen off
+## the row and the day rather than off the row's age. A warning that intensified
+## as the window closed would be a countdown with adjectives.
+##
+## ## Presence, and only presence
+##
+## Same gate the surfacing arbitration uses (TI-003 regression #29): a row warns
+## only in ITS district. Walk away and the feed goes quiet the next morning,
+## which is the whole lesson this signal exists to teach.
+func push_ambient_warnings(today: int) -> int:
+	if int(gs.consequence_flags.get("retaliation_last_ambient_day", -1)) == today:
+		return 0
+	var rules: RefCounted = _rules()
+	var row: Dictionary = _ambient_row(today)
+	if row.is_empty():
+		return 0
+	var lines: Array = rules.RETALIATION_AMBIENT_LINES
+	# Seeded on (row, day), never on a counter: a reload has to reproduce the
+	# same line, and `randi()` is banned outright in this build anyway.
+	var roll: float = rng.seeded_random(gs.run_seed,
+		"retaliation:ambient:%s:%d" % [str(row.get("queue_id", "")), today])
+	var index: int = clampi(int(roll * float(lines.size())), 0, lines.size() - 1)
+	gs.log_activity(str(lines[index]), AMBER)
+	row["last_warned_day"] = today
+	gs.consequence_flags["retaliation_last_ambient_day"] = today
+	return 1
+
+## The row today's warning speaks for, or empty.
+##
+## Oldest first, by the same (`trigger_day`, `created_sequence`) order the
+## surfacing arbitration uses — so the warning and the encounter are talking
+## about the same threat rather than two different ones.
+func _ambient_row(today: int) -> Dictionary:
+	var rules: RefCounted = _rules()
+	var candidates: Array = []
+	for entry in gs.consequence_queue:
+		var candidate: Dictionary = entry
+		# `pending` is the whole liveness test: a surfaced or resolved row has
+		# already been answered, and an expired one is over.
+		if str(candidate.get("status", "pending")) != "pending":
+			continue
+		if str(candidate.get("district_id", "")) != str(gs.current_district_id):
+			continue
+		if today < int(candidate.get("created_day", 0)) + rules.RETALIATION_AMBIENT_FROM_DAY:
+			continue
+		if today > int(candidate.get("expires_end_day", 0x7FFFFFFF)):
+			continue
+		candidates.append(candidate)
+	if candidates.is_empty():
+		return {}
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_day: int = int(a.get("trigger_day", 0))
+		var b_day: int = int(b.get("trigger_day", 0))
+		if a_day != b_day:
+			return a_day < b_day
+		return int(a.get("created_sequence", 0)) < int(b.get("created_sequence", 0)))
+	return candidates[0]
+
+## The one-time callback for the first threat this run ever avoids into expiry.
+##
+## Called by the engine with the rows it just expired, because the engine owns
+## the queue and expiry is its transition to make. Returns true when a message
+## was pushed, which is at most once per run.
+##
+## Once per RUN rather than once per threat, and the flag persists: the callback
+## exists to teach that leaving the district works, and a lesson that repeats
+## every time it applies stops being a lesson and becomes a notification. The
+## flag going into `consequence_flags` is what makes "already learned" survive a
+## reload — without it, loading a save from before the first expiry would teach
+## it again.
+func note_expiries(expired_rows: Array) -> bool:
+	if expired_rows.is_empty():
+		return false
+	if bool(gs.consequence_flags.get("retaliation_first_expiry_seen", false)):
+		return false
+	var phone: Object = gm.system("phone") if gm != null else null
+	if phone == null:
+		return false
+	var rules: RefCounted = _rules()
+	var district_id := str((expired_rows[0] as Dictionary).get("district_id",
+		gs.current_district_id))
+	var prose := str((phone.AREA_PROSE_NAMES as Dictionary).get(district_id, "the block"))
+	phone.push_message(rules.RETALIATION_EXPIRY_CALLBACK_FROM % prose,
+		rules.RETALIATION_EXPIRY_CALLBACK % prose)
+	# Set AFTER the push, so a push that could not happen does not burn the flag.
+	gs.consequence_flags["retaliation_first_expiry_seen"] = true
+	return true
+
 # --- activation -------------------------------------------------------------
 
 ## Open the blocking encounter for one queued row.

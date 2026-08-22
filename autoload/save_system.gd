@@ -97,7 +97,19 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## rules the whole aggregate CLEAN, which is a deliberate divergence from canon's
 ## own pre-split migration — see `WalletSystem.classify_legacy_total()`, which is
 ## the single place that rule lives and is what this arm calls.
-const SAVE_VERSION := 8
+##
+## v9 (FS-003.13): adds `consequence_flags`, the consequence layer's run-level
+## one-shot flags. Purely additive and the arm only stamps the version: an empty
+## Dictionary is the honest history for a v8 run, because a flag that records
+## "this has already been shown once" is false for a run that has never shown it.
+##
+## The arrest cooldown FS-003.13 also added rides inside `arrest_record`, which
+## v8 already persists whole — so it needs no arm and no default here. A v8 save
+## comes back with the key absent, and `ArrestSystem.cooldown_until_day()` reads
+## a missing key as -1: no cooldown, which is the correct history for arrests
+## that predate the mechanic. One bump, one arm, both new pieces of state
+## covered.
+const SAVE_VERSION := 9
 
 ## Every mutable GameState field, captured and applied by name. products.price
 ## is the one mutable value living inside a canon table; it rides separately as
@@ -154,6 +166,8 @@ const PERSIST_FIELDS: Array[String] = [
 	"last_blocking_delayed_day",
 	"arrest_record", "boost_store_bans",
 	"district_pressure", "pressure_bleed_pending",
+	# The consequence layer's run-level one-shot flags (v9, FS-003.13).
+	"consequence_flags",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -405,6 +419,21 @@ func _migrate(payload: Dictionary) -> Dictionary:
 					if (carried_cash is int or carried_cash is float) else 0
 				state["clean_cash"] = maxi(0, aggregate)
 				state["dirty_cash"] = 0
+			8:
+				# v8 → v9: `consequence_flags` is additive and defaults to an
+				# empty Dictionary. Empty is the only true answer for the same
+				# reason the v3 → v4 attribute arm defaults: every flag in there
+				# records "this has already been shown to the player once", and
+				# a v8 run has never shown any of them.
+				#
+				# FS-003.13's arrest cooldown needs no arm of its own. It lives
+				# inside `arrest_record`, which v8 already persists whole, and a
+				# v8 record comes back without the key — which
+				# `ArrestSystem.cooldown_until_day()` reads as -1, meaning no
+				# cooldown. Arming a cooldown here from `last_arrest_day` would
+				# be worse than doing nothing: it would suppress arrests on a
+				# loaded run for a booking the mechanic did not exist during.
+				pass
 			_:
 				return {}
 		version += 1

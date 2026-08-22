@@ -102,6 +102,31 @@ func priors() -> int:
 func last_arrest_day() -> int:
 	return int((gs.arrest_record as Dictionary).get("last_arrest_day", -1))
 
+## The day the post-arrest cooldown stops covering, or -1 for a run that has
+## never been booked.
+##
+## Read with a default rather than assumed present: `arrest_record` is persisted
+## as a whole Dictionary, so a save written before FS-003.13 comes back without
+## this key and must read as "no cooldown" instead of as day 0. That is why the
+## field needed no schema bump — see the note on `_commit` step 5.
+func cooldown_until_day() -> int:
+	return int((gs.arrest_record as Dictionary).get("cooldown_until_day", -1))
+
+## Whether an arrest gate is suppressed right now.
+##
+## Asked by the SOURCE systems, after their own gate has already said yes. That
+## order matters: the gate stays the authored one, and the cooldown is a separate
+## fact about the last few days rather than a second threshold hidden inside it.
+## A source that asked the other way round would make the gate's own tests
+## depend on the arrest record.
+##
+## `today` is passed rather than read off `gs.day` so the answer is a function of
+## its arguments: the projection code and the tests ask about days the clock is
+## not currently sitting on, and a reader that quietly substituted "now" would
+## give them a different answer than the gate gets.
+func in_cooldown(today: int) -> bool:
+	return _rules().arrest_suppressed(today, cooldown_until_day())
+
 func charges() -> Array:
 	return ((gs.arrest_record as Dictionary).get("charges", []) as Array).duplicate(true)
 
@@ -339,6 +364,17 @@ func _commit(payload: Dictionary) -> Dictionary:
 		priors_after = int(record.get("priors", 0)) + 1
 		record["priors"] = priors_after
 		record["last_arrest_day"] = int(gs.day)
+		# FS-003.13 Task 3's cooldown deadline, stamped where the rest of the
+		# record is written and behind the same receipt — so a reload mid-commit
+		# cannot arm it twice, and a run that never committed a booking never
+		# arms it at all.
+		#
+		# Nested inside `arrest_record`, which PERSIST_FIELDS already carries
+		# whole. That is deliberate: a new key in an already-persisted Dictionary
+		# survives a save/load without a schema bump, and a pre-FS-003.13 save
+		# loads with the key absent, which `cooldown_until_day()` reads as -1 —
+		# the correct history for a run whose arrests predate the mechanic.
+		record["cooldown_until_day"] = rules.arrest_cooldown_until(int(gs.day))
 		(record["charges"] as Array).append({
 			"cause_id": cause_id,
 			"day": int(gs.day),

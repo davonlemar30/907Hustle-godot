@@ -18,7 +18,7 @@ extends RefCounted
 ##   4. INCREMENT   — day += 1, slot back to MORNING
 ##   5. ROLLOVER    — TI-003 §9's post-increment lifecycle, in `ROLLOVER_ORDER`
 ##   6. MARKET      — economy.evolve(), then `day_crossed` for legacy listeners
-##   7. DAY_START   — hooks (retaliation expiry and activation)
+##   7. DAY_START   — retaliation expiry, activation, ambient signal, then hooks
 ##
 ## ## Why Exposure and Curtis moved off `day_crossed`
 ##
@@ -103,12 +103,20 @@ const ROLLOVER_ORDER: Array[String] = [
 ## anything asks what is eligible, or the day's one delayed slot could be spent
 ## on an encounter that had already expired.
 ##
+## FS-003.13 appends a third step and reorders nothing. `retaliation_ambient`
+## runs LAST for the same reason expiry runs first: a threat that already expired
+## must not whisper, and a threat that just walked through the door in person is
+## not something the feed then hints at. Both are questions about what is still
+## PENDING, and both are answered correctly only once the other two steps have
+## finished moving rows out of that state.
+##
 ## Declared here rather than registered as a `day_start_hook` because these are
 ## the lifecycle's own work, not somebody else's. The hooks stay empty and
 ## available, and `clear_hooks()` cannot remove the game.
 const DAY_START_ORDER: Array[String] = [
 	"expire_retaliation",
 	"surface_delayed",
+	"retaliation_ambient",
 ]
 
 ## The settlement order, declared. Each entry is the system name as registered
@@ -287,6 +295,10 @@ func _run_day_start_step(step: String, today: int) -> void:
 			# The district the player is actually standing in. A retaliation
 			# waits for presence and does not travel (TI-003 regression #29).
 			engine.try_surface_delayed(today, str(gs.current_district_id))
+		"retaliation_ambient":
+			# PX-003 §8's ambient signal. Reads the same presence gate; writes to
+			# the activity feed and nowhere else.
+			engine.push_retaliation_ambient(today)
 
 func _autoload(node_name: String) -> Node:
 	var loop: MainLoop = Engine.get_main_loop()

@@ -99,9 +99,23 @@ const HIGH_VISIBILITY_CLEAN_FIRST := "high_visibility_clean_first"
 
 ## TI-003 §6. Dirty cash spent in the open above this much in one transaction
 ## starts generating Financial Pressure.
-const FINANCIAL_PRESSURE_FREE_DIRTY := 400
+##
+## FS-003.13 Task 4 halves the free band and raises the rate. The authored
+## $400 / 0.01 pair meant a single transaction had to move more than $450 of
+## street money to register even one point, against a decay of one point a day —
+## so the meter could only climb on a day the player paid a large bail, and
+## FS-003.12 measured two of three profiles never reaching the fold at all. A
+## mechanic that never fires is not a mechanic.
+##
+## $200 / 0.015 keeps the shape (a free band, then a linear rate) and moves the
+## activation point to where the run actually spends: a $500 bail is now 5
+## points rather than 1, and two of them inside a week clear the fold.
+##
+## Small routine dirty spending stays invisible, which is the half of TI-003 §6
+## that must not move — see the free-band checks in the parity suite.
+const FINANCIAL_PRESSURE_FREE_DIRTY := 200
 ## Pressure per dollar of dirty spend above the free band.
-const FINANCIAL_PRESSURE_PER_DOLLAR := 0.01
+const FINANCIAL_PRESSURE_PER_DOLLAR := 0.015
 ## TI-003 §6: "Financial Pressure caps at 10."
 const FINANCIAL_PRESSURE_MAX := 10
 
@@ -211,7 +225,9 @@ func spend(amount: int, policy: String = ROUTINE_DIRTY_FIRST, context: Dictionar
 
 ## Dirty money spent where it can be read back.
 ##
-## TI-003 §6:  financial_pressure_gain = round((dirty_used - 400) * 0.01)
+## TI-003 §6, at FS-003.13's constants:
+##
+##     financial_pressure_gain = round((dirty_used - FREE_DIRTY) * PER_DOLLAR)
 ##
 ## The rollover that decays this and folds it into Heat is §17, which is
 ## FS-003.9's slice. This is the gain side only — the number moves, and nothing

@@ -313,10 +313,13 @@ func reset_to_new_game() -> void:
 	consequence_history = {}
 	consequence_queue = []
 	last_blocking_delayed_day = -1
-	arrest_record = {"priors": 0, "last_arrest_day": -1, "charges": []}
+	arrest_record = {
+		"priors": 0, "last_arrest_day": -1, "charges": [], "cooldown_until_day": -1,
+	}
 	boost_store_bans = []
 	district_pressure = {}
 	pressure_bleed_pending = []
+	consequence_flags = {}
 	# Jobs and obligations reset with the run.
 	active_job_id = ""
 	job_records = {}
@@ -948,8 +951,14 @@ var last_blocking_delayed_day: int = -1
 
 ## TI-003 §5. Priors drive bail multipliers and processing time, so this is the
 ## record that makes a second arrest cost more than the first.
+##
+## `cooldown_until_day` is FS-003.13's post-arrest gate suppression deadline:
+## the last day an arrest gate stays shut after a booking committed, or -1 for a
+## run that has never been booked. It lives inside this Dictionary rather than as
+## a field of its own so it persists under the existing manifest entry — see
+## `ArrestSystem.cooldown_until_day()`.
 var arrest_record: Dictionary = {
-	"priors": 0, "last_arrest_day": -1, "charges": [],
+	"priors": 0, "last_arrest_day": -1, "charges": [], "cooldown_until_day": -1,
 }
 
 ## Boost-owned and persistent by target id (TI-003 §5). Kept here for the same
@@ -965,3 +974,17 @@ var district_pressure: Dictionary = {}
 ## Pressure scheduled to bleed into adjacent districts tomorrow (TI-003 §8).
 ## Rows carry Cause + destination identity so a reload cannot double-apply.
 var pressure_bleed_pending: Array = []
+
+## Run-level one-shot flags owned by the consequence layer (FS-003.13 Task 5).
+##
+## A Dictionary rather than a field per flag, for the reason PERSIST_FIELDS is a
+## list of names: a flag that lives in here costs no manifest entry and no
+## migration arm, so the next one-shot callback is a key rather than a schema
+## decision. Everything in it is a fact about THIS RUN that must not repeat after
+## a reload — currently only `retaliation_first_expiry_seen`, the flag that keeps
+## PX-003 §8's avoidance callback to once per run.
+##
+## Read with `.get(key, default)` everywhere, never indexed: an old save comes
+## back with the Dictionary empty and every flag must default to "has not
+## happened yet".
+var consequence_flags: Dictionary = {}

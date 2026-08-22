@@ -293,9 +293,47 @@ const BOOKING_CHOICES: Array[String] = [
 ##
 ## The direction is the point, and it is easy to get backwards: the BIGGER the
 ## job, the LESS existing Heat it takes to turn a blown attempt into an arrest.
-## A fumbled pocket-pick at Heat 9 is a bad night; a fumbled tier-3 job at Heat 7
+## A fumbled pocket-pick at Heat 11 is a bad night; a fumbled tier-3 job at Heat 9
 ## is a case.
-const STICK_FAILURE_ARREST_HEAT := {1: 10.0, 2: 8.0, 3: 6.0}
+##
+## FS-003.13 Task 3 raises every tier by 2. The authored 10/8/6 was written
+## before District Pressure existed; once Pressure saturates, the projected
+## success chance falls, failures multiply, and Heat sits above 6 for most of a
+## working week — so the tier-3 gate was open essentially all the time and the
+## aggressive profile booked 15 times in 29 days. The gate is supposed to ask
+## "were you already hot when you tried this", not "have you been playing".
+## 12/10/8 keeps the same shape against a Heat scale whose realistic working
+## band moved up.
+const STICK_FAILURE_ARREST_HEAT := {1: 12.0, 2: 10.0, 3: 8.0}
+
+## FS-003.13 Task 3. Days after an arrest during which no arrest gate may fire.
+##
+## The fiction is the whole justification: the player was in booking hours ago,
+## with the same precinct, and the same officers are not picking them up again
+## on the way out of the parking lot. The mechanical job is spacing — before
+## this, a bad week was one continuous booking period with no gaps in it, and a
+## consequence that never stops is a tax rather than an escalation.
+##
+## Counted from the day the booking COMMITTED (the day the record was written),
+## not from release: release time varies with the lane the player chose, and
+## tying the cooldown to it would quietly reward serving over paying with extra
+## immunity. `arrest_cooldown_until` turns that day into the stored deadline.
+const ARREST_COOLDOWN_DAYS := 2
+
+## The day the cooldown stops covering, given the day an arrest was booked.
+func arrest_cooldown_until(booked_day: int) -> int:
+	return booked_day + ARREST_COOLDOWN_DAYS
+
+## Whether an arrest gate is suppressed today.
+##
+## `cooldown_until_day` is the stored deadline, or -1 for a run that has never
+## been booked — which is why the sentinel is checked rather than assumed to be
+## smaller than any real day. `today <= deadline` is inclusive: a booking on day
+## 7 covers days 7, 8 and 9, and the player is exposed again on day 10.
+func arrest_suppressed(today: int, cooldown_until_day: int) -> bool:
+	if cooldown_until_day < 0:
+		return false
+	return today <= cooldown_until_day
 
 ## The one observation an arrest files, TI-003 §13 step 6.
 ##
@@ -458,11 +496,41 @@ const DISTRICT_ADJACENCY := {
 	"airport_industrial": ["north_star_lot"],
 }
 
-## FS-003 §6's recovery rule. The first full quiet day HOLDS; the second and
-## every one after takes a point off. TI-003 regression #18 is "First quiet day
-## decays Pressure early", and the grace count is what stops it.
-const PRESSURE_QUIET_GRACE_DAYS := 1
-const PRESSURE_QUIET_RECOVERY := 1.0
+## FS-003 §6's recovery rule, retuned by FS-003.13 Task 2.
+##
+## As authored, recovery was −1.0 per quiet day starting on the SECOND
+## consecutive quiet day, against a single messy outcome worth +1.0. A player
+## working one district daily therefore outran decay permanently: FS-003.12's
+## aggressive profile spent 19 of 29 days at HOT, which makes HOT the resting
+## state and QUIET the anomaly. A band that is always on is not a warning.
+##
+## Three levers move, and each answers a different half of that:
+##
+##   - the grace day is GONE. TI-003 regression #18 ("first quiet day decays
+##     Pressure early") was written against the authored rule, and the rule is
+##     what changed: laying off a district now shows up the next morning rather
+##     than the morning after. The regression's real content — that a day with
+##     a gain on it is not a quiet day — is unchanged and still enforced by
+##     `last_gain_day`, which is the check that actually stops early decay.
+##   - the ordinary rate is 1.5, so three quiet days clear a full band rather
+##     than three days clearing one point of a nine-point scale.
+##   - HOT decays FASTER than the rest of the scale, at 2.0. A district in
+##     crisis is the one the player most needs a way out of, and a flat rate
+##     makes the top of the scale the hardest place to leave. Four quiet days
+##     now take a HOT district (9.0) to 3.0 — HOT to KNOWN — which is the
+##     "counterplay produces visible results within a week" the tuning brief
+##     asks for.
+##
+## Set to 0 rather than deleted: the grace mechanism stays expressed, so
+## restoring a hold day is a constant change rather than a code change.
+const PRESSURE_QUIET_GRACE_DAYS := 0
+const PRESSURE_QUIET_RECOVERY := 1.5
+## The accelerated rate, applied while the score is still in the band named by
+## `PRESSURE_ACCELERATED_FROM_BAND` at the moment recovery is computed.
+const PRESSURE_ACCELERATED_RECOVERY := 2.0
+## Which band decays fast. Named as the band rather than as a score so it tracks
+## `PRESSURE_BANDS` if the band edges ever move.
+const PRESSURE_ACCELERATED_FROM_BAND := BAND_HOT
 
 # --- Financial Pressure rollover (TI-003 §17, FS-003 §8) -------------------
 #
@@ -473,12 +541,19 @@ const PRESSURE_QUIET_RECOVERY := 1.0
 
 ## TI-003 §17, post-increment: `financial_pressure = max(0, financial_pressure - 1)`.
 const FINANCIAL_PRESSURE_DECAY := 1
-## Then, on what REMAINS: "if financial_pressure >= 6: HeatSystem.apply_direct(+1)".
+## Then, on what REMAINS: "if financial_pressure >= FOLD_AT: apply_direct(+1)".
 ##
 ## The order is load-bearing and both halves are on TI-003's regression list:
 ## #25 is folding before the decay, #26 is Exposure propagating morning Heat
 ## before the fold. Decay, then fold, then Exposure — see `day_lifecycle.gd`.
-const FINANCIAL_PRESSURE_FOLD_AT := 6
+## Neither ordering moves here; only the threshold does.
+##
+## FS-003.13 Task 4 lowers it from 6 to 4. Against a decay of one point a day,
+## a fold at 6 needed the meter to gain six points faster than it lost them, and
+## the gain side only moved on a large formal payment. Four is reachable from
+## two bails in a week, which is the scenario the mechanic was authored for:
+## paying your way out of trouble with money that cannot explain itself.
+const FINANCIAL_PRESSURE_FOLD_AT := 4
 const FINANCIAL_PRESSURE_FOLD_HEAT := 1.0
 
 # --- pressure lookups ------------------------------------------------------
@@ -504,6 +579,18 @@ func pressure_steps(score: float) -> int:
 			return int((row as Dictionary)["steps"])
 	return 0
 
+## Points a quiet day takes off a score, read from the score itself.
+##
+## Read BEFORE the subtraction, so a district sitting at 9.0 takes the full
+## accelerated step down to 7.0 and only then rejoins the ordinary rate. Reading
+## it after would make the accelerated rate unreachable at every score that is
+## not exactly the band floor, which is the quiet way this tuning would have
+## done nothing.
+func quiet_recovery(score: float) -> float:
+	if pressure_band(score) == PRESSURE_ACCELERATED_FROM_BAND:
+		return PRESSURE_ACCELERATED_RECOVERY
+	return PRESSURE_QUIET_RECOVERY
+
 func adjacent_districts(district_id: String) -> Array:
 	return (DISTRICT_ADJACENCY.get(district_id, []) as Array).duplicate()
 
@@ -528,6 +615,51 @@ const RETALIATION_EXPIRY_DELAY := 5
 ## FS-003 §10: "only one generic retaliation scene from this queue surfaces per
 ## day in the first slice."
 const RETALIATION_DAILY_CAP := 1
+
+# --- ambient signals (PX-003 §8, FS-003.13 Task 5) -------------------------
+#
+# Avoidance is the whole counterplay for a queued retaliation, and before this
+# nothing told the player a threat was live. FS-003.12 measured the result:
+# three profiles, zero expirations, because none of them had any reason to
+# leave. A counterplay nobody can see is not a choice, it is a coin flip that
+# happens to be weighted.
+#
+# What this adds is a SIGNAL, not information. PX-003 §8 is explicit that the
+# expiry window stays hidden: the player learns that trouble is nearby and that
+# it stopped when they stopped going back. They are never told when, or by whom,
+# or how many days are left. Every line below is written to survive that
+# constraint — none of them counts down, names the actor, or changes as the
+# window closes, because a line that got more urgent WOULD be a countdown.
+
+## The day offset the first ambient warning can land on, relative to the day the
+## threat was scheduled. +1: the night it happened is not ambient, it is the
+## thing that happened.
+const RETALIATION_AMBIENT_FROM_DAY := 1
+## At most one ambient warning reaches the feed per day, however many rows are
+## live. Two people asking about you is one fact, not two.
+const RETALIATION_AMBIENT_DAILY_CAP := 1
+
+## The authored lines. Picked by seeded RNG keyed on the row and the day, so a
+## reload shows the same line rather than rerolling the atmosphere.
+const RETALIATION_AMBIENT_LINES: Array[String] = [
+	"Two people asked about you near the strip today.",
+	"Same car passed the lot twice.",
+	"Somebody was describing you to the guy at the counter.",
+	"A face you half-recognise has been on this block all week.",
+	"Someone asked which building was yours. Nobody answered.",
+]
+
+## The one-time Phone callback on the first threat a run ever avoids into expiry.
+##
+## Once per RUN, not once per threat: it exists to teach that leaving works, and
+## a lesson repeated every time it applies is a notification, not a lesson.
+## `%s` takes the district's prose name.
+const RETALIATION_EXPIRY_CALLBACK := "The people asking around %s stopped showing up."
+## Who the callback comes from. Not a crew member: the callback fires whether or
+## not anybody is recruited, and attributing it to Tone would claim a lookout the
+## player may never have hired. The district itself is the honest sender, and it
+## matches the area-scoped shape the phone's intel lines already use.
+const RETALIATION_EXPIRY_CALLBACK_FROM := "Word around %s"
 
 ## TI-003 §15's qualifying Stick outcomes. Plain Failure schedules nothing —
 ## FS-003 §9 words it as "a successful or loud qualifying hit", and a plain

@@ -4962,6 +4962,138 @@ is not reachable headless. The equivalent coverage here is `--headless --import`
 (reports broken references) plus the smoke harness loading and binding all 21
 scenes — both clean.
 
+## Batch 1 — Hardening  (added 2026-08-22)
+
+Branch `codex/batch-1-hardening`, from `main` at `c0e12a9` (v0.1.0 merged).
+Four tasks off the hardening list: A1, A2, A3, A4.
+
+**Parity: 11,147 checks, 0 failures** (from 11,110). Floor 11,100 → 11,137.
+Nested save-shape suite 82, screens 21/21, glyph coverage passes.
+**Save schema unchanged at v10** — nothing here adds state.
+
+### A1 — crew and shark settle against the day that ENDED
+
+The one behavioural change in the batch, and it was filed with its own fix
+already written down. `day_lifecycle.gd`'s header carried this since FS-003.2:
+
+> *"Canon's `confirmDayEnd` settles crew and shark ABOVE the increment, so both
+> see the ending day. This port has always settled them below it... The `+ 1` is
+> commented at both call sites and filed. When it is corrected, those two lines
+> are the whole change."*
+
+It was, and they were. Both `settle_night(ended_day)` implementations dropped
+`+ 1`.
+
+**Crew.** `wage_missed_since` is now stamped with the night the wage was
+actually missed rather than the morning after. The *delta* the grace rule reads
+is unchanged for a run that starts clean — stamp and comparison moved together,
+and the loyalty curve over three consecutive missed nights is still `[8, 8, 7]`,
+asserted. What does move is `requirements.payroll_not_delinquent`, which
+compares the stamp against the LIVE day rather than against this settlement: it
+now measures delinquency from the night it started instead of a day late.
+
+**Shark.** The real one. A note due on day 7 used to resolve on the night that
+ENDED day 6, because `ended_day + 1` already read 7 — the player never got their
+own due day to pay it. It resolves on the night that ends day 7 now, which is
+the rule `obligations.gd` already applied to rent and states the reason for:
+*"a bill due on day 7 has to be payable during day 7"*.
+
+Two existing checks pinned the old off-by-one and were re-pinned. They were
+written as a matched pair on purpose ("shifting either way breaks exactly one of
+these"), and that is exactly how they behaved.
+
+### A2 — 907List board under-fill: already closed, now guaranteed
+
+The ticket describes a retry-sampling loop colliding against itself on FNV-1a
+and handing back a short board. **That loop is gone** — PR #46 replaced it with
+a keyed forward shuffle, and v0.1.0 moved the key's varying components to the
+front. `RngManager.seeded_shuffle`'s own doc names the property: *"Unlike retry
+sampling, this always returns a full permutation and therefore cannot under-fill
+a board through collisions."*
+
+Rather than close it on that argument, the property is now asserted: every tier,
+thirty consecutive days, board size equals the tier's `listings` and no listing
+repeats. Plus the inverse — a one-item pool yields a one-item board — because a
+board that *padded* itself would pass the first check for the wrong reason.
+
+### A3 — CREW_CAPACITY: already correct, now enforced
+
+Both call sites named in the ticket (`crew.gd`, `more.gd`) already used
+`gs.crew_capacity()`. The only remaining reference is the parity check that
+tests the constant itself, which is legitimate.
+
+So the ticket became a standing guarantee instead of a no-op commit: a source
+scan asserts no screen script mentions `CREW_CAPACITY`. This is a scan and not a
+value comparison deliberately — `crew_capacity()` currently *returns* the
+constant, so comparing them proves nothing while they agree. The point is the
+day capacity scales with rank, when a screen holding the constant starts showing
+a number the game disagrees with, quietly, because a constant that is still
+correct reads like working code.
+
+### A4 — four unguarded persisted mutators
+
+`_require_dispatch()` already existed on both autoloads and covered five
+methods. Four public mutators were outside it and all four write persisted
+state:
+
+| Function | Writes |
+| --- | --- |
+| `Exposure.rollover()` | `observation_queue` |
+| `Exposure.propagate_heat()` | via `broadcast_observation` |
+| `Curtis.maybe_watcher_encounter()` | `curtis_watchers_seen`, `curtis_last_watcher_day`, `curtis_recent_watcher_lines`, the feed |
+| `Curtis.rollover()` | `curtis_quiet_streak`, `curtis_awareness` |
+
+`maybe_watcher_encounter` is the one worth naming: it reads like a query and is
+not. `propagate_heat` was already transitively covered, and is guarded anyway so
+the warning names the function the caller actually called rather than one two
+frames down.
+
+Coverage is asserted from a **named list** rather than a source scan, because
+"does this mutate persisted state" is not a question a scan can answer, and a
+list somebody has to edit is a list somebody has to think about.
+
+### Sabotage log
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| B1-S1 | `ended_day + 1` restored in `crew.gd` | ✅ 2 failures |
+| B1-S2 | `ended_day + 1` restored in `shark.gd` | ✅ 2 failures |
+| B1-S3 | dispatch guard dropped from `Curtis.rollover` | ✅ 1 failure, names the function |
+| B1-S4 | board sliced to `want - 1` | ✅ 14 failures |
+| B1-S5 | `gs.CREW_CAPACITY` put back into `more.gd` | ✅ 2 failures, names the file |
+
+### Not touched, and why
+
+**A5 (nested save-shape fixture suite) was already shipped** by PR #49 while
+v0.1.0 was open. v0.1.0 extended it with three v10 arms (47 → 82 checks); there
+was nothing left for this batch to add.
+
+**B4 (Night Owl "Mini Mart")** shipped in v0.1.0, venue and boost target both.
+
+## Overnight Build Log — 2026-08-22
+
+Autonomous loop. Each entry: branch, tasks, parity, outcome.
+
+| # | Branch | Tasks | Parity | Outcome |
+| --- | --- | --- | --- | --- |
+| — | `claude/v0.1.0-playtest-polish-b4nlnx` | v0.1.0: versioning · surface visibility · seeded key audit · HOT lever · phone tap target · canonical locations | 10,781 → 11,110 | Merged, PR #53. Save v9 → v10. |
+| 1 | `codex/batch-1-hardening` | A1 settlement day · A2 board fill (verified + guaranteed) · A3 crew capacity (verified + guaranteed) · A4 dispatch guards | 11,110 → 11,147 | Merged, PR #54. Schema unchanged. |
+
+**Findings carried forward:**
+
+- v0.1.0's two unlock thresholds (1 corner → Downtown, 2 → Ship Creek; Deshawn
+  or Pherris → Jobs) are **authored, not sourced**. The build brief assumed
+  travel/territory unlock events that do not exist in this port. The mechanism
+  is right; the numbers want a design call.
+- Home's `MOVE PRODUCT` — the only bare `advance_time` control in the UI — sits
+  on the operation card that v0.1.0 now hides on a fresh run. Passing time still
+  works (Street travel, any Hustle action, More → Recovery → Lay Low, all
+  verified reachable), but re-homing that control is a navigation change and was
+  out of scope.
+- Two tickets on the eligible list were **already closed by earlier work** and
+  were converted into standing guarantees rather than no-op commits: A2 (board
+  fill) and A3 (crew capacity). A5 and B4 were closed outright.
+
 ## Working notes / gotchas
 - **Build loop:** `session_activate` → edit scene/theme → `scene_open(force_reload)`
   → `project_run(mode=current)` → `editor_screenshot(source=game)` to verify.

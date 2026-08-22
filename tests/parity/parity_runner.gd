@@ -134,6 +134,7 @@ func _ready() -> void:
 		_check_ti003_integration()
 		_check_save_roundtrip()
 		_check_v010()
+		_check_batch1()
 	_finish()
 
 func _load_fixtures() -> Dictionary:
@@ -5162,9 +5163,11 @@ func _check_lifecycle_settles_ending_day(gs: Node, gm: Node) -> void:
 	_expect_int("a skipped ending day counts as a miss",
 		int(gs.job_missed.get("wash_go", -1)), 1)
 
-	# Crew's wage clock is preserved exactly across the refactor — it still
-	# settles against the NEW day, which is this port's long-standing
-	# divergence from canon and is named at the call site rather than changed.
+	# Crew's wage clock, RE-PINNED in batch 1. It used to settle against the NEW
+	# day — this port's long-standing divergence from canon, named at the call
+	# site rather than changed, and asserted here as `8` on a night that ends
+	# day 7. That divergence is corrected: `crew.settle_night` reads `ended_day`
+	# now, so the sentinel is the night the wage was actually missed.
 	_lifecycle_ready(gs)
 	gs.crew_records["eli"] = {
 		"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
@@ -5172,29 +5175,30 @@ func _check_lifecycle_settles_ending_day(gs: Node, gm: Node) -> void:
 	}
 	gs.cash = 0
 	gm.dispatch("advance_time", {})
-	_expect_int("crew stamps the wage sentinel on the settling day",
-		int(gs.crew_records["eli"]["wage_missed_since"]), 8)
+	_expect_int("crew stamps the wage sentinel on the night it was missed",
+		int(gs.crew_records["eli"]["wage_missed_since"]), 7)
 
-	# Shark's note clock is preserved the same way, and needs its own check —
-	# claiming a divergence is preserved is worth nothing if nothing asserts it.
-	# Settling night 7 uses day 8, so a note due on 8 comes due tonight and a
-	# note due on 9 does not. Shifting either way breaks exactly one of these.
+	# Shark's note clock, RE-PINNED alongside it, and the pair is what makes the
+	# correction legible: settling the night that ENDS day 7 now reads 7, so a
+	# note due on 7 comes due tonight and a note due on 8 gets the whole of day 8
+	# to be paid. Before batch 1 both of these sat one day early. Shifting either
+	# way breaks exactly one of them.
+	_lifecycle_ready(gs)
+	gs.shark_loans = [{
+		"id": 1, "borrower_id": _riskiest_borrower(gs), "amount": 100, "term": 7,
+		"status": "active", "opened_day": 1, "due_day": 7,
+	}]
+	gm.dispatch("advance_time", {})
+	_expect_true("a note due on the night that ends its due day comes due",
+		str((gs.shark_loans[0] as Dictionary)["status"]) != "active")
+
 	_lifecycle_ready(gs)
 	gs.shark_loans = [{
 		"id": 1, "borrower_id": _riskiest_borrower(gs), "amount": 100, "term": 7,
 		"status": "active", "opened_day": 1, "due_day": 8,
 	}]
 	gm.dispatch("advance_time", {})
-	_expect_true("a note due on the settling day comes due tonight",
-		str((gs.shark_loans[0] as Dictionary)["status"]) != "active")
-
-	_lifecycle_ready(gs)
-	gs.shark_loans = [{
-		"id": 1, "borrower_id": _riskiest_borrower(gs), "amount": 100, "term": 7,
-		"status": "active", "opened_day": 1, "due_day": 9,
-	}]
-	gm.dispatch("advance_time", {})
-	_expect_str("a note due after the settling day is left alone",
+	_expect_str("a note still has the whole of its due day to be paid",
 		str((gs.shark_loans[0] as Dictionary)["status"]), "active")
 
 ## The market walks once. Proven by re-walking the same state independently.
@@ -14261,6 +14265,220 @@ func _check_canonical_location_names(gs: Node) -> void:
 			not rendered.contains(retired))
 	_free_screen(street)
 
+# =============================================================================
+# Batch 1 — hardening
+# =============================================================================
+
+func _check_batch1() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	_check_settlement_day(gs, gm)
+	_check_board_fills(gs, gm)
+	_check_dispatch_guard_coverage()
+	_check_screens_read_capacity_through_the_method()
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- A1: settlement reads the day that ended --------------------------------
+#
+# SABOTAGE: restore `ended_day + 1` in crew.gd -> "the wage is stamped with the
+#           night it was missed" fails.
+# SABOTAGE: restore `ended_day + 1` in shark.gd -> "a note is not settled before
+#           its due day is over" fails.
+
+func _check_settlement_day(gs: Node, gm: Node) -> void:
+	# --- crew: the missed-wage stamp is the night it was missed ---
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = 0
+	gs.clean_cash = 0
+	gs.dirty_cash = 0
+	gs.crew_records["eli"] = {"recruited": true, "loyalty": 6, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1,
+		"status": "active"}
+	var crew: RefCounted = gm.system("crew") as RefCounted
+	crew.settle_night(9)
+	_expect_int("the wage is stamped with the night it was missed",
+		int((gs.crew_records["eli"] as Dictionary)["wage_missed_since"]), 9)
+
+	# The delta the grace rule reads is unchanged for a run that starts clean —
+	# stamp and comparison moved together — which is what makes this a
+	# correction rather than a balance change. Three consecutive missed nights.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.cash = 0
+	gs.clean_cash = 0
+	gs.dirty_cash = 0
+	gs.crew_records["eli"] = {"recruited": true, "loyalty": 8, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1,
+		"status": "active"}
+	var loyalty_by_night: Array[int] = []
+	for night in range(5, 8):
+		gs.day = night
+		crew.settle_night(night)
+		loyalty_by_night.append(int((gs.crew_records["eli"] as Dictionary)["loyalty"]))
+	# Grace is two days: nights one and two cost nothing, the third bites.
+	_expect_str("the wage grace curve is unchanged by the correction",
+		str(loyalty_by_night), str([8, 8, 7]))
+
+	# --- shark: a note survives its own due day ---
+	var shark: RefCounted = gm.system("shark") as RefCounted
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 7
+	gs.shark_loans = [{"id": 1, "borrower_id": "nora", "amount": 200,
+		"due_day": 7, "term": 3, "status": "active"}]
+	shark.settle_night(6)
+	_expect_str("a note is not settled before its due day is over",
+		str((gs.shark_loans[0] as Dictionary)["status"]), "active")
+	shark.settle_night(7)
+	_expect_true("a note settles on the night its due day ends",
+		str((gs.shark_loans[0] as Dictionary)["status"]) != "active")
+
+	# The lifecycle still hands both of them the ending day, which is the half
+	# that makes the correction safe: nothing about WHEN they are called moved.
+	var lifecycle: RefCounted = gm.system("day_lifecycle") as RefCounted
+	_expect_true("crew settles above the increment",
+		(lifecycle.SETTLE_ORDER as Array).has("crew"))
+	_expect_true("shark settles above the increment",
+		(lifecycle.SETTLE_ORDER as Array).has("shark"))
+
+# --- A2: the 907List board fills ---------------------------------------------
+#
+# The original finding was a retry-sampling loop that collided against itself on
+# FNV-1a and handed back a short board. PR #46 replaced it with a keyed forward
+# shuffle and v0.1.0 moved the key's varying components to the front. A shuffle
+# cannot under-fill — it returns a permutation — and this asserts that property
+# holds across the whole run rather than trusting the argument.
+#
+# SABOTAGE: slice the board to `want - 1` -> "the board fills its tier" fails on
+#           the first day it runs.
+
+func _check_board_fills(gs: Node, gm: Node) -> void:
+	var lst: RefCounted = gm.system("list") as RefCounted
+	for tier in [1, 2, 3]:
+		gs.street_name = "Parity"
+		gs.reset_to_new_game()
+		gs.list_tier = tier
+		var want: int = int((gs.market_tier() as Dictionary)["listings"])
+		var pool: int = 0
+		for item in gs.listing_items:
+			if int((item as Dictionary)["tier"]) <= tier:
+				pool += 1
+		_expect_true("tier %d has a pool to fill from" % tier, pool >= want)
+		# Thirty consecutive days: a collision-based shortfall shows up as one
+		# bad day among many, so one day would not settle it.
+		var short_days: int = 0
+		var duplicate_days: int = 0
+		for day in range(1, 31):
+			gs.day = day
+			var board: Array = lst.todays_listings()
+			if board.size() != want:
+				short_days += 1
+			var seen: Dictionary = {}
+			for listing in board:
+				var id := str((listing as Dictionary)["id"])
+				if seen.has(id):
+					duplicate_days += 1
+					break
+				seen[id] = true
+		_expect_int("the board fills its tier %d slate every day" % tier, short_days, 0)
+		_expect_int("the board never repeats a listing at tier %d" % tier,
+			duplicate_days, 0)
+
+	# And it still shortens honestly when the POOL is short — filling is not the
+	# same as inventing, and a board that padded itself would pass the check
+	# above for the wrong reason.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.list_tier = 1
+	gs.listing_items = [{"id": "only_one", "name": "Only one", "category": "household",
+		"tier": 1, "buy": 20, "true_value": [30, 40], "condition": "good"}]
+	_expect_int("a one-item pool yields a one-item board",
+		(lst.todays_listings() as Array).size(), 1)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- A3: screens ask for capacity, they do not read the floor ---------------
+#
+# `CREW_CAPACITY` is the FLOOR `crew_capacity()` currently returns, not the
+# answer. The day capacity scales with rank, a screen holding the constant shows
+# a number the game does not agree with — and it will do it quietly, because a
+# constant that is still correct today reads like working code.
+#
+# Both screens already call the method; this check is what stops that drifting
+# back. It is a source scan rather than a value comparison on purpose: while the
+# two agree, comparing them proves nothing.
+#
+# SABOTAGE: put `gs.CREW_CAPACITY` into more.gd -> "no screen reads
+#           CREW_CAPACITY directly" fails, naming the file.
+
+const CAPACITY_FLOOR_CONSTANT := "CREW_CAPACITY"
+
+func _check_screens_read_capacity_through_the_method() -> void:
+	var dir := DirAccess.open("res://ui/screens")
+	if dir == null:
+		_fail("crew capacity", "could not read res://ui/screens")
+		return
+	var offenders: Array[String] = []
+	var scanned: int = 0
+	dir.list_dir_begin()
+	var entry: String = dir.get_next()
+	while entry != "":
+		if entry.ends_with(".gd"):
+			scanned += 1
+			var file := FileAccess.open("res://ui/screens/%s" % entry, FileAccess.READ)
+			if file != null:
+				var text: String = file.get_as_text()
+				file.close()
+				if text.contains(CAPACITY_FLOOR_CONSTANT):
+					offenders.append(entry)
+		entry = dir.get_next()
+	dir.list_dir_end()
+	_expect_true("the capacity audit read some screens", scanned > 0)
+	_expect_int("no screen reads CREW_CAPACITY directly", offenders.size(), 0)
+	for offender in offenders:
+		_fail("crew capacity", "%s reads the floor constant instead of crew_capacity()" % offender)
+	# And the method really is the wider answer, not an alias somebody could
+	# inline back: it reads GameState, the constant is a literal.
+	var gs := get_node("/root/GameState")
+	_expect_int("crew_capacity() returns the floor while nothing raises it",
+		int(gs.crew_capacity()), int(gs.CREW_CAPACITY))
+
+# --- A4: every persisted mutator is behind the dispatch guard ---------------
+#
+# SABOTAGE: drop the guard from `Curtis.rollover` -> "Curtis.rollover is guarded"
+#           fails, naming the function.
+
+## Public functions on the two guarded autoloads that WRITE persisted state.
+## Listed rather than derived: "does this mutate" is not something a source scan
+## can answer, and a list somebody has to edit is a list somebody has to think
+## about.
+const GUARDED_MUTATORS := {
+	"res://autoload/exposure.gd": ["record_observation", "broadcast_observation",
+		"propagate_heat", "rollover"],
+	"res://autoload/curtis.gd": ["raise_awareness", "mark_criminal_activity",
+		"broadcast_tracked", "maybe_watcher_encounter", "rollover"],
+}
+
+func _check_dispatch_guard_coverage() -> void:
+	for path in GUARDED_MUTATORS:
+		var file := FileAccess.open(str(path), FileAccess.READ)
+		if file == null:
+			_fail("dispatch guard", "could not read %s" % str(path))
+			continue
+		var text: String = file.get_as_text()
+		file.close()
+		var owner_name: String = str(path).get_file().get_basename().capitalize()
+		for method in GUARDED_MUTATORS[path]:
+			var name := str(method)
+			_expect_true("%s.%s exists" % [owner_name, name],
+				text.contains("func %s(" % name))
+			_expect_true("%s.%s is guarded" % [owner_name, name],
+				text.contains('_require_dispatch("%s")' % name))
+
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -14390,11 +14608,21 @@ func _fail(label: String, detail: String) -> void:
 ## unchanged by PR #49 — its 35 new checks live in its own
 ## `tests/save_validation` runner, not here) + 329 (v0.1.0) = 11110, measured.
 ##
+## Batch 1 raises it to 11137. Its 37 checks are hardening rather than feature
+## coverage, and two of them are the kind that only earn their keep later: a
+## source scan proving no screen holds `CREW_CAPACITY` (a constant that is
+## correct today and silently wrong the day capacity scales with rank), and a
+## named list of every persisted mutator on Exposure and Curtis asserted to sit
+## behind the dispatch guard. Neither can be settled by comparing values while
+## the values still agree.
+##
+## 11110 (v0.1.0) + 37 (batch 1) = 11147, measured.
+##
 ## Ten of margin, the same margin every floor since FS-003.13 has left, because
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11100
+const MIN_CHECKS := 11137
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

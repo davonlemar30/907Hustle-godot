@@ -157,6 +157,11 @@ func watcher_chance() -> float:
 ## its exact event sequence. These are texture, not observations: no ledger row,
 ## nothing to resolve.
 func maybe_watcher_encounter(reason: String) -> String:
+	# It reads like a query and it is not: the branch below stamps
+	# `curtis_last_watcher_day`, bumps `curtis_watchers_seen`, rewrites
+	# `curtis_recent_watcher_lines` and writes the feed. All four persist.
+	if not _require_dispatch("maybe_watcher_encounter"):
+		return ""
 	if gs.curtis_phase == "invisible":
 		return ""
 	# Watchers appear during ordinary movement, not during the crime itself,
@@ -203,6 +208,9 @@ func maybe_watcher_encounter(reason: String) -> String:
 ## carried — so a phase refreshed this morning is refreshed against the awareness
 ## the morning actually produced.
 func rollover() -> void:
+	# Writes `curtis_quiet_streak` and `curtis_awareness`, both persisted.
+	if not _require_dispatch("rollover"):
+		return
 	if gs.game_over:
 		return
 	var ended_day: int = gs.day - 1

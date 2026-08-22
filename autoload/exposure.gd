@@ -380,6 +380,13 @@ func everyone() -> Array:
 ## Canon propagateHeat: carrying enough heat is news by itself, and how far it
 ## travels depends on how much.
 func propagate_heat() -> void:
+	# Guarded even though every write it makes goes through
+	# `broadcast_observation`, which is guarded too. Two reasons: the warning
+	# names the function the caller actually called, which is the one they have
+	# to move; and a future edit that writes a ledger row directly from here
+	# would otherwise slip past a guard that only ever covered the old shape.
+	if not _require_dispatch("propagate_heat"):
+		return
 	for t in HEAT_CHANNEL_THRESHOLDS:
 		if gs.heat > float(t["above"]):
 			broadcast_observation({
@@ -395,6 +402,10 @@ func propagate_heat() -> void:
 ## news from a previous day, and letting it land before the Heat broadcast would
 ## reorder two things the player experiences as one morning.
 func rollover() -> void:
+	# `gs.observation_queue` is rewritten below — a direct persisted write, and
+	# the last one in this file that was not covered.
+	if not _require_dispatch("rollover"):
+		return
 	if gs.game_over:
 		return
 	propagate_heat()

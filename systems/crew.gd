@@ -277,10 +277,26 @@ func has_field_crew() -> bool:
 ## byte-identical to before this refactor, and the divergence from canon is
 ## named here rather than hidden in signal ordering. Correcting it is a timing
 ## change and belongs in its own slice.
+## Wages, settled against the day that ENDED.
+##
+## This used to read `ended_day + 1`. The reason is worth keeping: this port
+## originally settled crew BELOW DayLifecycle's increment, so it saw the new day
+## on the clock, and when FS-003.2 moved settlement above the increment the `+ 1`
+## was kept so behaviour did not change inside a refactor that claimed to change
+## nothing. Canon settles here — `applyAttendance(state, oldDay)`, with the
+## comment "so the rung does not depend on sitting above the `run.day = oldDay
+## + 1` line further down" — and this is the slice that corrects it.
+##
+## What actually moves: `wage_missed_since` is now stamped with the day the wage
+## was missed rather than the morning after. The DELTA it feeds is unchanged for
+## a fresh run (stamp and comparison shift together), but the recorded value is
+## the honest one, and `requirements.payroll_not_delinquent` — which compares it
+## against the LIVE day, not against this settlement — now measures delinquency
+## from the night it started instead of a day late.
 func settle_night(ended_day: int) -> void:
 	if gs.game_over:
 		return
-	var settling_day: int = ended_day + 1
+	var settling_day: int = ended_day
 	for person in gs.crew_roster:
 		var id: String = str(person["id"])
 		if not gs.is_recruited(id):

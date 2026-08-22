@@ -61,8 +61,10 @@ func show_toast(text: String) -> void:
 		# Deferred: this is usually called from a button handler, and adding to
 		# the tree while the tree is flushing input is not allowed.
 		get_tree().root.add_child.call_deferred(_toast)
+	if not _toast.is_node_ready():
 		await _toast.ready
-	_toast.show_message(text)
+	if is_instance_valid(_toast):
+		_toast.show_message(text)
 
 ## The global screen priority, TI-003 §18:
 ##

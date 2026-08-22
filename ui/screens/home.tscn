@@ -506,6 +506,47 @@ layout_mode = 2
 theme_type_variation = &"BtnSecondary"
 
 
+[node name="Actions" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_type_variation = &"Card"
+
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Actions"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Head" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Actions/V"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="T" type="Label" parent="Shell/Scroll/Pad/Content/Actions/V/Head"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"CardTitle"
+theme_override_font_sizes/font_size = 13
+
+[node name="Sub" type="Label" parent="Shell/Scroll/Pad/Content/Actions/V"]
+layout_mode = 2
+autowrap_mode = 3
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 11
+
+[node name="Row" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Actions/V"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Post" type="Button" parent="Shell/Scroll/Pad/Content/Actions/V/Row"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"BtnSecondary"
+
+[node name="Lay" type="Button" parent="Shell/Scroll/Pad/Content/Actions/V/Row"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"BtnSecondary"
+
+
 [node name="OpCard" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
 layout_mode = 2
 theme_type_variation = &"OpCard"

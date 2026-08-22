@@ -83,6 +83,22 @@ func _route_for(name: String) -> String:
 		"STREET": return nav.STREET
 	return nav.HOME
 
+## Where Continue actually lands, once the route gate has had its say.
+##
+## The return route is a SOURCE's idea of where the player was, and batch 15 put
+## five of those surfaces behind route gates. Every one of those gates is
+## monotonic, so a surface the player was standing on cannot have re-closed
+## underneath them — but "cannot happen today" is not the same as "cannot
+## happen", and the failure mode is the worst one available: `go_to("")` is
+## silent, so a refused return leaves the player on a dead consequence screen
+## with no navigation at all.
+##
+## So the refusal is checked here rather than trusted. Home is never gated.
+func _landing() -> String:
+	if not _return_path.is_empty() and not str(nav.resolved_route(_return_path)).is_empty():
+		return _return_path
+	return nav.HOME
+
 ## The chain cleared while this scene was open, which is what Continue does.
 ##
 ## `screen_base.refresh()` would render an empty state here and leave the player
@@ -94,7 +110,7 @@ func _route_for(name: String) -> String:
 ## out from under whoever built it.
 func refresh() -> void:
 	if _is_live() and _engine != null and not gs.game_over and not _engine.has_active():
-		nav.go_to(_return_path if not _return_path.is_empty() else nav.HOME)
+		nav.go_to(_landing())
 		return
 	super()
 

@@ -29,8 +29,24 @@ func _build_body() -> void:
 	pass
 
 func _bind_content() -> void:
+	# `remove_child` + `free`, not `queue_free`.
+	#
+	# `queue_free()` is the reflex and it is wrong for a clear-and-rebuild.
+	# Freeing is DEFERRED to the end of the frame, so a second refresh inside the
+	# same frame rebuilds on top of rows that are still parented: the menu reads
+	# double, then quadruple. Measured at 4 -> 8 -> 16 rows across three
+	# same-frame refreshes.
+	#
+	# In ordinary play a frame usually elapses between state changes, which is
+	# why this has never been seen on a phone. It is still wrong: `notify_changed`
+	# is emitted once per dispatch and nothing in the contract promises a frame
+	# between two of them. It is also what makes these screens un-measurable —
+	# the parity runner does its whole job inside one `_ready()` and never yields,
+	# so every check that refreshes a surface twice was reading stacked rows.
+	# `_free_screen` in that runner already documents this exact trap.
 	for c in body.get_children():
-		c.queue_free()
+		body.remove_child(c)
+		c.free()
 	_build_body()
 
 # --- builders --------------------------------------------------------------

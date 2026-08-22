@@ -266,6 +266,28 @@ func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dicti
 			var flag: bool = bool(facts.get(str(req.get("fact", "")), false))
 			return _result(req, flag, flag, true)
 
+		# --- batch 14 elapsed-progress types --------------------------------
+		#
+		# Two thresholds on facts the run has always carried and no gate has
+		# ever read: how many days have passed, and how many walks have been
+		# taken. They are here rather than expressed as `collection_non_empty`
+		# on a count, because a threshold is not a population check — "three
+		# walks in" and "there is at least one of these" are different
+		# questions, and a gate that says `min: 3` should read as one.
+
+		"day_min":
+			# `current_day` is already minted above, off the same fact every
+			# tenure gate reads. Reading it a second time here would be a
+			# second opinion about what day it is.
+			return _result(req, current_day >= min_value, current_day, min_value)
+
+		"wander_count_min":
+			# Walks taken this RUN, not today. The day counter measures patience
+			# and this one measures effort, which is why the Hustle ladder gates
+			# some surfaces on one and some on the other.
+			var walks: float = _num(facts.get("wander_count"))
+			return _result(req, walks >= min_value, walks, min_value)
+
 	return {
 		"ok": false,
 		"blocker_code": "unsupported_requirement",

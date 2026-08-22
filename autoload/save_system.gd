@@ -113,7 +113,16 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## a missing key as -1: no cooldown, which is the correct history for arrests
 ## that predate the mechanic. One bump, one arm, both new pieces of state
 ## covered.
-const SAVE_VERSION := 14
+##
+## v15 (batch 14): adds `boost_targets_discovered`, the Boost discovery latch.
+## Additive, and the arm stamps the version only. An empty array is the honest
+## history rather than a default standing in for one: a v14 run was written by a
+## build where every target in range was on the screen from the first minute, so
+## it has never once been out LOOKING for one. On load every target starts
+## undiscovered and has to be found through play, the same as for a fresh run --
+## the call the v11 arm made about the Night Owl and the v13 arm made about
+## `jobs_discovered`, for the same reason.
+const SAVE_VERSION := 15
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 
 ## Every mutable GameState field, captured and applied by name. products.price
@@ -187,6 +196,11 @@ const PERSIST_FIELDS: Array[String] = [
 	"wander_misses", "wander_count", "wander_seen", "wander_recent",
 	# The day's walk count (v14), for the effort falloff.
 	"wanders_today",
+	# Boost's discovery axis (v15). A one-way latch like `districts_unlocked`:
+	# what the player has clocked cannot be reconstructed from anything else,
+	# because the alternative history -- never having walked past it -- leaves
+	# exactly the same trace.
+	"boost_targets_discovered",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -553,6 +567,31 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# which hands the loading day a full-value walk it may already
 				# have taken. One walk, once, in exchange for not having to
 				# invent a number that was never recorded.
+				pass
+			14:
+				# v14 -> v15: `boost_targets_discovered`, additive and EMPTY.
+				#
+				# This is the one arm in the chain where the empty default is
+				# generous to nobody, and it is still the right answer. A v14
+				# run could have been lifting Northern Value for a fortnight,
+				# and it comes back with the shop off its list until the player
+				# walks past it again — which reads as a loss until you ask what
+				# the alternative would have to be. Stamping in every target in
+				# range would hand a loading save the whole board at once, which
+				# is precisely the thing this batch removed; stamping in the
+				# ones it has HIT would need `boost_daily_hits`, which is one
+				# day deep and holds nothing about the run before today.
+				#
+				# There is no third option. The field did not exist, a v14 build
+				# never asked the question, and a walk is one slot: the honest
+				# reading is that the run has never been out looking, and the
+				# cost of saying so is a few walks the player was going to take
+				# anyway. Named here rather than found out later.
+				#
+				# `boost_store_bans` is deliberately untouched. A ban is a face
+				# somebody remembers, not a place you forgot — re-finding a shop
+				# you are banned from does not un-ban you, and the blocker still
+				# refuses it in the order it always did.
 				pass
 			_:
 				return {}

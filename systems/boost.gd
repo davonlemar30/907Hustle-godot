@@ -91,12 +91,30 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 			return _fence()
 	return {"ok": false, "reason": "Unknown boost action."}
 
+## What is on the board here, right now.
+##
+## Three filters, and batch 14 added the first of them. DISTRICT and TIER were
+## the whole list: everything in range at or below your tier was on the screen
+## from the first minute of the run, so Boost opened at its widest and only ever
+## narrowed — a ban is permanent by target id (TI-003 §5), so the pool drained
+## with play and nothing refilled it.
+##
+## DISCOVERY is the axis that runs the other way. A target is on this list
+## because the player walked past it and clocked it, which means bans stop being
+## a countdown to an empty screen. `WanderSystem` grants discovery; this only
+## reads the latch.
+##
+## The filter is here AND in `blocker()`, deliberately. This one decides what a
+## screen draws; that one decides what a dispatch is allowed to do, and a
+## presentation filter with no rule under it is a list you can walk around.
 func visible_targets() -> Array:
 	var out: Array = []
 	for t in gs.boost_targets:
 		if str(t["area"]) != gs.current_district_id:
 			continue
 		if int(t["tier"]) > gs.boost_tier:
+			continue
+		if not str(t["id"]) in gs.boost_targets_discovered:
 			continue
 		out.append(t)
 	return out
@@ -136,6 +154,12 @@ func blocker(target_id: String) -> String:
 		return "No such place."
 	if str(t["area"]) != gs.current_district_id:
 		return "Wrong part of town."
+	# Ahead of the tier check, because "you have never seen this place" is the
+	# earlier and more honest refusal: a target you have not clocked should not
+	# report that you are not smooth enough for it, which would be telling the
+	# player about a room they have not found the door to.
+	if not target_id in gs.boost_targets_discovered:
+		return "You don't know that place."
 	if int(t["tier"]) > gs.boost_tier:
 		return "You're not smooth enough yet."
 	if int(gs.boost_daily_hits.get(target_id, -1)) == gs.day:

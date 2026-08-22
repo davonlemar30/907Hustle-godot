@@ -16,43 +16,58 @@ func _ready() -> void:
 	super()
 	_wire_taps()
 
-## The operation card's three actions, all three of which are now real.
+## Home's two standing actions, and where they now live.
 ##
-## They were not. `Move` was labelled MOVE PRODUCT and was canon's
-## `explore_spenard` — Wander — reduced to `advance_time` plus a toast reading
-## "Time passes." `Post` and `Lay` were `"— coming soon."` toasts. Batch 6b
-## shipped Eli's operation and batch 8 capped Lay Low, so by the time this
-## batch started, two of the three stubs had working systems behind them and
-## nothing connected to either.
-## The operation card's two contextual actions. Both were `"— coming soon."`
-## toasts; batch 6b shipped Eli's operation and Lay Low has existed in Recovery
-## since it was written, so both now go somewhere.
-const OP_ACTIONS := {"Post": "POST ELI", "Lay": "LAY LOW"}
+## Both spent this batch on the OPERATION card, and both were therefore
+## unreachable on exactly the run that needs them most. `_bind_gates` hides that
+## card whenever there is no operation out, no rent crunch and no workable
+## shift — which is a fresh run in its entirety — so POST ELI and LAY LOW were
+## drawn on a node that had already left the layout.
+##
+## They have their own card now, directly under Wander, on their own condition:
+## `SurfaceVisibility.home_actions()` answers which of them EXIST, and the card
+## is hidden until at least one does. The operation card keeps only what it was
+## always actually for — the rent warning, the shift reminder and the delegation
+## report — and carries no buttons at all.
+##
+## Keyed by node name, valued by [label, handler-name, action id]. The action id
+## is the one `home_actions()` returns, so the screen renders exactly the
+## buttons the access layer said were there rather than deciding again.
+const ACTIONS := {
+	"Post": {"id": "post_eli", "label": "POST ELI"},
+	"Lay": {"id": "lay_low", "label": "LAY LOW"},
+}
 
 func _wire_taps() -> void:
-	# Wander comes OFF the operation card, and that is the point of this batch.
+	# The operation card is now purely informational, and this is the last step
+	# of emptying it. Every control it ever carried has moved to a card that is
+	# there when the control is usable:
 	#
-	# `Move` was labelled MOVE PRODUCT and was canon's `explore_spenard` — the
-	# Wander reducer — spending a slot to print the weather. It also sat on a
-	# card that `_bind_gates` HIDES whenever there is no operation, no rent
-	# crunch and no shift, which is exactly a fresh run. HANDOFF filed that as an
-	# open follow-up: "the build's only bare advance_time control in the UI lives
-	# on the now-hidden operation card, so a fresh run must pass time through
-	# Street travel, a Hustle action, or More -> Recovery -> Lay Low ... Filed
-	# for the next UX pass."
+	#   MOVE PRODUCT -> the Wander card (batch 13). It was canon's
+	#                   `explore_spenard` spending a slot to print the weather.
+	#   POST ELI     -> the Actions card (batch 14).
+	#   LAY LOW      -> the Actions card (batch 14).
 	#
-	# This is that pass. Wander is the one thing a player can always do, so it
-	# gets a card that is always there, and the operation card keeps only the
-	# two actions that are genuinely about tonight's operation.
-	var stale := get_node_or_null("Shell/Scroll/Pad/Content/OpCard/V/Actions/Move") as Button
-	if stale:
-		stale.visible = false
-	for node_name in OP_ACTIONS.keys():
+	# All three sat on a node `_bind_gates` HIDES whenever there is no operation,
+	# no rent crunch and no shift — which is a fresh run in its entirety. HANDOFF
+	# filed the first as an open follow-up ("the build's only bare advance_time
+	# control in the UI lives on the now-hidden operation card ... Filed for the
+	# next UX pass"); batch 13 took that one and this takes the other two.
+	#
+	# The row is hidden rather than deleted from the scene: the .tscn is the
+	# editor-time preview of a card that still exists, and a screen that
+	# tolerates a node being absent (`get_node_or_null`) should equally tolerate
+	# it being present.
+	var stale_row := get_node_or_null(
+		"Shell/Scroll/Pad/Content/OpCard/V/Actions") as Control
+	if stale_row:
+		stale_row.visible = false
+	for node_name in ACTIONS.keys():
 		var b := get_node_or_null(
-			"Shell/Scroll/Pad/Content/OpCard/V/Actions/" + str(node_name)) as Button
+			"Shell/Scroll/Pad/Content/Actions/V/Row/" + str(node_name)) as Button
 		if b == null:
 			continue
-		b.text = str(OP_ACTIONS[node_name])
+		b.text = str((ACTIONS[node_name] as Dictionary)["label"])
 		tap_connect(b, _on_post_eli if str(node_name) == "Post" else _on_lay_low)
 	# Three intents, three buttons. One button was a lever; three is a question.
 	for intent in EVENTS.INTENTS:
@@ -88,12 +103,47 @@ func _on_wander(intent: String) -> void:
 	var engine: Object = _gm.system("consequence")
 	if engine != null and bool(engine.has_active()):
 		return
+	nav.show_toast(_wander_toast(before_day))
+
+## What the walk turned up, said to the player directly.
+##
+## Wander wrote to the activity feed and nothing else, and the toast said "You
+## take a walk." — so the one surface that reports the outcome of the action was
+## a card further down the screen the player had to think to go and read. A
+## mechanic that produces eleven different results and announces all of them
+## identically is a mechanic the player learns nothing from.
+##
+## The line comes off the FEED rather than off the dispatch return, and that is
+## the deliberate part: `handle()` reports a `kind` and a `card_id`, which are
+## the shape of what happened, while the feed row is the SENTENCE about it —
+## already written, already toned, already the words the player would have read.
+## Translating a kind back into copy here would be a second author for the same
+## event, one toast out of date the first time a card is reworded.
+##
+## `activity_log[0]` is the newest row (`log_activity` push_fronts) and every
+## wander path writes at least one — discovery, opportunity, encounter, read,
+## ambient, and the breadcrumb that exists precisely so a walk is never silent.
+## For a read or a cashed opportunity that newest row is the PAYLOAD line rather
+## than the card's flavour ("Spenard is watched about boost work.", "Picked up
+## $32."), which is the better of the two to be handed on a two-second toast.
+##
+## The day-crossing line is APPENDED rather than shown after it. There is one
+## toast node for the whole session and a second message replaces the first
+## (`ui/components/toast.gd`), so two calls would show the day and swallow the
+## walk — the exact line this function exists to surface.
+func _wander_toast(before_day: int) -> String:
+	var latest: Dictionary = gs.activity_log[0] if not gs.activity_log.is_empty() else {}
+	var line: String = str(latest.get("text", ""))
+	# The row has to be from the walk that just happened. The card writes BEFORE
+	# the slot advances, so it carries the day the walk started on — comparing
+	# against `gs.day` instead would fail on every day crossing, which is the
+	# one moment the player most wants both facts.
+	if line.is_empty() or int(latest.get("day", -1)) != before_day:
+		line = "You take a walk. %s in %s." \
+			% [gs.time_slot.capitalize(), gs.current_district().get("name", "")]
 	if gs.day > before_day:
-		nav.show_toast("A new day. Day %d, %s in %s."
-			% [gs.day, gs.time_slot.capitalize(), gs.current_district().get("name", "")])
-	else:
-		nav.show_toast("You take a walk. %s in %s."
-			% [gs.time_slot.capitalize(), gs.current_district().get("name", "")])
+		line += "\nA new day. Day %d." % gs.day
+	return line
 
 ## Eli, on the bag for the day. Batch 6b built the operation; this is the door
 ## the operation card always implied and never had.
@@ -150,16 +200,19 @@ func _bind_content() -> void:
 
 func _bind_gates() -> void:
 	# LOCKED: earned surfaces. They stay in the layout, dimmed, with a hint.
-	gate_surface(ACCESS.HOME_MARKET_SNAPSHOT, "Shell/Scroll/Pad/Content/Columns/Market")
 	gate_surface(ACCESS.HOME_TURF_CREW, "Shell/Scroll/Pad/Content/Columns/Turf")
 	# HIDDEN: nothing to show. The card leaves the layout and the ones below it
-	# close the gap.
+	# close the gap. The Market Snapshot moved into this half in batch 14 — see
+	# `SurfaceVisibility.GATES` for why a padlock was the wrong shape for it.
+	gate_surface(ACCESS.HOME_MARKET_SNAPSHOT, "Shell/Scroll/Pad/Content/Columns/Market")
+	gate_surface(ACCESS.HOME_ACTIONS, "Shell/Scroll/Pad/Content/Actions")
 	gate_surface(ACCESS.HOME_TONIGHTS_OPERATION, "Shell/Scroll/Pad/Content/OpCard")
 	gate_surface(ACCESS.HOME_TEXT_MESSAGES, "Shell/Scroll/Pad/Content/People")
 	gate_surface(ACCESS.HOME_ACTIVITY_FEED, "Shell/Scroll/Pad/Content/Activity")
 
 func _bind_all() -> void:
 	_bind_wander()
+	_bind_actions()
 	_bind_operation()
 	_bind_snapshot()
 	_bind_turf()
@@ -197,7 +250,13 @@ func _bind_wander() -> void:
 func _wander_line(sys: Object) -> String:
 	if not str(sys.blocker()).is_empty():
 		return "Not right now."
-	if (sys.undiscovered() as Array).is_empty():
+	# "Nothing left to find" is now a question about TWO pools, not one. Batch 14
+	# gave DEAL its own — the boost targets you have not clocked here — so a
+	# player who has found every job but no shops has plenty left out there, and
+	# telling them the block is exhausted would be false in the one direction
+	# that costs them a mechanic.
+	if (sys.undiscovered() as Array).is_empty() \
+			and (sys.undiscovered_boost_targets() as Array).is_empty():
 		return "%s, and you know it well enough by now. Still worth the walk." \
 			% str(gs.current_district().get("name", "the block"))
 	# The day's effort first, because it is the thing that changes what the next
@@ -215,6 +274,46 @@ func _wander_line(sys: Object) -> String:
 	if misses < 3:
 		return "Nothing the last time out. Somebody knows something."
 	return "You have come back empty a few times now. That tends to change."
+
+## The Actions card: POST ELI and LAY LOW, each shown only when it exists.
+##
+## The available list comes from `SurfaceVisibility.home_actions()` — the SAME
+## call whose size decides whether the card is in the layout at all. That is the
+## rule the operation card is written to and the reason it is written that way:
+## a screen that keeps its own copy of the condition is a screen that can hide a
+## card while still filling it, or fill a card with buttons that do nothing.
+##
+## A button whose action is not on the list is hidden rather than disabled. A
+## disabled LAY LOW on a run at full health with no Heat is a control explaining
+## a mechanic the player has no reason to have heard of; there being nothing
+## there says the same thing without the explanation.
+func _bind_actions() -> void:
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	var available: Array = access.home_actions() if access != null else []
+	_set_text("Shell/Scroll/Pad/Content/Actions/V/Head/T", "WHAT ELSE")
+	_set_text("Shell/Scroll/Pad/Content/Actions/V/Sub", _actions_line(available))
+	for node_name in ACTIONS.keys():
+		var b := get_node_or_null(
+			"Shell/Scroll/Pad/Content/Actions/V/Row/" + str(node_name)) as Button
+		if b == null:
+			continue
+		b.visible = str((ACTIONS[node_name] as Dictionary)["id"]) in available
+
+## One line under the two buttons, naming what is actually on offer.
+##
+## Written from the same list the buttons are, so it cannot describe a door that
+## is not there. The blockers stay on the handlers: this says what EXISTS, and
+## tapping says whether it can happen right now and why not.
+func _actions_line(available: Array) -> String:
+	var has_eli: bool = "post_eli" in available
+	var has_lay: bool = "lay_low" in available
+	if has_eli and has_lay:
+		return "Somebody to send, or a day to lose on purpose."
+	if has_eli:
+		return "Eli will take the bag if you want the day covered."
+	if has_lay:
+		return "A day off the street costs a slot and buys quiet."
+	return ""
 
 ## The card's copy, chosen from the reason the access layer already decided.
 ##

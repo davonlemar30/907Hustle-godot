@@ -5642,6 +5642,428 @@ contain the case proves nothing. The case is now BUILT — a spread set to exact
 the fare, asserted as not-a-route, then one dollar over, asserted as one — and
 the sabotage then failed correctly.
 
+## Batch 14: the visibility pass, and Boost's second axis  (added 2026-08-22)
+
+Four playtest findings and one design debt. They arrived as five separate
+complaints and they are one defect: **the build showed the player everything at
+once and then said nothing about what any of it did.**
+
+The Hustle hub opened with six income surfaces on Day 1, four unusable and none
+ordered. The Home Market Snapshot sat greyed under a padlock with real product
+names and real prices under it. Wander produced eleven different outcomes and
+announced all of them as "You take a walk." POST ELI and LAY LOW were drawn on a
+card the gate system hides for the whole of a fresh run. And Boost had exactly
+one axis — tier — so its board opened at its widest and every permanent ban
+narrowed it for good.
+
+### The amended LOCKED/HIDDEN rule
+
+v0.1.0 drew the line as "progression is LOCKED, population is HIDDEN". That rule
+produced both of this batch's UI findings, so it is now stated differently:
+
+> **LOCKED is for a surface the player is MEANT TO KNOW ABOUT and has not
+> earned.** A padlock is a promise, and a promise is only worth making about a
+> thing the player can go and do something about. Everything else is HIDDEN.
+
+Jobs still earns a lock — "Meet someone who hires" is an instruction and Jobs is
+the authored on-ramp. The Hustle ladder's other five rows do not: six padlocks on
+a fresh run is the same wall of unusable surface with an apology written on it,
+and not one of the hints would have been actionable. The Market Snapshot failed
+the rule from the other side — a padlock over live-looking content reads as a
+broken feature, not a coming one.
+
+The change itself was one line per surface, which is the payoff the design pass
+promised: `mode` is presentation metadata, so a surface moves between the two
+without a single screen learning a new condition.
+
+### The Hustle ladder, and why two axes
+
+Five rows, five gates, two facts:
+
+| Row | Opens on | Why that axis |
+| --- | --- | --- |
+| Street Market | 1 walk | the corner you buy from is a place you found |
+| Boost | 3 walks | you notice what is loose by walking past it enough |
+| Stickup | day 2 | desperation arrives fast |
+| 907List | day 3 | word gets around after a couple of days |
+| the shark | day 5 | it takes time to learn who needs money |
+
+WALKS gate what you find by being out; DAYS gate what arrives because time
+passed. Neither substitutes for the other, which is what stops a player who only
+walks and a player who only sits from converging on the same screen.
+
+Two new requirement types carry them — `day_min` and `wander_count_min` — added
+to the one evaluator rather than beside it, and against facts GameState already
+held. That is the standing condition for a new type landing at all: a gate whose
+fact has not been built yet stays unbuilt.
+
+### Boost's second axis, and the measurement that changed the design
+
+`boost_targets_discovered` is a one-way latch, the same shape as
+`districts_unlocked`. A room is on the Boost board because the player clocked it
+on a `LOOK FOR A DEAL` walk. The pool a walk draws from is district-scoped,
+tier-scoped and minus what is already clocked — so climbing the Boost ladder puts
+NEW rooms into the discovery pool, and tier progress and walking the block feed
+each other instead of racing.
+
+The filter is in `visible_targets()` **and** in `blocker()`. The first decides
+what a screen draws; the second decides what a dispatch may do. A presentation
+filter with no rule under it is a list you can walk around by calling the action
+directly.
+
+**The instrument disagreed with the brief, and the brief lost.** The claim being
+shipped was "a renewable pool that survives bans". The first `boost_finder`
+profile — a run that starts with nothing clocked and earns its board — measured
+that claim and found it **false as stated**:
+
+```
+boost         3.5 bans · 0.0 rooms still workable   ($201, 13% of job)
+boost_finder  3.5 bans · 0.0 rooms still workable   ($24,   2% of job)
+```
+
+Spenard carries two tier-1 rooms and two tier-2. The profile clocked all of them,
+burned all of them, and ended thirty days with an empty screen — exactly like the
+profile that was handed twelve targets on day one. The refill is real, but it is
+**cross-district**, and a profile that never leaves cannot see it.
+
+So the profile learned to move on when a block is finished — nothing left workable
+AND nothing left to clock — at the honest price of a fare and a slot:
+
+```
+boost         3.5 bans · 0.0 rooms still workable   ($201, 13% of job)
+boost_finder  7.5 bans · 1.5 rooms still workable   ($113,  7% of job)
+```
+
+**That is the claim, measured.** The profile that earns its board absorbed more
+than twice the permanent bans and still ended with rooms open, where the profile
+handed the whole board ended with none.
+
+The cost is on the record too, and it is not small: 13% → 7% of the day job.
+Roughly half the yield goes to walking and fares. Boost was already the weakest
+criminal surface with a filed anomaly under it (`CAUGHT_EFFECTS talk/messy` is
+the only row where a SUCCESS tier permanently bans), and this batch makes the
+early game harder before the pool starts paying back. **Reported, not tuned** —
+the ramp and the pool are numbers a design pass should move deliberately, and the
+instrument that would measure the move now exists.
+
+### The wander toast, and a spec defect worth naming
+
+Wander wrote to the activity feed and nothing else, so the toast said "You take a
+walk." The line now comes off the feed — `activity_log[0]`, the row the card just
+wrote — rather than being reconstructed from the dispatch's `kind`. Translating a
+kind back into copy would be a second author for the same event, one toast out of
+date the first time a card is reworded.
+
+The brief specified two `show_toast()` calls on a day crossing, one for the walk
+and one for the day. **There is one toast node for the whole session and a second
+message replaces the first** (`ui/components/toast.gd`, which says so in a
+comment), so that would have shown the day and swallowed the walk — the exact
+line the change exists to surface. The day is appended as a second line instead.
+
+The brief's staleness guard had the same shape of bug: it compared the feed row's
+`day` against `gs.day`, but a card writes BEFORE the slot advances, so on every
+day crossing the row is dated one behind and the guard would always fall back.
+It compares against the pre-walk day.
+
+### POST ELI and LAY LOW
+
+Both were drawn on the operation card. `_bind_gates` hides that card whenever
+there is no operation out, no rent crunch and no workable shift — which is a
+fresh run in its entirety. So both actions were rendered on a node that had
+already left the layout, for exactly the part of the run that most needs a door.
+
+They have their own card now (`WHAT ELSE`, directly under Wander) on their own
+condition. `SurfaceVisibility.home_actions()` answers which of them EXIST, and
+its SIZE is the gate — one derivation, so the card cannot be visible with nothing
+on it or filled with buttons that do nothing. A button whose action is not on the
+list is hidden rather than disabled: a greyed LAY LOW on a run at full health
+with no Heat explains a mechanic the player has no reason to have heard of.
+
+The operation card now carries no controls at all. Every button it ever had has
+moved to a card that is there when the button is usable — MOVE PRODUCT to the
+Wander card in batch 13, these two here.
+
+### Verification
+
+| Gate | Before | After |
+| --- | --- | --- |
+| Parity | 11,887 / 0 | **12,249 / 0** (floor 11,860 → **12,239**) |
+| Save validation | 82 / 0 | **96 / 0** |
+| Screen smoke | 23/23 | 23/23 |
+| Glyph coverage | ok | ok |
+
+200 of the 362 new parity checks were not written. `GATE_CASES` is data-driven,
+so the five Hustle rows and the actions card each brought the whole fresh-run,
+mode, blocker-shape, threshold, isolation and save/load battery with them for six
+lines of table — the design pass's "data-driven rather than one bespoke test per
+button" paying its way three batches later.
+
+`_fresh_gate_run` moved from day 3 to day 1. It had been an arbitrary number
+picked when nothing read it; the day is a gate fact now, and leaving it would
+have had the fresh-run assertion pass 907List and Stickup before it started.
+
+### Sabotage log — 14 run, 14 caught
+
+| Sabotage | Caught by |
+| --- | --- |
+| every Hustle gate's `min` → 0 | 97 failures, led by "a fresh run locks hustle.market" |
+| `HUSTLE_STICKUP` reads walks instead of days | "hustle.stickup unlocks at its trigger" |
+| `day_min` uses `>` instead of `>=` | "day_min passes exactly at the line" |
+| drop the discovered filter from `visible_targets` | "a fresh run can see nothing to lift" (got 5, want 0) |
+| drop the discovered arm from `blocker()` | "and a lift on one is refused outright" |
+| any intent can clock a spot | "only a walk that went looking for a deal clocks a spot" |
+| drop the tier filter from the discovery pool | "a tier-3 room is not something a tier-1 player notices" |
+| a boost find does not reset the drought | "finding something resets the drought" (got 2, want 0) |
+| a missed DEAL walk does not climb the ramp | "a missed deal walk climbs the same drought" |
+| revert the wander toast to the generic line | "the toast says what the walk turned up" |
+| drop the toast's day guard | "a stale feed row is not quoted as this walk's outcome" |
+| the actions card inherits the operation card's condition | "and the actions card arrives" |
+| `HOME_MARKET_SNAPSHOT` back to LOCKED | "a fresh Home hides the market snapshot" |
+| delete the v14 → v15 migration arm | 88 failures **and the check floor**, which is the floor doing its job |
+| drop the validator's authored-catalogue branch | save validation: "an unknown target id drops" |
+| return early instead of defaulting a wrong-type latch | save validation: "a wrong-type latch defaults to nothing clocked" |
+
+**One sabotage escaped on the first pass and the check was rewritten.** Removing
+`gs.wander_misses = 0` from `_discover_boost_target` left the suite GREEN: the
+check asserted the drought counter was zero after a find, on a run whose setup
+had already zeroed it. It is an assertion that could not fail. The sweep now
+seeds two misses before each walk, which also bought a second check — that a
+missed DEAL walk climbs the same ramp a missed WORK walk does.
+
+### Two harness rules this batch re-learned
+
+- **`size.x` is not a width in a headless run.** The first 375-overflow checks
+  measured laid-out size and failed on three screens that fit fine.
+  `_fs001_render` already owns that rule and knows the thing a headless check has
+  to know — a DECLARED minimum is trustworthy where a laid-out size is not. The
+  duplicate was deleted and the three call sites now go through the one owner,
+  which also holds every visible button on the new card to 44pt for free.
+- **A check whose setup satisfies its own assertion is not a check.** See the
+  escaped sabotage above. The tell is an assertion against a value the fixture
+  writes.
+
+### Migration note, v14 → v15
+
+`boost_targets_discovered` is additive and the arm stamps the version only. This
+is the one arm in the chain where the empty default is generous to nobody: a v14
+run could have been lifting Northern Value for a fortnight and comes back with
+the shop off its list until it walks past again.
+
+There is no third option, and it is worth writing down why. Stamping in every
+target in range hands a loading save the whole board — precisely what this batch
+removed. Stamping in the ones it has HIT needs `boost_daily_hits`, which is one
+day deep and holds nothing about the run before today. The field did not exist, a
+v14 build never asked the question, and the honest reading is that the run has
+never been out looking.
+
+`boost_store_bans` is deliberately untouched. **A ban is a face somebody
+remembers, not a place you forgot** — re-finding a shop you are banned from does
+not un-ban you, and the blocker still refuses it in the order it always did.
+
+### Open, for whoever picks this up
+
+- **The other five discovery axes.** Stickup targets, borrowers, 907List items,
+  the crew roster, the venues and all five NPCs are still visible from day one.
+  Boost went first because discovery also fixed something there. Stickup is the
+  obvious next one and has a filed balance problem of its own that a discovery
+  axis will not solve.
+- **Boost at 7% of the day job.** Reported, not tuned. The levers are the
+  discovery ramp, the pool's tier filter, and the `CAUGHT_EFFECTS talk/messy` ban
+  anomaly that has been pinned since FS-003. `boost_finder` is the instrument for
+  any of them.
+- ~~**Five `.uid` files are missing from the repo**~~ **Fixed, in its own
+  commit.** `data/wander_events.gd`, `systems/venues.gd`, `systems/wander.gd`,
+  `ui/screens/night_owl.gd` and `ui/screens/spenard_gym.gd` had no committed
+  UID. Godot regenerates one on import, but a regenerated UID is not the
+  committed one, so `uid://` references could differ between machines. All 197
+  non-addon, non-test scripts now carry one.
+
+---
+
+## Batch 15: the doors, and the news  (added 2026-08-22)
+
+An adversarial read of batch 14, plus two defects older than it. Every one is
+the same class: **a rule the build states about itself that it was not keeping.**
+
+Schema unchanged — v15 in, v15 out. There is nothing new persisted anywhere in
+this batch, and the one place that looked like it needed a flag is the most
+interesting thing in it.
+
+### Four defects, three of them shipped long before this batch
+
+**1. The More menu's Crew row never rendered.** `more.gd` called
+
+```gdscript
+apply_surface_gate(ACCESS.MENU_CREW, _menu_row("Crew", ...))
+```
+
+and `_menu_row` BUILDS a card — it does not parent one. Every other call site
+wraps it in `body.add_child()`. So from v0.1.0 until now the More menu had no
+Crew row at all, locked or otherwise, and the careful paragraph in that file
+arguing that it should be LOCKED rather than hidden ("an empty crew panel
+teaches nothing, but a missing one teaches less") was describing something
+nobody could see.
+
+Found by rendering the screen and reading its titles, not by reading the code:
+`FINANCES, OPERATIONS, CHARACTER, HELP`. The check that pins it is written the
+same way, on rendered titles, because a test asserting `_menu_row` returns
+non-null would have passed throughout.
+
+**2. Two doors, two answers.** Batch 14 gated five Hustle rows and stopped at the
+button. `More → Finances` IS the Shark screen — that file says so in its own
+docblock — and it opened on a fresh run while the Hustle row hid until day 5.
+`resolved_route` let a deep link into any of the five straight through.
+`ROUTE_GATES` had two entries and now has seven, and the Finances row carries
+`HUSTLE_SHARK` from the same registry entry the hub row reads.
+
+The design pass's second improvement exists precisely to forbid this, and batch
+14 broke it while building on it.
+
+**3. The clear-and-rebuild did not clear.** `surface_base._bind_content()` used
+`queue_free()`, which is DEFERRED, then immediately built new rows. A second
+refresh inside one frame rebuilt on top of rows that were still parented.
+Measured on More at **4 → 8 → 16**.
+
+In ordinary play a frame usually elapses between state changes, which is why it
+had never been seen on a phone. It had been corrupting this suite the whole
+time: the parity runner does its whole job inside one `_ready()` and never
+yields, so every check that refreshed a surface twice was reading a stacked
+tree — and **one check was passing because of it.**
+`_check_phone_dismiss_target` called `_on_toggle("texts")` under a comment
+saying "the Texts accordion is closed by default … so the section is opened the
+way a finger opens it". Texts is OPEN by default (canon's `defaultExpanded:
+true`, and `phone.gd` says so where `_open` is declared). The toggle CLOSED it,
+and the check found its dismiss control in the render before the one it made.
+Making the clear immediate turned it red the same run. The default is asserted
+now rather than assumed.
+
+**4. Five surfaces arrived silently.** A HIDDEN gate has no padlock and no hint,
+so batch 14's ladder opened with nothing anywhere saying it had. A player who
+wanders once and does not happen to reopen the Hustle screen never learns Street
+Market exists. **Hiding a surface until it is earned is only better than showing
+it broken if the game says something when it arrives.**
+
+### The announcer, and why there is no flag
+
+`systems/announcer.gd` says once, in the activity feed, when a gated surface
+crosses from closed to open. The interesting half is how the transition is
+detected.
+
+The obvious design is a persisted `surfaces_announced` set: a field, a manifest
+entry, a migration arm, a validator arm, and a v15 → v16 bump. That was the
+plan and it was wrong. `SurfaceVisibility` is built on the rule that **nothing
+derived is stored** — every verdict is computed from the run's own facts, which
+is what makes "unlocks survive save/load" true by construction rather than by a
+migration. A stored "already told them" flag would be the first thing in the
+access layer able to contradict the run.
+
+A transition is only meaningful inside the action that caused it, so that is
+where it is measured. `GameManager.dispatch()` takes a snapshot of what is open
+BEFORE the handler runs and hands it back to the announcer afterwards, once
+`crew_ops.reconcile()` and `reconcile_persistent_invariants()` — the two things
+that can open a gate without the handler touching them — have settled, and
+before `notify_changed()` renders the feed.
+
+Three awkward cases fall out correctly rather than needing handling:
+
+- **Loading a save announces nothing.** A load is not a dispatch, so no snapshot
+  spans it. A run reloaded on day 20 earned all of it days ago; there is no news.
+- **A new run announces nothing.** `reset_to_new_game()` closes every gate, and
+  a closed gate cannot have just opened.
+- **No schema change**, which is the whole argument.
+
+The copy lives on the gates themselves as an `announce` key, so "is this worth
+announcing" sits beside "what does this require". Only the eight PROGRESSION
+gates carry one. A population gate opens because something arrived and the thing
+that arrived is its own announcement — a line saying "you have a text" beside
+the text is noise.
+
+**The two batches compose better than either was designed to.** Batch 14's
+wander toast reads `activity_log[0]`, and the announcer writes last, so on the
+walk that opens a surface **the toast IS the announcement**: the player wanders
+once and is told, on the screen they are standing on, that Street Market exists.
+That displaces the walk's own flavour line for that one walk, which is the right
+trade.
+
+### The opening
+
+One screen between naming yourself and the first morning, answering the three
+questions a player has after pressing BEGIN THE RUN: where am I, what is coming,
+what do I do. It was filed as a playtest finding months ago and was a
+nice-to-have then; batch 14 made it load-bearing by making Day 1 a Wander card
+and a locked Jobs row.
+
+Every number is read off GameState — the rent, the day it lands, what is in the
+pocket, where the run opens — so the screen cannot promise a rent the
+obligations system will not charge. It writes nothing, which is asserted field
+by field through the save capture: it is introducing a run that has already been
+reset and is the one thing positioned to make a fresh run not fresh.
+
+Shown once, structurally. `name_entry.gd` is its only caller and naming yourself
+happens once per run; CONTINUE RUN calls `go_to_game()` and never passes through
+it. There is no "seen the intro" flag and deliberately no need for one.
+
+### The harness got one more question
+
+`opening.gd` shipped for one commit with a method named `_set` — the same name
+as `Object`'s virtual `_set(StringName, Variant) -> bool` and a different
+signature, which is a PARSE ERROR. Godot logs it, refuses to attach the script,
+and **instantiates the scene anyway**. The screen-smoke gate printed 24/24 for a
+screen that was, from the player's side, a static picture: no bindings, no
+handlers, no button.
+
+That gate is the only thing in the build that would catch a screen that cannot
+render, so it now asks a second question: a scene whose .tscn declares a script
+must come back with one attached. Sabotage-tested by reintroducing the exact
+`_set` collision — `SCRIPT FAILED: opening.tscn`, and 23/24, which CI's
+backreference match fails on.
+
+### Verification
+
+| Gate | Before | After |
+| --- | --- | --- |
+| Parity | 12,249 / 0 | **12,441 / 0** (floor 12,239 → **12,431**) |
+| Save validation | 96 / 0 | 96 / 0 |
+| Screen smoke | 23/23 | **24/24, scripts attached** |
+| Glyph coverage | ok | ok |
+
+**The check count does not add up, and that is the finding.** 12,249 + 192 new
+checks would be 12,441, and the suite reports exactly 12,441 — but the batch-14
+run was **9 checks higher** than the same suite reports today for the same
+sections. Those 9 were never real: they were duplicated buttons and rows in
+trees that had not been cleared. The floor normally catches a section that
+stopped running; here it caught sections that had been running against a bigger
+tree than the screen actually had.
+
+### Sabotage log — 8 run, 8 caught
+
+| Sabotage | Caught by |
+| --- | --- |
+| drop `body.add_child(crew_row)` — the original defect | "the More menu renders a CREW row", ×3 |
+| drop the Finances gate | "but is not a back door to the shark on day 1" |
+| remove the five `ROUTE_GATES` entries | 10 failures, "a fresh run cannot deep-link into …" |
+| put `queue_free()` back in `surface_base` | "a second refresh in one frame does not stack the rows" (got 20, want 10) — **and the count rose to 12,452**, which is the inflation above, reproduced |
+| announce whatever is open, ignoring the before-picture | "and does not say it again on the next walk" |
+| treat an empty before-picture as "everything was closed" | "an empty before-picture announces nothing" (got 8, want 0) |
+| the opening stops naming the rent and the date | "and what the rent is", "and when it lands" |
+| the opening writes to the run it is introducing | "the opening does not change cash" — **and the pre-existing cash-writer audit fired too**, naming the file and line |
+
+### Open, for whoever picks this up
+
+- **The other five discovery axes.** Stickup targets, borrowers, 907List items,
+  the crew roster, the venues and all five NPCs are still visible from day one.
+  Unchanged from batch 14's note; Stickup is the obvious next one and has a
+  filed balance problem a discovery axis will not solve.
+- **Boost at 7% of the day job.** Unchanged. `boost_finder` is the instrument.
+- **`_bind_content`'s clear-and-rebuild is fixed on `surface_base` only.** Home,
+  Hustle and Street bind into authored .tscn nodes rather than rebuilding a
+  Body, so they were never affected — but any future screen that rebuilds should
+  inherit from `surface_base` rather than reimplement the loop.
+- ~~**Five `.uid` files are still missing**~~ **Taken**, in its own commit at the
+  end of this batch — see batch 14's note for what they were and why it mattered.
+
+---
+
 ## Where the build stands (end of the 2026-08-22 session)
 
 One place to orient before reading anything else below.
@@ -5649,13 +6071,14 @@ One place to orient before reading anything else below.
 | | |
 | --- | --- |
 | Build version | `0.1.0` (`autoload/version.gd`) |
-| Save schema | **v14**, migration ladder walks v1 → v14 |
-| Parity | **11,887 checks, 0 failures**, floor `MIN_CHECKS := 11860` |
-| Save validation | 82 checks, 0 failures — **a CI gate as of batch 12** |
-| Screen smoke | 23/23 screens instantiate — **a CI gate as of batch 12** |
+| Save schema | **v15**, migration ladder walks v1 → v15 (unchanged by batch 15) |
+| Parity | **12,441 checks, 0 failures**, floor `MIN_CHECKS := 12431` |
+| Save validation | 96 checks, 0 failures — **a CI gate as of batch 12** |
+| Screen smoke | 24/24 screens instantiate **with their scripts attached** — a CI gate as of batch 12, script-attachment added in batch 15 |
 | Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` |
-| Screens | 23 |
-| Systems | 28 registered in `GameManager` |
+| Screens | 24 |
+| Systems | 29 registered in `GameManager` |
+| Discovery axes | **2** — `jobs_discovered` (WORK walks) and `boost_targets_discovered` (DEAL walks, batch 14) |
 | Branches | `main` only; every batch branch merged and deleted |
 
 **The economy, measured** (30 days × 4 seeds, `_check_economy_profiles`). Every
@@ -5665,11 +6088,12 @@ percentage is against `legal_worker`:
 | --- | --- | --- | --- |
 | hustler | $11,372 | 732% | trade + job; the ceiling |
 | flipper | $5,566 | 358% | 907List |
-| worker_wanders | $4,479 | 288% | **the strongest clean path** — zero Heat, zero arrests |
+| worker_wanders | $4,457 | 287% | **the strongest clean path** — zero Heat, zero arrests |
 | legal_worker | $1,553 | 100% | the baseline, and see the caveat below |
 | arbitrage | $1,288 | 83% | |
-| boost | $201 | 13% | 3.5 of 4 Spenard targets banned per run |
-| wanderer | $32 | 2% | walking with no job — correctly a trap |
+| boost | $201 | 13% | handed all twelve targets on day 1; 3.5 bans a run, and it ends with **nothing left workable** |
+| boost_finder | $113 | 7% | batch 14 — earns its board and moves when a block is finished. 9.0 targets clocked, **7.5 bans absorbed, and still 1.5 rooms open on the last day** |
+| wanderer | $36 | 2% | walking with no job — correctly a trap |
 | trader / stickup | ~$30 | 2% | |
 
 **Read the baseline caveat before quoting any of those.** `legal_worker` never
@@ -5678,7 +6102,9 @@ leaves Wash & Go, which is now a player ignoring a free mechanic — and
 against [40, 60]). Re-baselining moves every number in this file and is a design
 call, not a hardening one.
 
-**Three things filed for design, not taken:**
+**Filed for design, not taken** (item 3 was taken in batch 14 and is kept below
+with what actually happened, because the shape of the finding is still the useful
+part):
 
 1. **Stickup is under-powered on its own terms.** ~4.6hp expected damage an
    attempt against a ~$11 take. Every cost lever was swept (injuries off → 8%,
@@ -5690,11 +6116,15 @@ call, not a hardening one.
    catastrophic only was 50% in a scratch tree. It is transcribed from FS-003 §5
    and the web build is the oracle, so it is pinned as an anomaly rather than
    fixed.
-3. **`jobs_discovered` is the ONLY discovery axis in the build.** Boost targets,
-   stickup targets, borrowers, 907List items, the crew roster, the venues and
-   all five NPCs are visible from day one. This is why Wander's `LOOK FOR A
-   DEAL` intent is the thinnest of the three — it can weight the draw but has
-   nothing to find.
+3. ~~**`jobs_discovered` is the ONLY discovery axis in the build.**~~ **Half
+   taken in batch 14.** Boost targets are now discovered on a `LOOK FOR A DEAL`
+   walk, which is what the intent had been missing — it could weight the draw
+   and had nothing to find. Stickup targets, borrowers, 907List items, the crew
+   roster, the venues and all five NPCs are **still visible from day one**, and
+   each is a candidate for the same treatment. Boost was taken first because it
+   is the surface where it also fixes something: a ban is permanent by target
+   id, so its board could only ever shrink, and discovery is the first thing
+   that ever put a room back on it.
 
 **Harness lessons that cost real time this session, all now guarded:**
 
@@ -5732,6 +6162,8 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 11 | `codex/batch-11-wander-followups` | An adversarial read of batch 10 found five shipped defects · all five fixed · adapter-supplied choice copy · the glyph CI job now scans `data/` | 11,723 → 11,761 | Merged, PR #65. Schema unchanged. |
 | 12 | `codex/batch-12-measure-wander` | **Wander measured** — 307% of the day job · the discovery→money mechanism pinned · the other two harnesses gated in CI | 11,761 → 11,780 | Merged, PR #66. Schema unchanged. |
 | 13 | `codex/batch-13-wander-intents` | Wander becomes a choice — three intents · per-day effort falloff · READ, the intent that tells you what the build hides | 11,780 → 11,887 | Merged, PR #67. **Save v13 → v14.** |
+| 14 | `claude/batch-14-visibility-discovery-trbd0v` | The visibility pass — the Hustle ladder · the snapshot LOCKED → HIDDEN · the wander toast · POST ELI and LAY LOW re-homed · **Boost's discovery axis** | 11,887 → 12,249 | **Save v14 → v15.** |
+| 15 | `claude/batch-14-visibility-discovery-trbd0v` | The doors and the news — the orphaned Crew row · route/button parity · the clear that did not clear · **the announcer** · the opening | 12,249 → 12,441 | Schema unchanged. Three defects predating batch 14. |
 
 **Two verification defects found in batch 6b, both in the harness rather than
 the game, both now fixed:**

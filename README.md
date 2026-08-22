@@ -49,15 +49,28 @@ change districts, change hustles, or slow down. And the people you rob can send
 somebody after you two days later, in the part of town you did it in — though the
 block starts talking about them first, if you are standing where they are.
 
-A new run shows only what it has earned. The Market snapshot, Turf & Crew, the Crew
-panel, Jobs and the two districts past Spenard all start locked — greyed, with one
-line saying what opens them — and Tonight's Operation, the text card and the activity
-feed are not on the screen at all until there is something in them. The gates are
-authored in one table (`autoload/surface_visibility.gd`), evaluated by the shared
-requirements engine, and enforced on the ROUTE as well as the button, so there is one
-answer to "may the player go here" no matter who asked. Nothing about an unlock is
-stored: every verdict is derived from the run's own facts, which is why unlocks
-survive a save without a migration.
+A new run shows only what it has earned, and Day 1 is nearly bare on purpose. Turf &
+Crew, the Crew panel, Jobs and the two districts past Spenard start LOCKED — greyed,
+with one line saying what opens them. Everything else is simply not there: the Market
+snapshot until a first flip, Tonight's Operation and the text card and the activity
+feed until they have something in them, and five of the Hustle hub's six income rows
+until the run has earned them. Walking the block turns up the corner you buy from on
+the first walk and the doors worth trying on the third; days passing bring the board,
+the desperation and the man who lends. Jobs keeps the only padlock on that screen,
+because it is the one on-ramp the player is meant to know about and go looking for.
+
+The gates are authored in one table (`autoload/surface_visibility.gd`), evaluated by
+the shared requirements engine, and enforced on the ROUTE as well as the button — all
+seven gated surfaces, so a deep link, a menu row and a hub row cannot disagree about
+whether you may go somewhere. Nothing about an unlock is stored: every verdict is
+derived from the run's own facts, which is why unlocks survive a save without a
+migration.
+
+And the game says when a door opens. A hidden surface has no padlock to watch, so the
+run is told once, in the feed, the moment one arrives — detected by diffing what was
+open before an action against what is open after it, inside the action that caused it.
+There is no "already told them" flag anywhere, which is what keeps loading a save from
+announcing a ladder the player climbed a fortnight ago.
 
 And the route is findable. Buying in one district to sell in another is the only
 strategy in the game that clears the day job, and until now nothing on any screen could
@@ -90,7 +103,8 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Flip listings whose true value is hidden by your tier | Hustle → 907List |
 | Lose a listing to someone else the moment you pass on it | automatic, once a day's board is spent |
 | Get better at reading value, and watch the odds move | automatic, on a clean flip |
-| Lift stock from rooms that may be watching | Hustle → Boost |
+| Lift stock from rooms that may be watching — once you have clocked them | Hustle → Boost |
+| Notice a room worth trying, and put it on your own map | Home → LOOK FOR A DEAL |
 | Rob marks for fast money and real Heat | Hustle → Stickup |
 | Have it go clean, messy, wrong, or badly wrong | automatic, on any risky action |
 | Get caught mid-lift and choose how to play it | automatic, on a blown Boost |
@@ -114,6 +128,10 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
 | Go out looking for work, for a deal, or just to read the block | Home → the three wander buttons |
+| Be told what the walk actually turned up, rather than that you walked | automatic, on any wander |
+| Send Eli out or go quiet, without waiting for an operation to exist | Home → WHAT ELSE |
+| Be told, once, when a new way of earning opens up | Activity feed, on the action that opened it |
+| Be told where you woke up, what is owed, and what to do first | the opening, once per run |
 | Learn what a corner is hot for, and whether anyone has started watching you | Home → SEE WHO IS OUT |
 | Turn up work nobody told you about by walking the block | automatic, on a wander |
 | Get stopped on foot and decide what to do about it | automatic, above WATCHED |
@@ -397,7 +415,7 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (**11,887 checks** after batch 13, floor enforced at 11,860). Save-validation and screen-smoke are CI gates too as of batch 12; fixtures grow with each system |
+| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (**12,441 checks** after batch 15, floor enforced at 12,431). Save-validation and screen-smoke are CI gates too as of batch 12; the smoke gate also proves each screen's script actually attached, as of batch 15 |
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
 | 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
 | 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
@@ -437,6 +455,8 @@ regardless of how small the source file is.
 | Batch 11. Wander follow-ups | ✅ an adversarial read found five shipped defects: four of five encounter choices rendered an empty description, the ramp and its validator disagreed, the toast talked over the encounter, a wander was the one way around the block nobody waiting could use, and which job you found was array order. Parity → 11,761 checks |
 | Batch 12. Wander, measured | ✅ a slot-costing action had shipped unmeasured. A wandering worker reads **307%** of the day job on zero Heat and zero arrests. The first probe read 129% and was wrong — it found both jobs and kept clocking in at the car wash. The other two test harnesses became CI gates. Parity → 11,780 checks |
 | Batch 13. Wander becomes a choice | ✅ 89.5 walks a run, 7 of 11 cards ungated flavour, and no decision anywhere in it. Three intents, a per-day effort falloff, and READ — five readers surfacing state the build tracks and had no window onto. Save v14; parity → 11,887 checks |
+| Batch 14. The visibility pass, and Boost's second axis | ✅ the build showed everything at once and explained none of it. The Hustle hub opened with six income rows on Day 1; five now arrive on two earned axes (walks and days) and Jobs keeps the only padlock. The Home Market Snapshot went LOCKED → HIDDEN — a padlock over real product names and prices reads as a bug, not a promise. Wander says what it found instead of "You take a walk." POST ELI and LAY LOW came off the operation card the gate system hides for the whole of a fresh run. And Boost got a DISCOVERY axis: a room has to be clocked on a DEAL walk before it is liftable, which is the first thing that ever put a target BACK on that board. Measured: the profile that earns its board absorbs **7.5 permanent bans and still ends with rooms open**, against 3.5 bans and an empty screen for the one handed twelve targets on day one. Save v15; parity → 12,249 checks |
+| Batch 15. The doors, and the news | ✅ an adversarial read of batch 14 and two defects older than it. **The More menu's Crew row never rendered** — `apply_surface_gate(…, _menu_row(…))` gated a card nobody had parented, so from v0.1.0 the row existed only in the comment arguing for it. **Two doors, two answers**: batch 14 gated five Hustle rows at the button and left the routes open, and `More → Finances` IS the Shark screen and opened on Day 1. **The clear-and-rebuild did not clear** — `queue_free()` is deferred, so a second refresh in one frame stacked every row (4 → 8 → 16), which had been quietly inflating this suite and was the only thing keeping one phone check green. And five surfaces arrived **silently**, so the announcer now says once, in the feed, when a door opens — detected by diffing a snapshot across the dispatch that caused it, which needs no persisted flag, no manifest entry and no migration. Plus the opening: one screen between naming yourself and the first morning, reading the rent and the date off GameState. Schema unchanged; parity → 12,441 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

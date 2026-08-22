@@ -31,16 +31,37 @@ func _on_surface(row: String, label: String) -> void:
 		return
 	nav.go_to(route)
 
-## The Hustle hub is where Jobs is reached from, so the Jobs row carries the
-## gate. Filled first, then locked, for the same reason Street's cards are: a
-## locked row still reports what the surface is.
+## The Hustle hub is where every income surface is reached from, so the hub
+## carries every income gate. Filled FIRST and gated second, which is the order
+## the rest of the build uses and the order that matters here: a locked row
+## still reports what the surface is, and a hidden one is filled harmlessly on
+## its way out of the layout.
+##
+## Jobs is LOCKED and the other five are HIDDEN. That asymmetry is authored in
+## `SurfaceVisibility.GATES` and argued there; this file only names the surface
+## and the node, which is the whole of a screen's job in the gate system.
 const ACCESS := preload("res://autoload/surface_visibility.gd")
+
+## surface id -> the row it governs. A Dictionary rather than six calls so the
+## list of gated rows is one thing a reader can count, and so a row added to
+## `SURFACE_ORDER` without a gate is visibly missing from here rather than
+## quietly ungated.
+const ROW_GATES := {
+	ACCESS.MENU_JOBS: "Jobs",
+	ACCESS.HUSTLE_LIST: "List",
+	ACCESS.HUSTLE_MARKET: "Market",
+	ACCESS.HUSTLE_BOOST: "Boost",
+	ACCESS.HUSTLE_STICKUP: "Stick",
+	ACCESS.HUSTLE_SHARK: "Shark",
+}
 
 func _bind_content() -> void:
 	_bind_take()
 	_bind_surfaces()
 	_bind_curtis()
-	gate_surface(ACCESS.MENU_JOBS, "Shell/Scroll/Pad/Content/Rows/Jobs")
+	for surface_id in ROW_GATES:
+		gate_surface(str(surface_id),
+			"Shell/Scroll/Pad/Content/Rows/" + str(ROW_GATES[surface_id]))
 
 func _bind_take() -> void:
 	_set_text("Shell/Scroll/Pad/Content/Take/V/Big", "$%s" % _commas(gs.todays_take))

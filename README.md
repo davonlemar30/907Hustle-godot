@@ -357,7 +357,7 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (11,311 checks after batch 5, floor enforced at 11,301); fixtures grow with each system |
+| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (11,330 checks after batch 6a, floor enforced at 11,320); fixtures grow with each system |
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
 | 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
 | 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
@@ -388,6 +388,7 @@ regardless of how small the source file is.
 | Batch 3. The risk term | ✅ the economy instrument (five profiles × four seeds, measuring the trading path against the day job for the first time) and the risk term it made possible — a sale writes Heat, a watched corner pays less, and a trip taken holding can be stopped. The pure courier route goes **384% → 90%** of the day job. Parity → 11,248 checks |
 | Batch 4. The stickup ladder | ✅ `stick_tier` was written exactly once in the whole repo (`= 1`, at reset) and `stick_rep` was counted and read by nothing, so four of nine authored stickup targets — including both biggest paydays — were unreachable for a run's whole life. Rep now climbs the ladder. The criminal surfaces are also measured against the day job for the first time. Parity → 11,273 checks |
 | Batch 5. The route, made visible | ✅ the one profitable strategy in the game had no surface anywhere that could see it. The Market row's route line is live off the real board instead of an authored string, Word Around Town carries what product is going for elsewhere, and both go dark when the phone bill goes unpaid — the first thing the $75 has ever bought. Parity → 11,311 checks |
+| Batch 6a. The operation substrate | ✅ every delegation string was a const on the coordinator, which is why there could only ever be one operation. Copy is adapter-supplied now, with a `params` passthrough so an operation can be given a target. Plus three honesty defects in batch 5's route line. Parity → 11,330 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

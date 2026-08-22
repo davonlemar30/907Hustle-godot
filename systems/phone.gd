@@ -219,6 +219,9 @@ func market_intel_line(route: Dictionary) -> String:
 		int(route.get("edge", 0)),
 	]
 
+## Canon's PHONE_INTEL: the ambient half of Word Around Town, about the district
+## the player is standing in. `market_intel()` above is the half with prices in
+## it; this is the texture underneath.
 func intel() -> Array:
 	var area: String = str(gs.current_district_id)
 	if not AREA_PROSE_NAMES.has(area):

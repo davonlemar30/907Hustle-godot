@@ -228,6 +228,28 @@ func select(crew_id: String, assignment: Dictionary) -> Dictionary:
 		"spend_limit": limit,
 	}
 
+# --- her voice (batch 6a) ---------------------------------------------------
+#
+# These four moved out of `crew_operations.gd` verbatim. They were consts and
+# private methods on the coordinator, which is what made a second operation
+# impossible: the coordinator could only ever say one thing, in one person's
+# voice, about one kind of work. They are optional adapter methods now — an
+# adapter that implements none of them inherits the coordinator's fallbacks.
+
+## Her actual roster name is "Pherris Dickens"; the inbox renders the sender
+## uppercase and a text is from a person, not from a file.
+func sender() -> String:
+	return "Pherris"
+
+## The offer, once she is capable of it. PX/FS-001.9's authored copy.
+func discovery_text() -> String:
+	return "I been watching how you move product on that list. " \
+		+ "Let me run your board tomorrow morning. I know what sells."
+
+## The one blocker that gets a text rather than a panel line.
+func loyalty_warning_text() -> String:
+	return "I'm not feeling like running errands right now. You know what I need."
+
 # --- night: turning it back into money -------------------------------------
 
 ## Which of her holdings are ready to close. Uses the tier's own `sell_delay`,

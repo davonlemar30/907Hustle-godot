@@ -5533,6 +5533,107 @@ and they should be: the harness always read `gs.markets` directly, so making the
 route visible changes what a *player* can see, not what a simulation could
 already do. That is the entire point of the build.
 
+## Batch 6a — The Operation Substrate  (added 2026-08-22)
+
+Branch `codex/batch-6a-operation-substrate`, from `main` at `4bb5c98`.
+Infrastructure half of the crew-operations work, split out so the content half
+(6b) lands against a seam that already exists and is already tested.
+
+**Parity: 11,330 checks, 0 failures** (from 11,311). Floor 11,301 → 11,320.
+Save schema unchanged at v10, and **no bump is needed for new operations** —
+`crew_assignments` and `crew_operation_state` have been whole-Dictionary
+`PERSIST_FIELDS` since v7 and the validator does not inspect them.
+
+### Why the coordinator could only ever hold one operation
+
+`crew_operations.gd`'s header forbids `if operation_id ==` branches. It did not
+need one, because the coupling was worse than a branch: **every player-facing
+string was a const or a private method on the coordinator itself.**
+
+```gdscript
+const CALLBACK_FROM := "Pherris"
+const DISCOVERY_TEXT := "I been watching how you move product on that list. ..."
+const LOYALTY_WARNING_TEXT := "I'm not feeling like running errands right now. ..."
+func _assignment_line(...)   # "Pherris is running your board today. ..."
+func _settlement_text(...)   # reads settled_count / gross / profit_or_loss
+```
+
+The coordinator could say one thing, in one person's voice, about one kind of
+work. A second operation had nowhere to put its own words.
+
+### The seam
+
+Four OPTIONAL adapter methods, all checked rather than required, because an
+adapter that only knows how to `settle()` is still a valid adapter:
+
+```gdscript
+sender() -> String
+discovery_text() -> String
+loyalty_warning_text() -> String
+assignment_line(selection, spend_limit) -> String
+settlement_text(assignment) -> String
+```
+
+Pherris's strings moved into `list_adapter.gd` verbatim. The old consts remain
+as the coordinator's fallbacks, which is what an adapter that declines to speak
+inherits — and what a registered-but-half-built adapter gets instead of an empty
+string at the player.
+
+**Plus a `params` passthrough.** `spend_limit` was the only field the assignment
+dispatch ever read, so an operation needing a TARGET — a district to work, a
+corner to stand on — had nowhere to receive one. Carried as an opaque Dictionary
+the coordinator never inspects; the adapter owns its shape. Absent means `{}`
+rather than `null`, so an adapter can read it without checking.
+
+**Capability IDs are constrained and it is worth writing down why.**
+`tests/parity/fixtures/requirements/fs001_fixtures.json` asserts
+`eli/territory_operations` and `deshawn/network_operations` are `has: false` at
+rank 3. Those two IDs are burned; 6b must not use them.
+
+### Three honesty defects in batch 5's route line
+
+Each found by reading the shipped surface rather than by a failing test, which
+is why each now has one.
+
+1. **A route you cannot stock is not a route.** `best_route` reported the spread
+   without checking the local corner had any to sell you, so a sold-out product
+   still advertised somewhere to take it.
+2. **A one-dollar spread is arithmetic, not a trip.** The trip has to clear its
+   own $5 bus fare before it is reported as a route.
+3. **Two different silences.** Before a first corner is held the player knows
+   exactly one district, so there is nowhere for word to come FROM. That is a
+   map problem, and it was reading as a market conclusion — "NOBODY PAYING OVER
+   THE ODDS", on all eight rows at once. It says "NO OTHER BOARD YOU KNOW OF"
+   now.
+
+### The route count is pinned, and that is a floor fix
+
+The route-visibility section looped over however many routes the board happened
+to offer, asserting three things about each. That makes the section's
+contribution to `_checks` move whenever the economy does — and it did, dropping
+7 the moment the availability and fare rules disqualified some routes. A floor
+exists to catch a section aborting, not to absorb that. The count is asserted
+explicitly now and the loop is bounded by it, so an economy change shows up as a
+named failure rather than as floor drift.
+
+### Sabotage log
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| 6a-S1 | availability check dropped | ✅ 3 failures |
+| 6a-S2 | fare floor dropped | ⚠️ **PASSED** first time — see below |
+| 6a-S3 | the two silences collapsed | ✅ 2 failures |
+| 6a-S4 | `_adapter_copy` always returns the fallback | ✅ 4 failures |
+| 6a-S5 | `params` dropped from the assignment record | ✅ 2 failures |
+
+**6a-S2 is the second sabotage this session to pass on the first attempt**, and
+for the same shape of reason as S11 in v0.1.0: the assertion swept every route
+on the probe board for a sub-fare edge, and no route on that board happens to
+have one, so removing the floor left it green. A sweep over data that does not
+contain the case proves nothing. The case is now BUILT — a spread set to exactly
+the fare, asserted as not-a-route, then one dollar over, asserted as one — and
+the sabotage then failed correctly.
+
 ## Overnight Build Log — 2026-08-22
 
 Autonomous loop. Each entry: branch, tasks, parity, outcome.
@@ -5545,6 +5646,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 3 | `codex/batch-3-trading-risk` | The economy instrument · the trading path's risk term (sell Heat · corner pricing · the carry) | 11,177 → 11,248 | Merged, PR #56. Pure courier route 384% → 90% of the day job. |
 | 4 | `codex/batch-4-crime-progression` | The Stickup ladder (`stick_tier` had no writer) · criminal surfaces measured against the job | 11,248 → 11,273 | Merged, PR #57. Four dead targets reachable; stickup at 2% filed for balance. |
 | 5 | `codex/batch-5-route-visible` | The route made visible — live Market route line · Word Around Town prices · both gated on the phone bill | 11,273 → 11,311 | Merged, PR #58. Seven authored route strings retired. |
+| 6a | `codex/batch-6a-operation-substrate` | Adapter-supplied delegation copy · `params` passthrough · three honesty defects in the route line · route count pinned | 11,311 → 11,330 | Merged, PR #59. No schema bump needed for new operations. |
 
 **Findings carried forward:**
 

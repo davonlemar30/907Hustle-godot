@@ -111,6 +111,13 @@ func _live_hint(product_id: String, product: Dictionary) -> Dictionary:
 	var economy: Object = _gm.system("economy") if _gm else null
 	var route: Dictionary = economy.best_route(product_id) if economy != null else {}
 	if route.is_empty():
+		# Two different silences, and telling them apart is the point of the
+		# line. Before a first corner is held the player knows exactly one
+		# district, so there is nowhere for word to come FROM — reporting that
+		# as "nobody is paying over the odds" reads as a market conclusion when
+		# it is a map problem, and it fired on all eight rows at once.
+		if (gs.districts_unlocked as Array).size() <= 1:
+			return {"text": "NO OTHER BOARD YOU KNOW OF", "color": muted, "arrow": false}
 		return {"text": "NOBODY PAYING OVER THE ODDS", "color": muted, "arrow": false}
 	var green := Color(0.451, 0.722, 0.404)
 	return {

@@ -114,11 +114,12 @@ record of the required change.
 - The requested post-PR #45 base is `5efcb1599b4ec0891b6f95cc76805c5379bc6286`.
 - GitHub had no pushed `codex/fs003-arrest-pressure-retaliation` branch when
   this batch began.
-- The `godot` headless CLI is not on PATH, so the requested shell baseline cannot
-  run here. The connected Godot 4.7.2 editor does parse the edited parity runner;
-  the full parity scene then stops on the existing `ui/components/toast.gd:21`
-  failed-action probe before reporting totals. Headless verification remains
-  pending before merge.
+- The `godot` CLI is available at `/opt/homebrew/bin/godot` and reports
+  `4.7.2.stable.official.ed1daf0bf`. After the isolated toast fix was merged as
+  PR #48, the parity scene baseline is **10,439 checks / 0 failures**.
+- The exact `godot --headless --script tests/parity/parity_runner.gd` form does
+  not exit in this project; the authoritative runnable form is the scene:
+  `godot --headless --path . --scene tests/parity/parity_runner.tscn`.
 
 ### 907List keyed-shuffle update
 
@@ -135,16 +136,47 @@ while sampling a small range. The remaining calls are event-specific value
 rolls (`boost`, `stickup`, `jobs`, and 907List realised values), not sequential
 small-range sampling loops.
 
-### Nested save-shape findings
+### Nested save-shape findings — follow-up validation
 
-The new diagnostic fixtures confirm the current v8 loader accepts correctly
-typed outer arrays/dictionaries while exposing malformed inner records to
-`GameState`: crew records, market district entries, shark loans, observation
-queue rows, phone messages, 907List holdings, and consequence chain/history/
-queue data. These are silent-corruption findings, not fixes; `autoload/save_system.gd`
-is Claude-owned for this build. A later save-hardening PR should reject each
-inner shape or replace it with the safe default and update
-`tests/parity/fixtures/save_nested_shapes.json`.
+PR #46's diagnostic fixtures established that the v8 loader accepted malformed
+inner records and exposed them to `GameState`. The follow-up branch maps the
+requested structures to the actual Godot fields (`shark_loans`,
+`phone_inbox`/`phone_held_inbox`, `list_holdings`, and the three consequence
+containers) and repairs them on `load_run()` only.
+
+Repair behavior is safe-default rather than reject: malformed containers become
+empty containers; malformed rows are dropped; malformed known fields receive
+typed defaults; and unknown keys survive. Repaired payloads are not autosaved,
+so the original malformed file remains diagnosable. `save_nested_shapes.json`
+now records `repaired_with_safe_defaults`, and
+`tests/save_validation/save_validation_runner.tscn` covers all ten requested
+structures plus the migrate → validate seam. The standalone suite passes **47
+checks / 0 failures**. The existing parity runner's direct diagnostic probe is
+left unchanged because `tests/parity/parity_runner.gd` is owned by Claude for
+the concurrent build; the new load-time suite is the repair assertion.
+
+The validator runs after migration and before apply; it does not write repaired
+payloads back or change the schema. The v9 additions are validated in place:
+`arrest_record.cooldown_until_day` is an integer deadline (minimum `-1`, where
+`-1` means no active cooldown), and `consequence_flags` validates the boolean
+`retaliation_first_expiry_seen` and integer `retaliation_last_ambient_day`
+(minimum `-1`) when those optional keys are present. Unknown consequence flags
+survive. A v8 record may omit the cooldown key and a v8 payload may omit
+`consequence_flags`; migration/GameState defaults handle those absences without
+materializing keys that would change legacy round-trip shape. FS-003.13 added no
+new keys inside `active_consequence` or `consequence_queue`.
+
+The extended standalone suite passes **61 checks / 0 failures**. Its three new
+v9 guards were sabotage-proven: changing the cooldown fallback, removing the
+retaliation flag type repair, or removing the ambient-day lower bound made the
+suite fail. The merged main baseline after PR #50 and PR #51 is **10,781 checks
+/ 0 failures**; the rebased save-validation branch matches it. Glyph coverage
+passes across all five theme fonts, and `git diff --check` is clean.
+
+Repair warnings identify each changed path in the runtime log. The exact
+`godot --headless --script tests/parity/parity_runner.gd` form still does not
+exit in this project; the passing parity result above came from the equivalent
+headless parity scene.
 **DONE — Home screen** (`ui/screens/home.tscn`), verified via run + screenshot:
 TopBar (DAY/EVENING, two-tone 907HUSTLE brand, SPENARD/AK, CASH), 6-stat HUD
 with icons, real Spenard street photo (`assets/img/assest1home.png`), red
@@ -839,7 +871,19 @@ board only by opening the 907List screen and reading a panel; they found out how
 her day went by noticing the cash total had moved. FS-001.9 gives the feature a
 voice. FS-001.10 is the milestone's exit gate.
 
-**Parity: 10,439 → 10,609 checks, 0 failures. Save schema stays v8.**
+**Parity: 10,439 → 10,609 checks, 0 failures on the branch. Save schema stays v8.**
+
+> **Merge note, written after the fact.** This landed minutes after FS-003.13
+> (PR #50), so both figures above are true of this build measured alone and
+> neither describes `main`. On `main` the suite runs **10,781** checks —
+> 10,439 + 172 from .13 + 170 from here, which is the arithmetic saying neither
+> merge lost anything — and the schema is **v9**, because .13 bumped it. This
+> build needed no bump and still does not: its callback flags nest inside
+> `crew_operation_state`.
+>
+> Both builds also wired `MIN_CHECKS` in independently and both set it to 10600
+> from their own branch's count, which left the floor 181 short once they were
+> both in. Corrected to 10770 in a follow-up.
 
 ### FS-001.9 — four callbacks, no new machinery
 
@@ -4580,8 +4624,17 @@ and PR #50 both merged). Six tasks: build versioning, the surface-visibility
 access layer, the seeded-key composition audit, the HOT escape lever, the Phone
 tap-target fix, and the canonical location rename.
 
-**Parity: 11,110 checks, 0 failures** (from 10,781). Floor raised 10,600 → 11,000.
+**Parity: 11,110 checks, 0 failures** (from 10,781). Floor raised 10,770 → 11,100,
+set from the MERGED suite with ten of margin: 10,781 (base) + 329 (v0.1.0).
 **Save schema: v9 → v10.** 21/21 screens render headless at 375×812.
+Glyph coverage passes. The nested save-shape suite is **82 checks** (from 47) —
+`save_validator.gd` gained three v10 arms, one per new field.
+
+`main` moved under this branch mid-build (PR #49 nested save-shape validation,
+PR #52 the floor-and-doc sync) and was merged in. Three conflicts, all
+resolved by TAKING BOTH: the schema constant is v10 *and* preloads the new
+validator; the floor keeps PR #52's derivation discipline and extends its
+arithmetic; the README roadmap keeps v0.1.0's row.
 
 ### Save schema v10
 
@@ -4610,6 +4663,27 @@ Field IDs use the canonical district IDs (`north_star_lot`, `downtown`,
 ("spenard"/"downtown"/"industrial"). Those IDs are what `districts`, the market
 keys, `district_pressure` and the save already use; a second vocabulary of
 friendly names would be one rename away from gating nothing at all.
+
+### The v10 fields, and the validator that had to learn them
+
+PR #49 landed a load-time nested-shape validator (`autoload/save_validator.gd`)
+while this branch was open. It "preserves unknown keys", so the three v10 fields
+would have passed through it untouched and unchecked — which is exactly the gap
+the validator exists to close. Three arms added, one per field, each guarding a
+different failure:
+
+- **`districts_unlocked`** — non-string rows dropped, duplicates dropped, and
+  `north_star_lot` restored if a save somehow lost it. A run that cannot travel
+  home is worse than any malformed row this validator normally sees.
+- **`job_contacts`** — clamped at zero. A negative reads identically to zero
+  right up until somebody writes a gate that tests `!= 0`.
+- **`pressure_clean_credits`** — same district → family shape as
+  `district_pressure`, one level shallower, with negatives clamped: a negative
+  credit would ADD Pressure at settlement, the exact opposite of the lever.
+
+Absent is not malformed — a v9 save reaches the validator with none of the three
+and must come out with none of them, so `_apply()` supplies GameState's defaults.
+Asserted.
 
 ### The surface visibility system
 
@@ -4867,7 +4941,8 @@ correctly. A sabotage that passes is the sabotage doing its job.
 
 | Check | Result |
 | --- | --- |
-| Parity suite | PASS — 11,110 checks, 0 failures (floor 11,000) |
+| Parity suite | PASS — 11,110 checks, 0 failures (floor 11,100) |
+| Nested save-shape suite | PASS — 82 checks, 0 failures (from 47) |
 | 21 screens render at 375×812 headless | 21/21 |
 | Glyph coverage | ok — every shipped character is in all 5 theme fonts |
 | `git diff --check` | clean |

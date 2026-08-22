@@ -14363,16 +14363,38 @@ func _fail(label: String, detail: String) -> void:
 ## hidden-information audit, which is the only thing standing between "a warning"
 ## and "a countdown with adjectives".
 ##
-## v0.1.0 raises it to 11000. FS-001 and FS-003 both closed before it, so this
-## is the first slice whose additions are not a milestone's own coverage but a
-## PLAYTEST's: what a new run shows, what the version says, whether eight
+## FS-001.9 and .10 (PR #51) merged minutes after FS-003.13 (PR #50) and raised
+## it to 10770. Each of those two builds set the floor from ITS OWN branch — .13
+## measured 10611 and .9/.10 measured 10609, and both wrote 10600 — so when they
+## landed back to back the floor was left 181 short of the suite that actually
+## runs. A floor with that much slack is the specific failure it exists to catch:
+## roughly a hundred and eighty checks could have vanished and the run would
+## still have printed PASS.
+##
+## That number was set from the MERGED run, which is the only one that matters:
+## 10439 (base) + 172 (FS-003.13) + 170 (FS-001.9/.10) = 10781. The arithmetic is
+## worth writing down — it is what says the two merges cost nothing, rather than
+## that they happened to end up looking fine.
+##
+## v0.1.0 keeps that discipline and raises it to 11100. FS-001 and FS-003 both
+## closed before this slice, so its additions are not a milestone's own coverage
+## but a PLAYTEST's: what a new run shows, what the version says, whether eight
 ## consecutive seeded keys are actually eight different rolls, and whether an
-## aggressive player has a way out of HOT. Its 295 checks are mostly the gate
-## table walked in every direction the design pass names -- fresh run, threshold,
-## save/load, route bypass, fail-closed, blocker order -- because a gate is a
-## claim about what the player CANNOT see, and the only way to prove that is to
-## look at what the screen actually rendered.
-const MIN_CHECKS := 11000
+## aggressive player has a way out of HOT. Most of the growth is the gate table
+## walked in every direction the design pass names — fresh run, threshold,
+## isolation, save/load, route bypass, fail-closed, blocker order — because a
+## gate is a claim about what the player CANNOT see, and the only way to prove
+## that is to look at what the screen actually rendered.
+##
+## Set from the merged suite again, not from the branch: 10781 (merged base,
+## unchanged by PR #49 — its 35 new checks live in its own
+## `tests/save_validation` runner, not here) + 329 (v0.1.0) = 11110, measured.
+##
+## Ten of margin, the same margin every floor since FS-003.13 has left, because
+## several sections sweep until they find the outcome they need: their
+## contribution is deterministic but shifts by one or two when an unrelated
+## seeded key moves.
+const MIN_CHECKS := 11100
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

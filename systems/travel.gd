@@ -60,4 +60,19 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 	var watcher := ""
 	if curtis != null:
 		watcher = str(curtis.maybe_watcher_encounter("travel"))
+
+	# Arriving somewhere is the other moment a delayed consequence can become
+	# eligible — TI-003 §15 gates activation on the player being PRESENT, and
+	# the day-start check alone would only ever catch somebody who slept there.
+	#
+	# Without this, "avoid the district" would degrade to "avoid sleeping in the
+	# district", and a player could work a threatened block every afternoon
+	# without ever meeting anybody. The engine still owns every gate; this only
+	# asks the question again now that the answer can have changed.
+	#
+	# Asked AFTER the slot is spent, so a chain that opens here holds the day it
+	# is actually opening on.
+	var engine: Object = gm.system("consequence")
+	if engine != null and not gs.game_over:
+		engine.try_surface_delayed(int(gs.day), gs.current_district_id)
 	return {"ok": true, "arrived": district.get("name", ""), "watcher": watcher}

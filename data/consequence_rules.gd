@@ -506,3 +506,150 @@ func pressure_steps(score: float) -> int:
 
 func adjacent_districts(district_id: String) -> Array:
 	return (DISTRICT_ADJACENCY.get(district_id, []) as Array).duplicate()
+
+# --- Retaliation (TI-003 §§15-16, FS-003 §9) -------------------------------
+#
+# The one delayed consequence in the first slice: people you robbed sending
+# somebody after you, days later, in the district it happened in.
+#
+# It is deliberately NOT a second punishment roll bolted onto a bad result. A
+# robbery that goes wrong has already cost what it cost. Retaliation is the
+# separate fact that a register belongs to somebody, and that somebody heard.
+
+const RETALIATION_DEFINITION := "retaliation_street_crew"
+
+## TI-003 §15's window. Trigger on cause day + 2, expire at the end of + 5.
+##
+## The gap is the design: two days is long enough that the player has moved on,
+## three more is short enough that leaving the district is real counterplay
+## rather than a formality.
+const RETALIATION_TRIGGER_DELAY := 2
+const RETALIATION_EXPIRY_DELAY := 5
+## FS-003 §10: "only one generic retaliation scene from this queue surfaces per
+## day in the first slice."
+const RETALIATION_DAILY_CAP := 1
+
+## TI-003 §15's qualifying Stick outcomes. Plain Failure schedules nothing —
+## FS-003 §9 words it as "a successful or loud qualifying hit", and a plain
+## failure is neither. You did not take their money and you did not make a scene.
+const RETALIATION_QUALIFYING_TIERS: Array[String] = ["clean", "messy", "catastrophic"]
+
+## TI-003 §15's schedule chances, by source target.
+##
+## `actor_id` is the dedupe half of §15's `(actor_id, cause_id)` key. TI-003
+## names only Goodie's (`goodie`); the other three are AUTHORED HERE, derived
+## from the target so they are stable, unique, and legible in a save. Naming
+## them after the target is what makes "the same crew cannot come twice for the
+## same night" true without a lookup table nobody maintains.
+##
+## A target absent from this table is TI-003's "Tier 1 default 0.00": ordinary
+## street marks have nobody standing behind them.
+const RETALIATION_SCHEDULE := {
+	"spenard_fuel_till": {
+		"chance": 0.60, "actor_id": "till_crew_spenard",
+		"actor_label": "The people behind the Chevron till",
+	},
+	"downtown_fuel_till": {
+		"chance": 0.60, "actor_id": "till_crew_downtown",
+		"actor_label": "The people behind the Holiday register",
+	},
+	"rec_center_dice": {
+		"chance": 0.60, "actor_id": "dice_crew",
+		"actor_label": "The dice game's people",
+	},
+	"goodie_stash": {
+		"chance": 1.00, "actor_id": "goodie",
+		"actor_label": "Goodie's people",
+	},
+}
+
+## TI-003 §16. **Talk is absent, and that is the definition rather than an
+## omission**: these actors arrive to collect or to punish, and there is nobody
+## to negotiate with. Fight, Run, or hand it over.
+const RETALIATION_CHOICES: Array[String] = ["fight", "run", "yield"]
+const RETALIATION_DETERMINISTIC: Array[String] = ["yield"]
+const RETALIATION_RESOLVERS := {"fight": "confrontation", "run": "escape"}
+const RETALIATION_BASE_CHANCE := {"fight": 0.35, "run": 0.50}
+
+## TI-003 §16's three effect tables, transcribed.
+##
+## `health` is a FLAT loss, not a band — §16 gives one number per row, so nothing
+## here rolls for damage. TI-003's key list reserves a `:injury` RNG key for this
+## definition; it is deliberately unused, because rolling a band the design does
+## not have would be inventing a value.
+##
+## `cash_pct` / `cash_cap` read the DIRTY bucket only (§16: "Cash loss reads the
+## Dirty bucket only... Clean Cash remains untouched by this retaliation
+## definition"). They take what you took.
+const RETALIATION_EFFECTS := {
+	"fight": {
+		"clean":        {"health": 1, "cash_pct": 0.00, "cash_cap": 0,   "heat": 1.0, "pressure": 0.5},
+		"messy":        {"health": 2, "cash_pct": 0.00, "cash_cap": 0,   "heat": 2.0, "pressure": 1.0},
+		"failure":      {"health": 3, "cash_pct": 0.40, "cash_cap": 300, "heat": 1.0, "pressure": 1.0},
+		"catastrophic": {"health": 4, "cash_pct": 0.60, "cash_cap": 500, "heat": 2.0, "pressure": 2.0},
+	},
+	"run": {
+		"clean":        {"health": 0, "cash_pct": 0.00, "cash_cap": 0,   "heat": 0.0, "pressure": 0.5},
+		"messy":        {"health": 1, "cash_pct": 0.00, "cash_cap": 0,   "heat": 1.0, "pressure": 0.5},
+		"failure":      {"health": 2, "cash_pct": 0.40, "cash_cap": 300, "heat": 1.0, "pressure": 1.0},
+		"catastrophic": {"health": 3, "cash_pct": 0.60, "cash_cap": 500, "heat": 2.0, "pressure": 1.0},
+	},
+	# The known price. Worse cash than a clean fight, better than a lost one, and
+	# nobody rolls anything.
+	"yield": {
+		"deterministic": {"health": 2, "cash_pct": 0.50, "cash_cap": 400, "heat": 0.0, "pressure": 0.5},
+	},
+}
+
+# --- retaliation lookups ---------------------------------------------------
+
+func retaliation_row(target_id: String) -> Dictionary:
+	return RETALIATION_SCHEDULE.get(target_id, {})
+
+## The chance this target's people come looking, for this resolved tier.
+##
+## Zero for an unlisted target and zero for a plain Failure, which are two
+## different reasons and both matter: an ordinary street mark has nobody behind
+## them, and a fumbled attempt gave nobody a reason.
+func retaliation_chance(target_id: String, tier_name: String) -> float:
+	if not tier_name in RETALIATION_QUALIFYING_TIERS:
+		return 0.0
+	return float(retaliation_row(target_id).get("chance", 0.0))
+
+func retaliation_actor_id(target_id: String) -> String:
+	return str(retaliation_row(target_id).get("actor_id", ""))
+
+func retaliation_actor_label(target_id: String) -> String:
+	return str(retaliation_row(target_id).get("actor_label", "Somebody"))
+
+func retaliation_is_deterministic(choice_id: String) -> bool:
+	return choice_id in RETALIATION_DETERMINISTIC
+
+func retaliation_resolver_for(choice_id: String) -> String:
+	return str(RETALIATION_RESOLVERS.get(choice_id, ""))
+
+func retaliation_base_chance(choice_id: String) -> float:
+	return float(RETALIATION_BASE_CHANCE.get(choice_id, 0.0))
+
+func retaliation_effects(choice_id: String, tier_name: String) -> Dictionary:
+	var by_choice: Dictionary = RETALIATION_EFFECTS.get(choice_id, {})
+	if choice_id == "yield":
+		return by_choice.get("deterministic", {})
+	return by_choice.get(tier_name, {})
+
+## What this outcome takes, given what the player is actually holding.
+##
+## Reads the Dirty balance and nothing else. If the percentage lands above the
+## cap the cap wins; if the player is carrying less dirty money than either, they
+## lose what they have. Clean Cash is never reachable from here — TI-003
+## regression #39.
+func retaliation_cash_loss(choice_id: String, tier_name: String, dirty_balance: int) -> int:
+	var row: Dictionary = retaliation_effects(choice_id, tier_name)
+	var pct: float = float(row.get("cash_pct", 0.0))
+	if pct <= 0.0 or dirty_balance <= 0:
+		return 0
+	var cap: int = int(row.get("cash_cap", 0))
+	var wanted: int = int(round(float(dirty_balance) * pct))
+	if cap > 0:
+		wanted = mini(wanted, cap)
+	return clampi(wanted, 0, dirty_balance)

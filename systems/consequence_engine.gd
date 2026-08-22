@@ -318,13 +318,21 @@ func clear_chain() -> void:
 ##
 ## TI-003 §26: "One source action pays its normal time cost once after its
 ## blocking consequence reaches terminal handoff", and regression #12 is that
-## time settling twice around Booking. This flag is how "once" is enforced across
-## a reload, so it is read here rather than recomputed.
+## time settling twice around Booking. The settled flag is how "once" is enforced
+## across a reload, so it is read here rather than recomputed.
+##
+## A chain carrying ZERO source slots owes nothing, and says so. That is not a
+## hypothetical: a delayed retaliation is opened days after the robbery that
+## caused it, and that robbery paid its slot at the time. Answering "owed"
+## because a boolean has not been flipped would make the projection tell the
+## player they are about to lose time they are not.
 func source_time_owed() -> bool:
 	if not has_active():
 		return false
 	var time_block: Dictionary = gs.active_consequence.get("time", {})
-	return not bool(time_block.get("source_time_settled", false))
+	if bool(time_block.get("source_time_settled", false)):
+		return false
+	return int(time_block.get("source_slots_remaining", 0)) > 0
 
 ## Mark the source slot paid. Returns false if it was already settled, which is
 ## the same idempotency contract as a receipt and for the same reason.
@@ -432,6 +440,41 @@ func can_surface_delayed(today: int) -> bool:
 func mark_delayed_surfaced(today: int) -> void:
 	gs.last_blocking_delayed_day = today
 
+## Surface the oldest eligible delayed consequence, if anything may.
+##
+## The four gates of TI-003 §15 are all here, in one place, because "may this
+## surface" is a question about the QUEUE and belongs to the queue's owner. The
+## retaliation system builds the encounter; it never decides whether it is
+## allowed to.
+##
+##   1. nothing is already blocking (regression #27: a retaliation surfacing
+##      during Caught or Booking)
+##   2. today's one delayed slot is unspent (regression #28)
+##   3. a row is due, unexpired, and in THIS district (regression #29: a
+##      retaliation following the player across town)
+##   4. oldest first, deterministically (regression #32)
+##
+## Returns the queue_id that surfaced, or "". Called from the day-start
+## lifecycle and after travel — the two moments the answer can change.
+func try_surface_delayed(today: int, district_id: String) -> String:
+	if not can_surface_delayed(today):
+		return ""
+	var eligible: Array = eligible_queued(today, district_id)
+	if eligible.is_empty():
+		return ""
+	var row: Dictionary = eligible[0]
+	var owner: Object = gm.system("retaliation") if gm != null else null
+	if owner == null or not owner.has_method("open_encounter"):
+		return ""
+	var opened: Dictionary = owner.open_encounter(row)
+	if not bool(opened.get("ok", false)):
+		return ""
+	row["status"] = "surfaced"
+	# Claimed only once the chain is genuinely open. Claiming before would spend
+	# the day's allowance on an encounter that failed to open.
+	mark_delayed_surfaced(today)
+	return str(row.get("queue_id", ""))
+
 # --- dispatch validation ----------------------------------------------------
 
 ## TI-003 §12: "Revalidate active identity, stage, allowed choice, and absence of
@@ -531,7 +574,10 @@ func _continue(payload: Dictionary) -> Dictionary:
 	if source_time_owed():
 		var time_block: Dictionary = gs.active_consequence.get("time", {})
 		owed = int(time_block.get("source_slots_remaining", 0))
-		settle_source_time()
+	# Stamped even when nothing was owed, so the chain's own record reads
+	# "settled" rather than "never asked". A zero-slot chain has to be closed the
+	# same way a one-slot chain is.
+	settle_source_time()
 
 	clear_chain()
 

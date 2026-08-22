@@ -127,6 +127,7 @@ func _ready() -> void:
 		_check_boost_caught()
 		_check_arrest_booking()
 		_check_pressure_lifecycle()
+		_check_retaliation()
 		_check_save_roundtrip()
 	_finish()
 
@@ -4003,7 +4004,11 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	"ROLLOVER:financial_decay", "ROLLOVER:financial_fold",
 	"ROLLOVER:exposure", "ROLLOVER:curtis",
 	"MARKET:evolve", "MARKET:day_crossed",
-	"DAY_START",
+	# FS-003.10's day-start lifecycle, TI-003 §9 step 6. Expiry before
+	# activation: a row that ran out overnight has to be gone before anything
+	# asks what is eligible, or the day's one delayed slot could be spent on an
+	# encounter that had already expired.
+	"DAY_START", "DAY_START:expire_retaliation", "DAY_START:surface_delayed",
 ]
 
 func _check_day_lifecycle_order() -> void:
@@ -6200,7 +6205,7 @@ func _check_engine_adapters(gs: Node, gm: Node, engine: RefCounted) -> void:
 	# GameManager registered these in `_ready()`, which runs on every boot
 	# including after a load. That is the mechanism the whole rule rests on.
 	_expect_str("the source adapters registered at boot",
-		str(engine.registered_adapter_ids()), str(["boost", "stickup"]))
+		str(engine.registered_adapter_ids()), str(["boost", "retaliation", "stickup"]))
 	_expect_true("the boost adapter resolves to a system",
 		engine.source_adapter("boost") != null)
 	_expect_true("the boost adapter is the boost system",
@@ -9452,6 +9457,699 @@ func _check_pressure_rng_non_drift(gs: Node, gm: Node, engine: RefCounted) -> vo
 		int(gs.rng_state), quiet_cursor)
 	gs.reset_to_new_game()
 
+
+# =============================================================================
+# FS-003.10 — the retaliation scheduler and `retaliation_street_crew`
+# =============================================================================
+#
+# The only consequence in the build that WAITS. Everything about it is therefore
+# a statement about time and place rather than about arithmetic: it schedules on
+# one day, becomes eligible on another, expires on a third, and only ever
+# happens where the robbery did.
+
+func _check_retaliation() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var engine: RefCounted = gm.system("consequence") as RefCounted
+	var retaliation: RefCounted = gm.system("retaliation") as RefCounted
+	if engine == null or retaliation == null:
+		_fail("retaliation", "systems not registered")
+		return
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	_check_retaliation_authored_tables(rules)
+	_check_retaliation_schedule(gs, gm, engine, retaliation, rules)
+	_check_retaliation_window(gs, gm, engine)
+	_check_retaliation_district_presence(gs, gm, engine)
+	_check_retaliation_daily_cap(gs, gm, engine)
+	_check_retaliation_arrest_suppression(gs, gm, engine)
+	_check_retaliation_effects(gs, gm, engine, rules)
+	_check_retaliation_dirty_only(gs, gm, engine, rules)
+	_check_retaliation_no_arrest(gs, gm, engine)
+	_check_retaliation_reload(gs, gm, engine)
+	_check_retaliation_rng_non_drift(gs, gm, engine, retaliation)
+	gs.reset_to_new_game()
+
+# --- layer 1: the authored tables ------------------------------------------
+
+## TI-003 §§15-16, transcribed independently of the module under test.
+func _check_retaliation_authored_tables(rules: RefCounted) -> void:
+	_expect_str("the encounter definition is named",
+		rules.RETALIATION_DEFINITION, "retaliation_street_crew")
+	_expect_int("retaliation triggers on cause day + 2",
+		rules.RETALIATION_TRIGGER_DELAY, 2)
+	_expect_int("retaliation expires at the end of cause day + 5",
+		rules.RETALIATION_EXPIRY_DELAY, 5)
+	_expect_int("one delayed blocking consequence per day",
+		rules.RETALIATION_DAILY_CAP, 1)
+
+	# Talk is ABSENT, and that is the definition rather than an omission.
+	_expect_str("the street crew offers fight, run and yield",
+		str(rules.RETALIATION_CHOICES), str(["fight", "run", "yield"]))
+	_expect_true("there is no talk path from a street crew",
+		not ("talk" in rules.RETALIATION_CHOICES))
+	_expect_true("yield is deterministic", rules.retaliation_is_deterministic("yield"))
+	_expect_true("fight is not", not rules.retaliation_is_deterministic("fight"))
+	_expect_true("run is not", not rules.retaliation_is_deterministic("run"))
+	_expect_str("fight resolves as confrontation",
+		rules.retaliation_resolver_for("fight"), "confrontation")
+	_expect_str("run resolves as escape", rules.retaliation_resolver_for("run"), "escape")
+	_expect_float("fight starts at 0.35", rules.retaliation_base_chance("fight"), 0.35)
+	_expect_float("run starts at 0.50", rules.retaliation_base_chance("run"), 0.50)
+
+	# Schedule chances by target, TI-003 §15.
+	var schedule := [
+		["spenard_fuel_till", 0.60], ["downtown_fuel_till", 0.60],
+		["rec_center_dice", 0.60], ["goodie_stash", 1.00],
+	]
+	for row in schedule:
+		var target := str((row as Array)[0])
+		for tier in ["clean", "messy", "catastrophic"]:
+			_expect_float("%s schedules at %.2f on a %s hit" % [target, float((row as Array)[1]), tier],
+				rules.retaliation_chance(target, str(tier)), float((row as Array)[1]))
+		# Plain Failure schedules nothing, whatever the target is worth.
+		_expect_float("%s schedules nothing on a plain failure" % target,
+			rules.retaliation_chance(target, "failure"), 0.0)
+		_expect_true("%s names an actor" % target,
+			not rules.retaliation_actor_id(target).is_empty())
+	# Goodie is the one actor TI-003 names by id.
+	_expect_str("goodie's stash is answered by goodie",
+		rules.retaliation_actor_id("goodie_stash"), "goodie")
+	# An ordinary street mark has nobody behind them.
+	for target in ["washgo_regular", "chilkoots_stumbler", "c_street_atm"]:
+		_expect_float("%s schedules nothing" % str(target),
+			rules.retaliation_chance(str(target), "clean"), 0.0)
+		_expect_str("%s names no actor" % str(target),
+			rules.retaliation_actor_id(str(target)), "")
+
+	# TI-003 §16's effect tables, written out. health / cash_pct / cash_cap /
+	# heat / pressure.
+	var effects := [
+		["fight", "clean", 1, 0.00, 0, 1.0, 0.5],
+		["fight", "messy", 2, 0.00, 0, 2.0, 1.0],
+		["fight", "failure", 3, 0.40, 300, 1.0, 1.0],
+		["fight", "catastrophic", 4, 0.60, 500, 2.0, 2.0],
+		["run", "clean", 0, 0.00, 0, 0.0, 0.5],
+		["run", "messy", 1, 0.00, 0, 1.0, 0.5],
+		["run", "failure", 2, 0.40, 300, 1.0, 1.0],
+		["run", "catastrophic", 3, 0.60, 500, 2.0, 1.0],
+		["yield", "deterministic", 2, 0.50, 400, 0.0, 0.5],
+	]
+	for row in effects:
+		var c: Array = row
+		var got: Dictionary = rules.retaliation_effects(str(c[0]), str(c[1]))
+		_expect_int("%s/%s health" % [str(c[0]), str(c[1])], int(got["health"]), int(c[2]))
+		_expect_float("%s/%s cash share" % [str(c[0]), str(c[1])],
+			float(got["cash_pct"]), float(c[3]))
+		_expect_int("%s/%s cash cap" % [str(c[0]), str(c[1])],
+			int(got["cash_cap"]), int(c[4]))
+		_expect_float("%s/%s heat" % [str(c[0]), str(c[1])], float(got["heat"]), float(c[5]))
+		_expect_float("%s/%s pressure" % [str(c[0]), str(c[1])],
+			float(got["pressure"]), float(c[6]))
+
+	# The cash-loss derivation, at the three places it changes shape: under the
+	# cap, over the cap, and with less in the bucket than either.
+	_expect_int("40% of $500 is under the $300 cap",
+		rules.retaliation_cash_loss("fight", "failure", 500), 200)
+	_expect_int("40% of $1000 is capped at $300",
+		rules.retaliation_cash_loss("fight", "failure", 1000), 300)
+	_expect_int("60% of $2000 is capped at $500",
+		rules.retaliation_cash_loss("fight", "catastrophic", 2000), 500)
+	_expect_int("50% of $100 is $50",
+		rules.retaliation_cash_loss("yield", "deterministic", 100), 50)
+	_expect_int("an empty dirty bucket loses nothing",
+		rules.retaliation_cash_loss("yield", "deterministic", 0), 0)
+	_expect_int("a winning fight takes no cash",
+		rules.retaliation_cash_loss("fight", "clean", 5000), 0)
+	_expect_int("a clean escape takes no cash",
+		rules.retaliation_cash_loss("run", "clean", 5000), 0)
+
+# --- layer 2: scheduling ----------------------------------------------------
+
+## Stand the run somewhere a robbery can qualify, with the mark's slot open.
+func _retaliation_ready(gs: Node, day: int, slot: int) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = day
+	gs.time_slots_today = slot
+	gs.time_slot = ["MORNING", "AFTERNOON", "EVENING", "NIGHT"][slot]
+	gs.current_district_id = "north_star_lot"
+	gs.stick_tier = 3
+	gs.stick_daily_count = 0
+	gs.attributes = {"combat": 1, "charisma": 1, "intelligence": 1}
+	gs.heat = 0.0
+	gs.cash = 3000
+	gs.clean_cash = 1000
+	gs.dirty_cash = 2000
+
+## Goodie's stash schedules at 1.00, so a qualifying hit on it ALWAYS queues —
+## which makes it the one target that can drive the rest of the section without
+## a sweep for a lucky roll.
+func _check_retaliation_schedule(gs: Node, gm: Node, engine: RefCounted,
+		retaliation: RefCounted, rules: RefCounted) -> void:
+	# A qualifying hit queues a row with the authored shape.
+	var day: int = _find_stick_day(gs, gm, 3, "clean", 0.0, 0)
+	if day < 0:
+		_fail("retaliation schedule", "no clean day for goodie_stash")
+		return
+	_retaliation_ready(gs, day, 0)
+	_expect_true("the goodie hit dispatches",
+		gm.dispatch("stickup", {"target_id": "goodie_stash"}))
+	_expect_int("a guaranteed schedule queues one row", gs.consequence_queue.size(), 1)
+	var row: Dictionary = gs.consequence_queue[0]
+	_expect_str("the row names its actor", str(row["actor_id"]), "goodie")
+	_expect_str("the row names its district", str(row["district_id"]), "north_star_lot")
+	_expect_str("the row names its definition",
+		str(row["encounter_definition_id"]), "retaliation_street_crew")
+	_expect_int("the row triggers on cause day + 2",
+		int(row["trigger_day"]), int(row["created_day"]) + 2);
+	_expect_int("the row expires at the end of cause day + 5",
+		int(row["expires_end_day"]), int(row["created_day"]) + 5)
+	_expect_str("the row starts pending", str(row["status"]), "pending")
+	# The Cause remembers the actor, which is the other half of §15's dedupe.
+	_expect_true("the cause remembers the scheduled actor",
+		engine.has_scheduled_actor(str(row["cause_id"]), "goodie"))
+
+	# Actor + Cause dedupe: a second schedule attempt against the same Cause
+	# does nothing, even at a 1.00 chance.
+	var second: Dictionary = retaliation.schedule("goodie_stash", "clean",
+		str(row["cause_id"]), "north_star_lot")
+	_expect_true("the same actor and cause does not schedule twice", second.is_empty())
+	_expect_int("and the queue does not grow", gs.consequence_queue.size(), 1)
+
+	# Plain Failure schedules zero, even against Goodie's 1.00 row.
+	var fail_day: int = _find_stick_day(gs, gm, 3, "failure", 0.0, 0)
+	if fail_day > 0:
+		_retaliation_ready(gs, fail_day, 0)
+		_expect_true("the failed goodie hit dispatches",
+			gm.dispatch("stickup", {"target_id": "goodie_stash"}))
+		_expect_int("a plain failure schedules nothing", gs.consequence_queue.size(), 0)
+		gs.active_consequence = {}
+	else:
+		_fail("retaliation schedule", "no failure day for goodie_stash")
+
+	# An ordinary tier 1 mark never schedules, whatever the tier.
+	for tier_name in ["clean", "messy", "catastrophic"]:
+		var ordinary_day: int = _find_stick_day(gs, gm, 1, str(tier_name), 0.0, 0)
+		if ordinary_day < 0:
+			continue
+		_stick_gate_ready(gs, 0.0, 0)
+		gs.day = ordinary_day
+		gm.dispatch("stickup", {"target_id": "washgo_regular"})
+		_expect_int("a %s hit on an ordinary mark schedules nothing" % str(tier_name),
+			gs.consequence_queue.size(), 0)
+		gs.active_consequence = {}
+
+	# The 0.60 targets: the roll is keyed on the Cause, so it is stable rather
+	# than lucky. Same cause and actor, same answer, every time.
+	gs.reset_to_new_game()
+	var rng := get_node("/root/RngManager")
+	var probe_roll: float = rng.seeded_random(gs.run_seed,
+		"retaliation:schedule:cause:00000042:till_crew_spenard")
+	var wanted: bool = probe_roll < 0.60
+	gs.consequence_queue = []
+	var scheduled: Dictionary = retaliation.schedule("spenard_fuel_till", "messy",
+		"cause:00000042", "north_star_lot")
+	_expect_true("the 0.60 roll matches its keyed draw", scheduled.is_empty() != wanted)
+	gs.reset_to_new_game()
+
+# --- layer 3: the window ----------------------------------------------------
+
+## Put one pending row in the queue by hand, so the window can be walked without
+## a robbery moving anything else.
+func _queue_retaliation(gs: Node, engine: RefCounted, day: int, district: String,
+		actor_id: String = "goodie", cause_id: String = "cause:00000900") -> Dictionary:
+	var row: Dictionary = {
+		"queue_id": "retaliation:%s:%s" % [actor_id, cause_id],
+		"cause_id": cause_id, "actor_id": actor_id,
+		"actor_label": "Goodie's people", "source_family": "stick",
+		"source_target_id": "goodie_stash", "district_id": district,
+		"created_day": day, "trigger_day": day + 2, "expires_end_day": day + 5,
+		"encounter_definition_id": "retaliation_street_crew", "status": "pending",
+	}
+	engine.enqueue(row)
+	return row
+
+func _retaliation_night(gs: Node, gm: Node) -> void:
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+
+## Day +2 triggers, day +5 expires, and nothing in between surfaces early.
+func _check_retaliation_window(gs: Node, gm: Node, engine: RefCounted) -> void:
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = 5000
+	gs.current_district_id = "north_star_lot"
+	_queue_retaliation(gs, engine, 9, "north_star_lot")
+
+	# Night 9 → day 10. One day early: nothing.
+	_retaliation_night(gs, gm)
+	_expect_int("the queue is still waiting on day 10", int(gs.day), 10)
+	_expect_true("nothing surfaces before the trigger day",
+		(gs.active_consequence as Dictionary).is_empty())
+	_expect_str("and the row is still pending",
+		str((gs.consequence_queue[0] as Dictionary)["status"]), "pending")
+
+	# Night 10 → day 11, which is cause day + 2. It surfaces.
+	_retaliation_night(gs, gm)
+	_expect_int("the trigger day arrived", int(gs.day), 11)
+	_expect_true("the retaliation surfaced",
+		not (gs.active_consequence as Dictionary).is_empty())
+	_expect_str("it opened as a retaliation chain",
+		str((gs.active_consequence as Dictionary)["chain_kind"]), engine.KIND_RETALIATION)
+	_expect_str("at the decision stage", engine.active_stage(), engine.STAGE_DECISION)
+	_expect_str("the queue row is marked surfaced",
+		str((gs.consequence_queue[0] as Dictionary)["status"]), "surfaced")
+	# A delayed consequence owes no source slot: the robbery paid its slot two
+	# days ago (TI-003 §26).
+	_expect_true("a surfaced retaliation owes no source time",
+		not engine.source_time_owed())
+
+	# --- expiry, with the player never leaving but the chain slot occupied ---
+	#
+	# The row is due every day from 11 to 14 and expires after 14. Held out of
+	# reach by an active chain the whole time, it must be gone by day 15 rather
+	# than waiting forever.
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = 5000
+	gs.current_district_id = "north_star_lot"
+	_queue_retaliation(gs, engine, 9, "north_star_lot")
+	# Somewhere else entirely, so presence never lets it through.
+	gs.current_district_id = "downtown"
+	for _night in range(6):
+		_retaliation_night(gs, gm)
+	_expect_int("six nights carried the run to day 15", int(gs.day), 15)
+	_expect_str("the avoided row expired",
+		str((gs.consequence_queue[0] as Dictionary)["status"]), "expired")
+	_expect_true("and never surfaced", (gs.active_consequence as Dictionary).is_empty())
+	# An expired row is not eligible again, even standing in the right place.
+	gs.current_district_id = "north_star_lot"
+	_expect_int("an expired row is not eligible",
+		(engine.eligible_queued(15, "north_star_lot") as Array).size(), 0)
+	gs.reset_to_new_game()
+
+## TI-003 regression #29: "Retaliation follows the player across districts."
+func _check_retaliation_district_presence(gs: Node, gm: Node, engine: RefCounted) -> void:
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = 5000
+	gs.current_district_id = "north_star_lot"
+	_queue_retaliation(gs, engine, 9, "north_star_lot")
+	gs.current_district_id = "downtown"
+
+	# Two nights to reach the trigger day, spent downtown.
+	_retaliation_night(gs, gm)
+	_retaliation_night(gs, gm)
+	_expect_int("the trigger day arrived while the player was away", int(gs.day), 11)
+	_expect_true("nothing found the player in another district",
+		(gs.active_consequence as Dictionary).is_empty())
+	_expect_str("and the row is still pending, not expired",
+		str((gs.consequence_queue[0] as Dictionary)["status"]), "pending")
+
+	# Walk back into it. Presence is the gate, and travel is the other moment it
+	# can change — the day-start check alone would only catch somebody who slept
+	# in the threatened district.
+	_expect_true("travelling back dispatches",
+		gm.dispatch("travel", {"district_id": "north_star_lot"}))
+	_expect_true("returning to the district surfaces the retaliation",
+		not (gs.active_consequence as Dictionary).is_empty())
+	_expect_str("and it is the queued one",
+		str((gs.active_consequence as Dictionary)["district_id"]), "north_star_lot")
+	gs.reset_to_new_game()
+
+## TI-003 regression #28: "More than one delayed blocking consequence surfaces in
+## a day", and #27: "Retaliation surfaces during Caught or Booking."
+func _check_retaliation_daily_cap(gs: Node, gm: Node, engine: RefCounted) -> void:
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = 5000
+	gs.current_district_id = "north_star_lot"
+	_queue_retaliation(gs, engine, 9, "north_star_lot", "goodie", "cause:00000901")
+	_queue_retaliation(gs, engine, 9, "north_star_lot", "till_crew_spenard", "cause:00000902")
+	_expect_int("two rows are queued", gs.consequence_queue.size(), 2)
+
+	_retaliation_night(gs, gm)
+	_retaliation_night(gs, gm)
+	_expect_true("one of them surfaced", not (gs.active_consequence as Dictionary).is_empty())
+	var surfaced: int = 0
+	for entry in gs.consequence_queue:
+		if str((entry as Dictionary)["status"]) == "surfaced":
+			surfaced += 1
+	_expect_int("exactly one surfaced", surfaced, 1)
+
+	# The second cannot surface today even with the slot freed, because the
+	# day's one delayed allowance is already spent.
+	gs.active_consequence = {}
+	_expect_true("the day's delayed allowance is spent",
+		not engine.can_surface_delayed(int(gs.day)))
+	_expect_str("and nothing else surfaces on it",
+		engine.try_surface_delayed(int(gs.day), "north_star_lot"), "")
+
+	# Tomorrow it can.
+	_retaliation_night(gs, gm)
+	_expect_true("the second surfaces the next day",
+		not (gs.active_consequence as Dictionary).is_empty())
+
+	# And nothing surfaces at all while a chain is open. Ordering matters here:
+	# the queue still holds a pending row, the day is fresh, and the player is
+	# standing in the right district — the ONLY thing stopping it is the
+	# occupied slot.
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = 5000
+	gs.current_district_id = "north_star_lot"
+	_queue_retaliation(gs, engine, 9, "north_star_lot", "goodie", "cause:00000903")
+	gs.day = 11
+	gs.last_blocking_delayed_day = -1
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, {
+		"district_id": "north_star_lot",
+		"source": {"family": "boost", "action_id": "boost", "target_id": "night_owl"},
+		"decision": {"definition_id": "boost_caught", "allowed_choices": ["yield"]},
+	})
+	_expect_str("nothing surfaces while a chain is active",
+		engine.try_surface_delayed(11, "north_star_lot"), "")
+	_expect_str("the active chain is untouched",
+		str((gs.active_consequence as Dictionary)["chain_kind"]), engine.KIND_BOOST_CAUGHT)
+	gs.reset_to_new_game()
+
+## TI-003 regression #31: "Arrest leaves same-Cause retaliation active."
+##
+## Driven end to end: a catastrophic hit on Goodie's stash schedules at 1.00 AND
+## books at every tier, so one robbery produces both halves and the booking has
+## to clear what the robbery just queued.
+func _check_retaliation_arrest_suppression(gs: Node, gm: Node,
+		engine: RefCounted) -> void:
+	var day: int = _find_stick_day(gs, gm, 3, "catastrophic", 0.0, 0)
+	if day < 0:
+		_fail("retaliation suppression", "no catastrophic day for goodie_stash")
+		return
+	_retaliation_ready(gs, day, 0)
+	_expect_true("the catastrophic goodie hit dispatches",
+		gm.dispatch("stickup", {"target_id": "goodie_stash"}))
+	_expect_int("the robbery queued its retaliation", gs.consequence_queue.size(), 1)
+	_expect_true("and it also opened a booking",
+		not (gs.active_consequence as Dictionary).is_empty())
+	_expect_str("the booking is a stick booking",
+		str((gs.active_consequence as Dictionary)["chain_kind"]), engine.KIND_STICK_BOOKING)
+	var cause_id := str((gs.active_consequence as Dictionary)["cause_id"])
+	_expect_str("both halves share one cause",
+		str((gs.consequence_queue[0] as Dictionary)["cause_id"]), cause_id)
+
+	# Continue into booking, then commit. The commit is what suppresses.
+	_expect_true("continue reaches booking", gm.dispatch("consequence_continue", {}))
+	_expect_str("the chain is at booking", engine.active_stage(), engine.STAGE_BOOKING)
+	_expect_true("the booking commits",
+		gm.dispatch("resolve_booking_choice", {"choice_id": "serve_time"}))
+	_expect_int("the arrest cleared the same-cause retaliation",
+		gs.consequence_queue.size(), 0)
+	gs.active_consequence = {}
+	gs.reset_to_new_game()
+
+# --- layer 4: the encounter -------------------------------------------------
+
+## Open a live retaliation encounter, ready to answer.
+func _open_retaliation(gs: Node, gm: Node, engine: RefCounted, dirty: int,
+		clean: int, cause_id: String = "cause:00000950") -> bool:
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = dirty + clean
+	gs.dirty_cash = dirty
+	gs.clean_cash = clean
+	gs.health = gs.health_max
+	gs.heat = 0.0
+	gs.current_district_id = "north_star_lot"
+	gs.attributes = {"combat": 1, "charisma": 1, "intelligence": 1}
+	_queue_retaliation(gs, engine, 9, "north_star_lot", "goodie", cause_id)
+	gs.day = 11
+	gs.last_blocking_delayed_day = -1
+	return not engine.try_surface_delayed(11, "north_star_lot").is_empty()
+
+## Every Fight and Run tier, and Yield, against TI-003 §16's tables.
+func _check_retaliation_effects(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	# The decision surface first: three lanes, Yield deterministic, no Talk.
+	if not _open_retaliation(gs, gm, engine, 1000, 500):
+		_fail("retaliation effects", "the encounter did not open")
+		return
+	var rows: Array = engine.choice_summaries()
+	_expect_int("the street crew offers three responses", rows.size(), 3)
+	_expect_true("fight has odds",
+		bool((_choice_row(rows, "fight") as Dictionary)["has_odds"]))
+	_expect_true("run has odds", bool((_choice_row(rows, "run") as Dictionary)["has_odds"]))
+	_expect_true("yield is marked deterministic",
+		bool((_choice_row(rows, "yield") as Dictionary)["deterministic"]))
+	_expect_true("there is no talk lane", (_choice_row(rows, "talk") as Dictionary).is_empty())
+	# The shown odds are the projection's, for the authored base chance.
+	var resolver: RefCounted = gm.system("outcome_resolver") as RefCounted
+	_expect_float("the fight odds are the projection for 0.35",
+		float((_choice_row(rows, "fight") as Dictionary)["success_probability"]),
+		resolver.success_probability("confrontation", 0.35, 1, 0))
+	_expect_float("the run odds are the projection for 0.50",
+		float((_choice_row(rows, "run") as Dictionary)["success_probability"]),
+		resolver.success_probability("escape", 0.50, 1, 0))
+	gs.active_consequence = {}
+
+	# --- Yield: one authored row, no roll ---
+	if _open_retaliation(gs, gm, engine, 1000, 500):
+		var cursor: int = int(gs.rng_state)
+		var health_before: int = int(gs.health)
+		_expect_true("yield resolves",
+			gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"}))
+		var outcome: Dictionary = engine.result_summary()
+		_expect_str("yield resolves deterministically",
+			str(outcome["resolved_tier"]), "deterministic")
+		# 50% of $1000, capped at $400.
+		_expect_int("yield hands over the authored share", int(gs.dirty_cash), 600)
+		_expect_int("yield never touches clean money", int(gs.clean_cash), 500)
+		_expect_int("yield costs two health", health_before - int(gs.health), 2)
+		_expect_float("yield costs no heat", float(gs.heat), 0.0)
+		_expect_float("yield adds half a point of stick pressure",
+			engine.pressure_score("north_star_lot", "stick"), 0.5)
+		_expect_true("yield does not arrest", not bool((outcome["result"] as Dictionary)["arrested"]))
+		# TI-003 regression #8's shape, for this definition: a deterministic
+		# response must not consume RNG.
+		_expect_int("yield draws nothing from the market stream", int(gs.rng_state), cursor)
+		gs.active_consequence = {}
+
+	# --- Fight and Run: sweep until every tier has been seen ---
+	for choice_id in ["fight", "run"]:
+		var seen: Dictionary = {}
+		for attempt in range(1, 80):
+			if not _open_retaliation(gs, gm, engine, 1000, 500,
+					"cause:%08d" % (60000 + attempt)):
+				continue
+			var health_before2: int = int(gs.health)
+			if not gm.dispatch("resolve_consequence_choice", {"choice_id": str(choice_id)}):
+				gs.active_consequence = {}
+				continue
+			var outcome2: Dictionary = engine.result_summary()
+			var tier_name := str(outcome2["resolved_tier"])
+			if seen.has(tier_name):
+				gs.active_consequence = {}
+				continue
+			seen[tier_name] = true
+			var effects: Dictionary = rules.retaliation_effects(str(choice_id), tier_name)
+
+			_expect_int("%s/%s costs its authored health" % [str(choice_id), tier_name],
+				health_before2 - int(gs.health), int(effects["health"]))
+			var want_loss: int = rules.retaliation_cash_loss(str(choice_id), tier_name, 1000)
+			_expect_int("%s/%s takes its authored share of dirty money"
+				% [str(choice_id), tier_name], 1000 - int(gs.dirty_cash), want_loss)
+			_expect_int("%s/%s never touches clean money" % [str(choice_id), tier_name],
+				int(gs.clean_cash), 500)
+			# Heat carries Spenard's 1.3 Stick multiplier — retaliation is the
+			# same kind of trouble the robbery was, in the same district.
+			_expect_float("%s/%s applies its authored heat" % [str(choice_id), tier_name],
+				snappedf(float(gs.heat), 0.0001),
+				snappedf(float(effects["heat"]) * 1.3, 0.0001))
+			_expect_float("%s/%s adds its authored pressure" % [str(choice_id), tier_name],
+				engine.pressure_score("north_star_lot", "stick"),
+				float(effects["pressure"]))
+			_expect_true("%s/%s never arrests" % [str(choice_id), tier_name],
+				not bool((outcome2["result"] as Dictionary)["arrested"]))
+			gs.active_consequence = {}
+			if seen.size() >= 4:
+				break
+		_expect_true("the %s sweep saw at least three tiers" % str(choice_id),
+			seen.size() >= 3)
+	gs.reset_to_new_game()
+
+## TI-003 regression #39: "Retaliation cash loss touches Clean Cash."
+func _check_retaliation_dirty_only(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	# Nothing dirty at all, and a wallet full of clean money. They leave with
+	# nothing — which is the provenance split finally doing something the player
+	# can feel.
+	if _open_retaliation(gs, gm, engine, 0, 5000, "cause:00000960"):
+		_expect_true("the broke-dirty yield resolves",
+			gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"}))
+		_expect_int("a clean wallet loses nothing", int(gs.clean_cash), 5000)
+		_expect_int("and the visible total is untouched", int(gs.cash), 5000)
+		_expect_int("the receipt records no cash loss",
+			int(((engine.result_summary() as Dictionary)["result"] as Dictionary)["cash"]), 0)
+		gs.active_consequence = {}
+	else:
+		_fail("retaliation dirty only", "the encounter did not open")
+
+	# Less dirty money than the percentage asks for: they take what is there.
+	if _open_retaliation(gs, gm, engine, 20, 5000, "cause:00000961"):
+		_expect_true("the thin-dirty yield resolves",
+			gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"}))
+		_expect_int("they take half of what little there was", int(gs.dirty_cash), 10)
+		_expect_int("clean money is still untouched", int(gs.clean_cash), 5000)
+		_expect_int("and the wallet still balances",
+			int(gs.cash), int(gs.clean_cash) + int(gs.dirty_cash))
+		gs.active_consequence = {}
+
+	# The cap bites before the percentage on a large dirty balance.
+	if _open_retaliation(gs, gm, engine, 4000, 100, "cause:00000962"):
+		_expect_true("the rich-dirty yield resolves",
+			gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"}))
+		_expect_int("the $400 cap holds against 50% of $4000",
+			4000 - int(gs.dirty_cash), 400)
+		_expect_int("clean money is untouched again", int(gs.clean_cash), 100)
+		gs.active_consequence = {}
+	gs.reset_to_new_game()
+
+## TI-003 regression #40: "Retaliation adds an arrest transition."
+##
+## Structural as well as behavioural: no response on any tier may leave a pending
+## booking on the chain, and the chain must reach Continue and clear.
+func _check_retaliation_no_arrest(gs: Node, gm: Node, engine: RefCounted) -> void:
+	for choice_id in ["fight", "run", "yield"]:
+		if not _open_retaliation(gs, gm, engine, 1000, 500,
+				"cause:%s" % str(choice_id).sha256_text().substr(0, 8)):
+			_fail("retaliation no arrest", "the encounter did not open for %s" % str(choice_id))
+			continue
+		var priors_before: int = int((gs.arrest_record as Dictionary)["priors"])
+		var slot_before: int = int(gs.time_slots_today)
+		_expect_true("%s resolves" % str(choice_id),
+			gm.dispatch("resolve_consequence_choice", {"choice_id": str(choice_id)}))
+		_expect_str("%s stops at the result stage" % str(choice_id),
+			engine.active_stage(), engine.STAGE_RESULT)
+		_expect_true("%s leaves no pending booking" % str(choice_id),
+			(engine.booking_summary() as Dictionary).is_empty())
+		_expect_int("%s files no prior" % str(choice_id),
+			int((gs.arrest_record as Dictionary)["priors"]), priors_before)
+		# Continue clears it and costs nothing: the robbery paid its slot days
+		# ago, so a delayed consequence owes none.
+		_expect_true("%s continues" % str(choice_id), gm.dispatch("consequence_continue", {}))
+		_expect_true("%s clears the chain" % str(choice_id), not engine.has_active())
+		_expect_int("%s costs no slot" % str(choice_id),
+			int(gs.time_slots_today), slot_before)
+	gs.reset_to_new_game()
+
+## The queue and a live encounter both survive a reload, in order.
+func _check_retaliation_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	# --- pending, before the trigger ---
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = 5000
+	gs.current_district_id = "north_star_lot"
+	_queue_retaliation(gs, engine, 9, "north_star_lot", "goodie", "cause:00000970")
+	_queue_retaliation(gs, engine, 8, "north_star_lot", "till_crew_spenard", "cause:00000971")
+	_queue_retaliation(gs, engine, 9, "downtown", "dice_crew", "cause:00000972")
+	var order_before: Array = []
+	for entry in engine.eligible_queued(11, "north_star_lot"):
+		order_before.append(str((entry as Dictionary)["queue_id"]))
+	saves.save_run()
+	gs.consequence_queue = []
+	_expect_true("a pending queue reloads", saves.load_run())
+	_expect_int("every row came back", gs.consequence_queue.size(), 3)
+	var order_after: Array = []
+	for entry in engine.eligible_queued(11, "north_star_lot"):
+		order_after.append(str((entry as Dictionary)["queue_id"]))
+	# TI-003 regression #32: order is stated, not inherited from a container.
+	_expect_str("queue order survives a reload", str(order_after), str(order_before))
+	_expect_true("the ordering is by trigger day, oldest first",
+		order_after.size() >= 2
+			and str(order_after[0]).contains("till_crew_spenard"))
+	# The downtown row is not eligible in Spenard, reload or not.
+	_expect_int("only the local rows are eligible", order_after.size(), 2)
+
+	# --- live, mid-decision ---
+	if _open_retaliation(gs, gm, engine, 1000, 500, "cause:00000980"):
+		var summary: Dictionary = engine.active_summary()
+		var odds: float = float((_choice_row(engine.choice_summaries(), "fight")
+			as Dictionary)["success_probability"])
+		saves.save_run()
+		gs.active_consequence = {}
+		gs.consequence_history = {}
+		_expect_true("a live retaliation reloads", saves.load_run())
+		var after: Dictionary = engine.active_summary()
+		_expect_str("the chain kind survives", str(after["chain_kind"]), engine.KIND_RETALIATION)
+		_expect_str("the cause survives", str(after["cause_id"]), str(summary["cause_id"]))
+		_expect_str("the definition survives",
+			str(after["definition_id"]), "retaliation_street_crew")
+		_expect_float("the shown odds survive",
+			float((_choice_row(engine.choice_summaries(), "fight")
+				as Dictionary)["success_probability"]), odds)
+		# And the reloaded chain still resolves — the adapter was re-registered
+		# on boot, which is the whole reason a chain can name it by String.
+		_expect_true("a reloaded retaliation resolves",
+			gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"}))
+		gs.active_consequence = {}
+
+	# --- committed, mid-result: the choice stays committed ---
+	if _open_retaliation(gs, gm, engine, 1000, 500, "cause:00000981"):
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "run"})
+		var dirty_after: int = int(gs.dirty_cash)
+		var health_after: int = int(gs.health)
+		saves.save_run()
+		gs.active_consequence = {}
+		_expect_true("a committed retaliation reloads", saves.load_run())
+		_expect_str("it comes back at the result stage",
+			engine.active_stage(), engine.STAGE_RESULT)
+		_expect_str("with the choice still committed",
+			str((engine.result_summary() as Dictionary)["committed_choice"]), "run")
+		for entry in engine.choice_summaries():
+			_expect_true("every lane is still disabled after a reload",
+				bool((entry as Dictionary)["disabled"]))
+		# And nothing re-applied on the way back.
+		_expect_int("the cash loss did not repeat", int(gs.dirty_cash), dirty_after)
+		_expect_int("the injury did not repeat", int(gs.health), health_after)
+		gs.active_consequence = {}
+
+	if not previous_save.is_empty():
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+	gs.reset_to_new_game()
+
+## TI-003 §21 again: the schedule roll and the resolution are keyed hashes, and
+## neither may move the market cursor.
+func _check_retaliation_rng_non_drift(gs: Node, gm: Node, engine: RefCounted,
+		retaliation: RefCounted) -> void:
+	gs.reset_to_new_game()
+	gs.rng_state = 767676
+	var cursor: int = int(gs.rng_state)
+	retaliation.schedule("goodie_stash", "clean", "cause:00000990", "north_star_lot")
+	retaliation.schedule("spenard_fuel_till", "messy", "cause:00000991", "north_star_lot")
+	_expect_int("scheduling draws nothing from the market stream",
+		int(gs.rng_state), cursor)
+
+	for choice_id in ["fight", "run", "yield"]:
+		if not _open_retaliation(gs, gm, engine, 1000, 500,
+				"cause:rngdrift%s" % str(choice_id)):
+			continue
+		gs.rng_state = 848484
+		var before: int = int(gs.rng_state)
+		gm.dispatch("resolve_consequence_choice", {"choice_id": str(choice_id)})
+		_expect_int("resolving %s draws nothing from the market stream" % str(choice_id),
+			int(gs.rng_state), before)
+		gs.active_consequence = {}
+	gs.reset_to_new_game()
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -9526,7 +10224,11 @@ func _fail(label: String, detail: String) -> void:
 ## re-pinned numbers: turning district Heat scaling on moved every existing
 ## stickup, boost and Caught Heat assertion, and each one was re-derived from
 ## the authored multiplier rather than from whatever the code now returns.
-const MIN_CHECKS := 9637
+##
+## FS-003.10 raises it to 9905. The retaliation section sweeps for tiers the same
+## way the Caught section does, so its contribution is deterministic but not
+## re-derivable by counting assertions.
+const MIN_CHECKS := 9905
 
 func _finish() -> void:
 	if _failures.is_empty():

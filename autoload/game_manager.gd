@@ -137,6 +137,12 @@ func _ready() -> void:
 	arrest.setup(_gs, self)
 	register_system("arrest", arrest)
 
+	# The delayed answer. Built before the engine because the engine registers it
+	# as a resolver, and after Stick because Stick asks it to schedule.
+	var retaliation = preload("res://systems/retaliation.gd").new()
+	retaliation.setup(_gs, self, rng)
+	register_system("retaliation", retaliation)
+
 	# The consequence layer, last: it reaches its source adapters through a
 	# runtime registry, so every system it can drive has to exist first.
 	#
@@ -148,6 +154,9 @@ func _ready() -> void:
 	consequence_engine.setup(_gs, self)
 	consequence_engine.register_source_adapter("boost", boost)
 	consequence_engine.register_source_adapter("stickup", stickup)
+	# A delayed consequence resolves itself: the robbery that caused it is two
+	# days gone and its tables have nothing to say about what happens now.
+	consequence_engine.register_source_adapter("retaliation", retaliation)
 	register_system("consequence", consequence_engine)
 
 func register_system(sys_name: String, instance: Object) -> void:

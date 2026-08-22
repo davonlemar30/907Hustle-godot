@@ -544,6 +544,127 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.10: the one consequence that waits  (added 2026-08-22)
+
+`systems/retaliation.gd`. Everything else in the consequence layer happens inside
+the dispatch that caused it. This is the one thing that does not: you rob a
+register on Tuesday, and on Thursday the people who own it find you standing in
+the same district.
+
+**Parity: 9,637 → 9,905 checks, 0 failures.**
+
+### It is a system, not an adapter on Stick
+
+Stick creates the debt; it does not collect it. By the time a retaliation
+surfaces the robbery is two days gone, and what resolves it is a completely
+different table from the one that resolved the robbery. Hanging it off
+`stickup.gd` would put two unrelated encounters in one file and make Stick the
+owner of a queue it never reads.
+
+It registers through the same runtime source-adapter registry Boost uses.
+"Source adapter" there really means *whoever resolves this chain*, and a delayed
+consequence resolves itself — the chain's `action_id` is `"retaliation"`, which
+the registry turns back into a system on every boot including after a load.
+
+### Presence is the design, and it needed a second activation point
+
+TI-003 §15 gates activation on four things, all of which live on the engine
+because "may this surface" is a question about the queue: the blocking slot is
+free (regression #27), the daily allowance is unspent (#28), the row is inside
+its window, and **the player is standing in the district** (#29).
+
+TI-003 §9 puts activation in the day-start lifecycle, and that alone would have
+made the presence rule almost decorative. `current_district_id` persists across
+days, so a day-start-only check catches exactly one player: the one who *slept*
+in the threatened district. Somebody who works Spenard every afternoon and ends
+each day at home would never meet anybody, and "avoid the district" would quietly
+degrade to "avoid sleeping in the district".
+
+So activation is asked at two moments — the declared day-start step, and after a
+completed travel. The engine still owns every gate; travel only asks the question
+again now that the answer can have changed. Named here because it is an addition
+to §9's list rather than something it says.
+
+### DAY_START became a declared list too
+
+`DAY_START_ORDER = [expire_retaliation, surface_delayed]`, run inside
+`run_night_transition` rather than registered as a `day_start_hook`. Two reasons:
+the hooks are somebody else's extension point and the ordering tests assert they
+ship empty, and `clear_hooks()` must not be able to remove the game.
+
+Expiry runs before activation, which is not arbitrary — a row that ran out
+overnight has to be gone before anything asks what is eligible, or the day's one
+delayed slot could be spent on an encounter that had already expired.
+
+### Scheduling happens before the arrest gate, not instead of it
+
+A catastrophic hit on Goodie's stash both schedules at 1.00 *and* books at every
+tier, so one robbery produces both halves. The row is queued when the robbery
+resolves and cleared when the booking commits (TI-003 §13 step 7).
+
+Skipping the schedule on an arrest would have been simpler and is wrong: it would
+make the queue depend on a decision the player has not made yet. A save taken
+between the robbery and the booking choice legitimately carries a row that is
+about to be cleared, because the arrest has not happened yet.
+
+### Cash reads the Dirty bucket, and that is the split finally doing something
+
+TI-003 §16 and regression #39. They take what you took. The loss is computed
+against the live dirty balance — a player who spent the take between the robbery
+and the reckoning genuinely has less to lose — and it is bounded by that balance
+before it reaches the wallet, so Clean is unreachable by arithmetic as well as by
+policy.
+
+The test that matters most is the empty one: a player holding $5,000 of wage
+money and nothing dirty loses **nothing**. Until this slice, the provenance split
+was information the wallet kept for later. This is the first thing in the build
+that reads it to decide something a player can feel.
+
+### `source_time_owed()` had to learn about zero
+
+A delayed consequence owes no source slot: the robbery paid its slot two days
+ago, which satisfies TI-003 §26's "one source action pays its normal time cost
+once". But `source_time_owed()` was `not settled`, so a chain carrying zero slots
+still answered "owed" — and the booking projection would have told the player
+they were about to lose time they were not.
+
+It now reads `remaining > 0 and not settled`, and `_continue` stamps the settled
+flag either way so a zero-slot chain closes the same way a one-slot chain does.
+
+### Values authored here rather than found in the spec
+
+TI-003 §15 gives schedule chances by target and names only Goodie's `actor_id`.
+The other three are derived from the target — `till_crew_spenard`,
+`till_crew_downtown`, `dice_crew` — with labels to match. Deriving them from the
+target is what makes "the same crew cannot come twice for the same night" true
+without a lookup table nobody maintains.
+
+TI-003's key list reserves `retaliation:<cause>:<actor>:<choice>:injury`, but §16
+gives Health as one flat number per row rather than a band. **Nothing rolls for
+damage**, and that key is deliberately unused: rolling a band the design does not
+have would be inventing a value.
+
+### Sabotage results
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| 1 | Plain Failure becomes a qualifying tier | **caught** — 5 failures |
+| 2 | District gate removed from `eligible_queued` | **caught** — 7 failures |
+| 3 | Cash loss spends `HIGH_VISIBILITY_CLEAN_FIRST` | **caught** — 14 failures |
+| 4 | Trigger delay 2 → 1 day | **caught** — 3 failures |
+| 5 | Daily delayed cap never claimed | **caught** — 2 failures |
+| 6 | Arrest stops suppressing same-Cause rows | **caught** — 3 failures |
+| 7 | Yield removed from the deterministic list | **caught** — 3 failures |
+| 8 | Street crew gains a Talk lane | **caught** — 4 failures |
+
+### What FS-003.11 inherits
+
+Three chain kinds that all reach the same scene, and the two projections it will
+render: `choice_summaries()` already carries `deterministic`, `has_odds` and a
+persisted `disabled`, and `local_attention_summary()` is waiting for the Boost
+and Stickup status cards. The consequence screen currently prints raw
+percentages, which is what .11 replaces.
+
 ## FS-003.9: the city starts recognising the routine  (added 2026-08-22)
 
 Two systems that share a slice because they share a rollover. District Pressure

@@ -316,6 +316,20 @@ func _run(target_id: String) -> Dictionary:
 	result["cause_id"] = cause_id
 	result["pre_source_heat"] = pre_source_heat
 
+	# TI-003 §15: the delayed answer, rolled once against the Cause.
+	#
+	# Scheduled BEFORE the arrest gate below rather than instead of it. An arrest
+	# suppresses the row at booking commit (§13 step 7), which means a save taken
+	# between the robbery and the booking decision carries a row that is about to
+	# be cleared — correct, because the arrest has not happened yet. Skipping the
+	# schedule on an arrest instead would make the queue depend on a decision the
+	# player has not made.
+	var retaliation: Object = gm.system("retaliation") if gm != null else null
+	if retaliation != null and not cause_id.is_empty():
+		var queued: Dictionary = retaliation.schedule(target_id, tier,
+			cause_id, gs.current_district_id)
+		result["retaliation_queued"] = not queued.is_empty()
+
 	# TI-003 §14's gate. A blown job books when the player was already carrying
 	# more Heat than the tier tolerates; a catastrophe books at every tier.
 	var rules: RefCounted = RULES.new()

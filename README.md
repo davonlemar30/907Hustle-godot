@@ -139,7 +139,9 @@ one distinctive obligation — rent — is already payable from the Phone.
 test catalogue had been corrupting every economy figure since batch 3; batch 9
 closed it and re-measured. Against a day job at 100%, the 907List flipper reads
 358% and the trade-plus-job hybrid 732%, while Boost sits at 13% and Stickup at
-2%. The two low surfaces are filed as design decisions with the evidence, not
+2%. A worker who spends spare slots wandering reads 307% — the strongest clean
+path in the game, on zero Heat and zero arrests, because wandering is how you
+find the shifts that pay three times what you started on. The two low surfaces are filed as design decisions with the evidence, not
 tuned in flight.
 
 **The consequence-encounter engine is complete.** FS-003 closed with FS-003.12:

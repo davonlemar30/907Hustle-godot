@@ -146,6 +146,7 @@ func _ready() -> void:
 		_check_batch9(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch10(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch11(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch12(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -14761,6 +14762,26 @@ const ECON_PROFILES: Array[Dictionary] = [
 	# under-powered, or is it a crew surface being measured without one?
 	{"name": "stickup_crew", "job": false, "trade": false, "flip": false,
 		"rob": true, "crew": ["tone"], "seed": "econ-stick-crew"},
+	# Wander, measured (batch 12). Batch 10 added an action that costs a SLOT —
+	# the scarcest thing in the game at four a day — and nothing measured what
+	# taking it costs against the day job. Batch 9's lesson was that an
+	# unmeasured number is probably wrong, and this is the number that was next.
+	#
+	# Two rows, because there are two questions. `worker_wanders` is the same
+	# `legal_worker` shift ladder with the leftover slots spent looking, so the
+	# difference between them IS Wander's marginal value. `wanderer` does
+	# nothing else at all, which says whether walking around is a strategy on
+	# its own or a way to lose the day.
+	#
+	# Both carry `best_job`, and without it the measurement would be a lie:
+	# `ECON_JOB` is a const and every other profile applies to Wash & Go forever,
+	# so a run that FOUND the $110-140 freight shift would never take it and
+	# Wander would measure as worth nothing. The existing profiles keep the
+	# const, so every number batch 9 published is untouched.
+	{"name": "worker_wanders", "job": true, "trade": false, "flip": false,
+		"wander": true, "best_job": true, "seed": "econ-wander-job"},
+	{"name": "wanderer", "job": false, "trade": false, "flip": false,
+		"wander": true, "best_job": true, "seed": "econ-wander"},
 ]
 
 const ECON_DAYS := 30
@@ -14873,6 +14894,8 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	var wants_rob: bool = bool(profile.get("rob", false))
 	var wants_lift: bool = bool(profile.get("lift", false))
 	var local_only: bool = bool(profile.get("local_only", false))
+	var wants_wander: bool = bool(profile.get("wander", false))
+	var best_job: bool = bool(profile.get("best_job", false))
 
 	var metrics: Dictionary = {
 		"buys": 0, "units_bought": 0, "sells": 0, "units_sold": 0,
@@ -14882,7 +14905,8 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		"heat_from_trading": 0.0, "market_pressure_peak": 0.0,
 		"relief_slots": 0, "rent_missed": 0, "evicted": false, "rent_paid": 0,
 		"phone_paid": 0, "stops": 0, "seizures": 0, "seized_value": 0,
-		"heat_stops": 0, "heat_seized": 0, "bans": 0,
+		"heat_stops": 0, "heat_seized": 0, "bans": 0, "wanders": 0, "found": 0,
+		"shift_pay": 0, "upgrades": 0,
 		"applications": 0, "jobs": 0, "take": 0,
 	}
 	# The street stop counts on the SYSTEM HANDLE, which is boot-scoped rather
@@ -14958,10 +14982,31 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 			# `day:slot:job_interview:job`, so re-applying in the same slot
 			# re-reads the same seeded answer forever.
 			metrics["applications"] = int(metrics.get("applications", 0)) + 1
-			gm.dispatch("apply_job", {"job_id": ECON_JOB})
+			gm.dispatch("apply_job", {"job_id": _econ_job_for(gs, best_job)})
 			if str(gs.active_job_id).is_empty():
 				gm.dispatch("advance_time", {})
 			continue
+		# A better shift than the one you hold is worth an interview.
+		#
+		# Without this the measurement is a lie in the other direction: the
+		# first pass had `worker_wanders` FIND both jobs and go on clocking in
+		# at the car wash for $54 a shift, because the profile applied once on
+		# day one and never again. Finding the freight yard and then not working
+		# there is not a player, and it made a discovery worth nothing.
+		#
+		# A failed upgrade spends the slot, mirroring the initial apply above and
+		# for the same reason: the interview key is `day:slot:job_interview:job`,
+		# so re-applying in the same slot re-reads the same answer forever.
+		if wants_job and best_job and not str(gs.active_job_id).is_empty():
+			var better := _econ_job_for(gs, true)
+			if better != str(gs.active_job_id):
+				metrics["applications"] = int(metrics.get("applications", 0)) + 1
+				metrics["upgrades"] = int(metrics.get("upgrades", 0)) + 1
+				gm.dispatch("apply_job", {"job_id": better})
+				if str(gs.active_job_id) != better:
+					gm.dispatch("advance_time", {})
+				continue
+
 		if wants_job and not str(gs.active_job_id).is_empty() \
 				and jobs_system != null and str(jobs_system.shift_blocker()).is_empty():
 			var clean_before: int = int(gs.clean_cash)
@@ -15004,8 +15049,25 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		if wants_trade and _econ_try_trade(gs, gm, metrics, local_only):
 			continue
 
+		# --- the wander leg ---
+		#
+		# LAST, immediately above the bare `advance_time` that ends the loop,
+		# because that is precisely Wander's design position: the thing you do
+		# with a slot nothing else wanted. A profile that wandered ahead of its
+		# shift would be measuring a strategy nobody would play.
+		if wants_wander and _econ_try_wander(gs, gm, metrics):
+			continue
+
 		gm.dispatch("advance_time", {})
 
+	# What the shift they ended on actually pays. The point of finding work is
+	# finding BETTER work, and a discovery that never turns into a bigger
+	# paycheque did not happen as far as the player is concerned.
+	metrics["shift_pay"] = 0
+	for job in gs.jobs:
+		if str(job["id"]) == str(gs.active_job_id):
+			var pay: Array = job["pay"]
+			metrics["shift_pay"] = int((int(pay[0]) + int(pay[1])) / 2)
 	metrics["final_stick_tier"] = int(gs.stick_tier)
 	metrics["final_boost_tier"] = int(gs.boost_tier)
 	metrics["days_played"] = int(gs.day)
@@ -15048,7 +15110,8 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 		"buys", "sells", "shifts", "wages", "flips", "travels", "fares",
 		"days_played", "rent_paid", "rent_missed", "phone_paid", "seized_value",
 		"applications", "jobs", "take", "final_stick_tier", "final_boost_tier",
-		"stops", "seizures", "heat_stops", "heat_seized", "bans"]
+		"stops", "seizures", "heat_stops", "heat_seized", "bans",
+		"wanders", "found", "shift_pay", "upgrades"]
 	for key in averaged:
 		var total: float = 0.0
 		for run in runs:
@@ -15222,6 +15285,42 @@ func _econ_try_trade(gs: Node, gm: Node, metrics: Dictionary, local_only: bool) 
 				+ lost * int(trade["buy_price"])
 	return true
 
+## Which job the profile is working toward.
+##
+## `ECON_JOB` for everybody who has always used it, so no published number
+## moves. A `best_job` profile takes the best-paying shift it has actually
+## DISCOVERED, which is the only way a discovery can show up as money.
+func _econ_job_for(gs: Node, best_job: bool) -> String:
+	if not best_job:
+		return ECON_JOB
+	var pick := ECON_JOB
+	var best: int = -1
+	for job in gs.jobs:
+		var job_id := str(job["id"])
+		if not job_id in gs.jobs_discovered:
+			continue
+		if bool(job.get("day_labor", false)):
+			continue
+		var pay: Array = job["pay"]
+		var mid: int = int((int(pay[0]) + int(pay[1])) / 2)
+		if mid > best:
+			best = mid
+			pick = job_id
+	return pick
+
+## One walk, if there is a slot to spend on it.
+func _econ_try_wander(gs: Node, gm: Node, metrics: Dictionary) -> bool:
+	var sys: Object = gm.system("wander")
+	if sys == null or not str(sys.blocker()).is_empty():
+		return false
+	var known_before: int = gs.jobs_discovered.size()
+	if not gm.dispatch("wander", {}):
+		return false
+	metrics["wanders"] = int(metrics.get("wanders", 0)) + 1
+	if gs.jobs_discovered.size() > known_before:
+		metrics["found"] = int(metrics.get("found", 0)) + 1
+	return true
+
 ## The whole table, reported. Percentages are against `legal_worker`, which is
 ## the design position's 100%.
 func _check_economy_profiles(gs: Node, gm: Node) -> void:
@@ -15279,6 +15378,10 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 				float(row["seizures"]), int(row["seized_value"]),
 				float(row["heat_stops"]), int(row["heat_seized"]),
 				int(round(100.0 * float(row["game_over_rate"]))), int(row["runs"])])
+		if float(row["wanders"]) > 0.0:
+			print("               wanders %.1f \u00b7 jobs found %.1f \u00b7 shift pay %.0f"
+				% [float(row["wanders"]), float(row["found"]),
+					float(row["shift_pay"])])
 		if float(row["bans"]) > 0.0:
 			print("               store bans %.1f of %d — permanent, see CAUGHT_EFFECTS talk/messy"
 				% [float(row["bans"]), int(gs.boost_targets.size())])
@@ -15300,6 +15403,10 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			"game_over_rate": snappedf(float(row["game_over_rate"]), 0.01),
 			"rent_missed": snappedf(float(row["rent_missed"]), 0.1),
 			"bans": snappedf(float(row["bans"]), 0.1),
+			"wanders": snappedf(float(row["wanders"]), 0.1),
+			"found": snappedf(float(row["found"]), 0.1),
+			"shift_pay": snappedf(float(row["shift_pay"]), 0.1),
+			"upgrades": snappedf(float(row["upgrades"]), 0.1),
 			"heat_stops": snappedf(float(row["heat_stops"]), 0.1),
 			"heat_seized": int(row["heat_seized"]),
 			"stops": snappedf(float(row["stops"]), 0.1),
@@ -16155,7 +16262,7 @@ func _fail(label: String, detail: String) -> void:
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11740
+const MIN_CHECKS := 11760
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -18084,4 +18191,89 @@ func _check_wander_card_is_reachable(gs: Node, gm: Node) -> void:
 		_expect_true("the old MOVE PRODUCT control is out of the layout",
 			not stale.visible)
 	home.queue_free()
+	gs.reset_to_new_game()
+
+# === batch 12 — Wander, measured ============================================
+#
+# Batch 10 added an action that costs a SLOT and nothing measured it. This adds
+# the two profiles that answer the two questions, and pins the MECHANISM they
+# depend on — the balance itself is reported, not asserted, because a number
+# that moves when somebody tunes a table is not a regression.
+#
+# The mechanism is "a discovery turns into money". The first pass at the
+# measurement did not have it and reported Wander at 129%: the profile found
+# both jobs and went on clocking in at the car wash, because it applied once on
+# day one and never again. With the upgrade leg it reads 307%. The difference
+# between those two numbers is entirely whether a discovered job can be taken.
+#
+# SABOTAGE: return ECON_JOB unconditionally from _econ_job_for
+#           ==> "the best shift you know of is the one you go for" fails.
+# SABOTAGE: drop the `not job_id in gs.jobs_discovered` guard in jobs._apply
+#           ==> "a job you have not heard of cannot be applied for" fails.
+
+func _check_batch12(gs: Node, gm: Node) -> void:
+	_check_discovery_pays(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+## A discovery has to be able to become a bigger paycheque, or Wander's whole
+## discovery half is decoration.
+func _check_discovery_pays(gs: Node, gm: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 4
+	gs.time_slots_today = 0
+	gs.current_district_id = "north_star_lot"
+
+	# The two the player starts blind to are the two best-paying shifts, which
+	# is what makes finding them worth a slot.
+	var starter_best: int = 0
+	var hidden_best: int = 0
+	for job in gs.jobs:
+		if bool(job.get("day_labor", false)):
+			continue
+		var pay: Array = job["pay"]
+		var mid: int = int((int(pay[0]) + int(pay[1])) / 2)
+		if str(job["id"]) in gs.jobs_discovered:
+			starter_best = maxi(starter_best, mid)
+		else:
+			hidden_best = maxi(hidden_best, mid)
+	_expect_true("the work you start knowing about is the worst of it",
+		hidden_best > starter_best)
+
+	# The picker takes the best DISCOVERED job and nothing else.
+	# Chevron at [48, 60] is the best of the five a run starts knowing about —
+	# better than Wash & Go's [40, 60], which is what `ECON_JOB` pins for every
+	# other profile. Worth naming: it means the upgrade leg is already working
+	# before a single discovery lands.
+	_expect_str("blind, you go for the best you already know",
+		_econ_job_for(gs, true), "spenard_chevron")
+	_expect_str("and a profile that does not upgrade keeps its authored job",
+		_econ_job_for(gs, false), ECON_JOB)
+	gs.jobs_discovered.append("ship_creek")
+	_expect_str("the best shift you know of is the one you go for",
+		_econ_job_for(gs, true), "ship_creek")
+	_expect_str("but only for a profile that upgrades",
+		_econ_job_for(gs, false), ECON_JOB)
+
+	# And the game lets you take it: applying elsewhere while employed is
+	# allowed, applying for something you have not heard of is not.
+	var jobs_system: Object = gm.system("jobs")
+	if jobs_system != null:
+		gs.jobs_discovered.erase("ship_creek")
+		var blind: Dictionary = jobs_system.handle("apply_job", {"job_id": "ship_creek"})
+		_expect_true("a job you have not heard of cannot be applied for",
+			not bool(blind.get("ok", false)))
+		_expect_str("and it says why", str(blind.get("reason", "")),
+			"You haven't heard about that one.")
+		gs.jobs_discovered.append("ship_creek")
+		gs.active_job_id = ECON_JOB
+		var again: Dictionary = jobs_system.handle("apply_job", {"job_id": ECON_JOB})
+		_expect_true("you cannot apply where you already work",
+			not bool(again.get("ok", false)))
+		# The upgrade path itself is an interview, not a guarantee — what is
+		# asserted is that it is REACHABLE, not that it lands.
+		var upgrade: Dictionary = jobs_system.handle("apply_job", {"job_id": "ship_creek"})
+		_expect_true("but you can go for a better one while employed",
+			bool(upgrade.get("ok", false)))
 	gs.reset_to_new_game()

@@ -645,6 +645,173 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-001.9 + .10: the delegation starts talking back, and FS-001 closes  (added 2026-08-22)
+
+Pherris's day worked and said almost nothing. The player could learn she runs the
+board only by opening the 907List screen and reading a panel; they found out how
+her day went by noticing the cash total had moved. FS-001.9 gives the feature a
+voice. FS-001.10 is the milestone's exit gate.
+
+**Parity: 10,439 → 10,609 checks, 0 failures. Save schema stays v8.**
+
+### FS-001.9 — four callbacks, no new machinery
+
+Every line goes out through a channel that already exists: `phone.push_message()`
+for anything she says, `GameState.activity_log` for anything the day records.
+There is no notification system and no tutorial layer.
+
+*   **Discovery.** One Phone message the first time she is capable of it, keyed on
+    its own `discovery_notified` flag rather than on the `discovered` latch. That
+    separation is the point: a save written before this build can already carry a
+    discovered operation and has never seen the text, and keying the message on
+    its own flag means that run gets the offer once instead of never.
+*   **Assignment.** The activity line reports what she actually picked up and what
+    it cost — logged AFTER `select()` rather than before, since neither number
+    exists until she has shopped. Three shapes: a budget the player set, a spend
+    they left open, and a board with nothing on it.
+*   **Settlement.** One Phone message per night, never per item, inside
+    `day_ending` so the clock still reads the day it is reporting on. **Four
+    cases, not the three the brief names.** Sold at a profit, sold thin, bought
+    nothing — and bought stock that has not turned over, which is reachable
+    because discovery is one-way: a player who reached Broker and fell back to
+    Flipper can still assign her (the assignment requirements never mention the
+    tier) into a one-day sell delay. "Nothing worth touching, kept your money
+    where it is" would be a lie about money that has already left the wallet.
+*   **Loyalty.** One complaint per EPISODE, not per run. The flag clears the
+    moment she recovers, so a second slump months later is heard again — the
+    difference between a character with a mood and a tutorial that fires once.
+
+The two texts are evaluated in `reconcile()` rather than hung off the events that
+cause them. Loyalty is written by four different paths (wages, proofs, decay,
+dismissal); hooking each would put the same two `if`s in four files and would
+still miss the fifth.
+
+Home's operation card and Hustle's 907List row read two new `operation_summary()`
+fields — `active_today` and `last_night` — and work nothing out for themselves.
+The card sits **below** rent and **below** the shift, because both of those have
+a deadline attached and this does not, and **above** the scripted
+`active_operation` copy, which is UI scaffold nothing writes. So delegation only
+ever displaces a placeholder, never a fact.
+
+Callback flags nest inside `crew_operation_state`, already persisted under v8.
+**No schema bump.**
+
+### FS-001.10 — the exit gate
+
+*   **Migration chain.** A v5 payload walked all the way to current in one test,
+    rather than four arms each proven in isolation: the v6 arm rebuilds today's
+    consumption record from the holdings it can see, the v7 arm stamps ownership
+    while it is still unambiguous, the v8 arm splits the wallet clean. Then it is
+    **loaded**, because a migrator returning a dictionary and `apply()` producing
+    a playable run are two different claims. A qualifying legacy run discovers on
+    load and is offered the operation exactly once.
+*   **Deterministic replay, two ways.** Same seed, same board, same morning →
+    identical selection, spend, stop reason, gross, profit and end cash. And the
+    stronger version: the same morning **replayed from a save** settles
+    identically. Two fresh setups make the same calls in the same order, so
+    anything merely call-order-dependent still agrees; a reload does not.
+*   **One dispatch, one refresh.** Measured on `assign_crew_operation`, which
+    claims the day, buys through the wallet, consumes listings, logs the feed line
+    and reconciles callbacks inside a single action. A refused claim refreshes
+    nothing at all.
+*   **Ordering.** Crew settles before territory; her settlement runs on
+    `day_ending` while the clock still reads the ending day, which is what lets
+    her report on it. If it ran after the increment, `last_night` would be off by
+    one forever — a bug that looks like a rendering glitch.
+*   **UI regression at 375×812.** Every delegation screen built, bound and
+    measured. Nothing declares a width past the phone.
+
+### The economy simulation: thirty days, delegated and not
+
+The question is not whether delegation makes money — she buys under value and
+sells at it. It is whether delegation makes personal play pointless. Two runs,
+same seed, same board, same thirty days, wages paid every morning they could be
+afforded:
+
+| Metric | Delegated every morning | Never delegated |
+| --- | --- | --- |
+| End cash | 1898 | 100 |
+| Cash delta | -602 | -2400 |
+| Delegated cycles | 60 | 0 |
+| Her gross | 6768 | 0 |
+| Her profit | 2878 | 0 |
+| Wages paid | 3480 | 2400 |
+| Wages still owed | 120 | 1200 |
+| Loyalty at day 30 | 10 | 2 |
+| Player slots spent | 120 | 120 |
+| Locked capital (holdings) | 0 | 0 |
+| Player flips | 0 | 0 |
+| Player 907List tier | 3 | 3 |
+| Player Intelligence | 1 | 1 |
+| Exposure rows added | 13 | 2 |
+| Curtis delta | 0 | 0 |
+| Missed obligations | 0 | 0 |
+
+**Delegation does not pay for itself at rank 2.** Sixty cycles produced $2,878 of
+profit against $3,480 of wages actually paid. Employing her and using her is
+$1,798 better than employing her and not using her — but it is still $602 of cash
+down over thirty days, and the reason to keep her is the sixty cycles of
+*throughput* the player never spent a slot on rather than the margin. Filed as a
+follow-up; this gate does not retune.
+
+**Personal play is not obsolete, and the leakage rules are why.** Sixty delegated
+cycles produced zero flips, zero Intelligence and zero tier progress, identical to
+the run that never delegated. Every point of Broker standing is still earned by
+hand. And her sales are as visible as the player's would be — thirteen Exposure
+rows against two — so delegation is not a way to launder visibility either.
+
+The solo run ends broke ($100) with $1,200 of wages outstanding and her loyalty
+down to 2, which is the honest shape of employing somebody and giving them nothing
+to do.
+
+### Three sabotages that passed, and what each one bought
+
+*   **A settlement template whose `profit > 0` could not be falsified.** Every
+    night the suite drove was profitable, so flipping it to `>= 0` changed nothing
+    observable. Fixed by driving a night that breaks EXACTLY even — a $100 buy
+    against a `true_value` band of [100, 100] — because zero is the only place the
+    two templates differ and "cleared $0 after what I paid" is a sentence nobody
+    would write on purpose.
+*   **A branch nothing reached.** The bought-but-unsold case needed a Flipper-tier
+    sell delay, which the suite never constructed. Fixed by discovering at Broker
+    and dropping the tier before assigning — which is also the proof that the
+    branch is reachable in play rather than defensive.
+*   **An `active_today` guard whose `settled` clause was never the deciding
+    term.** Four `advance_time` dispatches cross the day, so `assigned_today` goes
+    false on its own. Fixed by emitting `day_ending` directly, which is the real
+    state the lifecycle produces between PRE_SETTLE and INCREMENT.
+
+### Two sabotages that stayed green on purpose
+
+**The re-settle guard is redundant, deliberately.** Removing the coordinator's
+`if settled: continue` leaves the suite green, and so does removing the adapter's
+`if settled and result != null: return result`. Removing **both** goes red on four
+checks. That is defence in depth on a double-payment path, and it is worth
+recording that each guard alone is sufficient — so a future reader who deletes one
+as dead code has this note rather than a green suite as their evidence.
+
+### A finding the gate turned up, filed rather than fixed
+
+Sabotaging `realised_value`'s key with an unseeded component stayed green, and the
+reason is not a hole in the checks. `RngManager.seeded_random` is FNV-1a over
+`seed + ":" + context`, normalised by dividing the 32-bit hash by 2^32 — so it
+reads the HIGH bits, and FNV-1a's high bits barely move when a small counter is
+appended to the tail. Measured directly:
+
+```
+seeded_int_range(seed, "…:3:%d" % i, 42, 58) for i in 0..7  ->  49 49 48 49 49 49 49 49
+seeded_int_range(seed, "k%d" % i, 0, 1000)   for i in 0..7  -> 443 439 451 447 459 455 467 463
+```
+
+Eight distinct keys, eight nearly identical rolls. `seeded_shuffle` already knows
+this and documents it — it puts the varying index at the FRONT of the key for
+exactly this reason — but nothing has ever audited the other call sites. The
+907List value key is the clearest instance: `"907list:value:%s:%d"` varies the day
+at the tail, so the same item bought on consecutive days is worth nearly the same.
+The bands are narrow enough that the effect is small, and the hash is
+oracle-locked to the web build, so this is a key-composition audit rather than a
+hash change. Filed.
+
 ## FS-003.12: the integration gate, and what FS-003 leaves behind  (added 2026-08-22)
 
 The milestone gate. Everything above proves one slice; this proves they are one

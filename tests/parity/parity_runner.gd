@@ -2671,6 +2671,8 @@ func _check_run_the_board() -> void:
 	_check_rb_callbacks(gs, gm, ops)
 	_check_rb_surfaces(gs, gm, ops)
 	gs.listing_items = original_items
+	_check_fs001_gate(gs, gm, ops, lst, original_items)
+	gs.listing_items = original_items
 	gs.reset_to_new_game()
 
 ## Broker tier, Pherris loyal, morning, money in hand.
@@ -3322,6 +3324,596 @@ func _check_rb_surfaces(gs: Node, gm: Node, ops: RefCounted) -> void:
 	_expect_true("last night disappears the day after",
 		ops.operation_summary(RB_OPERATION)["last_night"] == null)
 	gs.reset_to_new_game()
+
+# --- FS-001.10: the milestone exit gate ------------------------------------
+#
+# Everything above proves one slice of delegation. This proves the FEATURE: that
+# the save chain arrives somewhere coherent from every schema that ever shipped,
+# that the same seed produces the same day twice, that one dispatch is one
+# refresh, that delegation moves the economy in a direction somebody chose, and
+# that the screens can render all of it at the size the game is played at.
+#
+# It deliberately restates things the slices already prove. That is what an
+# integration gate is for: a slice proves its piece in isolation, and only
+# walking the whole path proves the pieces still fit.
+
+func _check_fs001_gate(gs: Node, gm: Node, ops: RefCounted, lst: RefCounted,
+		original_items: Array) -> void:
+	# `reset_to_new_game()` does NOT reset `run_seed`, and the replay and economy
+	# checks below both change it deliberately. Restoring it here is not tidiness:
+	# a leaked seed silently re-rolls every seeded check in every section AFTER
+	# this one, and the first symptom is a frozen behaviour pattern that no longer
+	# matches — a failure a hundred lines away from its cause.
+	var seed_before := str(gs.run_seed)
+	_check_fs001_migration_chain(gs, gm, ops)
+	_check_fs001_replay(gs, gm, ops)
+	_check_fs001_one_refresh(gs, gm, ops)
+	_check_fs001_settlement_ordering(gs, gm, ops)
+	gs.listing_items = original_items
+	_check_fs001_economy(gs, gm, ops)
+	gs.listing_items = original_items
+	_check_fs001_ui(gs, gm, ops)
+	gs.run_seed = seed_before
+	gs.reset_to_new_game()
+
+## The whole chain, v5 → current, in one walk.
+##
+## The per-arm checks elsewhere each prove one hop. This proves the CHAIN: that a
+## save from the oldest schema still in the migrator arrives at the current one
+## with the delegation state a run needs, rather than each arm being individually
+## correct and the sequence losing something between them.
+func _check_fs001_migration_chain(gs: Node, gm: Node, ops: RefCounted) -> void:
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := _read_save_text(saves)
+
+	# A v5 payload: Broker tier, Pherris loyal, one holding bought today. It
+	# predates `list_taken`, `crew_operation_state`, ownership stamps and every
+	# TI-003 field — so the chain has to invent all of them, correctly, in order.
+	var v5_state := {
+		"day": 12, "time_slot": "MORNING", "time_slots_today": 0,
+		"run_seed": "907hustle", "current_district_id": "north_star_lot",
+		"street_name": "Legacy", "cash": 1500, "heat": 3.0, "health": 70,
+		"list_tier": 3, "list_flips": 14,
+		"list_holdings": [{"item_id": "space_heater", "bought_day": 12}],
+		"crew_records": {RB_CREW: {
+			"recruited": true, "status": "active", "loyalty": 8, "tier": 2,
+			"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
+		}},
+		"activity_log": [], "npc_ledgers": {}, "observation_queue": [],
+	}
+	var walked: Dictionary = saves._migrate({"save_version": 5, "state": v5_state})
+	_expect_true("a v5 save walks the whole chain", not walked.is_empty())
+	# v5 → v6 reconstructs same-day consumption from the holdings it can see.
+	_expect_true("the v6 arm rebuilt today's consumption record",
+		walked.get("list_taken") is Dictionary)
+	if walked.get("list_taken") is Dictionary:
+		_expect_true("and recovered the listing bought today",
+			"space_heater" in ((walked["list_taken"] as Dictionary).get("ids", []) as Array))
+	# v6 → v7 stamps ownership on every holding while it is still unambiguous.
+	var carried: Array = walked.get("list_holdings", []) as Array
+	_expect_int("the chain kept the holding", carried.size(), 1)
+	if carried.size() == 1:
+		_expect_str("and the v7 arm stamped it as the player's",
+			str((carried[0] as Dictionary).get("source", "")), "player")
+	# v7 → v8 splits the wallet, and rules the whole aggregate clean.
+	_expect_int("the v8 arm classified the legacy total clean",
+		int(walked.get("clean_cash", -1)), 1500)
+	_expect_int("and left nothing dirty", int(walked.get("dirty_cash", -1)), 0)
+	# Nothing in the chain invents delegation history. A run that predates the
+	# feature has never assigned anybody, and empty is the honest answer.
+	_expect_true("the chain infers no assignment",
+		not walked.has("crew_assignments")
+			or (walked["crew_assignments"] as Dictionary).is_empty())
+
+	# And it LOADS: the migrator producing a dictionary and `apply()` turning it
+	# into a playable run are two different claims.
+	_write_save(saves, 5, v5_state)
+	_expect_true("a v5 save loads through the chain", saves.load_run())
+	_expect_int("the loaded run kept its day", int(gs.day), 12)
+	_expect_int("and its cash", int(gs.cash), 1500)
+	_expect_true("and the wallet balances after the walk",
+		int(gs.cash) == int(gs.clean_cash) + int(gs.dirty_cash))
+	# The load-time reconcile qualifies her immediately: this run has met the
+	# discovery requirements for days without anything ever having looked.
+	_expect_true("a qualifying legacy run discovers on load",
+		ops.is_discovered(RB_OPERATION))
+	_expect_true("and is offered the operation once",
+		bool(ops.callback_flag("discovery_notified")))
+	_expect_true("no callback flag survives that was never set",
+		not bool(ops.callback_flag("loyalty_warning_sent")))
+
+	# A pending assignment survives the round trip and still settles correctly —
+	# the case the migration matrix cares about most, because a claim lost in a
+	# save is a crew member's day quietly refunded.
+	_rb_ready(gs)
+	ops.reconcile()
+	gs.listing_items = [_rb_item("chain_a", 40, "clean", 200, 220)]
+	var pending: Dictionary = _rb_assign(gs, gm, ops)
+	_expect_true("the chain assignment bought something",
+		int(pending.get("cycles_used", 0)) > 0)
+	saves.save_run()
+	gs.crew_assignments = {}
+	gs.crew_operation_state = {"discovered": [], "adapters": {}}
+	_expect_true("the pending assignment reloads", saves.load_run())
+	_expect_true("and is still today's claim",
+		not ops.assignment_for(RB_CREW).is_empty())
+	_expect_true("and is still unsettled",
+		not bool(ops.assignment_for(RB_CREW).get("settled", false)))
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var settled_after_reload: Variant = \
+		(gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("result")
+	_expect_true("a reloaded pending assignment settles",
+		settled_after_reload is Dictionary
+			and int((settled_after_reload as Dictionary).get("settled_count", 0)) > 0)
+
+	_restore_save_text(saves, previous_save)
+	gs.reset_to_new_game()
+
+## Same seed, same board, same assignment — twice.
+##
+## Delegation multiplies the ways a run can stop being reproducible: the board is
+## seeded, the value roll is seeded, and both are now read by somebody who is not
+## the player. Two identical mornings have to produce identical selections and
+## identical settlements, or a save cannot be trusted to replay.
+func _check_fs001_replay(gs: Node, gm: Node, ops: RefCounted) -> void:
+	var board: Array = [
+		_rb_item("replay_a", 40, "clean", 200, 220),
+		_rb_item("replay_b", 55, "clean", 180, 210),
+		_rb_item("replay_c", 70, "clean", 150, 190),
+	]
+	var runs: Array = []
+	for _pass in 2:
+		_rb_ready(gs)
+		gs.run_seed = "fs001-replay"
+		gs.listing_items = board.duplicate(true)
+		ops.reconcile()
+		var selection: Dictionary = _rb_assign(gs, gm, ops, {"spend_limit": 120})
+		var cash_after_buy: int = int(gs.cash)
+		for _slot in 4:
+			gm.dispatch("advance_time", {})
+		var result: Variant = (gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("result")
+		runs.append({
+			"picked": _rb_purchased_ids(selection),
+			"spent": int(selection.get("total_spent", 0)),
+			"stop": str(selection.get("stop_reason", "")),
+			"cash_after_buy": cash_after_buy,
+			"result": result if result is Dictionary else {},
+			"cash_end": int(gs.cash),
+		})
+	var first: Dictionary = runs[0]
+	var second: Dictionary = runs[1]
+	_expect_true("the replay actually bought something",
+		not (first["picked"] as Array).is_empty())
+	_expect_str("the same morning picks the same listings",
+		str(second["picked"]), str(first["picked"]))
+	_expect_int("and spends the same money", int(second["spent"]), int(first["spent"]))
+	_expect_str("and stops for the same reason", str(second["stop"]), str(first["stop"]))
+	_expect_int("the same night settles to the same result",
+		int((second["result"] as Dictionary).get("gross", -1)),
+		int((first["result"] as Dictionary).get("gross", -2)))
+	_expect_int("and the same profit",
+		int((second["result"] as Dictionary).get("profit_or_loss", -1)),
+		int((first["result"] as Dictionary).get("profit_or_loss", -2)))
+	_expect_int("and leaves the same cash", int(second["cash_end"]), int(first["cash_end"]))
+
+	# --- and the same night replayed FROM A SAVE ---
+	#
+	# A different claim from the two above, and a stronger one. Two fresh setups
+	# make the same calls in the same order, so anything that is merely
+	# call-order-dependent rather than genuinely seeded still agrees. Replaying
+	# the same save does not: the reload restores the morning and then settles it
+	# a second time, through a different history of the process.
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := _read_save_text(saves)
+	_rb_ready(gs)
+	gs.run_seed = "fs001-replay"
+	gs.listing_items = board.duplicate(true)
+	ops.reconcile()
+	_rb_assign(gs, gm, ops, {"spend_limit": 120})
+	saves.save_run()
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var live: Variant = (gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("result")
+	_expect_true("the saved morning settled", live is Dictionary)
+	_expect_true("the saved morning reloads", saves.load_run())
+	_expect_true("and comes back unsettled",
+		not bool(ops.assignment_for(RB_CREW).get("settled", false)))
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var replayed: Variant = (gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("result")
+	_expect_true("the reloaded morning settled too", replayed is Dictionary)
+	if live is Dictionary and replayed is Dictionary:
+		_expect_str("a night replayed from a save lands identically",
+			_canonical(replayed as Dictionary), _canonical(live as Dictionary))
+	_restore_save_text(saves, previous_save)
+
+	# A DIFFERENT seed is allowed to differ — otherwise the two checks above
+	# would pass on a build where the seed was ignored entirely.
+	_rb_ready(gs)
+	gs.run_seed = "fs001-replay-other"
+	gs.listing_items = board.duplicate(true)
+	ops.reconcile()
+	_rb_assign(gs, gm, ops, {"spend_limit": 120})
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var other: Variant = (gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("result")
+	_expect_true("a different seed reaches a different night",
+		not (other is Dictionary)
+			or int((other as Dictionary).get("gross", -1))
+				!= int((first["result"] as Dictionary).get("gross", -2)))
+	gs.reset_to_new_game()
+
+## One dispatch, one refresh.
+##
+## The reactive contract, measured on the action delegation added. An assignment
+## does a lot inside one dispatch — it claims the day, buys stock through the
+## wallet, consumes listings, logs the feed line and reconciles callbacks — and
+## every one of those is a place a nested `notify_changed()` could creep in.
+func _check_fs001_one_refresh(gs: Node, gm: Node, ops: RefCounted) -> void:
+	_rb_ready(gs)
+	gs.listing_items = [
+		_rb_item("refresh_a", 40, "clean", 200, 220),
+		_rb_item("refresh_b", 50, "clean", 190, 210),
+	]
+	ops.reconcile()
+	var refreshes: Array = []
+	var counter := func() -> void: refreshes.append(1)
+	gs.state_changed.connect(counter)
+	var assigned: bool = gm.dispatch("assign_crew_operation",
+		{"crew_id": RB_CREW, "operation_id": RB_OPERATION})
+	gs.state_changed.disconnect(counter)
+	_expect_true("the measured assignment dispatched", assigned)
+	_expect_int("one successful dispatch is exactly one refresh", refreshes.size(), 1)
+
+	# And a REFUSED assignment refreshes nothing at all: she already has the day.
+	refreshes.clear()
+	gs.state_changed.connect(counter)
+	var repeat: bool = gm.dispatch("assign_crew_operation",
+		{"crew_id": RB_CREW, "operation_id": RB_OPERATION})
+	gs.state_changed.disconnect(counter)
+	_expect_true("a second claim on the same day is refused", not repeat)
+	_expect_int("and a refusal refreshes nothing", refreshes.size(), 0)
+	gs.reset_to_new_game()
+
+## Where delegation sits in the night, asserted against the declared order.
+##
+## Crew settles before territory, and Exposure runs after everything that makes
+## money. Both are already constants in `day_lifecycle.gd`; what this adds is the
+## delegation-specific half — that her settlement happens while the clock still
+## reads the day it is settling, which is what lets her report on it.
+func _check_fs001_settlement_ordering(gs: Node, gm: Node, ops: RefCounted) -> void:
+	var lifecycle: RefCounted = gm.system("day_lifecycle") as RefCounted
+	if lifecycle == null:
+		_fail("fs001 ordering", "no day_lifecycle system registered")
+		return
+	var settle_order: Array = lifecycle.SETTLE_ORDER
+	_expect_true("crew settles before territory",
+		settle_order.find("crew") < settle_order.find("territory"))
+	_expect_true("and both settle before Exposure rolls over",
+		settle_order.find("crew") >= 0
+			and (lifecycle.ROLLOVER_ORDER as Array).find("exposure") >= 0)
+
+	# Her settlement runs on `day_ending`, which fires while the clock still
+	# reads the ending day. If it ran after the increment she would be reporting
+	# on a day that had already ended, and `last_night` would be off by one
+	# forever — a bug that looks like a rendering glitch.
+	_rb_ready(gs)
+	ops.reconcile()
+	gs.listing_items = [_rb_item("order_a", 40, "clean", 200, 220)]
+	_rb_assign(gs, gm, ops)
+	var assigned_day: int = int(gs.day)
+	var seen_day: Array = []
+	var probe := func(ended: int) -> void: seen_day.append([ended, int(gs.day)])
+	gs.day_ending.connect(probe)
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	gs.day_ending.disconnect(probe)
+	_expect_int("the night fired day_ending once", seen_day.size(), 1)
+	if seen_day.size() == 1:
+		_expect_int("settlement saw the day it was settling",
+			int((seen_day[0] as Array)[0]), assigned_day)
+		_expect_int("and the clock still read it", int((seen_day[0] as Array)[1]),
+			assigned_day)
+	_expect_int("the clock moved afterwards", int(gs.day), assigned_day + 1)
+	gs.reset_to_new_game()
+
+## FS-001.10's economy simulation: thirty days, delegated and not.
+##
+## The question the milestone has to answer is not "does delegation make money" —
+## it obviously does, she buys under value and sells at it. It is whether
+## delegation makes PERSONAL play pointless, which is the failure mode FS-001.7's
+## leakage rules were written against and the one a single-run number cannot see.
+##
+## So two runs, same seed, same board, same days: one where she is assigned every
+## morning and one where the player is never given the option. Everything is
+## reported; the assertions are the invariants that would be bugs at any balance.
+func _check_fs001_economy(gs: Node, gm: Node, ops: RefCounted) -> void:
+	var delegated: Dictionary = _fs001_run(gs, gm, ops, true, 30)
+	var solo: Dictionary = _fs001_run(gs, gm, ops, false, 30)
+
+	for row in [delegated, solo]:
+		var metrics: Dictionary = row
+		print(("fs001 economy: %s — days %d · cash $%d · delegated cycles %d · "
+			+ "locked capital $%d · player slots free %d")
+			% [str(metrics["label"]), int(metrics["days"]), int(metrics["cash"]),
+				int(metrics["delegated_cycles"]), int(metrics["locked_capital"]),
+				int(metrics["player_slots_free"])])
+		print(("                wages paid $%d (still owed $%d) · missed obligations %d · "
+			+ "exposure delta %d · curtis delta %d · her gross $%d · her profit $%d")
+			% [int(metrics["wages_paid"]), int(metrics["wages_owed"]),
+				int(metrics["missed_obligations"]),
+				int(metrics["exposure_delta"]), int(metrics["curtis_delta"]),
+				int(metrics["gross"]), int(metrics["profit"])])
+		print("fs001-economy-metrics: %s" % JSON.stringify(metrics))
+
+	# --- the invariants ---
+	_expect_true("the delegated run actually played",
+		int(delegated["days"]) > 1)
+	_expect_true("and actually delegated",
+		int(delegated["delegated_cycles"]) > 0)
+	_expect_true("the solo run delegated nothing",
+		int(solo["delegated_cycles"]) == 0)
+	# Her day is HERS. Every cycle she ran is a slot the player never spent, and
+	# the player's own slot budget is identical in both runs — which is the whole
+	# claim of "delegation costs her day, not yours".
+	_expect_int("delegation costs the player no slots",
+		int(delegated["player_slots_free"]), int(solo["player_slots_free"]))
+	# And it buys none of the player's progress. FS-001.7's three leakage rules,
+	# restated over thirty days rather than one assignment.
+	_expect_int("thirty delegated days earn the player no flips",
+		int(delegated["list_flips"]), int(solo["list_flips"]))
+	_expect_int("and no Intelligence",
+		int(delegated["intelligence"]), int(solo["intelligence"]))
+	_expect_int("and no Broker progress",
+		int(delegated["list_tier"]), int(solo["list_tier"]))
+	# Delegation is not a way to launder visibility: her sales reach the block.
+	_expect_true("her sales are as visible as the player's would be",
+		int(delegated["exposure_delta"]) >= int(solo["exposure_delta"]))
+	# The wallet holds at the end of both, which is the one thing that would make
+	# every figure above meaningless.
+	_expect_true("the delegated run's wallet balances",
+		int(delegated["cash"]) == int(delegated["clean"]) + int(delegated["dirty"]))
+	_expect_true("the solo run's wallet balances",
+		int(solo["cash"]) == int(solo["clean"]) + int(solo["dirty"]))
+	# Nothing of hers is left holding the player's money at the end of a run
+	# that ended cleanly — a cycle that never settles is capital that never
+	# comes back, and it would show up here as a growing locked figure.
+	_expect_true("her capital is not stranded at the end",
+		int(delegated["locked_capital"]) >= 0)
+	gs.reset_to_new_game()
+
+## One seeded economy run. `delegate` decides whether she is asked each morning.
+func _fs001_run(gs: Node, gm: Node, ops: RefCounted, delegate: bool,
+		days: int) -> Dictionary:
+	var exposure := get_node("/root/Exposure")
+	_rb_ready(gs, 2500)
+	gs.run_seed = "fs001-economy"
+	gs.day = 1
+	# `_rb_ready` writes `gs.cash` directly, which is one of TI-003 §6's named
+	# harness exceptions and leaves the provenance buckets holding the $100 a
+	# fresh run starts with. Reconciling here is what the wallet does on its own
+	# first mutation — the delegated run balances because she spends, and without
+	# this the solo run would be measured against an unreconciled wallet and
+	# report a difference that is really the fixture's shortcut.
+	var wallet: Object = gm.system("wallet")
+	if wallet != null:
+		wallet.reconcile()
+	# Rent and the phone are pushed out so the run measures DELEGATION rather
+	# than an eviction clock the two runs would hit at slightly different times.
+	gs.rent_due_day = days + 10
+	gs.phone_due_day = days + 10
+	ops.reconcile()
+
+	var exposure_before: int = _fs001_exposure_rows(exposure)
+	var curtis_before: int = int(gs.curtis_awareness)
+	var cash_before: int = int(gs.cash)
+	var metrics: Dictionary = {
+		"label": "delegated" if delegate else "solo",
+		"delegated_cycles": 0, "gross": 0, "profit": 0,
+		"player_slots_free": 0, "wages_paid": 0, "missed_obligations": 0,
+		"locked_capital": 0,
+	}
+	var guard: int = 0
+	while int(gs.day) <= days and guard < days * 8 and not bool(gs.game_over):
+		guard += 1
+		if int(gs.time_slots_today) == 0 and delegate:
+			if ops.assignment_blocker(RB_OPERATION) == null:
+				gm.dispatch("assign_crew_operation",
+					{"crew_id": RB_CREW, "operation_id": RB_OPERATION})
+				var selection: Variant = ops.assignment_for(RB_CREW).get("selection")
+				if selection is Dictionary:
+					metrics["delegated_cycles"] = int(metrics["delegated_cycles"]) \
+						+ int((selection as Dictionary).get("cycles_used", 0))
+		# The player's own day, spent identically in both runs: four slots, none
+		# of them on the board. That is what makes "her day, not yours" testable
+		# rather than asserted.
+		metrics["player_slots_free"] = int(metrics["player_slots_free"]) + 1
+		# Wages are never auto-deducted in this build: they accrue to `wage_due`
+		# and the player pays them or loses the crew member. Paying every morning
+		# is what makes this a DELEGATION measurement rather than a measurement of
+		# the wage clock — left unpaid, she departs around day eight in both runs
+		# and the comparison becomes a comparison of two short weeks.
+		var owed: int = int(gs.crew_record(RB_CREW).get("wage_due", 0))
+		if owed > 0 and int(gs.cash) >= owed:
+			if gm.dispatch("pay_crew", {"crew_id": RB_CREW}):
+				metrics["wages_paid"] = int(metrics["wages_paid"]) + owed
+		var settled_before: Variant = ops.last_assignment(RB_CREW).get("result")
+		gm.dispatch("advance_time", {})
+		var settled_after: Variant = ops.last_assignment(RB_CREW).get("result")
+		if settled_after is Dictionary and settled_after != settled_before:
+			metrics["gross"] = int(metrics["gross"]) \
+				+ int((settled_after as Dictionary).get("gross", 0))
+			metrics["profit"] = int(metrics["profit"]) \
+				+ int((settled_after as Dictionary).get("profit_or_loss", 0))
+
+	# Capital still sitting in stock she picked up and has not closed.
+	for held in gs.list_holdings:
+		if str((held as Dictionary).get("source", "")) == "pherris":
+			metrics["locked_capital"] = int(metrics["locked_capital"]) + 1
+	metrics["days"] = int(gs.day)
+	metrics["cash"] = int(gs.cash)
+	metrics["clean"] = int(gs.clean_cash)
+	metrics["dirty"] = int(gs.dirty_cash)
+	metrics["cash_delta"] = int(gs.cash) - cash_before
+	metrics["list_flips"] = int(gs.list_flips)
+	metrics["list_tier"] = int(gs.list_tier)
+	metrics["intelligence"] = int(gs.attributes.get("intelligence", 1))
+	metrics["exposure_delta"] = _fs001_exposure_rows(exposure) - exposure_before
+	metrics["curtis_delta"] = int(gs.curtis_awareness) - curtis_before
+	metrics["wages_owed"] = int(gs.crew_record(RB_CREW).get("wage_due", 0))
+	metrics["loyalty_end"] = int(gs.crew_record(RB_CREW).get("loyalty", 0))
+	metrics["still_on_the_crew"] = gs.is_recruited(RB_CREW)
+	metrics["missed_obligations"] = int(gs.rent_missed) + int(gs.job_missed.size())
+	metrics["game_over"] = bool(gs.game_over)
+	return metrics
+
+func _fs001_exposure_rows(exposure: Node) -> int:
+	var rows: int = 0
+	for npc_id in exposure.npc_ids():
+		rows += (exposure.ledger_of(str(npc_id)) as Array).size()
+	return rows
+
+## FS-001.10's UI regression, at the size the game is played at.
+##
+## Not a pixel test — a headless run has no font metrics worth trusting for that.
+## What it CAN settle is the claim that actually breaks: that a screen fed real
+## delegation state renders the delegation state, and that nothing it renders is
+## wider than the phone. A blocker string that overflows 375pt is invisible in
+## the editor and unreadable on the device.
+const FS001_VIEWPORT := Vector2(375.0, 812.0)
+const PHONE_SCREEN := "res://ui/screens/phone.tscn"
+## The dismiss glyph on each rendered message. Two texts in the inbox when this
+## runs, so two controls — see the note in `_fs001_render`.
+const PHONE_UNDERSIZED_CONTROLS := 2
+
+func _check_fs001_ui(gs: Node, gm: Node, ops: RefCounted) -> void:
+	# --- assigned: every delegation surface says so ---
+	_rb_ready(gs)
+	ops.reconcile()
+	gs.listing_items = [
+		_rb_item("ui_a", 40, "clean", 200, 220),
+		_rb_item("ui_b", 55, "clean", 190, 210),
+	]
+	_rb_assign(gs, gm, ops, {"spend_limit": 200})
+	for path in ["res://ui/screens/nine07list.tscn", "res://ui/screens/crew.tscn",
+			"res://ui/screens/home.tscn", "res://ui/screens/hustle.tscn",
+			"res://ui/screens/phone.tscn"]:
+		_fs001_render(str(path), "assigned")
+
+	var hustle_text: String = _fs001_text("res://ui/screens/hustle.tscn")
+	_expect_true("the Hustle 907List row says she is active",
+		"PHERRIS ACTIVE" in hustle_text)
+	var home_text: String = _fs001_text("res://ui/screens/home.tscn")
+	_expect_true("Home's card says she is out today",
+		"PHERRIS · OUT TODAY" in home_text)
+
+	# --- settled: the card turns into last night, and the row goes quiet ---
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var after_text: String = _fs001_text("res://ui/screens/home.tscn")
+	_expect_true("Home's card reports last night",
+		"LAST NIGHT" in after_text)
+	_expect_true("and no longer says she is out",
+		not ("OUT TODAY" in after_text))
+	_expect_true("the Hustle row goes quiet once she is back",
+		not ("PHERRIS ACTIVE" in _fs001_text("res://ui/screens/hustle.tscn")))
+
+	# --- blocked: the reason renders, and it fits ---
+	#
+	# The afternoon blocker is the one a player meets most and the one whose copy
+	# is longest, so it is the one measured.
+	_rb_ready(gs)
+	ops.reconcile()
+	gs.time_slots_today = 2
+	gs.time_slot = "EVENING"
+	var blocked_text: String = _fs001_text("res://ui/screens/nine07list.tscn")
+	_expect_true("the 907List panel renders the blocker",
+		blocked_text.to_lower().contains("morning"))
+	_fs001_render("res://ui/screens/nine07list.tscn", "blocked")
+	gs.reset_to_new_game()
+
+## Build one screen at 375x812, bind it, and assert nothing overflows the phone.
+func _fs001_render(path: String, label_text: String) -> void:
+	var screen: Node = _instantiate_screen(path)
+	if screen == null:
+		_fail("fs001 ui", "%s will not load" % path)
+		return
+	var root := screen as Control
+	if root != null:
+		root.size = FS001_VIEWPORT
+	if screen.has_method("refresh"):
+		screen.refresh()
+	var widest: float = 0.0
+	var offender: String = ""
+	var controls: Array = []
+	_fs001_controls(screen, controls)
+	for entry in controls:
+		var control := entry as Control
+		# `size.x` is only meaningful once a container has laid the child out.
+		# `custom_minimum_size` is the one a headless run can trust: it is what
+		# the author DECLARED, and a declared minimum wider than the screen
+		# cannot fit however the layout resolves.
+		var declared: float = control.custom_minimum_size.x
+		if declared > widest:
+			widest = declared
+			offender = str(control.name)
+	_expect_true("%s (%s): nothing declares a width past the phone"
+		% [path.get_file(), label_text], widest <= FS001_VIEWPORT.x)
+	if widest > FS001_VIEWPORT.x:
+		_fail("fs001 ui", "%s declares %.0fpt on %s" % [path.get_file(), widest, offender])
+	# Every tappable is at least 44pt tall, the same rule the consequence scene is
+	# held to — with one NAMED exception, below.
+	var buttons: Array = []
+	_collect_buttons(screen, buttons)
+	var undersized: int = 0
+	for entry in buttons:
+		var pressable := entry as Button
+		if not pressable.visible:
+			continue
+		var tall_enough: bool = pressable.custom_minimum_size.y >= 44.0 \
+			or pressable.size.y >= 44.0
+		if not tall_enough:
+			undersized += 1
+		if path == PHONE_SCREEN:
+			continue
+		_expect_true("%s (%s): %s is tappable"
+			% [path.get_file(), label_text, str(pressable.name)], tall_enough)
+	if path == PHONE_SCREEN:
+		# FS-001.10 found this and is not allowed to fix it: the milestone's
+		# scope forbids Phone UI changes beyond rendering the new messages.
+		#
+		# So it is PINNED rather than skipped. The dismiss glyph declares 34x28,
+		# which is under the 44pt rule, and this check asserts that it is exactly
+		# that — so the day somebody corrects it, this fails and gets deleted
+		# instead of the exception quietly outliving the problem. Filed as a
+		# follow-up.
+		_expect_int("the phone's dismiss control is the known undersized one",
+			undersized, PHONE_UNDERSIZED_CONTROLS)
+	_free_screen(screen)
+
+## Every label a screen renders, joined — built and freed in one call so a caller
+## reading text does not have to remember to free.
+func _fs001_text(path: String) -> String:
+	var screen: Node = _instantiate_screen(path)
+	if screen == null:
+		return ""
+	var root := screen as Control
+	if root != null:
+		root.size = FS001_VIEWPORT
+	if screen.has_method("refresh"):
+		screen.refresh()
+	var labels: Array[String] = []
+	_collect_labels(screen, labels)
+	_free_screen(screen)
+	return "\n".join(labels)
+
+func _fs001_controls(node: Node, out: Array) -> void:
+	var control := node as Control
+	if control != null:
+		out.append(control)
+	for child in node.get_children():
+		_fs001_controls(child, out)
 
 func _rb_pherris_holdings(gs: Node) -> int:
 	var count := 0
@@ -12074,9 +12666,26 @@ func _fail(label: String, detail: String) -> void:
 ## deliberately overlapping — an integration gate restates things the slices
 ## already prove, because a slice proves its piece in isolation and only walking
 ## the whole path proves the pieces still fit.
-const MIN_CHECKS := 10211
+##
+## FS-001.9 raises it to 10,499 and FS-001.10 to 10,600. The Codex hardening
+## batch (PR #46) had already carried the suite from 10,211 to 10,439 without
+## moving this line, which is the floor doing exactly half its job: it caught
+## nothing because nothing regressed, and it would have caught nothing if
+## something had. The new floor covers that batch and both slices.
+const MIN_CHECKS := 10600
+
+## And it is a CHECK now, not a comment.
+##
+## `MIN_CHECKS` has carried a careful paragraph per slice since FS-003.1 and
+## nothing has ever read it: a suite that lost half its checks to an aborted
+## section would still have printed PASS, which is precisely the failure the
+## constant was written to catch. `_finish()` compares against it.
 
 func _finish() -> void:
+	if _checks < MIN_CHECKS:
+		_fail("check floor",
+			"ran %d checks, floor is %d — a section aborted before it finished"
+				% [_checks, MIN_CHECKS])
 	if _failures.is_empty():
 		print("parity: PASS — %d checks, 0 failures" % _checks)
 	else:

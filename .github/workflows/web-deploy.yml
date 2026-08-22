@@ -66,6 +66,27 @@ jobs:
       - name: Run parity suite
         run: godot --headless --path . res://tests/parity/parity_runner.tscn
 
+      # The other two harnesses, which were green and manual-only. A gate
+      # nobody runs automatically is not a gate: `save_validation` is the
+      # adversarial cover for every migration arm, and `screen_smoke`
+      # instantiates and refreshes all 23 screens, which is the only thing in
+      # the build that would catch a screen that cannot render.
+      #
+      # Both `grep` their own PASS line, because a Godot run that dies part-way
+      # still exits 0. The smoke check matches N/N with a backreference rather
+      # than a literal count, so adding a screen does not fail CI for the wrong
+      # reason — only a screen that did not instantiate does.
+      - name: Run save-validation suite
+        run: |
+          godot --headless --path . res://tests/save_validation/save_validation_runner.tscn 2>&1 | tee sv.log
+          grep -q "^save_validation: PASS" sv.log
+
+      - name: Run screen smoke
+        run: |
+          godot --headless --path . res://tests/smoke/screen_smoke.tscn 2>&1 | tee smoke.log
+          grep -qE "screen smoke: ([0-9]+)/\1 instantiated" smoke.log
+          ! grep -q "LOAD FAILED" smoke.log
+
   build:
     name: Export web
     runs-on: ubuntu-latest

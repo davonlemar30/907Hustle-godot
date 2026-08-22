@@ -5661,6 +5661,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 9 | `codex/batch-9-balance-pass` | **The instrument was lying** — a leaked catalogue corrupted every economy number since batch 3 · the class closed · two balance findings filed with live numbers | 11,576 → 11,622 | Merged, PR #63. Schema unchanged. |
 | 10 | `codex/batch-10-wander` | **Wander** — the ramped discovery, the card registry, a fourth chain kind · Home's three dead buttons · two unreachable jobs made findable | 11,622 → 11,723 | Merged, PR #64. **Save v12 → v13.** |
 | 11 | `codex/batch-11-wander-followups` | An adversarial read of batch 10 found five shipped defects · all five fixed · adapter-supplied choice copy · the glyph CI job now scans `data/` | 11,723 → 11,761 | Merged, PR #65. Schema unchanged. |
+| 12 | `codex/batch-12-measure-wander` | **Wander measured** — 307% of the day job · the discovery→money mechanism pinned · the other two harnesses gated in CI | 11,761 → 11,780 | Merged, PR #66. Schema unchanged. |
 
 **Two verification defects found in batch 6b, both in the harness rather than
 the game, both now fixed:**
@@ -5789,6 +5790,48 @@ by a failing test. All five are fixed in batch 11 and each fix is pinned.**
 card line lives, including one with an em dash. It scans `data/` now. And of the
 three test harnesses only parity runs in CI; `save_validation` and
 `screen_smoke` are manual-only, which is filed rather than fixed here.
+
+**Wander is measured, and it is the strongest clean path in the game.**
+
+Batch 10 shipped an action that costs a SLOT — the scarcest thing in the build
+at four a day — and nothing measured what taking it costs against the day job.
+Two profiles now do. 30 days, 4 seeds:
+
+| profile | net worth | % of day job | note |
+| --- | --- | --- | --- |
+| `legal_worker` | $1,553 | 100% | never leaves Wash & Go |
+| **`worker_wanders`** | **$4,763** | **307%** | 89.5 wanders, both jobs found, shift pay 125 |
+| `wanderer` | $41 | 3% | walking with no job — correctly a trap |
+
+Wander triples the honest path and does it on **clean money**: peak Heat 0.0 and
+zero arrests across every seed. The wandering worker ends the month on Ship
+Creek Freight at $110-140 instead of a $50 car wash, which is exactly the design
+intent the web build recorded for legal work ("social gateways into Anchorage").
+
+**Two things the measurement caught that would otherwise have shipped blind:**
+
+- **The first probe reported 129%, and it was wrong.** The profile found both
+  jobs and went on clocking in at the car wash, because the sim applies once on
+  day one and never again — so a discovery could not become money. The upgrade
+  leg is what makes the number honest, and the whole gap between 129% and 307%
+  is "can you actually take the job you found". That mechanism is now pinned;
+  the balance is reported, not asserted.
+- **`ECON_JOB` is not the best starter shift.** `spenard_chevron` pays [48, 60]
+  against Wash & Go's [40, 60], so the constant every other profile and every
+  published percentage in this file is quoted against is the second-best job a
+  run starts knowing about. Left alone deliberately — changing it would move
+  every number batch 9 published — but it is worth knowing the 100% baseline is
+  a player who is not even optimising the five jobs they start with.
+
+**A balance question for design, not for me.** The `legal_worker` 100% baseline
+now represents a player ignoring a free mechanic. Every percentage in the table
+— hustler 732%, flipper 358% — is quoted against it. Re-baselining is a design
+call with a lot of downstream, so it is filed rather than taken.
+
+**And the CI gap is closed.** Of the three harnesses only parity was a merge
+gate; `save_validation` and `screen_smoke` were green and manual-only. Both run
+on `pull_request` now, each grepping its own PASS line because a Godot run that
+dies part-way still exits 0.
 
 **Findings carried forward:**
 

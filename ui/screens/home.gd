@@ -16,32 +16,106 @@ func _ready() -> void:
 	super()
 	_wire_taps()
 
+## The operation card's three actions, all three of which are now real.
+##
+## They were not. `Move` was labelled MOVE PRODUCT and was canon's
+## `explore_spenard` — Wander — reduced to `advance_time` plus a toast reading
+## "Time passes." `Post` and `Lay` were `"— coming soon."` toasts. Batch 6b
+## shipped Eli's operation and batch 8 capped Lay Low, so by the time this
+## batch started, two of the three stubs had working systems behind them and
+## nothing connected to either.
+## The operation card's two contextual actions. Both were `"— coming soon."`
+## toasts; batch 6b shipped Eli's operation and Lay Low has existed in Recovery
+## since it was written, so both now go somewhere.
+const OP_ACTIONS := {"Post": "POST ELI", "Lay": "LAY LOW"}
+
 func _wire_taps() -> void:
-	# The operation card's three actions are already Buttons in the scene; only
-	# the first spends time for now, the other two are Phase 4 story beats.
-	var move := get_node_or_null("Shell/Scroll/Pad/Content/OpCard/V/Actions/Move") as Button
-	if move:
-		tap_connect(move, _on_move_product)
-	for spec in [["Post", "Posting Eli"], ["Lay", "Laying low"]]:
-		var b := get_node_or_null("Shell/Scroll/Pad/Content/OpCard/V/Actions/" + spec[0]) as Button
-		if b:
-			tap_connect(b, _on_stub.bind(spec[1]))
+	# Wander comes OFF the operation card, and that is the point of this batch.
+	#
+	# `Move` was labelled MOVE PRODUCT and was canon's `explore_spenard` — the
+	# Wander reducer — spending a slot to print the weather. It also sat on a
+	# card that `_bind_gates` HIDES whenever there is no operation, no rent
+	# crunch and no shift, which is exactly a fresh run. HANDOFF filed that as an
+	# open follow-up: "the build's only bare advance_time control in the UI lives
+	# on the now-hidden operation card, so a fresh run must pass time through
+	# Street travel, a Hustle action, or More -> Recovery -> Lay Low ... Filed
+	# for the next UX pass."
+	#
+	# This is that pass. Wander is the one thing a player can always do, so it
+	# gets a card that is always there, and the operation card keeps only the
+	# two actions that are genuinely about tonight's operation.
+	var stale := get_node_or_null("Shell/Scroll/Pad/Content/OpCard/V/Actions/Move") as Button
+	if stale:
+		stale.visible = false
+	for node_name in OP_ACTIONS.keys():
+		var b := get_node_or_null(
+			"Shell/Scroll/Pad/Content/OpCard/V/Actions/" + str(node_name)) as Button
+		if b == null:
+			continue
+		b.text = str(OP_ACTIONS[node_name])
+		tap_connect(b, _on_post_eli if str(node_name) == "Post" else _on_lay_low)
+	var go := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go") as Button
+	if go:
+		tap_connect(go, _on_wander)
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Market", _on_market)
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Turf", _on_turf)
 	make_tappable("Shell/Scroll/Pad/Content/People", _on_people)
 
 ## Canon's explore_spenard: cashCost 0, timeCost 1 (game-core.js:358-360).
-func _on_move_product() -> void:
+##
+## The cost was always right here. What was missing was everything the slot buys
+## — see `systems/wander.gd`. The toast reports what the walk turned up; the
+## feed carries the line itself, and a blocking encounter takes the player to
+## the consequence screen on its own.
+func _on_wander() -> void:
+	var sys: Object = _gm.system("wander")
+	if sys == null:
+		return
+	var blocked: String = str(sys.blocker())
+	if not blocked.is_empty():
+		nav.show_toast(blocked + ".")
+		return
 	var before_day: int = gs.day
-	if not _gm.dispatch("advance_time", {}):
+	if not _gm.dispatch("wander", {}):
 		return
 	if gs.day > before_day:
-		nav.show_toast("A new day. Day %d, %s in %s." % [gs.day, gs.time_slot.capitalize(), gs.current_district().get("name", "")])
+		nav.show_toast("A new day. Day %d, %s in %s."
+			% [gs.day, gs.time_slot.capitalize(), gs.current_district().get("name", "")])
 	else:
-		nav.show_toast("Time passes. %s in %s." % [gs.time_slot.capitalize(), gs.current_district().get("name", "")])
+		nav.show_toast("You take a walk. %s in %s."
+			% [gs.time_slot.capitalize(), gs.current_district().get("name", "")])
 
-func _on_stub(what: String) -> void:
-	nav.show_toast("%s — coming soon." % what)
+## Eli, on the bag for the day. Batch 6b built the operation; this is the door
+## the operation card always implied and never had.
+func _on_post_eli() -> void:
+	var ops: Object = _gm.system("crew_operations")
+	if ops == null:
+		return
+	if not ops.is_discovered("run_the_bag"):
+		nav.show_toast("Eli has not offered yet.")
+		return
+	var blocked: Variant = ops.assignment_blocker("run_the_bag")
+	if blocked != null:
+		nav.show_toast(str(blocked) + ".")
+		return
+	if _gm.dispatch("assign_crew_operation",
+			{"crew_id": "eli", "operation_id": "run_the_bag"}):
+		nav.show_toast("Eli has the bag today.")
+
+## Lay Low has existed in `systems/recovery.gd` since it shipped and has only
+## ever been reachable from a conditional row on the More menu. Batch 8 gave it
+## a once-a-day cap; this gives it the button the Home card has been drawing
+## for it the whole time.
+func _on_lay_low() -> void:
+	var recovery: Object = _gm.system("recovery")
+	if recovery == null:
+		return
+	var blocked: String = str(recovery.lay_low_blocker())
+	if not blocked.is_empty():
+		nav.show_toast(blocked + ".")
+		return
+	if _gm.dispatch("lay_low", {}):
+		nav.show_toast("Lights off, phone down.")
 
 func _on_market() -> void:
 	nav.go_to(nav.MARKET)
@@ -74,11 +148,48 @@ func _bind_gates() -> void:
 	gate_surface(ACCESS.HOME_ACTIVITY_FEED, "Shell/Scroll/Pad/Content/Activity")
 
 func _bind_all() -> void:
+	_bind_wander()
 	_bind_operation()
 	_bind_snapshot()
 	_bind_turf()
 	_bind_activity()
 	_bind_people()
+
+## The Wander card. Always present, because going out is always available and a
+## card that came and went would be the defect this batch exists to close.
+##
+## The subtitle is the ramp, said rather than numbered. `WanderSystem` owns the
+## arithmetic — 30% base, +10% a miss, capped at 70% — and the player is told
+## how the looking is going, which is the part that makes another walk feel
+## worth a slot. Telling them 0.60 would be telling them to do arithmetic.
+func _bind_wander() -> void:
+	var sys: Object = _gm.system("wander")
+	if sys == null:
+		return
+	_set_text("Shell/Scroll/Pad/Content/Wander/V/Head/T", "GO OUT AND LOOK")
+	_set_text("Shell/Scroll/Pad/Content/Wander/V/Head/Where",
+		gs.time_slot.capitalize())
+	var go := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go") as Button
+	var blocked: String = str(sys.blocker())
+	if go:
+		go.text = "WANDER" if blocked.is_empty() else blocked.to_upper()
+		go.disabled = not blocked.is_empty()
+	_set_text("Shell/Scroll/Pad/Content/Wander/V/Sub", _wander_line(sys))
+
+## What the card says under the button. Three states, and the middle one is the
+## whole reason the ramp exists.
+func _wander_line(sys: Object) -> String:
+	if not str(sys.blocker()).is_empty():
+		return "Not right now."
+	if (sys.undiscovered() as Array).is_empty():
+		return "%s, and you know it well enough by now. Still worth the walk." \
+			% str(gs.current_district().get("name", "the block"))
+	var misses: int = int(gs.wander_misses)
+	if misses <= 0:
+		return "An hour on foot. You never know who is out."
+	if misses < 3:
+		return "Nothing the last time out. Somebody knows something."
+	return "You have come back empty a few times now. That tends to change."
 
 ## The card's copy, chosen from the reason the access layer already decided.
 ##

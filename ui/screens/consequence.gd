@@ -159,6 +159,8 @@ func _title(summary: Dictionary) -> String:
 			return "YOU'RE IN"
 		_engine.KIND_RETALIATION:
 			return "THEY WERE WAITING"
+		_engine.KIND_WANDER:
+			return "SOMEBODY STOPS YOU"
 	return "THIS IS HAPPENING NOW"
 
 ## PX-003 §3 D: connects the current problem to the action that made it, without
@@ -175,6 +177,11 @@ func _context_line(summary: Dictionary) -> String:
 			parts.append("STICK UP")
 		_engine.KIND_RETALIATION:
 			parts.append(str(summary.get("source_target_name", "SOMEBODY")).to_upper())
+		_engine.KIND_WANDER:
+			parts.append("ON FOOT")
+			var who := str(summary.get("source_opponent", ""))
+			if not who.is_empty():
+				parts.append(who.to_upper())
 	var district := str(summary.get("district_id", ""))
 	if not district.is_empty():
 		parts.append(str(gs.district_by_id(district).get("name", "")).to_upper())
@@ -195,6 +202,11 @@ func _situation_body(summary: Dictionary) -> String:
 		_engine.KIND_RETALIATION:
 			return "%s tracked it back to you. They found you before the neighborhood forgot." \
 				% str(summary.get("source_target_name", "Somebody"))
+		_engine.KIND_WANDER:
+			# Wander's own cards carry their opening line into the feed already,
+			# so this is the body of the moment rather than a second retelling
+			# of how it started.
+			return "You went out to see what was around. This is what was around."
 	return "Somebody is waiting on an answer."
 
 # --- decision ---------------------------------------------------------------

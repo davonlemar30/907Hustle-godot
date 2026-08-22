@@ -143,6 +143,13 @@ func _ready() -> void:
 	venues.setup(_gs, self, time)
 	register_system("venues", venues)
 
+	# Wander. Built after time (it spends a slot) and after requirements (every
+	# card is gated through the one evaluator), though like everything else it
+	# reaches its collaborators through `system()` at call time.
+	var wander = preload("res://systems/wander.gd").new()
+	wander.setup(_gs, self, rng, time, requirements)
+	register_system("wander", wander)
+
 	var territory = preload("res://systems/territory.gd").new()
 	territory.setup(_gs, self)
 	register_system("territory", territory)
@@ -175,6 +182,10 @@ func _ready() -> void:
 	# A delayed consequence resolves itself: the robbery that caused it is two
 	# days gone and its tables have nothing to say about what happens now.
 	consequence_engine.register_source_adapter("retaliation", retaliation)
+	# The fourth kind (batch 10). A wander encounter resolves itself, the same
+	# as a retaliation does and for the same reason: the walk that produced it
+	# is over, and there is no source system holding a table about it.
+	consequence_engine.register_source_adapter("wander", wander)
 	register_system("consequence", consequence_engine)
 
 func register_system(sys_name: String, instance: Object) -> void:

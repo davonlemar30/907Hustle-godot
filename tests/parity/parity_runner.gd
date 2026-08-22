@@ -144,6 +144,7 @@ func _ready() -> void:
 		_check_batch7(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch8(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch9(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch10(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -1757,8 +1758,9 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# Pinned deliberately, and bumped deliberately: this assertion exists so a
 	# schema change cannot land by accident, which means every real bump edits
 	# it on purpose. 6 → 7 in FS-001.6, 7 → 8 in FS-003.4, 8 → 9 in FS-003.13,
-	# 9 → 10 in v0.1.0, 10 → 11 in batch 7, 11 → 12 in batch 8 (Heat's teeth).
-	_expect_int("save version is 12", saves.SAVE_VERSION, 12)
+	# 9 → 10 in v0.1.0, 10 → 11 in batch 7, 11 → 12 in batch 8, 12 → 13 in
+	# batch 10 (Wander).
+	_expect_int("save version is 13", saves.SAVE_VERSION, 13)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
 
 	# A v5 save mid-day 4: one listing bought today and still held (recoverable),
@@ -7427,7 +7429,7 @@ func _check_engine_adapters(gs: Node, gm: Node, engine: RefCounted) -> void:
 	# GameManager registered these in `_ready()`, which runs on every boot
 	# including after a load. That is the mechanism the whole rule rests on.
 	_expect_str("the source adapters registered at boot",
-		str(engine.registered_adapter_ids()), str(["boost", "retaliation", "stickup"]))
+		str(engine.registered_adapter_ids()), str(["boost", "retaliation", "stickup", "wander"]))
 	_expect_true("the boost adapter resolves to a system",
 		engine.source_adapter("boost") != null)
 	_expect_true("the boost adapter is the boost system",
@@ -12696,7 +12698,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is at batch 8's version", saves.SAVE_VERSION, 12)
+	_expect_int("the schema is at batch 10's version", saves.SAVE_VERSION, 13)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -16152,7 +16154,7 @@ func _fail(label: String, detail: String) -> void:
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11600
+const MIN_CHECKS := 11700
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -16940,7 +16942,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v12", int(saves.SAVE_VERSION), 12)
+	_expect_int("the schema is v13", int(saves.SAVE_VERSION), 13)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -17355,7 +17357,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v12 for Heat's teeth", int(saves.SAVE_VERSION), 12)
+	_expect_int("the schema is v13 for Heat's teeth", int(saves.SAVE_VERSION), 13)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -17545,3 +17547,303 @@ func _check_ban_follows_failure(gs: Node, gm: Node) -> void:
 		bool((rules.effects_for("talk", "messy") as Dictionary).get("ban", false)))
 	_expect_true("and yielding does, which is what the relief valve costs",
 		bool((rules.effects_for("yield", "anything") as Dictionary).get("ban", false)))
+
+# === batch 10 — Wander ======================================================
+#
+# The Home screen's MOVE PRODUCT button was canon's `explore_spenard` — the
+# Wander reducer, correctly priced at one slot and no money by a comment that
+# cites `game-core.js:358-360` — wired to `advance_time` and a toast reading
+# "Time passes." The slot was spent and nothing was bought with it.
+#
+# The oracle for what the slot buys is the web changelog, v1.3 / PR #59:
+#
+#     Seeded job discovery system ... with ramped probability (30% base, +10%
+#     per miss, cap 70%, one discovery per wander)
+#     Narrative breadcrumbs on missed discovery rolls
+#
+#     Flat probability rejected in favor of ramped rolls with breadcrumbs to
+#     prevent long droughts while keeping neighborhoods explorable indefinitely
+#
+# SABOTAGE: return DISCOVERY_BASE unconditionally from discovery_chance
+#           ==> "a miss makes the next walk more likely" fails.
+# SABOTAGE: drop the cap from discovery_chance
+#           ==> "the ramp stops climbing at the authored cap" fails.
+# SABOTAGE: do not reset wander_misses in _discover
+#           ==> "finding something ends the drought" fails.
+# SABOTAGE: drop the `card_id in gs.wander_recent` filter
+#           ==> "the same beat does not land twice running" fails.
+# SABOTAGE: skip the requirements evaluation in eligible_cards
+#           ==> "a card whose gate is shut is not in the pool" fails.
+# NOT SABOTAGE-PROVEN, and recorded as such: dropping `wander_count` from the
+#           draw key leaves the suite GREEN. The recency filter already stops a
+#           card repeating, so the counter is belt-and-braces rather than
+#           load-bearing — it would only start to matter if the filter went
+#           away. Kept for that reason and documented rather than defended by a
+#           check that would have to be contrived to fail.
+# SABOTAGE: remove KIND_WANDER from KNOWN_KINDS
+#           ==> "a wander encounter opens a real chain" fails.
+# SABOTAGE: drop the _validate_wander clamp
+#           ==> "a save cannot pin the ramp at its cap" fails.
+
+const B10_EVENTS := preload("res://data/wander_events.gd")
+
+func _check_batch10(gs: Node, gm: Node) -> void:
+	_check_wander_ramp(gs, gm)
+	_check_wander_draw(gs, gm)
+	_check_wander_encounter(gs, gm)
+	_check_wander_persistence(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+func _b10_ready(gs: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 6
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.cash = 500
+	gs.current_district_id = "north_star_lot"
+
+# --- the ramp ----------------------------------------------------------------
+
+func _check_wander_ramp(gs: Node, gm: Node) -> void:
+	var sys: Object = gm.system("wander")
+	if sys == null:
+		_fail("batch10 ramp", "no wander system")
+		return
+	_b10_ready(gs)
+
+	# The oracle's three numbers, pinned as the oracle's.
+	_expect_float("the ramp starts where the oracle starts",
+		float(B10_EVENTS.DISCOVERY_BASE), 0.30)
+	_expect_float("and climbs by what the oracle says",
+		float(B10_EVENTS.DISCOVERY_PER_MISS), 0.10)
+	_expect_float("and stops where the oracle stops",
+		float(B10_EVENTS.DISCOVERY_CAP), 0.70)
+
+	gs.wander_misses = 0
+	_expect_float("a first walk rolls the base chance",
+		float(sys.discovery_chance()), 0.30)
+	gs.wander_misses = 1
+	_expect_float("a miss makes the next walk more likely",
+		float(sys.discovery_chance()), 0.40)
+	gs.wander_misses = 4
+	_expect_float("four misses in is four steps up",
+		float(sys.discovery_chance()), 0.70)
+	gs.wander_misses = 40
+	_expect_float("the ramp stops climbing at the authored cap",
+		float(sys.discovery_chance()), 0.70)
+	gs.wander_misses = -5
+	_expect_float("and a negative count cannot pull it below the base",
+		float(sys.discovery_chance()), 0.30)
+
+	# What is out there to find. These two are the reason this batch exists:
+	# both are real jobs, both are the best-paying shifts in the game, and until
+	# now nothing in the build could put either on the player's map.
+	_b10_ready(gs)
+	var open: Array = sys.undiscovered()
+	_expect_int("two jobs are still out there to find", open.size(), 2)
+	for job_id in ["juan_warehouse", "ship_creek"]:
+		_expect_true("%s is one of them" % str(job_id), str(job_id) in open)
+		var exists := false
+		for job in gs.jobs:
+			if str(job["id"]) == str(job_id):
+				exists = true
+		_expect_true("and %s is a real job in the roster" % str(job_id), exists)
+		_expect_true("that a fresh run has never heard of",
+			not (str(job_id) in gs.jobs_discovered))
+
+	# A walk that finds something ends the drought.
+	gs.wander_misses = 5
+	var found: Dictionary = sys._discover("ship_creek")
+	_expect_str("a discovery reports itself", str(found["kind"]), "discovery")
+	_expect_true("and the job is on the map", "ship_creek" in gs.jobs_discovered)
+	_expect_int("finding something ends the drought", int(gs.wander_misses), 0)
+	_expect_int("and there is one thing left to find", (sys.undiscovered() as Array).size(), 1)
+
+	# With nothing left, the roll is not taken at all — the ramp would otherwise
+	# climb forever against an empty pool.
+	sys._discover("juan_warehouse")
+	_expect_int("a full map has nothing left to find",
+		(sys.undiscovered() as Array).size(), 0)
+	gs.reset_to_new_game()
+
+# --- the draw ----------------------------------------------------------------
+
+func _check_wander_draw(gs: Node, gm: Node) -> void:
+	var sys: Object = gm.system("wander")
+	if sys == null:
+		_fail("batch10 draw", "no wander system")
+		return
+	_b10_ready(gs)
+
+	# The action itself: one slot, no money.
+	var cash_before: int = int(gs.cash)
+	var slot_before: int = int(gs.time_slots_today)
+	_expect_true("a wander dispatches", gm.dispatch("wander", {}))
+	_expect_int("it costs nothing", int(gs.cash), cash_before)
+	_expect_true("and it costs a slot", int(gs.time_slots_today) != slot_before)
+	_expect_int("and the run counts the walk", int(gs.wander_count), 1)
+
+	# It always says something. A wander that produced silence would be the
+	# defect the oracle's breadcrumb rule exists to prevent.
+	_b10_ready(gs)
+	gs.activity_log = []
+	gm.dispatch("wander", {})
+	_expect_true("a wander is never silent", gs.activity_log.size() > 0)
+
+	# Gates. `wander_carrying_heavy` requires something in the bag, so it cannot
+	# be in the pool for a player with an empty one.
+	_b10_ready(gs)
+	gs.inventory = {}
+	var dry: Array = sys.eligible_cards()
+	var carrying_dry := false
+	for card in dry:
+		if str(card["id"]) == "wander_carrying_heavy":
+			carrying_dry = true
+	_expect_true("a card whose gate is shut is not in the pool", not carrying_dry)
+	gs.inventory = {"weed": 4}
+	var loaded: Array = sys.eligible_cards()
+	var carrying_loaded := false
+	for card in loaded:
+		if str(card["id"]) == "wander_carrying_heavy":
+			carrying_loaded = true
+	_expect_true("and it is in the pool once the gate opens", carrying_loaded)
+
+	# Every card in the registry is reachable in principle: an id nothing can
+	# ever draw is authored content nobody will see.
+	_expect_true("the registry is not empty", (B10_EVENTS.CARDS as Array).size() > 0)
+	for card in B10_EVENTS.CARDS:
+		_expect_true("%s has a weight" % str(card["id"]), int(card["weight"]) > 0)
+		_expect_true("%s says something" % str(card["id"]),
+			not str(card["line"]).is_empty())
+		_expect_true("%s is one of the authored kinds" % str(card["id"]),
+			str(card["kind"]) in [B10_EVENTS.KIND_AMBIENT, B10_EVENTS.KIND_OPPORTUNITY,
+				B10_EVENTS.KIND_ENCOUNTER])
+		# Every gate goes through the ONE evaluator. A card whose requirement
+		# type the evaluator does not know fails closed, which would hide the
+		# card forever — so an authored typo is caught here rather than in play.
+		for requirement in (card["requirements"] as Array):
+			var verdict: Dictionary = (gm.system("requirements") as RefCounted) \
+				.evaluate_requirement(requirement, sys.facts())
+			_expect_true("%s gates on a type the evaluator knows" % str(card["id"]),
+				str(verdict.get("blocker_code", "")) != "unsupported_requirement")
+
+	# The same beat does not land twice running.
+	#
+	# Asserted on the POOL rather than by walking and watching. The first pass
+	# did the latter — four wanders, check the draw is not the previous draw —
+	# and it was vacuous: the eligible pool is big enough that four draws rarely
+	# repeat by chance, so removing the suppression entirely left the suite
+	# green. A filter has to be tested by asking the filter.
+	_b10_ready(gs)
+	gs.wander_recent = []
+	var full: Array = sys.eligible_cards()
+	_expect_true("there is a pool to suppress from", full.size() > 1)
+	var suppress := str((full[0] as Dictionary)["id"])
+	gs.wander_recent = [suppress]
+	var narrowed: Array = sys.eligible_cards()
+	var still_there := false
+	for card in narrowed:
+		if str(card["id"]) == suppress:
+			still_there = true
+	_expect_true("the same beat does not land twice running", not still_there)
+	_expect_int("and only that one is held back", narrowed.size(), full.size() - 1)
+
+	# The window is bounded, so a long run does not slowly starve its own pool.
+	_b10_ready(gs)
+	gs.wander_recent = []
+	for walk in range(6):
+		gs.time_slots_today = 0
+		gm.dispatch("wander", {})
+	_expect_true("the recency window stays bounded over a long run",
+		(gs.wander_recent as Array).size() <= int(sys.RECENT_WINDOW))
+	gs.reset_to_new_game()
+
+# --- the encounter -----------------------------------------------------------
+
+func _check_wander_encounter(gs: Node, gm: Node) -> void:
+	var engine: Object = gm.system("consequence")
+	var sys: Object = gm.system("wander")
+	if engine == null or sys == null:
+		_fail("batch10 encounter", "a system is missing")
+		return
+
+	_expect_true("wander is a known chain kind",
+		engine.KIND_WANDER in engine.KNOWN_KINDS)
+	_expect_true("and it is registered as a source",
+		engine.source_adapter("wander") != null)
+
+	# Open one directly. What is under test is the chain, not which card the
+	# draw happened to pick.
+	_b10_ready(gs)
+	gs.inventory = {"weed": 6}
+	var card: Dictionary = B10_EVENTS.new().card_by_id("wander_shakedown")
+	_expect_true("the shakedown card is authored", not card.is_empty())
+	var opened: Dictionary = sys._play_encounter(card, "6:0:1:wander:north_star_lot")
+	_expect_true("a wander encounter opens a real chain", bool(opened.get("opened", false)))
+	_expect_true("and it blocks", bool(engine.has_active()))
+
+	var summary: Dictionary = engine.active_summary()
+	_expect_str("the chain knows what kind it is",
+		str(summary["chain_kind"]), str(engine.KIND_WANDER))
+	var choices: Array = engine.choice_summaries()
+	_expect_int("it offers the authored choices", choices.size(),
+		(card["encounter"]["choices"] as Array).size())
+	for row in choices:
+		_expect_true("every choice shows its odds before the player commits",
+			(row as Dictionary).has("success_probability"))
+
+	# Handing it over is deterministic and costs the bag. No roll, because the
+	# option's whole content is the known loss.
+	var held_before: int = int(gs.cargo_used())
+	_expect_true("the run has something to lose", held_before > 0)
+	_expect_true("giving it up dispatches",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "hand_over"}))
+	_expect_int("and the bag is gone", int(gs.cargo_used()), 0)
+	_expect_true("nobody is arrested for being stopped on the street",
+		not bool(gs.arrest_record["priors"] > 0))
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- the save ----------------------------------------------------------------
+
+func _check_wander_persistence(gs: Node, gm: Node) -> void:
+	var saves := get_node("/root/SaveSystem")
+	_expect_int("the schema is v13 for Wander", int(saves.SAVE_VERSION), 13)
+	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent"]:
+		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
+
+	var v12 := {"save_version": 12, "state": {"day": 9, "cash": 400,
+		"street_name": "Legacy", "jobs_discovered": ["wash_go"]}}
+	var migrated: Dictionary = saves._migrate(v12)
+	_expect_true("a v12 save migrates", not migrated.is_empty())
+	if not migrated.is_empty():
+		_expect_true("and is not handed a job it never went looking for",
+			not ("ship_creek" in (migrated.get("jobs_discovered", []) as Array)))
+
+	# The ramp is the numerator of the discovery chance, so a corrupt one pins
+	# the roll at its cap forever.
+	var validator: RefCounted = preload("res://autoload/save_validator.gd").new()
+	var bad: Dictionary = validator.validate_state({
+		"day": 10, "wander_misses": 9000, "wander_count": -3,
+		"wander_seen": {"a": -1}, "wander_recent": ["ok", 7],
+	})
+	var fixed: Dictionary = bad["state"]
+	_expect_true("a save cannot pin the ramp at its cap",
+		int(fixed["wander_misses"]) <= 4)
+	_expect_int("a negative walk count is defaulted", int(fixed["wander_count"]), 0)
+	_expect_int("a negative seen count is defaulted",
+		int((fixed["wander_seen"] as Dictionary)["a"]), 0)
+	_expect_int("and a non-string card id is dropped",
+		(fixed["wander_recent"] as Array).size(), 1)
+	_expect_true("with every repair reported", (bad["repairs"] as Array).size() >= 4)
+
+	var good: Dictionary = validator.validate_state({
+		"day": 10, "wander_misses": 2, "wander_count": 7,
+		"wander_seen": {"spenard_cold_snap": 3}, "wander_recent": ["spenard_cold_snap"],
+	})
+	_expect_int("an honest ramp survives validation",
+		int((good["state"] as Dictionary)["wander_misses"]), 2)
+	_expect_int("with no repairs", (good["repairs"] as Array).size(), 0)
+	gs.reset_to_new_game()

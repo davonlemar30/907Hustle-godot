@@ -379,6 +379,11 @@ func reset_to_new_game() -> void:
 	# Heat starts cool, quiet and un-laid-low.
 	heat_gain_today = 0.0
 	lay_low_day = -1
+	# Nothing walked, nothing found, nothing seen.
+	wander_misses = 0
+	wander_count = 0
+	wander_seen = {}
+	wander_recent = []
 	# Jobs and obligations reset with the run.
 	active_job_id = ""
 	job_records = {}
@@ -1241,6 +1246,28 @@ var heat_gain_today: float = 0.0
 ## only take 2.0 back. A cap is what makes Heat something to carry rather than
 ## something to grind off.
 var lay_low_day: int = -1
+
+# --- Wander (batch 10) --------------------------------------------------------
+
+## How many wanders in a row have found nothing. The oracle's ramp reads this:
+## 30% base, +10% per miss, capped at 70%, reset by a find.
+##
+## Persisted for the reason every other within-run counter is: the autosave
+## fires once per dispatch, and a player four misses deep who closes the tab is
+## still four misses deep when they come back. Losing it would silently hand
+## them the drought again.
+var wander_misses: int = 0
+
+## Total wanders this run. Part of the draw key, so two walks taken in the SAME
+## slot are two different walks rather than the same one twice.
+var wander_count: int = 0
+
+## card id -> how many times it has come up. What makes a `once` card once.
+var wander_seen: Dictionary = {}
+
+## The last few card ids, so the same beat does not land twice running. Same
+## idea as `curtis_recent_watcher_lines`, and capped the same way.
+var wander_recent: Array = []
 
 ## Run-level one-shot flags owned by the consequence layer (FS-003.13 Task 5).
 ##

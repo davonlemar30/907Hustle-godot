@@ -132,6 +132,13 @@ stakes, opponents or screen under them, and its NPC is not on the Exposure
 roster. A **Home** interior would duplicate the Home nav tab wholesale, and its
 one distinctive obligation — rent — is already payable from the Phone.
 
+**The economy is measured, and the instrument is now trustworthy.** A leaked
+test catalogue had been corrupting every economy figure since batch 3; batch 9
+closed it and re-measured. Against a day job at 100%, the 907List flipper reads
+358% and the trade-plus-job hybrid 732%, while Boost sits at 13% and Stickup at
+2%. The two low surfaces are filed as design decisions with the evidence, not
+tuned in flight.
+
 **The consequence-encounter engine is complete.** FS-003 closed with FS-003.12:
 a blown lift or a bad robbery now runs all the way from the action, through a
 blocking encounter you cannot navigate away from, into an arrest, a bail

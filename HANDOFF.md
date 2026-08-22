@@ -5650,6 +5650,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 6b | `codex/batch-6b-crew-operations` | Tone absorbs damage at both sites · Eli covers the carry · Deshawn works a corner · per-operation callback flags · the unauthored shark term | 11,330 → 11,402 | Merged, PR #60. Schema unchanged — 6a's substrate held. |
 | 7 | `codex/batch-7-venue-interiors` | Spenard Gym · Night Owl · `effectiveAttribute` + the gym streak ported · the `night_owl` job made findable | 11,402 → 11,493 | Merged, PR #61. **Save v10 → v11.** |
 | 8 | `codex/batch-8-heat-teeth` | Heat bands · the quiet-day decay · the street stop · Lay Low capped · the propagation inversion fixed | 11,493 → 11,576 | Merged, PR #62. **Save v11 → v12.** |
+| 9 | `codex/batch-9-balance-pass` | **The instrument was lying** — a leaked catalogue corrupted every economy number since batch 3 · the class closed · two balance findings filed with live numbers | 11,576 → 11,622 | Merged, PR #63. Schema unchanged. |
 
 **Two verification defects found in batch 6b, both in the harness rather than
 the game, both now fixed:**
@@ -5693,6 +5694,58 @@ proportion to what they are carrying, and a profile that keeps Heat under 8
 never rolls the stop at all. `stickup` is stopped almost as often as `hustler`
 and loses $35 to it, because it has nothing on it — being broke is its own
 protection, which is correct and worth knowing.
+
+**Batch 9: the economy instrument had been lying since batch 3.**
+
+`_check_board_fills` replaces the entire 907List catalogue with a single $20
+item — correctly, to prove a short pool yields a short board — and never
+restored it. `reset_to_new_game()` restored none of the ten authored catalogues.
+So every check after that point, the whole economy instrument included, ran
+against a one-item board worth about $14 a flip.
+
+**The `flipper` profile has been on record at 4% of the day job since batch 3.
+It is 358%.** Two batches of balance reasoning were done against a number that
+was an artefact of the harness. The fix is in `reset_to_new_game` rather than in
+the offending check, which closes the class: every check calls it, so no future
+one can leak a catalogue either.
+
+The corrected table — 30 days, 4 seeds, after batches 7 and 8:
+
+| profile | net worth | % of day job | note |
+| --- | --- | --- | --- |
+| legal_worker | $1,553 | 100% | the design position |
+| hustler | $11,372 | 732% | was 932% before Heat got teeth |
+| **flipper** | **$5,566** | **358%** | **was reported as 4%** |
+| arbitrage | $1,288 | 83% | |
+| boost | $201 | 13% | 3.5 of 4 Spenard targets banned per run |
+| trader | $29 | 2% | |
+| stickup | $35 | 2% | |
+| stickup_crew | $25 | 2% | Tone rank 3 — no better |
+
+**Two balance findings, filed rather than taken.** Both now carry live numbers
+from the instrument rather than one-off research:
+
+- **Stickup is under-powered on its own terms, and it is not a crew problem.**
+  The measured cause is health: roughly 4.6hp of expected damage an attempt
+  against a take of roughly $11, and first aid at $3.06/hp. Batch 6b shipped
+  the obvious answer — Tone, who takes a rank-3 wound from 20 down to 13 — so
+  batch 9 added a `stickup_crew` profile to test it. **It made no difference:
+  2% either way.** Every cost-side lever behaves the same (injuries off → 8%,
+  free first aid → 8%, removing arrests entirely → 0%, because bookings are the
+  profile's only heat relief). The take side does not rescue it either: ×2 → 9%,
+  ×3 → 18%. Spenard's only any-slot tier-1 target is `washgo_regular` at
+  [30, 50], the cheapest band in the game, and it absorbs 98% of attempts
+  because the 2-a-day cap is spent before the night targets open. This needs a
+  design decision, not a multiplier.
+
+- **`CAUGHT_EFFECTS talk/messy` is the binding constraint on Boost.** It is the
+  only row in the table where a SUCCESS tier carries a permanent ban —
+  `fight/messy` does not, `run/messy` does not. Batch 9 changed it, measured
+  13% → 15%, and then **reverted it**: the row is transcribed from FS-003 §5,
+  the suite pins the whole table against that spec, and the web build is the
+  oracle. Narrowing bans to `catastrophic` only was measured at 50% in a scratch
+  tree. The anomaly is now pinned as an anomaly, with the cost recorded beside
+  it, so the next reader finds the answer instead of "fixing" it.
 
 **Findings carried forward:**
 

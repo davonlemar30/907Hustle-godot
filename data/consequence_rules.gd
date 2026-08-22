@@ -85,6 +85,27 @@ const CAUGHT_EFFECTS := {
 	},
 	"talk": {
 		"clean":        {"take": "return", "ban": false, "arrest": false, "injury": "",           "heat": 0.0},
+		# `ban: true` on a SUCCESS tier is an anomaly, and it is AUTHORED.
+		#
+		# Batch 9 changed this row to false on a consistency argument — `messy`
+		# is the second success tier, `fight/messy` does not ban and `run/messy`
+		# does not ban, so this is the only place in the table where winning
+		# costs you the door — and then reverted it. The row is transcribed from
+		# FS-003 §5, the parity suite pins it against that spec, and the web
+		# build is the behavioural oracle. A design intention that reads oddly is
+		# still a design intention.
+		#
+		# It is also, measurably, the binding constraint on the whole Boost
+		# surface, and that belongs on the record rather than in a commit
+		# message. `talk` is the best tier-1 odds in the game at 0.65, so it is
+		# what a player picks; 45% of the times it WORKS they are banned anyway;
+		# and the ban is permanent. Measured over 30 days and 4 seeds: 3.5 of
+		# the 4 Spenard targets banned per run, 98.75 of 124 slots with no legal
+		# target left, and the surface earning 13% of the day job.
+		#
+		# Flipping this one boolean took Boost from 13% to 15%. Narrowing bans to
+		# `catastrophic` only was measured at 50% in a scratch tree. Neither is a
+		# call this batch is entitled to make.
 		"messy":        {"take": "return", "ban": true,  "arrest": false, "injury": "",           "heat": 0.0},
 		"failure":      {"take": "return", "ban": true,  "arrest": false, "injury": "",           "heat": 1.0},
 		"catastrophic": {"take": "return", "ban": true,  "arrest": true,  "injury": "talk_ugly",  "heat": 2.0},

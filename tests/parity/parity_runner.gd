@@ -137,6 +137,7 @@ func _ready() -> void:
 		_check_batch1()
 		_check_batch2()
 		_check_trading_risk(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_stick_ladder(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -14709,6 +14710,13 @@ const ECON_PROFILES: Array[Dictionary] = [
 		"seed": "econ-flipper"},
 	{"name": "trader", "job": false, "trade": true, "flip": false,
 		"local_only": true, "seed": "econ-trader"},
+	# The criminal surfaces, measured against the day job for the first time.
+	# These two climb their OWN ladders rather than being handed a tier the way
+	# the consequence profiles are — the climb is exactly what is being measured.
+	{"name": "stickup", "job": false, "trade": false, "flip": false,
+		"rob": true, "seed": "econ-stick"},
+	{"name": "boost", "job": false, "trade": false, "flip": false,
+		"lift": true, "seed": "econ-boost"},
 ]
 
 const ECON_DAYS := 30
@@ -14808,6 +14816,8 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	var wants_job: bool = bool(profile.get("job", false))
 	var wants_trade: bool = bool(profile.get("trade", false))
 	var wants_flip: bool = bool(profile.get("flip", false))
+	var wants_rob: bool = bool(profile.get("rob", false))
+	var wants_lift: bool = bool(profile.get("lift", false))
 	var local_only: bool = bool(profile.get("local_only", false))
 
 	var metrics: Dictionary = {
@@ -14818,7 +14828,7 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		"heat_from_trading": 0.0, "market_pressure_peak": 0.0,
 		"relief_slots": 0, "rent_missed": 0, "evicted": false, "rent_paid": 0,
 		"phone_paid": 0, "stops": 0, "seizures": 0, "seized_value": 0,
-		"applications": 0,
+		"applications": 0, "jobs": 0, "take": 0,
 	}
 	var guard: int = 0
 	while int(gs.day) <= ECON_DAYS and guard < ECON_DAYS * 40 and not bool(gs.game_over):
@@ -14923,12 +14933,20 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		if wants_flip and _econ_try_flip(gs, gm, metrics):
 			continue
 
+		# --- the criminal legs ---
+		if wants_rob and _econ_try_crime(gs, gm, metrics, "stickup"):
+			continue
+		if wants_lift and _econ_try_crime(gs, gm, metrics, "boost"):
+			continue
+
 		# --- the trading leg ---
 		if wants_trade and _econ_try_trade(gs, gm, metrics, local_only):
 			continue
 
 		gm.dispatch("advance_time", {})
 
+	metrics["final_stick_tier"] = int(gs.stick_tier)
+	metrics["final_boost_tier"] = int(gs.boost_tier)
 	metrics["days_played"] = int(gs.day)
 	metrics["game_over"] = bool(gs.game_over)
 	metrics["evicted"] = bool(gs.game_over)
@@ -14962,7 +14980,7 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 		"market_pressure_peak", "units_bought", "units_sold", "inventory_value",
 		"buys", "sells", "shifts", "wages", "flips", "travels", "fares",
 		"days_played", "rent_paid", "rent_missed", "phone_paid", "seized_value",
-		"applications",
+		"applications", "jobs", "take", "final_stick_tier", "final_boost_tier",
 		"stops", "seizures"]
 	for key in averaged:
 		var total: float = 0.0
@@ -14977,6 +14995,45 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 	out["game_over"] = overs > 0
 	out["game_over_reason"] = str((runs[runs.size() - 1] as Dictionary).get("game_over_reason", ""))
 	return out
+
+## Work the best target this surface is currently allowed to reach.
+##
+## "Currently allowed" is the whole point of these two profiles: they are the
+## only thing in the build that climbs the Boost and Stick ladders instead of
+## being handed a tier. `SIM_DISTRICT_TARGETS` hands the consequence profiles
+## `goodie_stash` and sets `stick_tier = 3` to reach it, which is how a missing
+## progression stays hidden — the only thing exercising the upper tiers was a
+## test that skipped the climb.
+func _econ_try_crime(gs: Node, gm: Node, metrics: Dictionary, surface: String) -> bool:
+	var system: Object = gm.system("stickup" if surface == "stickup" else "boost")
+	if system == null:
+		return false
+	# Health is the other floor under these two. A profile that never heals
+	# measures the medical system, not the criminal one.
+	if int(gs.health) < 40:
+		if gm.dispatch("heal", {"treatment_id": "first_aid"}):
+			return true
+	var best: String = ""
+	var best_take: int = 0
+	var pool: Array = gs.stick_targets if surface == "stickup" else gs.boost_targets
+	for entry in pool:
+		var target: Dictionary = entry
+		var target_id := str(target["id"])
+		if not str(system.blocker(target_id)).is_empty():
+			continue
+		var band: Array = target["take"]
+		var take: int = int(band[1])
+		if take > best_take:
+			best_take = take
+			best = target_id
+	if best.is_empty():
+		return false
+	var dirty_before: int = int(gs.dirty_cash)
+	if not gm.dispatch(surface, {"target_id": best}):
+		return false
+	metrics["jobs"] = int(metrics.get("jobs", 0)) + 1
+	metrics["take"] = int(metrics.get("take", 0)) + maxi(0, int(gs.dirty_cash) - dirty_before)
+	return true
 
 ## Unsold stock, priced where the profile is standing.
 ##
@@ -15122,6 +15179,10 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 				int(row["units_sold"]), int(row["shifts"]), int(row["wages"]),
 				int(row["flips"]), int(row["travels"]), int(row["fares"]),
 				float(row["heat_from_trading"])])
+		if float(row["jobs"]) > 0.0:
+			print("               jobs %.1f ($%d take) · stick tier %.1f · boost tier %.1f"
+				% [float(row["jobs"]), int(row["take"]),
+					float(row["final_stick_tier"]), float(row["final_boost_tier"])])
 		print(("               rent paid %.1f / missed %.1f · stops %.1f · seizures %.1f"
 			+ " ($%d) · game over %d%% of %d seeds")
 			% [float(row["rent_paid"]), float(row["rent_missed"]), float(row["stops"]),
@@ -15148,6 +15209,10 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			"seizures": snappedf(float(row["seizures"]), 0.1),
 			"seized_value": int(row["seized_value"]),
 			"seeds": int(row["runs"]),
+			"jobs": snappedf(float(row["jobs"]), 0.1),
+			"take": int(row["take"]),
+			"final_stick_tier": snappedf(float(row["final_stick_tier"]), 0.1),
+			"final_boost_tier": snappedf(float(row["final_boost_tier"]), 0.1),
 		}))
 
 	# --- invariants, not balance ---
@@ -15179,6 +15244,8 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			_expect_true("flipper actually flipped", float(row["flips"]) > 0.0)
 		if name in ["legal_worker", "hustler"]:
 			_expect_true("%s actually worked" % name, float(row["shifts"]) > 0.0)
+		if name in ["stickup", "boost"]:
+			_expect_true("%s actually committed crimes" % name, float(row["jobs"]) > 0.0)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -15332,6 +15399,98 @@ func _check_trading_risk(gs: Node, gm: Node) -> void:
 
 	var wallet: RefCounted = gm.system("wallet") as RefCounted
 	_expect_true("the wallet balances after the risk-term checks", wallet.is_balanced())
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+
+# =============================================================================
+# The stickup ladder
+# =============================================================================
+#
+# SABOTAGE: delete the `_update_tier()` call from the success branch ==> "rep
+#           opens tier 2" fails.
+# SABOTAGE: STICK_TIER2_REP -> 99 ==> "rep opens tier 2" fails.
+# SABOTAGE: drop the field-crew gate from tier 3 ==> "tier 3 wants a crew that
+#           can be put somewhere" fails.
+
+func _check_stick_ladder(gs: Node, gm: Node) -> void:
+	var stickup: RefCounted = gm.system("stickup") as RefCounted
+
+	# The rungs are authored and reachable.
+	_expect_true("tier 2 is nearer than tier 3",
+		int(gs.STICK_TIER2_REP) < int(gs.STICK_TIER3_REP))
+	_expect_true("both rungs are reachable inside a run",
+		int(gs.STICK_TIER3_REP) < 30)
+
+	# A fresh run starts at the bottom and can only see tier-1 work. This is
+	# the state that used to last the WHOLE run: `stick_tier` was written once
+	# in the entire build, `= 1` at reset, and `stick_rep` was counted and read
+	# by nothing.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	_expect_int("a fresh run starts at tier 1", int(gs.stick_tier), 1)
+	for target in gs.stick_targets:
+		if str((target as Dictionary)["area"]) != "north_star_lot":
+			continue
+		var tier: int = int((target as Dictionary)["tier"])
+		var blocked: String = str(stickup.blocker(str((target as Dictionary)["id"])))
+		if tier > 1:
+			_expect_str("tier %d work is out of reach at tier 1" % tier,
+				blocked, "You are not there yet.")
+
+	# Rep opens tier 2. Set the FACT and reconcile through the system's own
+	# ladder rather than writing `stick_tier` — that is the thing that did not
+	# exist, so writing it would test nothing.
+	gs.stick_rep = int(gs.STICK_TIER2_REP)
+	stickup._update_tier()
+	_expect_int("rep opens tier 2", int(gs.stick_tier), 2)
+	var tier2_reachable := false
+	for target in gs.stick_targets:
+		var row: Dictionary = target
+		if str(row["area"]) == "north_star_lot" and int(row["tier"]) == 2 \
+				and not str(stickup.blocker(str(row["id"]))).contains("not there yet"):
+			tier2_reachable = true
+	_expect_true("and tier-2 work becomes reachable", tier2_reachable)
+
+	# Tier 3 wants rep AND somebody who can be put somewhere — the same gate
+	# Boost's tier 3 reads. Rep alone is not enough.
+	gs.stick_rep = int(gs.STICK_TIER3_REP)
+	gs.crew_records = {}
+	stickup._update_tier()
+	_expect_int("tier 3 wants a crew that can be put somewhere", int(gs.stick_tier), 2)
+	gs.crew_records["tone"] = {"recruited": true, "loyalty": 7, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "status": "active"}
+	stickup._update_tier()
+	_expect_int("rep and a crew open tier 3", int(gs.stick_tier), 3)
+
+	# The ladder only ever goes up. Losing the crew does not close the room.
+	gs.crew_records = {}
+	stickup._update_tier()
+	_expect_int("the ladder does not go back down", int(gs.stick_tier), 3)
+
+	# And it climbs from real work, not from a test writing the fact. Rob until
+	# the rung moves.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.day = 2
+	var climbed := false
+	for attempt in range(60):
+		gs.health = maxi(int(gs.health), 60)
+		gs.stick_daily_count = 0
+		if not (gs.active_consequence as Dictionary).is_empty():
+			_sim_answer_chain(gs, gm, gm.system("consequence") as RefCounted, SIM_POLICY_ODDS)
+			continue
+		if bool(gs.game_over):
+			break
+		gm.dispatch("stickup", {"target_id": "washgo_regular"})
+		if int(gs.stick_tier) >= 2:
+			climbed = true
+			break
+		gm.dispatch("advance_time", {})
+	_expect_true("the ladder climbs from work alone", climbed)
+	_expect_true("and rep is what carried it", int(gs.stick_rep) >= int(gs.STICK_TIER2_REP))
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -15491,11 +15650,19 @@ func _fail(label: String, detail: String) -> void:
 ## hazard has cost this project's web build four consecutive builds whose
 ## central premise was false. 11177 + 71 = 11248, measured.
 ##
+## Batch 4 raises it to 11263. Its 25 checks cover the Stickup ladder, which is
+## the first progression in this build that had rungs authored and no way to
+## climb them -- `stick_tier` was written exactly once in the whole repo, `= 1`
+## at reset. The two crime profiles added to the instrument are what make that
+## visible: they climb their own ladders rather than being handed a tier, which
+## is precisely what the simulation harness had been doing to reach the upper
+## targets. 11248 + 25 = 11273, measured.
+##
 ## Ten of margin, the same margin every floor since FS-003.13 has left, because
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11238
+const MIN_CHECKS := 11263
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

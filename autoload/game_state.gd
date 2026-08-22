@@ -692,6 +692,28 @@ var boost_targets: Array = [
 const BOOST_TIER2_TECHNIQUE := 5
 const BOOST_TIER3_TECHNIQUE := 13
 
+## Stickup's ladder, which had rungs authored and no way to climb them.
+##
+## `stick_tier` was written exactly ONCE in the whole repo — `= 1`, here in
+## `reset_to_new_game()` — and `stick_rep` was incremented on every successful
+## take and read by nothing at all. So four of the nine authored stick targets
+## were unreachable for the entire life of a run: both tier-2 tills, the dice
+## game behind the rec center ($500-1200) and Goodie's stash ($800-1500). The
+## simulation harness had been setting `stick_tier = 3` by hand to measure them,
+## which is the tell.
+##
+## The rungs mirror Boost's, because the two ladders are the same idea told
+## twice: Boost counts clean technique, Stick counts jobs that came off. Tier 3
+## additionally wants ORGANISED work — canon already tracks `stick_organized_hits`
+## and already tells Curtis about the second one — for the same reason Boost's
+## tier 3 wants field crew: the top of the ladder is where the work stops being
+## something you do alone.
+const STICK_TIER2_REP := 4
+const STICK_TIER3_REP := 11
+## Tier 3 also wants a crew that can stand somewhere while you work. Same gate
+## Boost's tier 3 reads, and the same reason.
+const STICK_TIER3_NEEDS_FIELD_CREW := true
+
 var boost_tier: int = 1
 var boost_technique: int = 0
 var boost_merchandise: int = 0

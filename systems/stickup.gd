@@ -142,6 +142,37 @@ func visible_targets() -> Array:
 		out.append(t)
 	return out
 
+## Canon's updateStickTier, which this port had never had.
+##
+## `stick_tier` gates `visible_targets()` and `blocker()` and was written exactly
+## once in the whole build — `= 1`, at reset. `stick_rep` counted every
+## successful take and nothing read it. The result was a ladder with rungs
+## authored and no way to climb: tier-2 and tier-3 targets existed in
+## `stick_targets`, including the two biggest paydays in the surface, and a real
+## player could never reach any of them. The simulation harness set
+## `stick_tier = 3` by hand, which is how a missing progression hides — the only
+## thing that ever exercised the upper tiers was a test that skipped the climb.
+##
+## Shaped after `BoostSystem._update_tier()` deliberately. The two are the same
+## idea told twice, and a second shape would be a second thing to reason about.
+## Rep is the count of jobs that came off, so the ladder is climbed by doing the
+## work rather than by paying for it — which is the whole point of it being a
+## progression rather than a purchase.
+func _update_tier() -> void:
+	var was: int = gs.stick_tier
+	if gs.stick_rep >= gs.STICK_TIER2_REP:
+		gs.stick_tier = maxi(gs.stick_tier, 2)
+	# Tier 3 is organised work. Canon already treats it that way — it tells
+	# Curtis about the second tier-3 job directly over the network — so the gate
+	# is the same one Boost's tier 3 reads: somebody who can be put somewhere.
+	var crew: Object = gm.system("crew") if gm != null else null
+	var has_crew: bool = (not gs.STICK_TIER3_NEEDS_FIELD_CREW) \
+		or (crew != null and crew.has_field_crew())
+	if gs.stick_rep >= gs.STICK_TIER3_REP and has_crew:
+		gs.stick_tier = maxi(gs.stick_tier, 3)
+	if gs.stick_tier > was:
+		gs.log_activity("Word gets around. Bigger rooms will take your call now.", GREEN)
+
 ## Why this target can't be hit right now, or "" if it can. Canon's reasons,
 ## verbatim where they still apply.
 func blocker(target_id: String) -> String:
@@ -236,6 +267,7 @@ func _run(target_id: String) -> Dictionary:
 		applied = _apply_heat(float(t["heat"]) * (0.5 if tier == "clean" else 1.0))
 		gs.stick_rep += 1
 		gs.stick_successes += 1
+		_update_tier()
 		# Canon: a tier-3 job is organized work, and from the second one Curtis
 		# is told about it directly over the network. The count rides along, so
 		# his read gets worse each time rather than once. Success-only, as canon

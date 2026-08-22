@@ -5642,6 +5642,75 @@ contain the case proves nothing. The case is now BUILT — a spread set to exact
 the fare, asserted as not-a-route, then one dollar over, asserted as one — and
 the sabotage then failed correctly.
 
+## Where the build stands (end of the 2026-08-22 session)
+
+One place to orient before reading anything else below.
+
+| | |
+| --- | --- |
+| Build version | `0.1.0` (`autoload/version.gd`) |
+| Save schema | **v14**, migration ladder walks v1 → v14 |
+| Parity | **11,887 checks, 0 failures**, floor `MIN_CHECKS := 11860` |
+| Save validation | 82 checks, 0 failures — **a CI gate as of batch 12** |
+| Screen smoke | 23/23 screens instantiate — **a CI gate as of batch 12** |
+| Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` |
+| Screens | 23 |
+| Systems | 28 registered in `GameManager` |
+| Branches | `main` only; every batch branch merged and deleted |
+
+**The economy, measured** (30 days × 4 seeds, `_check_economy_profiles`). Every
+percentage is against `legal_worker`:
+
+| profile | net worth | % | note |
+| --- | --- | --- | --- |
+| hustler | $11,372 | 732% | trade + job; the ceiling |
+| flipper | $5,566 | 358% | 907List |
+| worker_wanders | $4,479 | 288% | **the strongest clean path** — zero Heat, zero arrests |
+| legal_worker | $1,553 | 100% | the baseline, and see the caveat below |
+| arbitrage | $1,288 | 83% | |
+| boost | $201 | 13% | 3.5 of 4 Spenard targets banned per run |
+| wanderer | $32 | 2% | walking with no job — correctly a trap |
+| trader / stickup | ~$30 | 2% | |
+
+**Read the baseline caveat before quoting any of those.** `legal_worker` never
+leaves Wash & Go, which is now a player ignoring a free mechanic — and
+`ECON_JOB` is not even the best starter shift (`spenard_chevron` pays [48, 60]
+against [40, 60]). Re-baselining moves every number in this file and is a design
+call, not a hardening one.
+
+**Three things filed for design, not taken:**
+
+1. **Stickup is under-powered on its own terms.** ~4.6hp expected damage an
+   attempt against a ~$11 take. Every cost lever was swept (injuries off → 8%,
+   free first aid → 8%, arrests removed → 0%) and a crew-backed profile carrying
+   a rank-3 Tone made **no difference**. Take ×3 only reaches 18%.
+2. **`CAUGHT_EFFECTS talk/messy` is the binding constraint on Boost** — the only
+   row where a SUCCESS tier permanently bans, and 3.5 of 4 Spenard targets are
+   banned per run. Changing it was measured at 13% → 15%; narrowing bans to
+   catastrophic only was 50% in a scratch tree. It is transcribed from FS-003 §5
+   and the web build is the oracle, so it is pinned as an anomaly rather than
+   fixed.
+3. **`jobs_discovered` is the ONLY discovery axis in the build.** Boost targets,
+   stickup targets, borrowers, 907List items, the crew roster, the venues and
+   all five NPCs are visible from day one. This is why Wander's `LOOK FOR A
+   DEAL` intent is the thinnest of the three — it can weight the draw but has
+   nothing to find.
+
+**Harness lessons that cost real time this session, all now guarded:**
+
+- `git stash` restores `project.godot` and re-arms the editor-only `godot_ai`
+  autoload. Every "is main green?" comparison run across a stash boundary loaded
+  the editor helper and failed 8-17 checks that looked exactly like regressions.
+- A parse error in `parity_runner.gd` does not FAIL the run, it HANGS it. A
+  sabotage that runs long should be suspected of not compiling first.
+- Sabotage copies need `.godot/` or every `uid://` breaks and the copy has a
+  37-failure baseline, which makes every sabotage look red for the wrong reason.
+  **Always establish the baseline in the copy.**
+- The suite was not idempotent until batch 6b: `_check_economy_profiles` plays
+  thirty days of real dispatches and never restored `user://907hustle_run.save`.
+
+---
+
 ## Overnight Build Log — 2026-08-22
 
 Autonomous loop. Each entry: branch, tasks, parity, outcome.

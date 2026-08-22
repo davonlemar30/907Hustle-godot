@@ -143,6 +143,7 @@ func _ready() -> void:
 		_check_batch6b(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch7(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch8(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch9(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -14745,6 +14746,18 @@ const ECON_PROFILES: Array[Dictionary] = [
 		"rob": true, "seed": "econ-stick"},
 	{"name": "boost", "job": false, "trade": false, "flip": false,
 		"lift": true, "seed": "econ-boost"},
+	# The same robbery ladder, played the way the build now supports it (batch
+	# 9). `stickup` above measures a soloist, and the measured reason that
+	# surface is EV-negative is HEALTH: about 4.6hp of expected damage an
+	# attempt, against a take of about $11. Batch 6b shipped the answer to
+	# exactly that — Tone, who takes a rank-3 wound from 20 down to 13 — and no
+	# profile had ever been given a crew, so the instrument has only ever
+	# reported what the surface is worth to somebody playing it alone.
+	#
+	# The difference between these two rows is the whole question: is stickup
+	# under-powered, or is it a crew surface being measured without one?
+	{"name": "stickup_crew", "job": false, "trade": false, "flip": false,
+		"rob": true, "crew": ["tone"], "seed": "econ-stick-crew"},
 ]
 
 const ECON_DAYS := 30
@@ -14771,6 +14784,16 @@ func _econ_ready(gs: Node, profile: Dictionary) -> void:
 	# measures the economy over 30 days, not how long a player takes to earn a
 	# bus route.
 	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+	# A profile may bring crew. Written onto the record rather than recruited,
+	# for the reason the batch-6b checks do it: what is being measured is what
+	# the crew member is WORTH, not the recruiting path, which has its own
+	# checks. Rank 3 and loyal, so the capability curve is read at its top —
+	# a soloist and a fully-developed crew are the two ends worth knowing.
+	for crew_id in (profile.get("crew", []) as Array):
+		gs.crew_records[str(crew_id)] = {
+			"recruited": true, "status": "active", "loyalty": 8, "tier": 3,
+			"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
+		}
 
 ## The best cross-district trade available right now: what to buy here, where to
 ## take it, and what the edge is per unit.
@@ -14856,7 +14879,7 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		"heat_from_trading": 0.0, "market_pressure_peak": 0.0,
 		"relief_slots": 0, "rent_missed": 0, "evicted": false, "rent_paid": 0,
 		"phone_paid": 0, "stops": 0, "seizures": 0, "seized_value": 0,
-		"heat_stops": 0, "heat_seized": 0,
+		"heat_stops": 0, "heat_seized": 0, "bans": 0,
 		"applications": 0, "jobs": 0, "take": 0,
 	}
 	# The street stop counts on the SYSTEM HANDLE, which is boot-scoped rather
@@ -14995,6 +15018,9 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	metrics["net_worth"] = int(gs.cash) + int(metrics["inventory_value"])
 	metrics["net_trade"] = int(metrics["earned_from_product"]) \
 		- int(metrics["spent_on_product"]) - int(metrics["fares"])
+	# Boost's binding constraint, on the record rather than in a research note.
+	# A ban is permanent, so the final count IS the run's history.
+	metrics["bans"] = int(gs.boost_store_bans.size())
 	if heat_system != null:
 		metrics["heat_stops"] = int(heat_system.stops_settled) - stops_at_start
 		metrics["heat_seized"] = int(heat_system.stops_seized) - seized_at_start
@@ -15019,7 +15045,7 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 		"buys", "sells", "shifts", "wages", "flips", "travels", "fares",
 		"days_played", "rent_paid", "rent_missed", "phone_paid", "seized_value",
 		"applications", "jobs", "take", "final_stick_tier", "final_boost_tier",
-		"stops", "seizures", "heat_stops", "heat_seized"]
+		"stops", "seizures", "heat_stops", "heat_seized", "bans"]
 	for key in averaged:
 		var total: float = 0.0
 		for run in runs:
@@ -15250,6 +15276,9 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 				float(row["seizures"]), int(row["seized_value"]),
 				float(row["heat_stops"]), int(row["heat_seized"]),
 				int(round(100.0 * float(row["game_over_rate"]))), int(row["runs"])])
+		if float(row["bans"]) > 0.0:
+			print("               store bans %.1f of %d — permanent, see CAUGHT_EFFECTS talk/messy"
+				% [float(row["bans"]), int(gs.boost_targets.size())])
 		print("economy-metrics: %s" % JSON.stringify({
 			"profile": str(row["profile"]),
 			"net_worth": int(row["net_worth"]),
@@ -15267,6 +15296,7 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			"days": int(row["days_played"]),
 			"game_over_rate": snappedf(float(row["game_over_rate"]), 0.01),
 			"rent_missed": snappedf(float(row["rent_missed"]), 0.1),
+			"bans": snappedf(float(row["bans"]), 0.1),
 			"heat_stops": snappedf(float(row["heat_stops"]), 0.1),
 			"heat_seized": int(row["heat_seized"]),
 			"stops": snappedf(float(row["stops"]), 0.1),
@@ -16122,7 +16152,7 @@ func _fail(label: String, detail: String) -> void:
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11560
+const MIN_CHECKS := 11600
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -17406,3 +17436,112 @@ func _b8_heat_rows(gs: Node) -> Dictionary:
 			var who := str((entry as Dictionary).get("npc_id", ""))
 			out[who] = int(out.get(who, 0)) + 1
 	return out
+
+# === batch 9 — the instrument was lying =====================================
+#
+# The balance pass began by trying to tune two numbers and found that one of
+# them was not real.
+#
+# `_check_board_fills` (batch 1) replaces the whole 907List catalogue with a
+# single $20 item, to prove a short pool yields a short board. It never restored
+# it, and `reset_to_new_game()` restored none of the ten authored catalogues. So
+# every check after it — the entire economy instrument included — ran against a
+# one-item board worth about $14 a flip.
+#
+# The `flipper` profile has been on record at 4% of the day job since batch 3.
+# On a restored catalogue it is 358%. Two batches of balance reasoning were done
+# against a number that was an artefact of the harness.
+#
+# The fix is in `reset_to_new_game`, not in the offending check, because that
+# closes the class: every check calls it, so no future one can leak a catalogue
+# either.
+#
+# SABOTAGE: drop the _restore_catalogues() call from reset_to_new_game
+#           ==> "a new run gets the authored catalogue back" fails.
+# SABOTAGE: ban on talk/messy again
+#           ==> "no success tier costs you the door" fails.
+
+func _check_batch9(gs: Node, gm: Node) -> void:
+	_check_catalogue_restore(gs)
+	_check_ban_follows_failure(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+## Every authored catalogue comes back. Swept rather than spot-checked on
+## `listing_items`, because the bug was never really about listings — it was
+## about ten `var` arrays of authored data that a test could overwrite and
+## nothing would put back.
+func _check_catalogue_restore(gs: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+	var authored: Dictionary = {}
+	for field in gs.CATALOGUE_FIELDS:
+		authored[str(field)] = gs.get(str(field)).duplicate(true)
+		_expect_true("%s is authored, not empty" % str(field),
+			(authored[str(field)] as Variant).size() > 0)
+
+	# Stamp every one of them with something a run could never produce, then
+	# start a new run and check each came back.
+	for field in gs.CATALOGUE_FIELDS:
+		var current: Variant = gs.get(str(field))
+		if current is Array:
+			gs.set(str(field), [{"id": "leaked", "name": "Leaked", "tier": 1}])
+		elif current is Dictionary:
+			gs.set(str(field), {"leaked": true})
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	for field in gs.CATALOGUE_FIELDS:
+		_expect_str("a new run gets the authored catalogue back: %s" % str(field),
+			str(gs.get(str(field))), str(authored[str(field)]))
+
+	# The specific leak that started this. A one-item board is what
+	# `_check_board_fills` leaves behind, and it is what every economy profile
+	# was trading against.
+	gs.listing_items = [{"id": "only_one", "name": "Only one", "category": "household",
+		"tier": 1, "buy": 20, "true_value": [30, 40], "condition": "good"}]
+	_expect_int("a leaked board really is one item", gs.listing_items.size(), 1)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_expect_int("and a new run trades the real one",
+		gs.listing_items.size(), (authored["listing_items"] as Array).size())
+	_expect_true("which is more than one item", gs.listing_items.size() > 1)
+
+	# A restore is a COPY, not a handle. Handing the run the snapshot itself
+	# would mean the next mutation edited the snapshot and the leak came back
+	# permanently — worse than the bug, because a reset would no longer fix it.
+	gs.listing_items.append({"id": "scribble", "tier": 1})
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_expect_int("and the snapshot itself was never handed out",
+		gs.listing_items.size(), (authored["listing_items"] as Array).size())
+
+## The ban anomaly, pinned as an anomaly.
+##
+## `talk/messy` is the only row in `CAUGHT_EFFECTS` where a SUCCESS tier carries
+## a permanent ban — `fight/messy` does not, `run/messy` does not, and every
+## other `ban: true` sits on a losing tier or on `yield`, which is a trade the
+## player chooses.
+##
+## Batch 9 changed it and reverted it. It is transcribed from FS-003 §5, the
+## suite already pins the whole table against that spec, and the web build is the
+## oracle. This check exists so the next person who notices the oddity finds the
+## answer here instead of "fixing" it: the shape is asserted deliberately, and
+## what it costs is recorded next to it.
+func _check_ban_follows_failure(gs: Node, gm: Node) -> void:
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	for choice_id in ["fight", "run"]:
+		for tier_name in ["clean", "messy"]:
+			_expect_true("winning does not cost you the door: %s/%s" % [choice_id, tier_name],
+				not bool((rules.CAUGHT_EFFECTS[choice_id][tier_name] as Dictionary)["ban"]))
+	for choice_id in ["fight", "run", "talk"]:
+		for tier_name in ["failure", "catastrophic"]:
+			_expect_true("and every losing tier does: %s/%s" % [choice_id, tier_name],
+				bool((rules.CAUGHT_EFFECTS[choice_id][tier_name] as Dictionary)["ban"]))
+	_expect_true("talking your way out cleanly does not ban",
+		not bool((rules.effects_for("talk", "clean") as Dictionary).get("ban", false)))
+	# The anomaly, asserted as the authored value it is.
+	_expect_true("but talking your way out MESSILY does — FS-003 §5, deliberately",
+		bool((rules.effects_for("talk", "messy") as Dictionary).get("ban", false)))
+	_expect_true("and yielding does, which is what the relief valve costs",
+		bool((rules.effects_for("yield", "anything") as Dictionary).get("ban", false)))

@@ -282,7 +282,54 @@ func sanitize_street_name(input: String) -> String:
 ## Deliberately NOT the CHOOSE_BACKGROUND branch, which starts an established
 ## week at $375 with a $620 note from Dre. That is a different opening and a
 ## screen this build does not have.
+## The authored catalogues, and the reason this exists.
+##
+## These ten are DATA, not run state: districts, venues, products, jobs, stickup
+## targets, borrowers, listings, tiers, boost targets, the crew roster. Nothing
+## in production writes to any of them — audited, and the audit is the check
+## `the catalogues are restored by a new run`.
+##
+## The parity suite writes to them constantly, because a check that wants to know
+## what a one-item board does has to build a one-item board. And until batch 9
+## `reset_to_new_game()` restored none of them, so a check that swapped a
+## catalogue and did not put it back corrupted every check after it.
+##
+## **That was not hypothetical.** `_check_board_fills` replaced the entire 907List
+## catalogue with a single $20 item to prove a short pool yields a short board,
+## and never restored it. Every profile the economy instrument measured after
+## that point — which is all of them — was trading a one-item board worth about
+## $14 a flip. The `flipper` profile has been on record at 4% of the day job
+## since batch 3. Measured on a restored catalogue it is 358%. Two batches of
+## balance decisions were taken against a number that was an artefact of the
+## harness.
+##
+## Restoring here rather than in the offending check is the difference between
+## fixing an instance and closing a class: every check in the suite calls
+## `reset_to_new_game`, so no future one can leak a catalogue either.
+const CATALOGUE_FIELDS: Array[String] = [
+	"districts", "spenard_venues", "products", "jobs", "stick_targets",
+	"shark_borrowers", "listing_items", "market_tiers", "boost_targets",
+	"crew_roster",
+]
+
+## Snapshotted on first use rather than in `_ready`, because an autoload's
+## `_ready` ordering against the systems that read it is exactly the
+## chicken-and-egg the HANDOFF warns about. The first `reset_to_new_game` of a
+## process happens before any check has had a chance to write, so the snapshot
+## it takes is the authored data.
+var _authored_catalogues: Dictionary = {}
+
+func _restore_catalogues() -> void:
+	for field in CATALOGUE_FIELDS:
+		if not _authored_catalogues.has(field):
+			_authored_catalogues[field] = get(field).duplicate(true)
+			continue
+		set(field, (_authored_catalogues[field] as Variant).duplicate(true))
+
 func reset_to_new_game() -> void:
+	# Authored data first: a run cannot start against a catalogue somebody else
+	# left behind.
+	_restore_catalogues()
 	day = 1
 	time_slot = "MORNING"
 	time_slots_today = 0

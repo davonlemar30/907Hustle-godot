@@ -5648,6 +5648,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 5 | `codex/batch-5-route-visible` | The route made visible — live Market route line · Word Around Town prices · both gated on the phone bill | 11,273 → 11,311 | Merged, PR #58. Seven authored route strings retired. |
 | 6a | `codex/batch-6a-operation-substrate` | Adapter-supplied delegation copy · `params` passthrough · three honesty defects in the route line · route count pinned | 11,311 → 11,330 | Merged, PR #59. No schema bump needed for new operations. |
 | 6b | `codex/batch-6b-crew-operations` | Tone absorbs damage at both sites · Eli covers the carry · Deshawn works a corner · per-operation callback flags · the unauthored shark term | 11,330 → 11,402 | Merged, PR #60. Schema unchanged — 6a's substrate held. |
+| 7 | `codex/batch-7-venue-interiors` | Spenard Gym · Night Owl · `effectiveAttribute` + the gym streak ported · the `night_owl` job made findable | 11,402 → 11,493 | Merged, PR #61. **Save v10 → v11.** |
 
 **Two verification defects found in batch 6b, both in the harness rather than
 the game, both now fixed:**

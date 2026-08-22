@@ -106,6 +106,8 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Give Eli the day to cover the bag, and get stopped less carrying it | automatic, once he trusts you |
 | Give Deshawn the day to work a corner, and watch its Pressure come down | automatic, once he trusts you |
 | Take a smaller wound because Tone was standing there | automatic, once he is on the crew |
+| Train Combat at the gym, and carry three days running into the next check | Street → Spenard Gym |
+| Find out the Night Owl counter is short evenings, and pay a bill in cash | Street → Night Owl |
 | Claim corners, post soldiers, collect nightly | Home → Turf |
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
@@ -118,7 +120,15 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 
 ### Not built yet
 
-Venue interiors, tactical combat, equipment, and court/trial/prison simulation.
+Tactical combat, equipment, gambling, and court/trial/prison simulation.
+
+Two of the four Spenard venues have interiors as of batch 7 — the **Spenard
+Gym** and the **Night Owl**. The other two are deliberately still cards. **The
+Nile** needs a gambling system that does not exist: what is in the build for it
+is the resolution half only, three callerless outcome shapes with no economy,
+stakes, opponents or screen under them, and its NPC is not on the Exposure
+roster. A **Home** interior would duplicate the Home nav tab wholesale, and its
+one distinctive obligation — rent — is already payable from the Phone.
 
 **The consequence-encounter engine is complete.** FS-003 closed with FS-003.12:
 a blown lift or a bad robbery now runs all the way from the action, through a
@@ -238,6 +248,7 @@ systems/              # the ONLY writers of GameState
                       # (the ONE gate language: progression gates author records
                       #  for it, they do not bring their own condition engine)
   territory.gd        # corners, soldiers, passive income
+  venues.gd           # the two Spenard interiors: gym sessions, the counter
 
 ui/screens/*.tscn|.gd # one scene per screen; screen_base.gd holds shared chrome
 ui/components/        # atmosphere.tscn (grain/vignette), toast.tscn

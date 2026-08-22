@@ -110,7 +110,7 @@ func _apply(job_id: String) -> Dictionary:
 	if resolver == null:
 		return {"ok": false, "reason": "No outcome resolver."}
 	var outcome: Dictionary = resolver.resolve_action(
-		"job_interview", interview_chance(), attributes.value("charisma"), gs.run_seed, key)
+		"job_interview", interview_chance(), attributes.effective("charisma"), gs.run_seed, key)
 	var tier: String = str(outcome["tier"])
 	resolver.broadcast_outcome("job_interview", tier, gs.current_district_id)
 	if not resolver.is_success_tier(tier):

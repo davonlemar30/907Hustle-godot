@@ -301,7 +301,7 @@ func resolve_carry(origin_district_id: String) -> Dictionary:
 	var tier: String = "failure"
 	if resolver != null and attributes != null:
 		tier = str((resolver.resolve_action(rules.CARRY_RESOLVER_ACTION,
-			rules.CARRY_ESCAPE_CHANCE, int(attributes.value("intelligence")),
+			rules.CARRY_ESCAPE_CHANCE, int(attributes.effective("intelligence")),
 			gs.run_seed, key + ":stop") as Dictionary)["tier"])
 
 	var seized: Dictionary = _seize_fraction(rules.carry_seize_fraction(tier))

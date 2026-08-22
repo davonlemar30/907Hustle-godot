@@ -136,6 +136,13 @@ func _ready() -> void:
 	fixer_adapter.setup(_gs, self, crew_operations)
 	register_system("fixer_adapter", fixer_adapter)
 
+	# The venue interiors. Built after time because both of its actions spend a
+	# slot, and after attributes because both of them train one — though it
+	# reaches attributes through `system()` at call time like everything else.
+	var venues = preload("res://systems/venues.gd").new()
+	venues.setup(_gs, self, time)
+	register_system("venues", venues)
+
 	var territory = preload("res://systems/territory.gd").new()
 	territory.setup(_gs, self)
 	register_system("territory", territory)

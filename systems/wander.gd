@@ -86,10 +86,16 @@ func setup(game_state: Node, manager: Node, rng_manager: Node,
 func can_handle(action: String) -> bool:
 	return action == "wander"
 
-func handle(action: String, _payload: Dictionary) -> Dictionary:
+func handle(action: String, payload: Dictionary) -> Dictionary:
 	if action != "wander":
 		return {"ok": false, "reason": "Unknown wander action."}
-	return _wander()
+	# An unnamed wander is a READ, because that is the one intent that is always
+	# worth something — discovery runs out and deals need capital, but there is
+	# always something going on you do not know about.
+	var intent := str(payload.get("intent", EVENTS.INTENT_READ))
+	if not intent in EVENTS.INTENTS:
+		return {"ok": false, "reason": "Nobody wanders like that."}
+	return _wander(intent)
 
 # --- reads -------------------------------------------------------------------
 
@@ -144,7 +150,9 @@ func facts() -> Dictionary:
 		"crew_records": gs.recruited_crew().size(),
 		# Named booleans, for `fact_true`.
 		"phone_active": bool(gs.phone_active),
+		"heat_noticed": band != "" and band != "COOL",
 		"heat_watched": band == "WATCHED" or band == "BURNING",
+		"curtis_visible": str(gs.curtis_phase) != "invisible",
 		"heat_burning": band == "BURNING",
 		"carrying_dirty": int(gs.dirty_cash) > 0,
 	}
@@ -166,7 +174,16 @@ func eligible_cards() -> Array:
 		var card_id := str(card["id"])
 		if bool(card.get("once", false)) and int(gs.wander_seen.get(card_id, 0)) > 0:
 			continue
-		if card_id in gs.wander_recent:
+		# The recency window does not apply to a READ.
+		#
+		# It exists so the same BEAT does not land twice running, and a read is
+		# not a beat — it is a report of what is true right now. Hearing that the
+		# corner is still watched two walks in a row is the fact still being
+		# true, not the game repeating itself. Suppressing it also emptied the
+		# pool: four of the five reads are gated, so early on `read_the_corner`
+		# is the only one eligible, and one recency hit turned a READ walk into
+		# ambient flavour — which is the opposite of what the intent is for.
+		if str(card["kind"]) != EVENTS.KIND_READ and card_id in gs.wander_recent:
 			continue
 		if not bool(requirements.evaluate_requirements(card["requirements"], live)["ok"]):
 			continue
@@ -175,13 +192,21 @@ func eligible_cards() -> Array:
 
 # --- the action --------------------------------------------------------------
 
-func _wander() -> Dictionary:
+## What this walk is worth, given how many are already behind it today.
+func effort() -> float:
+	return float(EVENTS.effort_for(int(gs.wanders_today)))
+
+func _wander(intent: String) -> Dictionary:
 	var blocked: String = blocker()
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked + "."}
 
+	# The day's effort is read BEFORE this walk is counted, so the first walk of
+	# a day is the first walk rather than the second.
+	var spent: float = effort()
 	gs.wander_count = int(gs.wander_count) + 1
-	var report: Dictionary = {"ok": true, "kind": "", "card_id": ""}
+	gs.wanders_today = int(gs.wanders_today) + 1
+	var report: Dictionary = {"ok": true, "kind": "", "card_id": "", "intent": intent}
 
 	# Curtis's people first. They are not an event that competes with the draw —
 	# they are the texture of being out at all, and the hook has been waiting for
@@ -218,8 +243,13 @@ func _wander() -> Dictionary:
 	# changed. The batch-10 sabotage log says the same thing.
 	var key := "%d:%d:%d:wander:%s" % [gs.day, gs.time_slots_today,
 		int(gs.wander_count), str(gs.current_district_id)]
-	var open: Array = undiscovered()
-	if not open.is_empty() and rng.seeded_random(gs.run_seed, key) < discovery_chance():
+	# Only a walk that went looking for work finds work. The ramp is untouched —
+	# it still climbs on a miss and resets on a find — but a player who spends
+	# every walk reading the block does not stumble into a freight job, which is
+	# the whole point of the intent being a choice.
+	var open: Array = undiscovered() if intent == EVENTS.INTENT_WORK else []
+	if not open.is_empty() \
+			and rng.seeded_random(gs.run_seed, key) < discovery_chance() * spent:
 		# WHICH one is seeded too. Taking `open[0]` made the order of a constant
 		# array into the order of the game: every run in the port's history
 		# would have found the warehouse before the freight yard.
@@ -235,7 +265,9 @@ func _wander() -> Dictionary:
 			# run that had done nothing wrong.
 			gs.wander_misses = mini(int(gs.wander_misses) + 1,
 				int(EVENTS.miss_ceiling()))
-		report = _draw_card(key)
+		report = _draw_card(key, intent, spent)
+	report["intent"] = intent
+	report["effort"] = spent
 
 	# The slot, last, so everything above resolved against the day it happened
 	# on rather than against the one it rolls into.
@@ -260,21 +292,30 @@ func _discover(job_id: String) -> Dictionary:
 
 ## One card from the eligible pool, weighted, or a breadcrumb when the pool is
 ## empty. A wander is never nothing.
-func _draw_card(key: String) -> Dictionary:
+func _draw_card(key: String, intent: String, spent: float) -> Dictionary:
 	var pool: Array = eligible_cards()
 	if pool.is_empty():
 		return _breadcrumb()
 
+	# Weights are scaled by whether the card is what you went out for. A miss is
+	# damped, not excluded — an intent steers the walk, it does not put blinkers
+	# on it, and getting jumped while looking for work is exactly the kind of
+	# thing that should still be able to happen.
+	var weights: Array[int] = []
 	var total: int = 0
 	for card in pool:
-		total += maxi(1, int(card["weight"]))
+		var w: float = float(maxi(1, int(card["weight"])))
+		w *= EVENTS.INTENT_MATCH if intent in (card["intents"] as Array) else EVENTS.INTENT_MISS
+		var scaled: int = maxi(1, int(round(w)))
+		weights.append(scaled)
+		total += scaled
 	var roll: int = rng.seeded_int_range(gs.run_seed, key + ":card", 0, total - 1)
 	var picked: Dictionary = pool[0]
 	var running: int = 0
-	for card in pool:
-		running += maxi(1, int(card["weight"]))
+	for index in pool.size():
+		running += weights[index]
 		if roll < running:
-			picked = card
+			picked = pool[index]
 			break
 
 	var card_id := str(picked["id"])
@@ -285,9 +326,11 @@ func _draw_card(key: String) -> Dictionary:
 
 	match str(picked["kind"]):
 		EVENTS.KIND_OPPORTUNITY:
-			return _play_opportunity(picked, key)
+			return _play_opportunity(picked, key, spent)
 		EVENTS.KIND_ENCOUNTER:
 			return _play_encounter(picked, key)
+		EVENTS.KIND_READ:
+			return _play_read(picked)
 		_:
 			return _play_ambient(picked)
 
@@ -310,15 +353,17 @@ func _play_ambient(card: Dictionary) -> Dictionary:
 			exposure.record_observation(npc, row)
 	return {"ok": true, "kind": "ambient", "card_id": str(card["id"])}
 
-func _play_opportunity(card: Dictionary, key: String) -> Dictionary:
+func _play_opportunity(card: Dictionary, key: String, spent: float) -> Dictionary:
 	gs.log_activity(str(card["line"]), BLUE)
 	var grant: Dictionary = card.get("grant", {})
 	var report: Dictionary = {"ok": true, "kind": "opportunity", "card_id": str(card["id"])}
 
 	if grant.has("cash"):
 		var band: Array = grant["cash"]
-		var amount: int = rng.seeded_int_range(gs.run_seed, key + ":cash",
-			int(band[0]), int(band[1]))
+		# Scaled by the day's effort: the third walk turns up loose change, not
+		# the same folded bills as the first.
+		var amount: int = maxi(1, int(round(float(rng.seeded_int_range(
+			gs.run_seed, key + ":cash", int(band[0]), int(band[1]))) * spent)))
 		var wallet: Object = gm.system("wallet") if gm != null else null
 		if wallet != null:
 			# Found money is nobody's payroll. It goes in dirty, which is what
@@ -402,6 +447,120 @@ func _attribute_for(shape: String) -> String:
 		return "combat"
 	var mapped: String = str(resolver.ACTION_ATTRIBUTE_MAP.get(shape, "combat"))
 	return mapped if not mapped.is_empty() else "combat"
+
+## A card whose payload is a fact.
+##
+## Every branch reports LIVE state through the read API that owns it, and writes
+## nothing. That is what makes READ safe to author freely: a report cannot
+## desync from the thing it reports, because it is the thing it reports.
+##
+## The build hides a great deal — which families a corner is hot for, whether
+## Curtis's people have started looking, what a product fetches somewhere you
+## are not standing — and had no surface that told the player any of it. This is
+## that surface, and it is the reason Wander still has a job after the last job
+## has been found.
+func _play_read(card: Dictionary) -> Dictionary:
+	gs.log_activity(str(card["line"]), MUTED)
+	var told: Array = []
+	match str(card.get("read", "")):
+		"pressure":
+			told = _read_pressure()
+		"heat":
+			told = _read_heat()
+		"curtis":
+			told = _read_curtis()
+		"prices":
+			told = _read_prices()
+		"crew":
+			told = _read_crew()
+	if told.is_empty():
+		# Nothing to say is still an hour spent. Never silent.
+		gs.log_activity("Quiet, as far as you can tell.", MUTED)
+	for line in told:
+		gs.log_activity(str(line), BLUE)
+	return {"ok": true, "kind": "read", "card_id": str(card["id"]), "told": told}
+
+## Which families this corner is hot for. The band vocabulary is the engine's,
+## and no screen shows it for the district you are standing in.
+func _read_pressure() -> Array:
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine == null:
+		return []
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	var district := str(gs.current_district_id)
+	var name := str(gs.current_district().get("name", "here"))
+	var out: Array = []
+	for family in rules.PRESSURE_FAMILIES:
+		var band := str(engine.pressure_band(district, str(family)))
+		if band == "QUIET":
+			continue
+		out.append("%s is %s about %s work." % [name, band.to_lower(), str(family)])
+	if out.is_empty():
+		out.append("%s is not thinking about you." % name)
+	return out
+
+## The Heat band, named. Batch 8 gave Heat four bands and nothing renders them.
+func _read_heat() -> Array:
+	var heat: Object = gm.system("heat") if gm != null else null
+	if heat == null:
+		return []
+	var band := str(heat.band())
+	match band:
+		"BURNING":
+			return ["You are getting looked at everywhere, and you can feel it."]
+		"WATCHED":
+			return ["People clock you before you clock them. That is new."]
+		"NOTICED":
+			return ["A couple of faces know yours now."]
+	return ["Nobody has any reason to remember you."]
+
+## Whether Curtis's people have started looking. Phase is persisted, drives the
+## watcher encounters, and appears on no screen.
+func _read_curtis() -> Array:
+	var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
+	if curtis == null:
+		return []
+	match str(gs.curtis_phase):
+		"approaching":
+			return ["Somebody has been asking about you by name. They are not shy about it."]
+		"watching":
+			return ["The same faces keep turning up where you are. That is not weather."]
+	return []
+
+## What a product fetches somewhere you are not standing. The same read Word
+## Around Town renders — what the walk buys is hearing it without the phone.
+func _read_prices() -> Array:
+	var phone: Object = gm.system("phone") if gm != null else null
+	if phone == null:
+		return []
+	var routes: Array = phone.market_intel()
+	var out: Array = []
+	for route in routes:
+		var line := str(phone.market_intel_line(route as Dictionary))
+		if not line.is_empty():
+			out.append(line)
+		if out.size() >= 2:
+			break
+	return out
+
+## Who on the crew is close to offering you something. `operation_summary`
+## already answers it and nothing asks.
+func _read_crew() -> Array:
+	var ops: Object = gm.system("crew_operations") if gm != null else null
+	if ops == null:
+		return []
+	var out: Array = []
+	for operation_id in ops.operation_ids():
+		var summary: Dictionary = ops.operation_summary(str(operation_id))
+		if not bool(summary.get("discovered", false)):
+			continue
+		if bool(summary.get("assigned_today", false)):
+			continue
+		if not bool(summary.get("available", false)):
+			continue
+		out.append("%s has a day free, if you want it spent."
+			% str(summary.get("crew_name", summary.get("crew_id", "Somebody"))).capitalize())
+	return out
 
 # --- the chain's source adapter ----------------------------------------------
 

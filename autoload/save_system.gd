@@ -113,7 +113,7 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## a missing key as -1: no cooldown, which is the correct history for arrests
 ## that predate the mechanic. One bump, one arm, both new pieces of state
 ## covered.
-const SAVE_VERSION := 13
+const SAVE_VERSION := 14
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 
 ## Every mutable GameState field, captured and applied by name. products.price
@@ -185,6 +185,8 @@ const PERSIST_FIELDS: Array[String] = [
 	# Wander (v13). The ramp and the seen-cards ledger; both are the run's own
 	# history of going out and looking, and neither can be reconstructed.
 	"wander_misses", "wander_count", "wander_seen", "wander_recent",
+	# The day's walk count (v14), for the effort falloff.
+	"wanders_today",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -543,6 +545,14 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# v11 arm made about the Night Owl. A loading run has genuinely
 				# never been out looking, and the ramp starts it at the oracle's
 				# 30% like anybody else.
+				pass
+			13:
+				# v13 -> v14: `wanders_today`, additive and zero. A v13 save was
+				# written by a build where every walk was worth the same, so
+				# there is no count to carry — and zero is the generous reading,
+				# which hands the loading day a full-value walk it may already
+				# have taken. One walk, once, in exchange for not having to
+				# invent a number that was never recorded.
 				pass
 			_:
 				return {}

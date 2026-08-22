@@ -486,10 +486,25 @@ autowrap_mode = 3
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 11
 
-[node name="Go" type="Button" parent="Shell/Scroll/Pad/Content/Wander/V"]
+[node name="Go" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Wander/V"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Work" type="Button" parent="Shell/Scroll/Pad/Content/Wander/V/Go"]
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 theme_type_variation = &"BtnPrimary"
+
+[node name="Deal" type="Button" parent="Shell/Scroll/Pad/Content/Wander/V/Go"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+theme_type_variation = &"BtnSecondary"
+
+[node name="Read" type="Button" parent="Shell/Scroll/Pad/Content/Wander/V/Go"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+theme_type_variation = &"BtnSecondary"
+
 
 [node name="OpCard" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]
 layout_mode = 2

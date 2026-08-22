@@ -384,6 +384,7 @@ func reset_to_new_game() -> void:
 	wander_count = 0
 	wander_seen = {}
 	wander_recent = []
+	wanders_today = 0
 	# Jobs and obligations reset with the run.
 	active_job_id = ""
 	job_records = {}
@@ -1268,6 +1269,16 @@ var wander_seen: Dictionary = {}
 ## The last few card ids, so the same beat does not land twice running. Same
 ## idea as `curtis_recent_watcher_lines`, and capped the same way.
 var wander_recent: Array = []
+
+## Walks taken TODAY, for the effort falloff (batch 13). An hour on the block is
+## worth something; the third hour on the same block on the same day is not
+## worth as much, and the arithmetic should say so rather than paying three
+## identical times and calling it a choice.
+##
+## Persisted for the same reason `heat_gain_today` is — the autosave fires once
+## per dispatch, and a player two walks deep who closes the tab is still two
+## walks deep. Cleared at DAY_START.
+var wanders_today: int = 0
 
 ## Run-level one-shot flags owned by the consequence layer (FS-003.13 Task 5).
 ##

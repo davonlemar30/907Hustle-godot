@@ -60,9 +60,75 @@ extends RefCounted
 ##              because the web build made that call too ("reusing EncounterModal
 ##              — no new UI shell").
 
+## The three intents (batch 13).
+##
+## Wander shipped as one button, and the measurement said what that made it:
+## 89.5 walks over 31 days, three a day every day, 11 cards of which 7 were
+## ungated flavour, and a correct play of "press it with every spare slot". It
+## paid 307% of the day job and contained no decision at all.
+##
+## An intent is the decision. The pool does not change — the WEIGHTING does, and
+## so does what a find can be. Same slot, same draw, three different questions:
+##
+##   WORK  who is hiring, and who knows somebody
+##   DEAL  what is worth buying, lifting or moving
+##   READ  what is going on around here — the one that is not about getting
+##         something, but about knowing something
+##
+## READ exists because the build hides an enormous amount from the player and
+## has no surface that tells them: which families a corner is hot for, whether
+## Curtis's people have started looking, what a product is fetching in a
+## district they are not standing in. Walking the block is how a person finds
+## that out, and it gives Wander a job that does not run out — discovery does,
+## after two finds, usually in week one.
+const INTENT_WORK := "work"
+const INTENT_DEAL := "deal"
+const INTENT_READ := "read"
+const INTENTS: Array[String] = [INTENT_WORK, INTENT_DEAL, INTENT_READ]
+
+## What each button says, and the line under it.
+const INTENT_COPY := {
+	INTENT_WORK: {"label": "LOOK FOR WORK",
+		"line": "Ask around. Somebody is always short a shift."},
+	INTENT_DEAL: {"label": "LOOK FOR A DEAL",
+		"line": "See what is moving, and what is loose."},
+	INTENT_READ: {"label": "SEE WHO IS OUT",
+		"line": "Stand around long enough to read the block."},
+}
+
+## How much a card's weight is multiplied when it matches the intent, and when
+## it does not. A non-match is damped rather than excluded: an intent should
+## steer the walk, not put blinkers on it — you can still get jumped while you
+## are out looking for work.
+const INTENT_MATCH := 4.0
+const INTENT_MISS := 0.4
+
+# --- the day's third walk is not the first (batch 13) -------------------------
+#
+# The other half of what the measurement found. Three walks a day were worth
+# exactly as much as each other, which is why the optimal play was to take all
+# of them. An hour on the block is worth something; the third hour on the same
+# block on the same day is worth much less, and the arithmetic should say so.
+#
+# Applied to the discovery roll and to what an opportunity pays. Never to
+# whether a card is drawn at all — a walk still always produces something, which
+# is the oracle's breadcrumb rule and the reason a wander is never a dead slot.
+const EFFORT_BY_WALK: Array[float] = [1.0, 0.6, 0.25]
+const EFFORT_FLOOR := 0.1
+
+## What this walk is worth, given how many have already happened today.
+static func effort_for(walks_today: int) -> float:
+	if walks_today < 0:
+		return 1.0
+	if walks_today < EFFORT_BY_WALK.size():
+		return EFFORT_BY_WALK[walks_today]
+	return EFFORT_FLOOR
+
 const KIND_AMBIENT := "ambient"
 const KIND_OPPORTUNITY := "opportunity"
 const KIND_ENCOUNTER := "encounter"
+## A card whose whole payload is telling you something true. See INTENT_READ.
+const KIND_READ := "read"
 
 const SPENARD := "north_star_lot"
 const DOWNTOWN := "downtown"
@@ -124,26 +190,31 @@ const CARDS: Array[Dictionary] = [
 	# --- ambient: the block, and being in it ---------------------------------
 	{
 		"id": "spenard_cold_snap", "kind": KIND_AMBIENT, "weight": 10,
+		"intents": [INTENT_READ],
 		"districts": [SPENARD], "slots": [], "requirements": [], "once": false,
 		"line": "Cold enough that the snow squeaks. Nobody is out who does not have to be.",
 	},
 	{
 		"id": "spenard_lot_kids", "kind": KIND_AMBIENT, "weight": 8,
+		"intents": [INTENT_READ],
 		"districts": [SPENARD], "slots": [AFTERNOON, EVENING], "requirements": [], "once": false,
 		"line": "Kids cutting through the lot with a sled and no coats. One of them says your name and keeps running.",
 	},
 	{
 		"id": "downtown_shift_change", "kind": KIND_AMBIENT, "weight": 10,
+		"intents": [INTENT_WORK, INTENT_READ],
 		"districts": [DOWNTOWN], "slots": [AFTERNOON, EVENING], "requirements": [], "once": false,
 		"line": "Fourth Avenue at shift change. Everybody walking somewhere, nobody looking up.",
 	},
 	{
 		"id": "ship_creek_yards", "kind": KIND_AMBIENT, "weight": 10,
+		"intents": [INTENT_WORK, INTENT_READ],
 		"districts": [SHIP_CREEK], "slots": [], "requirements": [], "once": false,
 		"line": "Diesel and salt off the yards. A container door bangs somewhere behind the fence.",
 	},
 	{
 		"id": "wander_carrying_heavy", "kind": KIND_AMBIENT, "weight": 14,
+		"intents": [INTENT_DEAL],
 		"districts": [], "slots": [], "once": false,
 		# Only when there is something to be careful with. `collection_non_empty`
 		# is an existing requirement type; this needed no new gate.
@@ -154,6 +225,7 @@ const CARDS: Array[Dictionary] = [
 	# --- ambient: people you actually know -----------------------------------
 	{
 		"id": "wander_yalonda_porch", "kind": KIND_AMBIENT, "weight": 9,
+		"intents": [INTENT_READ],
 		"districts": [SPENARD], "slots": [MORNING, AFTERNOON], "requirements": [], "once": false,
 		"line": "Yalonda is out on the step with a coffee. She asks if you are eating. You say yes.",
 		"observation": {"npc": "yalonda", "type": "presence", "event": "seen_around",
@@ -161,6 +233,7 @@ const CARDS: Array[Dictionary] = [
 	},
 	{
 		"id": "wander_juan_truck", "kind": KIND_AMBIENT, "weight": 9,
+		"intents": [INTENT_WORK, INTENT_READ],
 		"districts": [SPENARD], "slots": [MORNING, AFTERNOON, EVENING], "requirements": [], "once": false,
 		"line": "Juan has the hood up on the truck again. He does not need help and says so twice.",
 		"observation": {"npc": "juan", "type": "presence", "event": "seen_around",
@@ -170,12 +243,14 @@ const CARDS: Array[Dictionary] = [
 	# --- opportunity: small, immediate, in your favour ------------------------
 	{
 		"id": "wander_found_cash", "kind": KIND_OPPORTUNITY, "weight": 6,
+		"intents": [INTENT_DEAL],
 		"districts": [], "slots": [], "requirements": [], "once": false,
 		"line": "Folded bills in the slush by the pump island. Nobody is coming back for it.",
 		"grant": {"cash": [8, 25], "clean": false},
 	},
 	{
 		"id": "wander_price_overheard", "kind": KIND_OPPORTUNITY, "weight": 8,
+		"intents": [INTENT_DEAL],
 		"districts": [], "slots": [], "once": false,
 		# Only worth anything to somebody who can act on it: the phone is what
 		# carries a price you are not standing in front of (batch 5).
@@ -184,12 +259,58 @@ const CARDS: Array[Dictionary] = [
 		"grant": {"intel": true},
 	},
 
+	# --- read: what an hour on the block tells you ---------------------------
+	#
+	# These are the reason READ exists. Each one reports live state the build
+	# already tracks and has NO surface for, through the read API that owns it.
+	# Nothing here mutates; a report is a report.
+	{
+		"id": "read_the_corner", "kind": KIND_READ, "weight": 14,
+		"intents": [INTENT_READ],
+		"districts": [], "slots": [], "requirements": [], "once": false,
+		"line": "You give it an hour and watch who watches back.",
+		"read": "pressure",
+	},
+	{
+		"id": "read_the_heat", "kind": KIND_READ, "weight": 10,
+		"intents": [INTENT_READ],
+		"districts": [], "slots": [], "once": false,
+		"requirements": [{"type": "fact_true", "fact": "heat_noticed"}],
+		"line": "You count how many times somebody looks twice.",
+		"read": "heat",
+	},
+	{
+		"id": "read_the_watchers", "kind": KIND_READ, "weight": 12,
+		"intents": [INTENT_READ],
+		"districts": [SPENARD], "slots": [], "once": false,
+		"requirements": [{"type": "fact_true", "fact": "curtis_visible"}],
+		"line": "The same car has been parked wrong for two days.",
+		"read": "curtis",
+	},
+	{
+		"id": "read_the_board", "kind": KIND_READ, "weight": 12,
+		"intents": [INTENT_READ, INTENT_DEAL],
+		"districts": [], "slots": [], "once": false,
+		"requirements": [{"type": "fact_true", "fact": "phone_active"}],
+		"line": "Two people at the counter talking numbers, and neither of them quietly.",
+		"read": "prices",
+	},
+	{
+		"id": "read_the_crew", "kind": KIND_READ, "weight": 10,
+		"intents": [INTENT_READ],
+		"districts": [], "slots": [], "once": false,
+		"requirements": [{"type": "crew_count_min", "min": 1}],
+		"line": "You run into one of yours, and they have things to say.",
+		"read": "crew",
+	},
+
 	# --- encounter: somebody is in front of you -------------------------------
 	#
 	# These open a real blocking chain. Odds are shown before the player commits,
 	# because the build's rule is that a risk they cannot see is not a decision.
 	{
 		"id": "wander_shakedown", "kind": KIND_ENCOUNTER, "weight": 7,
+		"intents": [INTENT_DEAL],
 		"districts": [], "slots": [EVENING, NIGHT], "once": false,
 		"requirements": [{"type": "collection_non_empty", "collection": "inventory"}],
 		"line": "Two of them peel off the wall as you pass, and one is already talking.",
@@ -204,6 +325,7 @@ const CARDS: Array[Dictionary] = [
 	},
 	{
 		"id": "wander_stopped_on_foot", "kind": KIND_ENCOUNTER, "weight": 9,
+		"intents": [],
 		"districts": [], "slots": [], "once": false,
 		# Only when you are already carrying enough attention to be worth
 		# stopping. Reuses batch 8's WATCHED floor rather than inventing a

@@ -348,6 +348,11 @@ func _run_day_start_step(step: String, today: int) -> void:
 	# register would carry yesterday's noise forever and never decay again.
 	if step == "heat_day_reset":
 		gs.heat_gain_today = 0.0
+		# The day's walk count rides the same step. Both are "what has already
+		# happened today", both are read by a falloff, and giving the second one
+		# its own step would put a name in the declared order that does nothing
+		# the first does not already do at the same moment.
+		gs.wanders_today = 0
 		return
 	var engine: Object = gm.system("consequence") if gm != null else null
 	if engine == null:

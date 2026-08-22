@@ -7024,11 +7024,20 @@ func _check_outcome_adversarial_boundaries() -> void:
 
 	# Exact redistribution check. For confrontation at chance .5, the authored
 	# failure weights are .325 and .175; immunity removes the latter and divides
-	# the survivors by .825. A bump-to-failure implementation yields .5 instead.
+	# the survivors by .825. Combat 6 also remains in the advantage band, so the
+	# final tier distribution is max-of-two over those renormalised shares. A
+	# bump-to-failure implementation yields .5 success instead.
 	var immune: Dictionary = resolver.tier_probabilities("confrontation", 0.5, 6, 0)
-	_expect_float("immunity redistributes to clean", float(immune["clean"]), 0.25 / 0.825)
-	_expect_float("immunity redistributes to messy", float(immune["messy"]), 0.25 / 0.825)
-	_expect_float("immunity renormalises failure, not catastrophe", float(immune["failure"]), 0.325 / 0.825)
+	var clean_single := 0.25 / 0.825
+	var messy_single := 0.25 / 0.825
+	var failure_single := 0.325 / 0.825
+	_expect_float("immunity redistributes to clean with advantage",
+		float(immune["clean"]), 1.0 - (1.0 - clean_single) * (1.0 - clean_single))
+	_expect_float("immunity redistributes to messy with advantage",
+		float(immune["messy"]), (failure_single + messy_single) * (failure_single + messy_single)
+			- failure_single * failure_single)
+	_expect_float("immunity renormalises failure, not catastrophe",
+		float(immune["failure"]), failure_single * failure_single)
 	_expect_float("immunity removes catastrophe", float(immune["catastrophic"]), 0.0)
 
 func _adversarial_measured_rate(resolver: RefCounted, action_id: String,

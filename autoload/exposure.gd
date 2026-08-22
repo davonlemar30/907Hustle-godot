@@ -174,7 +174,8 @@ func _ready() -> void:
 
 func _require_dispatch(method_name: String) -> bool:
 	var active: bool = game_manager != null and game_manager.is_dispatching()
-	assert(active, "Exposure.%s() must be called from GameManager.dispatch()." % method_name)
+	if not active:
+		push_warning("Exposure.%s() refused outside GameManager.dispatch()." % method_name)
 	return active
 
 # --- recording -------------------------------------------------------------

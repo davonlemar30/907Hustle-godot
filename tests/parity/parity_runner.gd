@@ -145,6 +145,7 @@ func _ready() -> void:
 		_check_batch8(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch9(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch10(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch11(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -16154,7 +16155,7 @@ func _fail(label: String, detail: String) -> void:
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11700
+const MIN_CHECKS := 11740
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -17846,4 +17847,241 @@ func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	_expect_int("an honest ramp survives validation",
 		int((good["state"] as Dictionary)["wander_misses"]), 2)
 	_expect_int("with no repairs", (good["repairs"] as Array).size(), 0)
+	gs.reset_to_new_game()
+
+# === batch 11 — the Wander follow-ups =======================================
+#
+# An adversarial read of batch 10 found five defects that shipped. Each one is
+# fixed and each fix is pinned here.
+#
+# SABOTAGE: let wander_misses climb past the ceiling in _wander
+#           ==> "an honest run never needs the validator's clamp" fails.
+# SABOTAGE: return "" from WanderSystem.choice_copy
+#           ==> "every wander choice says what it is" fails.
+# SABOTAGE: drop the try_surface_delayed call from _wander
+#           ==> "a wander is somewhere the waiting can find you" fails.
+# SABOTAGE: take open[0] instead of the seeded pick in _wander
+#           ==> "which one you find is seeded, not the array order" fails.
+# SABOTAGE: drop `data` from check_glyph_coverage.py SCAN_DIRS
+#           ==> not a parity check — it is a CI job, and the fix is asserted
+#           by the job itself. Recorded here so the omission is not silent.
+
+func _check_batch11(gs: Node, gm: Node) -> void:
+	_check_wander_ramp_agreement(gs, gm)
+	_check_wander_choice_copy(gs, gm)
+	_check_wander_finds_the_waiting(gs, gm)
+	_check_wander_card_is_reachable(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+## The live path and the validator agreed on nothing, and an honest save paid
+## for it: `wander_misses` climbed without bound in play while the validator
+## clamped it on load, so a run five misses deep came back changed with a repair
+## reported against it. One owner now.
+func _check_wander_ramp_agreement(gs: Node, gm: Node) -> void:
+	var sys: Object = gm.system("wander")
+	if sys == null:
+		_fail("batch11 ramp", "no wander system")
+		return
+
+	var ceiling: int = int(B10_EVENTS.miss_ceiling())
+	_expect_int("the ceiling is where the ramp stops paying", ceiling, 4)
+	gs.wander_misses = ceiling
+	_expect_float("and reaching it is reaching the cap",
+		float(sys.discovery_chance()), float(B10_EVENTS.DISCOVERY_CAP))
+	gs.wander_misses = ceiling - 1
+	_expect_true("one short of it is short of the cap",
+		float(sys.discovery_chance()) < float(B10_EVENTS.DISCOVERY_CAP))
+
+	# Walk until the map is empty of one job and the ramp has had every chance
+	# to run away, then hand the result to the validator. An honest run must
+	# come back untouched.
+	_b10_ready(gs)
+	for walk in range(12):
+		gs.time_slots_today = 0
+		gm.dispatch("wander", {})
+	_expect_true("a long dry run cannot climb past the ceiling",
+		int(gs.wander_misses) <= ceiling)
+	# WHICH job a walk turns up is seeded too. Taking `open[0]` made the order
+	# of a constant array into the order of the game — every run in the port's
+	# history would have found the warehouse before the freight yard. Swept
+	# across seeds, because one seed cannot tell a seeded pick from a fixed one.
+	var first_found: Dictionary = {}
+	for probe in range(12):
+		gs.street_name = "Parity"
+		gs.reset_to_new_game()
+		gs.run_seed = "wander-order-%d" % probe
+		gs.day = 6
+		for walk in range(10):
+			gs.time_slots_today = 0
+			if (sys.undiscovered() as Array).size() < 2:
+				break
+			gm.dispatch("wander", {})
+		# Whichever of the two is on the map first.
+		for job_id in B10_EVENTS.DISCOVERY_JOBS:
+			if str(job_id) in gs.jobs_discovered:
+				first_found[str(job_id)] = int(first_found.get(str(job_id), 0)) + 1
+				break
+	_expect_true("which one you find is seeded, not the array order",
+		first_found.size() > 1)
+
+	# BUILT, not hoped for. A twelve-walk sweep never gets there — a discovery
+	# resets the ramp long before it can run away — so the first pass at this
+	# check was vacuous and letting the counter climb freely left the suite
+	# green. The case that separates them is a run already AT the ceiling taking
+	# one more walk that misses, so the day is scanned for a roll that does.
+	var rng := get_node("/root/RngManager")
+	var ceiling_day := -1
+	_b10_ready(gs)
+	for day in range(1, 200):
+		var probe_key := "%d:0:%d:wander:%s" % [day, int(gs.wander_count) + 1,
+			str(gs.current_district_id)]
+		if rng.seeded_random(gs.run_seed, probe_key) >= float(B10_EVENTS.DISCOVERY_CAP):
+			ceiling_day = day
+			break
+	if ceiling_day < 0:
+		_fail("batch11 ramp", "no day in the scan window misses at the cap")
+		return
+	gs.day = ceiling_day
+	gs.time_slots_today = 0
+	gs.wander_misses = ceiling
+	_expect_int("the probe starts at the ceiling", int(gs.wander_misses), ceiling)
+	_expect_true("and there is still something to look for",
+		(sys.undiscovered() as Array).size() > 0)
+	_expect_true("the walk dispatches", gm.dispatch("wander", {}))
+	_expect_true("a walk that misses at the ceiling stays at the ceiling",
+		int(gs.wander_misses) <= ceiling)
+
+	var validator: RefCounted = preload("res://autoload/save_validator.gd").new()
+	var checked: Dictionary = validator.validate_state({
+		"day": int(gs.day), "wander_misses": int(gs.wander_misses),
+		"wander_count": int(gs.wander_count),
+	})
+	_expect_int("an honest run never needs the validator's clamp",
+		(checked["repairs"] as Array).size(), 0)
+	_expect_int("and comes back with the ramp it earned",
+		int((checked["state"] as Dictionary)["wander_misses"]), int(gs.wander_misses))
+	gs.reset_to_new_game()
+
+## Four of Wander's five choices rendered an EMPTY description and the fifth
+## inherited Boost's — `talk` read "Hand it back and try to keep this from
+## turning physical", which is nothing you can do to a police cruiser. The
+## engine's table is Boost's vocabulary and was never going to cover another
+## chain's, so the adapter now supplies its own.
+func _check_wander_choice_copy(gs: Node, gm: Node) -> void:
+	var sys: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+	if sys == null or engine == null:
+		_fail("batch11 copy", "a system is missing")
+		return
+
+	# Every choice any authored card can offer.
+	var offered: Array = []
+	for card in B10_EVENTS.CARDS:
+		if str(card["kind"]) != B10_EVENTS.KIND_ENCOUNTER:
+			continue
+		for choice_id in ((card["encounter"] as Dictionary)["choices"] as Array):
+			if not str(choice_id) in offered:
+				offered.append(str(choice_id))
+	_expect_true("there are wander choices to speak for", offered.size() > 0)
+	for choice_id in offered:
+		_expect_true("every wander choice says what it is: %s" % str(choice_id),
+			not str(sys.choice_copy(str(choice_id))).is_empty())
+		_expect_true("and has a button of its own: %s" % str(choice_id),
+			not str(sys.choice_label(str(choice_id))).is_empty())
+
+	# The seam itself. With a chain open, the engine hands back the adapter's
+	# words rather than its own default.
+	_b10_ready(gs)
+	gs.inventory = {"weed": 5}
+	var card: Dictionary = B10_EVENTS.new().card_by_id("wander_stopped_on_foot")
+	gs.heat = 13.0
+	sys._play_encounter(card, "6:0:1:wander:north_star_lot")
+	if bool(engine.has_active()):
+		var rows: Array = engine.choice_summaries()
+		for row in rows:
+			var id := str((row as Dictionary)["choice_id"])
+			_expect_str("the engine reads the adapter's button: %s" % id,
+				str((row as Dictionary)["label"]), str(sys.choice_label(id)))
+			_expect_str("and the adapter's description: %s" % id,
+				str(engine.choice_description(id, "FALLBACK")), str(sys.choice_copy(id)))
+		# And a choice nobody authored still falls back rather than blanking.
+		_expect_str("an unauthored choice keeps the engine's default",
+			str(engine.choice_description("nonsense", "FALLBACK")), "FALLBACK")
+	else:
+		_fail("batch11 copy", "the probe encounter did not open")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+## Travel and day-start were the only two callers of `try_surface_delayed`,
+## which made walking the block the one way to move around the neighbourhood
+## that nobody waiting for you could take advantage of.
+func _check_wander_finds_the_waiting(gs: Node, gm: Node) -> void:
+	var engine: Object = gm.system("consequence")
+	if engine == null:
+		_fail("batch11 waiting", "no consequence engine")
+		return
+	_b10_ready(gs)
+
+	# Queue a retaliation that is due today, in the district the player is in.
+	var retaliation: Object = gm.system("retaliation")
+	if retaliation == null:
+		_fail("batch11 waiting", "no retaliation system")
+		return
+	var cause_id := str(engine.allocate_cause_id())
+	engine.enqueue({
+		"cause_id": cause_id,
+		"queue_id": "retaliation:goodie:%s" % cause_id,
+		"actor_id": "goodie",
+		"actor_label": "Goodie's people",
+		"district_id": str(gs.current_district_id),
+		"encounter_definition_id": "retaliation_street_crew",
+		"source_family": "stick",
+		"source_target_id": "goodie_stash",
+		"trigger_day": int(gs.day),
+		"expires_end_day": int(gs.day) + 3,
+		"created_day": int(gs.day) - 2,
+	})
+	_expect_true("something is waiting", gs.consequence_queue.size() > 0)
+	_expect_true("and nothing is in front of the player yet", not bool(engine.has_active()))
+
+	_expect_true("the walk dispatches", gm.dispatch("wander", {}))
+	_expect_true("a wander is somewhere the waiting can find you",
+		bool(engine.has_active()))
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+## The whole point of the card is that a fresh run can reach it. The Home gate
+## test hard-codes its paths and knew nothing about it.
+func _check_wander_card_is_reachable(gs: Node, gm: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	var access := get_node("/root/SurfaceVisibility")
+	# The operation card IS hidden on a fresh run — that is the defect Wander
+	# was moved off it to escape, asserted here so the escape stays real.
+	_expect_true("the operation card is hidden on a fresh run",
+		not bool(access.is_visible(access.HOME_TONIGHTS_OPERATION)))
+
+	var packed: PackedScene = load("res://ui/screens/home.tscn")
+	var home: Node = packed.instantiate()
+	add_child(home)
+	if home.has_method("refresh"):
+		home.refresh()
+	var card: Node = home.get_node_or_null("Shell/Scroll/Pad/Content/Wander")
+	_expect_true("the wander card exists on Home", card != null)
+	if card != null:
+		_expect_true("and a fresh run can see it", bool((card as Control).visible))
+	var go: Button = home.get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go") as Button
+	_expect_true("its button is there", go != null)
+	if go != null:
+		_expect_true("it is a real tap target", go.custom_minimum_size.y >= 44.0)
+		_expect_true("and it is not disabled on a fresh run", not go.disabled)
+	# The stale MOVE PRODUCT control is gone from the layout rather than
+	# relabelled, so nothing offers two doors onto the same walk.
+	var stale: Button = home.get_node_or_null(
+		"Shell/Scroll/Pad/Content/OpCard/V/Actions/Move") as Button
+	if stale != null:
+		_expect_true("the old MOVE PRODUCT control is out of the layout",
+			not stale.visible)
+	home.queue_free()
 	gs.reset_to_new_game()

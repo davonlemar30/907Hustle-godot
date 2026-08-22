@@ -666,6 +666,27 @@ func active_summary() -> Dictionary:
 ## `committed` is what disables a button, and it is derived from PERSISTED state
 ## rather than from a click — TI-003 §18 requires committed controls to stay
 ## disabled after a reload, and a flag set in `_pressed` would not survive one.
+## Ask the active chain's source adapter for a piece of copy, falling back to
+## whatever the engine would have said on its own.
+##
+## Null-guarded twice over: a chain can outlive its adapter across a save, and
+## an adapter that does not implement the method is the ordinary case rather
+## than an error.
+func _adapter_copy(choice_id: String, method: String, fallback: String) -> String:
+	if not has_active():
+		return fallback
+	var action_id := str((gs.active_consequence.get("source", {}) as Dictionary)
+		.get("action_id", ""))
+	var adapter: Object = source_adapter(action_id)
+	if adapter == null or not adapter.has_method(method):
+		return fallback
+	var said := str(adapter.call(method, choice_id))
+	return said if not said.is_empty() else fallback
+
+## The description under a choice, for the screen. Same seam as the label.
+func choice_description(choice_id: String, fallback: String) -> String:
+	return _adapter_copy(choice_id, "choice_copy", fallback)
+
 func choice_summaries() -> Array:
 	if not has_active():
 		return []
@@ -680,7 +701,14 @@ func choice_summaries() -> Array:
 		var is_deterministic: bool = choice_id in deterministic
 		rows.append({
 			"choice_id": choice_id,
-			"label": choice_id.capitalize(),
+			# The source adapter names its own choices when it has an opinion,
+			# the same seam batch 6a opened for delegation copy and for the same
+			# reason: `fight`/`run`/`talk`/`yield` are Boost's vocabulary, and a
+			# chain whose choices are `stand`/`walk`/`hand_over` should not have
+			# to be spelled out in the engine or the screen to say so.
+			# `capitalize()` remains the fallback, which is what the three
+			# original kinds still use.
+			"label": _adapter_copy(choice_id, "choice_label", choice_id.capitalize()),
 			# A deterministic response has no odds to show, and showing it as
 			# 0% would read as "impossible" rather than "certain".
 			"deterministic": is_deterministic,

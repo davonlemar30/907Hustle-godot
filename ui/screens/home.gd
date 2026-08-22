@@ -78,6 +78,13 @@ func _on_wander() -> void:
 	var before_day: int = gs.day
 	if not _gm.dispatch("wander", {}):
 		return
+	# A wander that opened a blocking encounter has already navigated away, and
+	# the toast is parented to the tree root rather than the screen — so it
+	# survives the scene change and floats "You take a walk" over SOMEBODY STOPS
+	# YOU. The encounter is its own announcement.
+	var engine: Object = _gm.system("consequence")
+	if engine != null and bool(engine.has_active()):
+		return
 	if gs.day > before_day:
 		nav.show_toast("A new day. Day %d, %s in %s."
 			% [gs.day, gs.time_slot.capitalize(), gs.current_district().get("name", "")])

@@ -259,7 +259,12 @@ func _choice_card(row: Dictionary) -> Control:
 	head.add_child(label(_odds_text(row), "Mono", 12, _odds_tone(row)))
 	v.add_child(head)
 
-	v.add_child(label(str(CHOICE_COPY.get(choice_id, "")), "Muted", 11, MUTED, true))
+	# Through the engine's adapter seam, so a chain kind with its own vocabulary
+	# says its own words. `CHOICE_COPY` below is the default and still covers
+	# the three original kinds; a blank here was a shipped defect for Wander,
+	# whose five choice ids are in none of them.
+	v.add_child(label(_engine.choice_description(choice_id,
+		str(CHOICE_COPY.get(choice_id, ""))), "Muted", 11, MUTED, true))
 
 	# Yield's whole value is certainty, so it states its guaranteed price rather
 	# than an odds band (PX-003 §4: "Yield has no probability treatment").

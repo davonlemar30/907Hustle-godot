@@ -5660,6 +5660,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 8 | `codex/batch-8-heat-teeth` | Heat bands · the quiet-day decay · the street stop · Lay Low capped · the propagation inversion fixed | 11,493 → 11,576 | Merged, PR #62. **Save v11 → v12.** |
 | 9 | `codex/batch-9-balance-pass` | **The instrument was lying** — a leaked catalogue corrupted every economy number since batch 3 · the class closed · two balance findings filed with live numbers | 11,576 → 11,622 | Merged, PR #63. Schema unchanged. |
 | 10 | `codex/batch-10-wander` | **Wander** — the ramped discovery, the card registry, a fourth chain kind · Home's three dead buttons · two unreachable jobs made findable | 11,622 → 11,723 | Merged, PR #64. **Save v12 → v13.** |
+| 11 | `codex/batch-11-wander-followups` | An adversarial read of batch 10 found five shipped defects · all five fixed · adapter-supplied choice copy · the glyph CI job now scans `data/` | 11,723 → 11,761 | Merged, PR #65. Schema unchanged. |
 
 **Two verification defects found in batch 6b, both in the harness rather than
 the game, both now fixed:**
@@ -5755,6 +5756,39 @@ from the instrument rather than one-off research:
   oracle. Narrowing bans to `catastrophic` only was measured at 50% in a scratch
   tree. The anomaly is now pinned as an anomaly, with the cost recorded beside
   it, so the next reader finds the answer instead of "fixing" it.
+
+**Batch 10 shipped five defects, found by reading it adversarially rather than
+by a failing test. All five are fixed in batch 11 and each fix is pinned.**
+
+- **Four of Wander's five encounter choices rendered an EMPTY description**, and
+  the fifth inherited Boost's — `talk` read "Hand it back and try to keep this
+  from turning physical", which is nothing you can do to a police cruiser. The
+  engine's `CHOICE_COPY` is Boost's vocabulary (fight / run / talk / yield) and
+  was never going to cover another chain's. Fixed with an adapter-supplied copy
+  seam, the same shape batch 6a opened for delegation copy: the engine asks the
+  source adapter for a label and a description and falls back to its own. The
+  next chain kind needs no edit to the engine or the screen.
+- **The ramp and its validator disagreed.** `wander_misses` climbed without
+  bound in play while the load-time validator clamped it, so an honest save at
+  five misses came back changed with a repair reported against a run that had
+  done nothing wrong. One owner now — `WanderEvents.miss_ceiling()` — read by
+  both.
+- **The toast talked over the encounter.** A wander that opened a blocking chain
+  navigated away and then showed "You take a walk" on top of SOMEBODY STOPS YOU,
+  because the toast is parented to the tree root rather than the screen.
+- **A wander was the one way to move around the block that nobody waiting for
+  you could use.** `try_surface_delayed` had exactly two callers, travel and
+  day-start. A retaliation that is due now surfaces on a wander too.
+- **Which job you found was the order of a constant array**, not a roll. Every
+  run in the port's history would have found the warehouse before the freight
+  yard. The pick is seeded now, and the check sweeps twelve seeds because one
+  cannot tell a seeded pick from a fixed one.
+
+**Two harness gaps found in the same read.** The glyph-coverage CI job scanned
+`ui`, `autoload` and `systems` but not `data/` — where every authored Wander
+card line lives, including one with an em dash. It scans `data/` now. And of the
+three test harnesses only parity runs in CI; `save_validation` and
+`screen_smoke` are manual-only, which is filed rather than fixed here.
 
 **Findings carried forward:**
 

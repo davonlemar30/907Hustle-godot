@@ -2668,6 +2668,9 @@ func _check_run_the_board() -> void:
 	_check_rb_leakage(gs, gm, ops, lst)
 	_check_rb_reload(gs, gm, ops, lst)
 	gs.listing_items = original_items
+	_check_rb_callbacks(gs, gm, ops)
+	_check_rb_surfaces(gs, gm, ops)
+	gs.listing_items = original_items
 	gs.reset_to_new_game()
 
 ## Broker tier, Pherris loyal, morning, money in hand.
@@ -2937,6 +2940,388 @@ func _check_rb_settlement(gs: Node, gm: Node, ops: RefCounted, lst: RefCounted) 
 			if str(row["event"]) == "907list_profit":
 				household += 1
 	_expect_true("rb delegated sale still tells the household", household > 0)
+
+## Every message in the live inbox that came from Pherris.
+func _rb_texts(gs: Node) -> Array:
+	var out: Array = []
+	for entry in gs.phone_inbox:
+		var message: Dictionary = entry
+		if str(message.get("from", "")) == "Pherris":
+			out.append(str(message.get("text", "")))
+	return out
+
+## Every activity-feed line logged today.
+func _rb_feed_today(gs: Node) -> Array:
+	var out: Array = []
+	for entry in gs.activity_log:
+		var row: Dictionary = entry
+		if int(row.get("day", -1)) == int(gs.day):
+			out.append(str(row.get("text", "")))
+	return out
+
+func _rb_feed_has(gs: Node, fragment: String) -> bool:
+	for line in _rb_feed_today(gs):
+		if fragment in str(line):
+			return true
+	return false
+
+## FS-001.9: the callbacks that turn a working mechanic into a legible one.
+##
+## Each of these is a **one-shot or a state-driven choice**, which is the family
+## of bug that does not show up in a single playthrough: a flag that never
+## persists fires again on every reload, a flag that never clears fires once and
+## then goes silent forever, and a settlement template picked by the wrong field
+## reports a good night on a bad one. So each is checked for what it says AND for
+## what it says the second time.
+func _check_rb_callbacks(gs: Node, gm: Node, ops: RefCounted) -> void:
+	# --- discovery: once, on qualification, and never again ---
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.phone_inbox = []
+	ops.reconcile()
+	_expect_int("no discovery text before she qualifies", _rb_texts(gs).size(), 0)
+
+	_rb_ready(gs)
+	gs.phone_inbox = []
+	ops.reconcile()
+	var offered: Array = _rb_texts(gs)
+	_expect_int("qualifying texts exactly once", offered.size(), 1)
+	if offered.size() == 1:
+		_expect_str("and it is her offer", str(offered[0]), ops.DISCOVERY_TEXT)
+	_expect_true("the run remembers she offered",
+		bool(ops.callback_flag("discovery_notified")))
+
+	# Reconciling again — and dispatching, which reconciles — says nothing more.
+	ops.reconcile()
+	gm.dispatch("advance_time", {})
+	_expect_int("she does not offer twice", _rb_texts(gs).size(), 1)
+
+	# --- the flag survives a reload, and a reloaded run stays quiet ---
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := _read_save_text(saves)
+	saves.save_run()
+	gs.crew_operation_state = {"discovered": [], "adapters": {}}
+	_expect_true("the callback save reloads", saves.load_run())
+	_expect_true("the discovery flag came back",
+		bool(ops.callback_flag("discovery_notified")))
+	# The inbox is persisted too, so the offer she already sent comes back with
+	# it — that is the message being REMEMBERED, not re-sent. Clearing after the
+	# load is what separates the two, and the re-send is the bug being checked
+	# for: a flag kept in memory instead of in the save would fire here.
+	_expect_int("the offer she already sent is still in the inbox",
+		_rb_texts(gs).size(), 1)
+	gs.phone_inbox = []
+	ops.reconcile()
+	gm.dispatch("advance_time", {})
+	_expect_int("a reload that already offered sends nothing new",
+		_rb_texts(gs).size(), 0)
+
+	# --- the loyalty warning: once per episode, and it re-arms ---
+	_rb_ready(gs)
+	ops.reconcile()
+	gs.phone_inbox = []
+	gs.crew_records[RB_CREW]["loyalty"] = 3
+	ops.reconcile()
+	var complained: Array = _rb_texts(gs)
+	_expect_int("a loyalty slump texts once", complained.size(), 1)
+	if complained.size() == 1:
+		_expect_str("and it is her complaint", str(complained[0]), ops.LOYALTY_WARNING_TEXT)
+	ops.reconcile()
+	_expect_int("and does not text again while she is still low",
+		_rb_texts(gs).size(), 1)
+
+	# Recovery clears the flag — the episode is over, not the run.
+	gs.crew_records[RB_CREW]["loyalty"] = 8
+	ops.reconcile()
+	_expect_true("recovering re-arms the warning",
+		not bool(ops.callback_flag("loyalty_warning_sent")))
+	_expect_int("recovering says nothing by itself", _rb_texts(gs).size(), 1)
+	# A second slump is heard again. This is the difference between a character
+	# with a mood and a tutorial that fires once.
+	gs.crew_records[RB_CREW]["loyalty"] = 2
+	ops.reconcile()
+	_expect_int("a second slump is heard again", _rb_texts(gs).size(), 2)
+
+	# Somebody who is not on the crew has no loyalty to be low. Reading a missing
+	# record as 0 would text every player who never hired her.
+	_rb_ready(gs)
+	ops.reconcile()
+	gs.crew_records.erase(RB_CREW)
+	gs.phone_inbox = []
+	ops.reconcile()
+	_expect_int("a crew member who was never hired does not complain",
+		_rb_texts(gs).size(), 0)
+
+	# --- the assignment acknowledgement, with real counts ---
+	_rb_ready(gs)
+	gs.listing_items = [
+		_rb_item("acked_a", 40, "clean", 120, 140),
+		_rb_item("acked_b", 50, "clean", 130, 150),
+	]
+	var selection: Dictionary = _rb_assign(gs, gm, ops, {"spend_limit": 200})
+	var picked: int = int(selection.get("cycles_used", 0))
+	_expect_true("the acknowledgement had something to report", picked > 0)
+	_expect_true("the feed says she is running the board",
+		_rb_feed_has(gs, "Pherris is running your board today."))
+	_expect_true("and reports the real count",
+		_rb_feed_has(gs, "%d item%s" % [picked, "" if picked == 1 else "s"]))
+	_expect_true("and the limit the player set",
+		_rb_feed_has(gs, "up to $200."))
+
+	# With no limit, the line reports what actually left the wallet instead of
+	# an "up to" figure that does not exist.
+	_rb_ready(gs)
+	gs.listing_items = [_rb_item("open_a", 40, "clean", 120, 140)]
+	var open_selection: Dictionary = _rb_assign(gs, gm, ops)
+	_expect_true("an open-ended assignment reports what it spent",
+		_rb_feed_has(gs, "$%d out of pocket." % int(open_selection.get("total_spent", 0))))
+	_expect_true("and never claims a limit that was not set",
+		not _rb_feed_has(gs, "up to $"))
+
+	# A board with nothing on it still costs her the day, and the line says so
+	# without claiming a purchase.
+	_rb_ready(gs)
+	gs.listing_items = [_rb_item("rough_only", 20, "rough", 30, 40)]
+	_rb_assign(gs, gm, ops)
+	_expect_true("an empty board is reported honestly",
+		_rb_feed_has(gs, "Nothing worth picking up yet."))
+
+	# --- the settlement summary picks its template off the result ---
+	#
+	# Three real nights, not three constructed strings: the profitable one is
+	# driven by a clean board, the empty one by a board she refuses, and the
+	# bought-but-unsold one by holdings that have not reached their sell delay.
+	_rb_ready(gs)
+	gs.listing_items = [
+		_rb_item("night_a", 40, "clean", 200, 220),
+		_rb_item("night_b", 50, "clean", 210, 230),
+	]
+	_rb_assign(gs, gm, ops)
+	gs.phone_inbox = []
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var reports: Array = _rb_texts(gs)
+	_expect_int("one settlement text, not one per item", reports.size(), 1)
+	var result: Variant = (gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("result")
+	if reports.size() == 1 and result is Dictionary:
+		var row: Dictionary = result
+		_expect_str("a profitable night reports the real figures", str(reports[0]),
+			"Moved %d for $%d. You cleared $%d after what I paid."
+				% [int(row["settled_count"]), int(row["gross"]),
+					int(row["profit_or_loss"])])
+		_expect_true("and that night really was profitable",
+			int(row["profit_or_loss"]) > 0)
+
+	# A night that loses money. She only refuses ROUGH stock, so an overpriced
+	# clean listing is one she will take and one that cannot come back — which
+	# is what makes a losing night constructible at all.
+	#
+	# This check exists because a sabotage passed without it: flipping the
+	# template's `profit > 0` to `profit >= 0` changed nothing the suite could
+	# see, because every settlement it drove was profitable. A template chosen by
+	# a condition nothing ever falsifies is not a choice.
+	_rb_ready(gs)
+	gs.listing_items = [
+		_rb_item("loss_a", 300, "clean", 10, 20),
+		_rb_item("loss_b", 320, "clean", 10, 20),
+	]
+	_rb_assign(gs, gm, ops)
+	gs.phone_inbox = []
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var lost: Array = _rb_texts(gs)
+	var loss_result: Variant = (gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("result")
+	_expect_true("the losing night settled something", loss_result is Dictionary
+		and int((loss_result as Dictionary).get("settled_count", 0)) > 0)
+	_expect_true("and it really lost money", loss_result is Dictionary
+		and int((loss_result as Dictionary).get("profit_or_loss", 0)) <= 0)
+	_expect_int("a losing night still reports once", lost.size(), 1)
+	if lost.size() == 1 and loss_result is Dictionary:
+		var loss_row: Dictionary = loss_result
+		_expect_str("and it does not claim a profit", str(lost[0]),
+			"Moved %d for $%d. Thin margins today, but the board's turning over."
+				% [int(loss_row["settled_count"]), int(loss_row["gross"])])
+
+	# The boundary between the two "she sold something" templates: a night that
+	# breaks EXACTLY even. `realised_value` draws from the item's own band, so a
+	# band of [100, 100] against a $100 buy is a guaranteed zero.
+	#
+	# This is the case a sabotage slipped through twice. Flipping the template's
+	# `profit > 0` to `profit >= 0` is invisible on a profitable night and
+	# invisible on a losing one — zero is the only place the two differ, and
+	# "cleared $0 after what I paid" is a sentence nobody would ever write on
+	# purpose.
+	_rb_ready(gs)
+	gs.listing_items = [_rb_item("even_a", 100, "clean", 100, 100)]
+	_rb_assign(gs, gm, ops)
+	gs.phone_inbox = []
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var even: Array = _rb_texts(gs)
+	var even_result: Variant = (gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("result")
+	_expect_true("the break-even night settled something", even_result is Dictionary
+		and int((even_result as Dictionary).get("settled_count", 0)) > 0)
+	_expect_int("and it broke exactly even",
+		int((even_result as Dictionary).get("profit_or_loss", 1))
+			if even_result is Dictionary else 1, 0)
+	_expect_int("a break-even night reports once", even.size(), 1)
+	if even.size() == 1 and even_result is Dictionary:
+		var even_row: Dictionary = even_result
+		_expect_str("and zero is not a profit", str(even[0]),
+			"Moved %d for $%d. Thin margins today, but the board's turning over."
+				% [int(even_row["settled_count"]), int(even_row["gross"])])
+
+	# She bought, and nothing turned over. Reachable in play precisely because
+	# discovery is one-way: a player who reached Broker and fell back to Flipper
+	# can still assign her — the assignment requirements never mention the tier —
+	# and Flipper's `sell_delay` is 1, so her pickup sits overnight.
+	#
+	# "Nothing worth touching, kept your money where it is" would be a lie about
+	# money that has already left the wallet, which is why this branch exists.
+	_rb_ready(gs)
+	ops.reconcile()
+	gs.list_tier = 2
+	gs.listing_items = [_rb_item("carried_a", 40, "clean", 200, 220)]
+	var carried: Dictionary = _rb_assign(gs, gm, ops)
+	_expect_true("a Flipper-tier assignment still buys",
+		int(carried.get("cycles_used", 0)) > 0)
+	gs.phone_inbox = []
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var carried_texts: Array = _rb_texts(gs)
+	var carried_result: Variant = (gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("result")
+	_expect_int("nothing closed under the sell delay",
+		int((carried_result as Dictionary).get("settled_count", -1))
+			if carried_result is Dictionary else -1, 0)
+	_expect_int("a carried-over night still reports once", carried_texts.size(), 1)
+	if carried_texts.size() == 1:
+		_expect_str("and it names what she is holding rather than claiming she passed",
+			str(carried_texts[0]),
+			"Picked up %d today. Nothing's turned over yet."
+				% int(carried.get("cycles_used", 0)))
+
+	# Nothing bought, nothing sold.
+	_rb_ready(gs)
+	gs.listing_items = [_rb_item("rough_night", 20, "rough", 30, 40)]
+	_rb_assign(gs, gm, ops)
+	gs.phone_inbox = []
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var quiet: Array = _rb_texts(gs)
+	_expect_int("a day with nothing on the board still reports", quiet.size(), 1)
+	if quiet.size() == 1:
+		_expect_str("and says she kept the money", str(quiet[0]),
+			"Nothing worth touching on the board today. Kept your money where it is.")
+
+	# A night she was never assigned on: settlement has nothing to report, so
+	# she does not text. Reconciled first so the discovery offer — which fires on
+	# the first dispatch of a qualifying run — is out of the way and cannot be
+	# mistaken for a settlement report.
+	_rb_ready(gs)
+	ops.reconcile()
+	gs.phone_inbox = []
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	_expect_int("an unassigned night says nothing at all", _rb_texts(gs).size(), 0)
+
+	# --- a dead line HOLDS the settlement text rather than losing it ---
+	_rb_ready(gs)
+	gs.listing_items = [_rb_item("held_a", 40, "clean", 200, 220)]
+	_rb_assign(gs, gm, ops)
+	gs.phone_active = false
+	gs.phone_inbox = []
+	gs.phone_held_inbox = []
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	_expect_int("nothing reached the live inbox with the phone off",
+		_rb_texts(gs).size(), 0)
+	var held_from_her: int = 0
+	for entry in gs.phone_held_inbox:
+		if str((entry as Dictionary).get("from", "")) == "Pherris":
+			held_from_her += 1
+	_expect_int("and the held inbox caught her report", held_from_her, 1)
+	gs.phone_active = true
+
+	if not previous_save.is_empty():
+		_restore_save_text(saves, previous_save)
+	gs.reset_to_new_game()
+
+## FS-001.9's contextual surfaces, read the way the screens read them.
+##
+## The claim is not "Home renders a string" — it is that **the summary answers
+## the question**, because the architecture rule is that no screen works any of
+## this out for itself. So these check `operation_summary()`, and the screens are
+## checked separately for building at all.
+func _check_rb_surfaces(gs: Node, gm: Node, ops: RefCounted) -> void:
+	# Nothing to show before she is discovered.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	ops.reconcile()
+	var cold: Dictionary = ops.operation_summary(RB_OPERATION)
+	_expect_true("an undiscovered operation is not active today",
+		not bool(cold["active_today"]))
+	_expect_true("and has no last night", cold["last_night"] == null)
+
+	# Discovered but unassigned: still nothing.
+	_rb_ready(gs)
+	ops.reconcile()
+	var idle: Dictionary = ops.operation_summary(RB_OPERATION)
+	_expect_true("a discovered but idle operation is not active today",
+		not bool(idle["active_today"]))
+	_expect_true("and still has no last night", idle["last_night"] == null)
+
+	# Assigned and unsettled: active.
+	gs.listing_items = [_rb_item("surface_a", 40, "clean", 200, 220)]
+	var selection: Dictionary = _rb_assign(gs, gm, ops)
+	var out_today: Dictionary = ops.operation_summary(RB_OPERATION)
+	_expect_true("an assigned operation reads as active today",
+		bool(out_today["active_today"]))
+	_expect_true("and carries the selection the card renders",
+		out_today["selection"] is Dictionary)
+	_expect_true("and still has no last night", out_today["last_night"] == null)
+
+	# The window inside the night itself: settled, but the clock has not moved.
+	#
+	# `day_ending` is what the lifecycle emits at PRE_SETTLE, before INCREMENT —
+	# so this is the real state, reached the real way, and it is the only moment
+	# where "assigned today" and "settled" are both true. Nothing renders in that
+	# window today, which is exactly why `active_today` has to be checked here:
+	# an untested guard is a guard that quietly stops working.
+	gs.day_ending.emit(int(gs.day))
+	var mid_night: Dictionary = ops.operation_summary(RB_OPERATION)
+	_expect_true("settling does not clear today's assignment",
+		bool(mid_night["assigned_today"]))
+	_expect_true("and the assignment reads as settled",
+		bool(mid_night["assignment_settled"]))
+	_expect_true("but she is no longer out working",
+		not bool(mid_night["active_today"]))
+
+	# Settled tonight: no longer active, and last night appears tomorrow.
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var after: Dictionary = ops.operation_summary(RB_OPERATION)
+	_expect_true("a settled operation is no longer active today",
+		not bool(after["active_today"]))
+	_expect_true("and last night is now readable", after["last_night"] is Dictionary)
+	if after["last_night"] is Dictionary:
+		var last: Dictionary = after["last_night"]
+		var stored: Variant = (gs.crew_assignments.get(RB_CREW, {}) as Dictionary).get("result")
+		_expect_true("last night is the settlement's own result", stored is Dictionary)
+		if stored is Dictionary:
+			_expect_int("last night reports the settled count",
+				int(last["settled_count"]), int((stored as Dictionary)["settled_count"]))
+			_expect_int("last night reports the profit",
+				int(last["profit_or_loss"]),
+				int((stored as Dictionary)["profit_or_loss"]))
+		_expect_int("and it is yesterday's assignment", int(selection.get("cycles_used", 0)),
+			int(last["settled_count"]))
+
+	# And it goes quiet after one day rather than sitting on the card all week.
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	_expect_true("last night disappears the day after",
+		ops.operation_summary(RB_OPERATION)["last_night"] == null)
+	gs.reset_to_new_game()
 
 func _rb_pherris_holdings(gs: Node) -> int:
 	var count := 0
@@ -5330,6 +5715,29 @@ func _v7_payload(cash: int) -> Dictionary:
 		"list_holdings": [], "list_taken": {"day": 12, "ids": []},
 		"activity_log": [],
 	}
+
+## Read the save file verbatim, or "" if there is none. Paired with
+## `_restore_save_text` so a check that has to write or overwrite a save can put
+## back whatever was there — several sections read SAVE_PATH and the order they
+## run in is not something any of them should have to know.
+func _read_save_text(saves: Node) -> String:
+	if not FileAccess.file_exists(saves.SAVE_PATH):
+		return ""
+	var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+	if prior == null:
+		return ""
+	var text := prior.get_as_text()
+	prior.close()
+	return text
+
+func _restore_save_text(saves: Node, text: String) -> void:
+	if text.is_empty():
+		return
+	var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if restore == null:
+		return
+	restore.store_string(text)
+	restore.close()
 
 func _write_save(saves: Node, version: int, state: Dictionary) -> void:
 	var file := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)

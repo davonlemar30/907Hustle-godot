@@ -79,7 +79,58 @@ func _operation_override() -> Dictionary:
 		if blocker.is_empty():
 			return {"title": "SHIFT: %s" % str(job["name"]).to_upper(),
 					"body": "They're expecting you this %s. Clean money, and it keeps the room." % gs.time_slot.capitalize()}
+	# FS-001.9. Below rent and below the shift, and that ordering is the whole
+	# rule: both of those have a deadline attached and this does not. It sits
+	# above the scripted `active_operation` copy, which is UI scaffold nothing
+	# writes — so delegation only ever displaces a placeholder, never a fact.
+	var delegated: Dictionary = _delegation_override()
+	if not delegated.is_empty():
+		return delegated
 	return {}
+
+## Pherris's card, read whole from `operation_summary()`.
+##
+## Nothing is derived here. "Is she out" and "what did last night come to" are
+## fields on the summary, and the only decision this function makes is which of
+## the two to show — out today outranks last night, because one of them is still
+## happening.
+func _delegation_override() -> Dictionary:
+	var ops: Object = _gm.system("crew_operations") if _gm else null
+	if ops == null:
+		return {}
+	for operation_id in ops.operation_ids():
+		var summary: Dictionary = ops.operation_summary(str(operation_id))
+		if not bool(summary.get("discovered", false)):
+			continue
+		if bool(summary.get("active_today", false)):
+			return {"title": "PHERRIS · OUT TODAY",
+					"body": _out_today_body(summary)}
+		var last: Variant = summary.get("last_night")
+		if last is Dictionary:
+			var profit: int = int((last as Dictionary).get("profit_or_loss", 0))
+			return {"title": "PHERRIS · $%d LAST NIGHT" % profit,
+					"body": _last_night_body(last)}
+	return {}
+
+func _out_today_body(summary: Dictionary) -> String:
+	var selection: Variant = summary.get("selection")
+	var picked: int = int((selection as Dictionary).get("cycles_used", 0)) \
+		if selection is Dictionary else 0
+	var spent: int = int((selection as Dictionary).get("total_spent", 0)) \
+		if selection is Dictionary else 0
+	if picked <= 0:
+		return "She has the day and the board had nothing on it worth your money."
+	return "She has the day and $%d of yours, on %d listing%s. It settles tonight." \
+		% [spent, picked, "" if picked == 1 else "s"]
+
+func _last_night_body(last: Dictionary) -> String:
+	var sold: int = int(last.get("settled_count", 0))
+	var gross: int = int(last.get("gross", 0))
+	var profit: int = int(last.get("profit_or_loss", 0))
+	if sold <= 0:
+		return "She worked the board and nothing closed. Your money is where you left it."
+	return "She moved %d for $%d gross. %s $%d on the day." \
+		% [sold, gross, "Cleared" if profit >= 0 else "Down", absi(profit)]
 
 func _bind_operation() -> void:
 	var op: Dictionary = gs.active_operation

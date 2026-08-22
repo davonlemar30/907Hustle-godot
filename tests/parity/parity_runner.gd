@@ -13418,7 +13418,25 @@ func _fail(label: String, detail: String) -> void:
 ## layers it exists in, and PX-003 §8's ambient signal — including its
 ## hidden-information audit, which is the only thing standing between "a warning"
 ## and "a countdown with adjectives".
-const MIN_CHECKS := 10600
+##
+## FS-001.9 and .10 (PR #51) merged minutes after FS-003.13 (PR #50) and raise it
+## to 10770. Each of those two builds set the floor from ITS OWN branch — .13
+## measured 10611 and .9/.10 measured 10609, and both wrote 10600 — so when they
+## landed back to back the floor was left 181 short of the suite that actually
+## runs. A floor with that much slack is the specific failure it exists to catch:
+## roughly a hundred and eighty checks could have vanished and the run would
+## still have printed PASS.
+##
+## The number is set from the MERGED run, which is the only one that matters
+## now: 10439 (base) + 172 (FS-003.13) + 170 (FS-001.9/.10) = 10781, and the
+## merged suite measures exactly that. The arithmetic is worth writing down —
+## it is what says the two merges cost nothing, rather than that they happened
+## to end up looking fine.
+##
+## Ten of margin, the same margin FS-003.13 left, because several sections sweep
+## until they find the outcome they need: their contribution is deterministic but
+## shifts by one or two when an unrelated seeded key moves.
+const MIN_CHECKS := 10770
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

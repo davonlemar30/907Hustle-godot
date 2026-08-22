@@ -44,6 +44,103 @@ driven through the **Godot AI MCP** (dlight plugin; server at
   active `GameManager.dispatch()` context. The wider `seeded_int_range` sweep
   found no other small-range loop-index call sites requiring this fix: boost,
   stickup, jobs, and 907List value rolls use event-specific keys.
+
+## Codex Hardening + Fixes Batch 01 (added 2026-08-21)
+
+### Standing Policy — Build 5e divergences
+
+These are permanent rulings, not historical notes. Future implementations must
+preserve them unless a newer approved ClickUp specification explicitly replaces
+one.
+
+1. **`job_interview` has a household-tier clean observation and no catastrophic
+   tier.** The clean row is the only action-shaped household observation
+   (`growth / hired_on`), and the action intentionally cannot catastrophically
+   fail: the worst result is not being hired. This is the Build 5e oracle
+   ruling; future tables must not add a catastrophic row or remove that clean
+   household row.
+2. **`escape` catastrophic rides `neighborhood`, not `network`.** A botched
+   escape is a local spectacle — the block sees you run — rather than a
+   systemic signal. The network channel is reserved for organized criminal
+   activity. This is the Build 5e oracle ruling.
+3. **The tier-3 organized-hit counter increments on success.** An attempt is
+   not organized work until it succeeds; a blown job must not advance the
+   counter. This is the Build 5e oracle ruling and remains the success-side
+   contract.
+
+### Build Process — Divergence Protocol
+
+When the build brief conflicts with the oracle (web behavior) or an approved
+specification:
+
+1. STOP implementation of the conflicting item.
+2. Document what the brief says, what the oracle says, and which wins and why.
+3. Treat the oracle as behavioral authority unless a newer approved ClickUp
+   specification explicitly overrides it.
+4. Record the resolution in the Design Decisions Log as standing policy.
+5. Continue implementation only after the resolution is recorded.
+
+Build 5e precedent: `job_interview` keeps the clean household observation and
+has no catastrophic tier; `escape` catastrophic uses `neighborhood`; and the
+tier-3 organized-hit counter increments on success. In each case the oracle
+wins.
+
+### Day-cross settlement ordering contract
+
+The approved gameplay ordering is:
+
+```text
+Jobs → Obligations → Stickup reset → Shark → Crew wages/departures →
+Territory income/heat → Exposure queue/heat propagation → Curtis decay →
+Market evolve → Phone restoration → Autosave/UI notification
+```
+
+This order is load-bearing. Crew settles before Territory, so a departing crew
+member does not reduce that night's territory heat. Exposure settles after
+Jobs/Obligations/Shark, so observations created during the same cross can be
+delivered that night. Any future listener sees pre-evolution markets and the
+pre-restoration phone state. FS-002.2 may replace this list with named phases;
+until then, the ordering is the gameplay contract.
+
+The post-PR #45 base already contains a Claude-owned `systems/day_lifecycle.gd`
+ordering seam, but its current declared phases do not yet spell out the
+sequence above. This batch does not edit that Claude-owned file (nor
+`systems/time_system.gd`); the owner must reconcile the in-code header and
+phase trace in the follow-up branch. This handoff entry is the design-level
+record of the required change.
+
+### Runtime and ownership notes
+
+- The requested post-PR #45 base is `5efcb1599b4ec0891b6f95cc76805c5379bc6286`.
+- GitHub had no pushed `codex/fs003-arrest-pressure-retaliation` branch when
+  this batch began.
+- Godot 4.7.2 is not installed in this environment, so the parity baseline and
+  all new runtime checks are pending headless verification before merge.
+
+### 907List keyed-shuffle update
+
+The existing 907List shuffle was tightened to the requested keyed Fisher–Yates
+shape: each swap uses `seeded_int_range(seed, "%d:%s" % [index, key], 0,
+index)`, with the varying index at the FRONT of the FNV-1a key. This changes
+future board composition for existing saves, but not save schema or persisted
+state; boards are regenerated from seed + day. Golden boards and the
+post-`used_tv` board were regenerated accordingly.
+
+The wider sweep found no other `seeded_int_range` call that appends a loop index
+while sampling a small range. The remaining calls are event-specific value
+rolls (`boost`, `stickup`, `jobs`, and 907List realised values), not sequential
+small-range sampling loops.
+
+### Nested save-shape findings
+
+The new diagnostic fixtures confirm the current v8 loader accepts correctly
+typed outer arrays/dictionaries while exposing malformed inner records to
+`GameState`: crew records, market district entries, shark loans, observation
+queue rows, phone messages, 907List holdings, and consequence chain/history/
+queue data. These are silent-corruption findings, not fixes; `autoload/save_system.gd`
+is Claude-owned for this build. A later save-hardening PR should reject each
+inner shape or replace it with the safe default and update
+`tests/parity/fixtures/save_nested_shapes.json`.
 **DONE — Home screen** (`ui/screens/home.tscn`), verified via run + screenshot:
 TopBar (DAY/EVENING, two-tone 907HUSTLE brand, SPENARD/AK, CASH), 6-stat HUD
 with icons, real Spenard street photo (`assets/img/assest1home.png`), red

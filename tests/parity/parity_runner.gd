@@ -142,6 +142,7 @@ func _ready() -> void:
 		_check_operation_substrate(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch6b(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch7(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch8(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -1755,8 +1756,8 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# Pinned deliberately, and bumped deliberately: this assertion exists so a
 	# schema change cannot land by accident, which means every real bump edits
 	# it on purpose. 6 → 7 in FS-001.6, 7 → 8 in FS-003.4, 8 → 9 in FS-003.13,
-	# 9 → 10 in v0.1.0, 10 → 11 in batch 7 (the venue interiors).
-	_expect_int("save version is 11", saves.SAVE_VERSION, 11)
+	# 9 → 10 in v0.1.0, 10 → 11 in batch 7, 11 → 12 in batch 8 (Heat's teeth).
+	_expect_int("save version is 12", saves.SAVE_VERSION, 12)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
 
 	# A v5 save mid-day 4: one listing bought today and still held (recoverable),
@@ -5062,6 +5063,14 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# exactly why the order is asserted as a literal.
 	"ROLLOVER:pressure_bleed", "ROLLOVER:pressure_recovery",
 	"ROLLOVER:financial_decay", "ROLLOVER:financial_fold",
+	# Batch 8's two Heat steps, and both positions are the point of asserting
+	# this literal. `heat_stop` after the fold, so the night is rolled against
+	# the Heat the player actually ends the day carrying — the +1.0 the fold
+	# just applied included. `heat_decay` after the stop, because a quiet day is
+	# still quiet when somebody else searches you, and before `exposure`,
+	# because #26 has the broadcast measured against the settled morning figure
+	# and the decay is part of settling it.
+	"ROLLOVER:heat_stop", "ROLLOVER:heat_decay",
 	"ROLLOVER:exposure", "ROLLOVER:curtis",
 	"MARKET:evolve", "MARKET:day_crossed",
 	# FS-003.10's day-start lifecycle, TI-003 §9 step 6. Expiry before
@@ -5071,7 +5080,11 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# FS-003.13 appends `retaliation_ambient` and reorders nothing above it: a
 	# threat that expired overnight must not whisper, and one that just surfaced
 	# in person is not something the feed then hints at.
-	"DAY_START", "DAY_START:expire_retaliation", "DAY_START:surface_delayed",
+	# `heat_day_reset` leads DAY_START: it clears the quiet-day flag, and every
+	# step below it can generate Heat. Clearing after them would hand the new
+	# day a decay it had already spent.
+	"DAY_START", "DAY_START:heat_day_reset",
+	"DAY_START:expire_retaliation", "DAY_START:surface_delayed",
 	"DAY_START:retaliation_ambient",
 ]
 
@@ -12682,7 +12695,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is at batch 7's version", saves.SAVE_VERSION, 11)
+	_expect_int("the schema is at batch 8's version", saves.SAVE_VERSION, 12)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -14843,8 +14856,15 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		"heat_from_trading": 0.0, "market_pressure_peak": 0.0,
 		"relief_slots": 0, "rent_missed": 0, "evicted": false, "rent_paid": 0,
 		"phone_paid": 0, "stops": 0, "seizures": 0, "seized_value": 0,
+		"heat_stops": 0, "heat_seized": 0,
 		"applications": 0, "jobs": 0, "take": 0,
 	}
+	# The street stop counts on the SYSTEM HANDLE, which is boot-scoped rather
+	# than run-scoped, so this profile's share of it is a delta. See
+	# `HeatSystem.stops_settled` for why it lives there and not on GameState.
+	var heat_system: Object = gm.system("heat")
+	var stops_at_start: int = int(heat_system.stops_settled) if heat_system != null else 0
+	var seized_at_start: int = int(heat_system.stops_seized) if heat_system != null else 0
 	var guard: int = 0
 	while int(gs.day) <= ECON_DAYS and guard < ECON_DAYS * 40 and not bool(gs.game_over):
 		guard += 1
@@ -14975,6 +14995,9 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	metrics["net_worth"] = int(gs.cash) + int(metrics["inventory_value"])
 	metrics["net_trade"] = int(metrics["earned_from_product"]) \
 		- int(metrics["spent_on_product"]) - int(metrics["fares"])
+	if heat_system != null:
+		metrics["heat_stops"] = int(heat_system.stops_settled) - stops_at_start
+		metrics["heat_seized"] = int(heat_system.stops_seized) - seized_at_start
 	var spent: int = int(metrics["spent_on_product"])
 	metrics["trade_margin"] = (float(metrics["net_trade"]) / float(spent)) if spent > 0 else 0.0
 	return metrics
@@ -14996,7 +15019,7 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 		"buys", "sells", "shifts", "wages", "flips", "travels", "fares",
 		"days_played", "rent_paid", "rent_missed", "phone_paid", "seized_value",
 		"applications", "jobs", "take", "final_stick_tier", "final_boost_tier",
-		"stops", "seizures"]
+		"stops", "seizures", "heat_stops", "heat_seized"]
 	for key in averaged:
 		var total: float = 0.0
 		for run in runs:
@@ -15221,10 +15244,11 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			print("               jobs %.1f ($%d take) · stick tier %.1f · boost tier %.1f"
 				% [float(row["jobs"]), int(row["take"]),
 					float(row["final_stick_tier"]), float(row["final_boost_tier"])])
-		print(("               rent paid %.1f / missed %.1f · stops %.1f · seizures %.1f"
-			+ " ($%d) · game over %d%% of %d seeds")
+		print(("               rent paid %.1f / missed %.1f · carry stops %.1f · seizures %.1f"
+			+ " ($%d) · street stops %.1f ($%d) · game over %d%% of %d seeds")
 			% [float(row["rent_paid"]), float(row["rent_missed"]), float(row["stops"]),
 				float(row["seizures"]), int(row["seized_value"]),
+				float(row["heat_stops"]), int(row["heat_seized"]),
 				int(round(100.0 * float(row["game_over_rate"]))), int(row["runs"])])
 		print("economy-metrics: %s" % JSON.stringify({
 			"profile": str(row["profile"]),
@@ -15243,6 +15267,8 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			"days": int(row["days_played"]),
 			"game_over_rate": snappedf(float(row["game_over_rate"]), 0.01),
 			"rent_missed": snappedf(float(row["rent_missed"]), 0.1),
+			"heat_stops": snappedf(float(row["heat_stops"]), 0.1),
+			"heat_seized": int(row["heat_seized"]),
 			"stops": snappedf(float(row["stops"]), 0.1),
 			"seizures": snappedf(float(row["seizures"]), 0.1),
 			"seized_value": int(row["seized_value"]),
@@ -16096,7 +16122,7 @@ func _fail(label: String, detail: String) -> void:
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11480
+const MIN_CHECKS := 11560
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -16884,7 +16910,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v11", int(saves.SAVE_VERSION), 11)
+	_expect_int("the schema is v12", int(saves.SAVE_VERSION), 12)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -16932,3 +16958,451 @@ func _check_venue_persistence(gs: Node, gm: Node) -> void:
 		int((good["state"] as Dictionary)["gym_streak"]), 3)
 	_expect_int("with no repairs", (good["repairs"] as Array).size(), 0)
 	gs.reset_to_new_game()
+
+# === batch 8 — Heat gets teeth ==============================================
+#
+# Heat was a one-way ratchet with nothing on either end. Six rollover steps and
+# not one touched it; one ADDED to it. Nothing happened at 15 — the clamp
+# saturated silently — and the cheapest Heat sink in the game was getting
+# arrested (2.0-5.0 of booking relief against 2.0 for a slot of Lay Low, which
+# itself had no cost, no cap and no blocker of any kind).
+#
+# So a long run ended pinned at the ceiling, and a player at 15 on day 12 and a
+# player at 15 on day 60 were in identical positions. The number carried no
+# information because it had nowhere to go and nothing to do when it got there.
+#
+# Both ends are fixed here, and they need each other: decay without a top end is
+# a number that drifts, and a top end without decay is a run that ends.
+#
+# SABOTAGE: drop the `landed > 0.0` flag write in _commit
+#           ==> "a day that robbed somebody is not a quiet day" fails.
+# SABOTAGE: decay on a loud day too (drop the loud_today guard)
+#           ==> "a loud day sheds nothing" fails.
+# SABOTAGE: return a flat chance from heat_stop_chance instead of 0 below floor
+#           ==> "a run that stays under the floor is never stopped" fails.
+# SABOTAGE: seize from cash rather than dirty_cash
+#           ==> "a street stop cannot reach clean money" fails.
+# SABOTAGE: restore the `return` in Exposure.propagate_heat
+#           ==> "crossing a threshold adds an audience" fails.
+# SABOTAGE: drop the lay_low_blocker call from _lay_low
+#           ==> "a second attempt is refused" fails.
+# SABOTAGE: make heat_day_reset a no-op
+#           ==> "the new day starts quiet" fails. The declared trace does NOT —
+#           the step still runs and still traces, which is the division of
+#           labour: the literal pins the ORDER, the behaviour check pins that
+#           the step does something.
+# SABOTAGE: seize the fraction off `cash` rather than `dirty_cash`
+#           ==> "they take the fraction of what is DIRTY" fails. The first pass
+#           at this one came back green on a pocket where dirty covered the
+#           seizure — ROUTINE_DIRTY_FIRST protected the clean pool on its own,
+#           so the check was measuring the wallet policy rather than the rule.
+#           The case that separates them is $100 dirty against $5,000 clean.
+
+const B8_RULES := preload("res://data/consequence_rules.gd")
+
+func _check_batch8(gs: Node, gm: Node) -> void:
+	_check_heat_bands(gs, gm)
+	_check_quiet_day_decay(gs, gm)
+	_check_street_stop(gs, gm)
+	_check_lay_low_cap(gs, gm)
+	_check_heat_propagation_adds(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- the bands ---------------------------------------------------------------
+
+func _check_heat_bands(gs: Node, gm: Node) -> void:
+	var heat: Object = gm.system("heat")
+	if heat == null:
+		_fail("batch8 bands", "no heat system")
+		return
+	for probe in [[0.0, heat.BAND_COOL], [3.99, heat.BAND_COOL],
+			[4.0, heat.BAND_NOTICED], [7.99, heat.BAND_NOTICED],
+			[8.0, heat.BAND_WATCHED], [11.99, heat.BAND_WATCHED],
+			[12.0, heat.BAND_BURNING], [15.0, heat.BAND_BURNING]]:
+		_expect_str("heat %.2f reads %s" % [float(probe[0]), str(probe[1])],
+			str(heat.band_for(float(probe[0]))), str(probe[1]))
+
+	# The bands are not new numbers. Each boundary is a threshold the build
+	# already acted on and had never named, and this is the check that keeps
+	# them the same threshold rather than two that happen to match today.
+	var exposure := get_node("/root/Exposure")
+	var household := -1.0
+	var network := -1.0
+	for t in exposure.HEAT_CHANNEL_THRESHOLDS:
+		if str(t["channel"]) == "household":
+			household = float(t["above"])
+		if str(t["channel"]) == "network":
+			network = float(t["above"])
+	_expect_float("WATCHED begins where the household starts hearing",
+		float(_band_floor(heat, heat.BAND_WATCHED)), household)
+	_expect_float("BURNING begins where the network starts hearing",
+		float(_band_floor(heat, heat.BAND_BURNING)), network)
+	# And the stop floor is the WATCHED floor, so the band the player can feel
+	# is the band that costs them.
+	_expect_float("the street stop begins at WATCHED",
+		float(B8_RULES.HEAT_STOP_FLOOR), float(_band_floor(heat, heat.BAND_WATCHED)))
+	gs.reset_to_new_game()
+
+func _band_floor(heat: Object, band_name: String) -> float:
+	for row in heat.BANDS:
+		if str(row["band"]) == band_name:
+			return float(row["floor"])
+	return -1.0
+
+# --- the quiet day -----------------------------------------------------------
+
+func _check_quiet_day_decay(gs: Node, gm: Node) -> void:
+	var heat: Object = gm.system("heat")
+	if heat == null:
+		_fail("batch8 decay", "no heat system")
+		return
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.heat = 6.0
+	gs.heat_gain_today = 0.0
+
+	_expect_true("a run that has done nothing is quiet", not heat.loud_today())
+	heat.apply_relief(1.0)
+	_expect_true("shedding heat does not make a day loud", not heat.loud_today())
+	heat.apply_gain(1.0, heat.FAMILY_STICK, "north_star_lot")
+	_expect_true("a day that robbed somebody is not a quiet day", heat.loud_today())
+
+	# A gain the clamp refuses never happened. The flag counts what LANDED.
+	gs.heat = float(gs.heat_max)
+	gs.heat_gain_today = 0.0
+	heat.apply_gain(5.0, heat.FAMILY_STICK, "north_star_lot")
+	_expect_true("a gain the ceiling refused does not make the day loud",
+		not heat.loud_today())
+
+	# The decay itself.
+	gs.heat = 6.0
+	gs.heat_gain_today = 0.0
+	var shed: float = float(heat.settle_quiet_day())
+	_expect_float("a quiet day sheds the authored amount",
+		shed, float(B8_RULES.HEAT_QUIET_DECAY))
+	_expect_float("and the heat comes down by exactly that",
+		float(gs.heat), 6.0 - float(B8_RULES.HEAT_QUIET_DECAY))
+
+	gs.heat = 6.0
+	gs.heat_gain_today = 2.0
+	_expect_float("a loud day sheds nothing", float(heat.settle_quiet_day()), 0.0)
+	_expect_float("and the heat is where it was", float(gs.heat), 6.0)
+
+	# The floor. A run at zero has nothing to shed and cannot go negative.
+	gs.heat = 0.0
+	gs.heat_gain_today = 0.0
+	_expect_float("a cool run sheds nothing", float(heat.settle_quiet_day()), 0.0)
+	_expect_float("and stays at zero", float(gs.heat), 0.0)
+	gs.heat = float(B8_RULES.HEAT_QUIET_DECAY) / 2.0
+	gs.heat_gain_today = 0.0
+	heat.settle_quiet_day()
+	_expect_float("less heat than the decay lands on zero, not below it",
+		float(gs.heat), 0.0)
+
+	# The flag is cleared at DAY_START, which the declared lifecycle trace pins.
+	# This is the behavioural half of that: a real night, then a real morning.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 4
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.heat = 5.0
+	gs.heat_gain_today = 3.0
+	_expect_true("the night dispatches", gm.dispatch("advance_time", {}))
+	_expect_float("the new day starts quiet", float(gs.heat_gain_today), 0.0)
+	gs.reset_to_new_game()
+
+# --- the street stop ---------------------------------------------------------
+
+func _check_street_stop(gs: Node, gm: Node) -> void:
+	var heat: Object = gm.system("heat")
+	var rng := get_node("/root/RngManager")
+	if heat == null:
+		_fail("batch8 stop", "no heat system")
+		return
+
+	# The curve.
+	_expect_float("no stop below the floor",
+		float(B8_RULES.heat_stop_chance(float(B8_RULES.HEAT_STOP_FLOOR) - 0.01)), 0.0)
+	_expect_float("and none at zero", float(B8_RULES.heat_stop_chance(0.0)), 0.0)
+	_expect_float("at the floor itself the chance is still zero",
+		float(B8_RULES.heat_stop_chance(float(B8_RULES.HEAT_STOP_FLOOR))), 0.0)
+	_expect_float("one point over is one step of the curve",
+		float(B8_RULES.heat_stop_chance(float(B8_RULES.HEAT_STOP_FLOOR) + 1.0)),
+		float(B8_RULES.HEAT_STOP_PER_POINT))
+	_expect_float("at the ceiling it is seven steps",
+		float(B8_RULES.heat_stop_chance(15.0)),
+		7.0 * float(B8_RULES.HEAT_STOP_PER_POINT))
+	_expect_true("and it never exceeds its cap",
+		float(B8_RULES.heat_stop_chance(999.0)) <= float(B8_RULES.HEAT_STOP_MAX))
+
+	# The seizure.
+	_expect_int("they take nothing off an empty pocket",
+		int(B8_RULES.heat_stop_seizure(0)), 0)
+	_expect_int("and nothing off a negative one",
+		int(B8_RULES.heat_stop_seizure(-50)), 0)
+	_expect_int("they take the authored fraction",
+		int(B8_RULES.heat_stop_seizure(1000)),
+		int(floor(1000.0 * float(B8_RULES.HEAT_STOP_SEIZE_FRACTION))))
+	_expect_int("and never more than the cap",
+		int(B8_RULES.heat_stop_seizure(1000000)), int(B8_RULES.HEAT_STOP_SEIZE_MAX))
+
+	# A run under the floor is never rolled at all, on any day.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.heat = float(B8_RULES.HEAT_STOP_FLOOR) - 1.0
+	gs.dirty_cash = 2000
+	gs.clean_cash = 0
+	gs.cash = 2000
+	var stopped_under := false
+	for day in range(1, 60):
+		gs.day = day
+		if not (heat.settle_street_stop(day) as Dictionary).is_empty():
+			stopped_under = true
+	_expect_true("a run that stays under the floor is never stopped", not stopped_under)
+	_expect_int("and keeps every dollar", int(gs.dirty_cash), 2000)
+
+	# Build the case rather than sweeping for it: find the day whose keyed roll
+	# lands under the chance at the ceiling, then run exactly that day.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	var chance: float = float(B8_RULES.heat_stop_chance(15.0))
+	var hit := -1
+	for day in range(1, 400):
+		var key := "%d:heat_stop:%s" % [day, str(gs.current_district_id)]
+		if rng.seeded_random(gs.run_seed, key) < chance:
+			hit = day
+			break
+	if hit < 0:
+		_fail("batch8 stop", "no day in the scan window rolls a stop at the ceiling")
+		return
+
+	gs.day = hit
+	gs.heat = 15.0
+	gs.cash = 1200
+	gs.dirty_cash = 1000
+	gs.clean_cash = 200
+	var report: Dictionary = heat.settle_street_stop(hit)
+	_expect_true("the built day is stopped", bool(report.get("stopped", false)))
+	_expect_int("they take the authored fraction of the dirty money",
+		int(report["seized"]), int(B8_RULES.heat_stop_seizure(1000)))
+	_expect_int("a street stop cannot reach clean money", int(gs.clean_cash), 200)
+	_expect_int("and the dirty pool is what came down",
+		int(gs.dirty_cash), 1000 - int(report["seized"]))
+	_expect_float("being searched sheds what the rules say",
+		float(report["relief"]), float(B8_RULES.HEAT_STOP_RELIEF))
+	_expect_float("and the heat is down by it",
+		float(gs.heat), 15.0 - float(B8_RULES.HEAT_STOP_RELIEF))
+
+	# Deterministic: the same day, the same seed and the same corner resolve the
+	# same way. Asserted against the expected value, not against a replay.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = hit
+	gs.heat = 15.0
+	gs.cash = 1200
+	gs.dirty_cash = 1000
+	gs.clean_cash = 200
+	var again: Dictionary = heat.settle_street_stop(hit)
+	_expect_true("the same night resolves the same way", bool(again.get("stopped", false)))
+	_expect_int("with the same seizure", int(again["seized"]),
+		int(B8_RULES.heat_stop_seizure(1000)))
+
+	# Curtis, through the real path. `Exposure.record_observation` refuses
+	# outside `GameManager.dispatch` by design, and every call above is direct —
+	# which is correct for arithmetic and useless for the observation. In play
+	# the stop settles inside ROLLOVER, inside `advance_time`, so that is how
+	# this one is driven.
+	#
+	# ROLLOVER runs after INCREMENT, so the night that rolls day N+1's key is the
+	# night the player ends day N on. The scan below looks for that.
+	var night := -1
+	for day in range(1, 400):
+		var night_key := "%d:heat_stop:%s" % [day + 1, str(gs.current_district_id)]
+		if rng.seeded_random(gs.run_seed, night_key) < chance:
+			night = day
+			break
+	if night > 0:
+		gs.street_name = "Parity"
+		gs.reset_to_new_game()
+		gs.day = night
+		gs.time_slots_today = 3
+		gs.time_slot = "NIGHT"
+		gs.heat = 15.0
+		gs.cash = 1200
+		gs.dirty_cash = 1000
+		gs.clean_cash = 200
+		# The fold adds Heat and would move the level the stop reads. Zeroed so
+		# this measures the stop and nothing else.
+		gs.financial_pressure = 0
+		gs.npc_ledgers = {}
+		gs.observation_queue = []
+		var exposure := get_node("/root/Exposure")
+		_expect_true("the night dispatches", gm.dispatch("advance_time", {}))
+		_expect_true("the stop landed inside the night",
+			int(gs.dirty_cash) < 1000)
+		var searched := false
+		for row in (exposure.ledger_of("curtis") as Array):
+			if str((row as Dictionary).get("event", "")) == "stopped_and_searched":
+				searched = true
+		for entry in gs.observation_queue:
+			var spec: Dictionary = (entry as Dictionary).get("spec", {})
+			if str(spec.get("event", "")) == "stopped_and_searched":
+				searched = true
+		_expect_true("Curtis reads a search", searched)
+	else:
+		_fail("batch8 stop", "no night in the scan window rolls a stop")
+
+	# A pocket that is mostly clean. THIS is the case that proves the seizure is
+	# computed off the dirty pool rather than merely drained from it: with $100
+	# dirty and $5,000 clean, reading the fraction off `cash` would ask for the
+	# $400 cap and take $300 of documented money. Reading it off dirty asks for
+	# $15. The first sabotage pass proved the earlier case could not tell those
+	# apart — dirty covered the seizure either way, so ROUTINE protected the
+	# clean pool on its own and the assertion was measuring the wallet policy
+	# rather than the rule.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = hit
+	gs.heat = 15.0
+	gs.cash = 5100
+	gs.dirty_cash = 100
+	gs.clean_cash = 5000
+	var mostly_clean: Dictionary = heat.settle_street_stop(hit)
+	_expect_true("a mostly-clean pocket is still stopped",
+		bool(mostly_clean.get("stopped", false)))
+	_expect_int("they take the fraction of what is DIRTY, not of what is there",
+		int(mostly_clean["seized"]), int(B8_RULES.heat_stop_seizure(100)))
+	_expect_int("a street stop cannot reach clean money", int(gs.clean_cash), 5000)
+	_expect_int("and the dirty pool is all that moves",
+		int(gs.dirty_cash), 100 - int(B8_RULES.heat_stop_seizure(100)))
+
+	# Nothing on you is still a stop, and it still costs Heat.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = hit
+	gs.heat = 15.0
+	gs.cash = 0
+	gs.dirty_cash = 0
+	gs.clean_cash = 0
+	var empty: Dictionary = heat.settle_street_stop(hit)
+	_expect_true("an empty pocket is still a stop", bool(empty.get("stopped", false)))
+	_expect_int("they take nothing", int(empty["seized"]), 0)
+	_expect_float("and still have their look",
+		float(gs.heat), 15.0 - float(B8_RULES.HEAT_STOP_RELIEF))
+	gs.reset_to_new_game()
+
+# --- Lay Low --------------------------------------------------------------
+
+func _check_lay_low_cap(gs: Node, gm: Node) -> void:
+	var recovery: Object = gm.system("recovery")
+	if recovery == null:
+		_fail("batch8 lay low", "no recovery system")
+		return
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 3
+	gs.time_slots_today = 0
+	gs.heat = 9.0
+
+	_expect_str("a run that has not gone quiet today can",
+		str(recovery.lay_low_blocker()), "")
+	_expect_true("going quiet dispatches", gm.dispatch("lay_low", {}))
+	_expect_int("and the day is stamped", int(gs.lay_low_day), 3)
+	_expect_str("going quiet is once a day",
+		str(recovery.lay_low_blocker()), "You already went quiet today")
+	var heat_after: float = float(gs.heat)
+	_expect_true("a second attempt is refused", not gm.dispatch("lay_low", {}))
+	_expect_float("and sheds nothing", float(gs.heat), heat_after)
+
+	gs.day = 4
+	gs.time_slots_today = 0
+	_expect_str("tomorrow it is available again", str(recovery.lay_low_blocker()), "")
+	_expect_true("and it works", gm.dispatch("lay_low", {}))
+
+	# The save. Both v12 fields fail in the player's favour if left alone, and
+	# they fail in OPPOSITE directions — one grants a decay every day, the other
+	# takes Lay Low away until the run catches up to a day it never reached.
+	var saves := get_node("/root/SaveSystem")
+	_expect_int("the schema is v12 for Heat's teeth", int(saves.SAVE_VERSION), 12)
+	for field in ["heat_gain_today", "lay_low_day"]:
+		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
+	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
+	var migrated: Dictionary = saves._migrate(v11)
+	_expect_true("a v11 save migrates", not migrated.is_empty())
+
+	var validator: RefCounted = preload("res://autoload/save_validator.gd").new()
+	var bad: Dictionary = validator.validate_state({
+		"day": 10, "heat_gain_today": -8.0, "lay_low_day": 40,
+	})
+	var fixed: Dictionary = bad["state"]
+	_expect_float("a negative day's noise cannot buy a decay",
+		float(fixed["heat_gain_today"]), 0.0)
+	_expect_int("and a quiet day in the future is not one you have spent",
+		int(fixed["lay_low_day"]), -1)
+	_expect_int("both repairs are reported", (bad["repairs"] as Array).size(), 2)
+	var good: Dictionary = validator.validate_state({
+		"day": 10, "heat_gain_today": 3.5, "lay_low_day": 10,
+	})
+	_expect_float("an honest day's noise survives",
+		float((good["state"] as Dictionary)["heat_gain_today"]), 3.5)
+	_expect_int("with no repairs", (good["repairs"] as Array).size(), 0)
+	gs.reset_to_new_game()
+
+# --- the propagation inversion -----------------------------------------------
+
+## The bug: `propagate_heat` returned after the FIRST matching threshold, and the
+## highest one broadcasts on `network` — which Yalonda and Juan do not listen on.
+## So crossing 12 stopped the household hearing about you at all. Heat 11 reached
+## the person you live with; Heat 13 did not.
+func _check_heat_propagation_adds(gs: Node, gm: Node) -> void:
+	var exposure := get_node("/root/Exposure")
+
+	# Yalonda listens on household and neighborhood and NOT on network. That is
+	# the fact the whole bug rests on, so it is asserted rather than assumed.
+	var yalonda_channels: Array = exposure.NPC_CHANNELS.get("yalonda", [])
+	_expect_true("Yalonda hears the household", "household" in yalonda_channels)
+	_expect_true("and the neighborhood", "neighborhood" in yalonda_channels)
+	_expect_true("but not the network", not ("network" in yalonda_channels))
+
+	# Three levels, each crossing one more threshold.
+	var reached_at: Dictionary = {}
+	for level_value in [9.0, 11.0, 13.0]:
+		gs.street_name = "Parity"
+		gs.reset_to_new_game()
+		gs.day = 4
+		gs.time_slots_today = 3
+		gs.time_slot = "NIGHT"
+		gs.heat = float(level_value)
+		gs.npc_ledgers = {}
+		gs.observation_queue = []
+		gm.dispatch("advance_time", {})
+		reached_at[level_value] = _b8_heat_rows(gs)
+
+	_expect_true("at WATCHED the household hears",
+		int((reached_at[9.0] as Dictionary).get("yalonda", 0)) > 0)
+	_expect_true("at 11 it still does",
+		int((reached_at[11.0] as Dictionary).get("yalonda", 0)) > 0)
+	_expect_true("crossing a threshold adds an audience",
+		int((reached_at[13.0] as Dictionary).get("yalonda", 0)) > 0)
+	# And the top of the scale reaches strictly more people than the bottom of
+	# it — which is the property the `return` inverted.
+	_expect_true("and the top of the scale reaches more people than the middle",
+		(reached_at[13.0] as Dictionary).size() >= (reached_at[9.0] as Dictionary).size())
+	gs.reset_to_new_game()
+
+## Who carries a `carrying_heat` row right now, counting the delayed queue as
+## reached — a channel that takes two days to arrive still arrived.
+func _b8_heat_rows(gs: Node) -> Dictionary:
+	var out: Dictionary = {}
+	for npc_id in gs.npc_ledgers.keys():
+		for row in (gs.npc_ledgers[npc_id] as Array):
+			if str((row as Dictionary).get("event", "")) == "carrying_heat":
+				out[str(npc_id)] = int(out.get(str(npc_id), 0)) + 1
+	for entry in gs.observation_queue:
+		var spec: Dictionary = (entry as Dictionary).get("spec", {})
+		if str(spec.get("event", "")) == "carrying_heat":
+			var who := str((entry as Dictionary).get("npc_id", ""))
+			out[who] = int(out.get(who, 0)) + 1
+	return out

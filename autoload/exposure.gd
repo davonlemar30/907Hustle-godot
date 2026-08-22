@@ -387,6 +387,20 @@ func propagate_heat() -> void:
 	# would otherwise slip past a guard that only ever covered the old shape.
 	if not _require_dispatch("propagate_heat"):
 		return
+	# EVERY channel the level has crossed, not just the highest (batch 8).
+	#
+	# The `return` this replaces inverted the whole propagation at the top of the
+	# scale, and it is worth being precise about how. The three thresholds name
+	# three DIFFERENT audiences: 8 is the household, 10 the neighborhood, 12 the
+	# network. They are not tiers of one signal — each is a separate set of
+	# listeners, and Yalonda and Juan listen on `direct`, `household` and
+	# `neighborhood` and NOT on `network`.
+	#
+	# So firing only the highest match meant that crossing 12 stopped the
+	# household hearing about you at all. Heat 11 reached Yalonda; Heat 13 did
+	# not. The person you live with noticed less the worse it got.
+	#
+	# Crossing a threshold adds an audience. It cannot subtract one.
 	for t in HEAT_CHANNEL_THRESHOLDS:
 		if gs.heat > float(t["above"]):
 			broadcast_observation({
@@ -394,7 +408,6 @@ func propagate_heat() -> void:
 				"event": "carrying_heat",
 				"channel": str(t["channel"]),
 			})
-			return
 
 ## The day tick, called by name from `DayLifecycle.ROLLOVER_ORDER`.
 ##

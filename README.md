@@ -96,6 +96,8 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Get caught mid-lift and choose how to play it | automatic, on a blown Boost |
 | Get booked, and trade cash against calendar time | automatic, when an answer goes badly enough |
 | Watch a district start recognising your routine, and cool off when you stop | Boost · Stickup · Market — LOCAL ATTENTION |
+| Carry Heat and have it cost you: a night with lights behind you, and money gone | automatic, above WATCHED |
+| Cool off by having a day nobody has to hear about | automatic, on any day that generates no Heat |
 | Have the people you robbed find you days later | automatic, in the district you did it in |
 | Hear the block warn you they are coming, and hear it stop when you leave | Activity feed · Phone |
 | Pay a formal bill in street money and draw attention for it | automatic, on rent · phone · bail |

@@ -329,6 +329,9 @@ func reset_to_new_game() -> void:
 	gym_streak = 0
 	gym_last_day = -1
 	venues_entered = []
+	# Heat starts cool, quiet and un-laid-low.
+	heat_gain_today = 0.0
+	lay_low_day = -1
 	# Jobs and obligations reset with the run.
 	active_job_id = ""
 	job_records = {}
@@ -1169,6 +1172,28 @@ var gym_last_day: int = -1
 ## codebase ever adding it to `jobs_discovered`, which made it dead data. Now
 ## the counter is where you find out about the counter.
 var venues_entered: Array = []
+
+# --- Heat's teeth (batch 8) ---------------------------------------------------
+
+## How much Heat this day has GENERATED, for the quiet-day decay rule.
+##
+## Gains only. Relief does not reduce it, because the question it answers is
+## "did you do anything today", not "where did you end up" — a player who robs
+## someone at noon and lays low twice has still had a loud day.
+##
+## Persisted for the reason `pressure_clean_credits` is: the autosave fires once
+## per dispatch, so a run closed after the robbery and reopened before the night
+## must still be having the day it was having. A counter that reset on load
+## would hand back a decay the day had not earned.
+var heat_gain_today: float = 0.0
+
+## The day Lay Low was last used. Once a day.
+##
+## It had no blocker of any kind — no cost, no cap, no gate — which made four
+## slots a day worth 8.0 of shedding for free, against a street stop that can
+## only take 2.0 back. A cap is what makes Heat something to carry rather than
+## something to grind off.
+var lay_low_day: int = -1
 
 ## Run-level one-shot flags owned by the consequence layer (FS-003.13 Task 5).
 ##

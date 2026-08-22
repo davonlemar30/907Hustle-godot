@@ -5649,6 +5649,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 6a | `codex/batch-6a-operation-substrate` | Adapter-supplied delegation copy · `params` passthrough · three honesty defects in the route line · route count pinned | 11,311 → 11,330 | Merged, PR #59. No schema bump needed for new operations. |
 | 6b | `codex/batch-6b-crew-operations` | Tone absorbs damage at both sites · Eli covers the carry · Deshawn works a corner · per-operation callback flags · the unauthored shark term | 11,330 → 11,402 | Merged, PR #60. Schema unchanged — 6a's substrate held. |
 | 7 | `codex/batch-7-venue-interiors` | Spenard Gym · Night Owl · `effectiveAttribute` + the gym streak ported · the `night_owl` job made findable | 11,402 → 11,493 | Merged, PR #61. **Save v10 → v11.** |
+| 8 | `codex/batch-8-heat-teeth` | Heat bands · the quiet-day decay · the street stop · Lay Low capped · the propagation inversion fixed | 11,493 → 11,576 | Merged, PR #62. **Save v11 → v12.** |
 
 **Two verification defects found in batch 6b, both in the harness rather than
 the game, both now fixed:**
@@ -5673,6 +5674,25 @@ the game, both now fixed:**
   references break every screen check), which makes every sabotage look red for
   the wrong reason. Always establish the baseline in the copy before trusting a
   sabotage result.
+
+**Heat, measured after batch 8.** The economy instrument now counts street stops
+separately from carry stops. Over 31 days and 4 seeds:
+
+| profile | net worth | peak heat | street stops | taken |
+| --- | --- | --- | --- | --- |
+| legal_worker | $1,553 (100%) | 0.0 | 0.0 | $0 |
+| hustler | $11,372 (732%) | 15.0 | 8.0 | $2,998 |
+| arbitrage | $1,288 (83%) | 13.2 | 2.8 | $496 |
+| trader | $29 (2%) | 15.0 | 1.8 | $41 |
+| stickup | $35 (2%) | 15.0 | 7.8 | $35 |
+| boost | $201 (13%) | 10.4 | 1.5 | $269 |
+| flipper | $61 (4%) | 0.0 | 0.0 | $0 |
+
+The shape is the intended one: Heat costs the profiles that generate it, in
+proportion to what they are carrying, and a profile that keeps Heat under 8
+never rolls the stop at all. `stickup` is stopped almost as often as `hustler`
+and loses $35 to it, because it has nothing on it — being broke is its own
+protection, which is correct and worth knowing.
 
 **Findings carried forward:**
 

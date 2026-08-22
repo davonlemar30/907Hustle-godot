@@ -642,6 +642,60 @@ const CARRY_STOP_PER_HEAT := 0.006
 const CARRY_STOP_PER_PRESSURE_STEP := 0.025
 const CARRY_STOP_MAX := 0.55
 
+# --- The street stop (batch 8) ----------------------------------------------
+#
+# Heat's teeth. Before this, `gs.heat` was a one-way ratchet with a silent clamp
+# at the top: six rollover steps and not one of them touched it, one of them ADDED
+# to it, and nothing at all happened at 15. Every long run ended pinned at the
+# ceiling, which made the number carry no information — a player at 15 on day 12
+# and a player at 15 on day 60 were in identical positions.
+#
+# The stop is the consequence at the top of the scale, and it is modelled on the
+# carry stop rather than on a consequence chain because that is the shape this
+# build has already proved: one keyed roll a night, a seizure, a receipt in the
+# log. A fourth chain kind would mean registering it with the engine, authoring a
+# stage table and a decision surface, and giving Heat a blocking encounter — a
+# build of its own, and the wrong first move for a number that until now did
+# nothing at all.
+#
+# It takes DIRTY cash only. Clean money is documented money and a street stop is
+# not a forfeiture hearing.
+
+## No stop below this. 8.0 is not a new number — it is where Exposure already
+## starts telling the household about you, and reusing it means the band the
+## player can feel and the band that costs them are the same band.
+const HEAT_STOP_FLOOR := 8.0
+## Per point of Heat above the floor.
+const HEAT_STOP_PER_POINT := 0.035
+const HEAT_STOP_MAX := 0.30
+## What they take, as a fraction of dirty cash on hand, and the most they take.
+const HEAT_STOP_SEIZE_FRACTION := 0.15
+const HEAT_STOP_SEIZE_MAX := 400
+## What being searched costs them: they have had their look.
+const HEAT_STOP_RELIEF := 2.0
+
+## Chance of a stop tonight. Zero below the floor, so a player who keeps Heat
+## under 8 never rolls this at all.
+static func heat_stop_chance(heat: float) -> float:
+	if heat < HEAT_STOP_FLOOR:
+		return 0.0
+	return clampf((heat - HEAT_STOP_FLOOR) * HEAT_STOP_PER_POINT, 0.0, HEAT_STOP_MAX)
+
+## What they take off a given amount of dirty cash.
+static func heat_stop_seizure(dirty_cash: int) -> int:
+	if dirty_cash <= 0:
+		return 0
+	return mini(HEAT_STOP_SEIZE_MAX, int(floor(float(dirty_cash) * HEAT_STOP_SEIZE_FRACTION)))
+
+# --- Quiet-day Heat decay (batch 8) -----------------------------------------
+#
+# The other half, and the one that makes the first half fair. A ratchet with a
+# consequence at the top is a run that ends, not a pressure the player manages.
+# A day on which nothing generated Heat sheds this much; a day on which anything
+# did sheds nothing — the same quiet-day rule District Pressure has used since
+# FS-003.9, for the same reason and read off the same kind of flag.
+const HEAT_QUIET_DECAY := 0.75
+
 ## How a stop goes is the resolver's business, not a second dice table. The
 ## `escape` shape is already authored — {clean 0.6, messy 0.4} on a success,
 ## {failure 0.8, catastrophic 0.2} on a miss — and Intelligence is already what

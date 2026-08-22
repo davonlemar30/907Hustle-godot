@@ -871,7 +871,19 @@ board only by opening the 907List screen and reading a panel; they found out how
 her day went by noticing the cash total had moved. FS-001.9 gives the feature a
 voice. FS-001.10 is the milestone's exit gate.
 
-**Parity: 10,439 → 10,609 checks, 0 failures. Save schema stays v8.**
+**Parity: 10,439 → 10,609 checks, 0 failures on the branch. Save schema stays v8.**
+
+> **Merge note, written after the fact.** This landed minutes after FS-003.13
+> (PR #50), so both figures above are true of this build measured alone and
+> neither describes `main`. On `main` the suite runs **10,781** checks —
+> 10,439 + 172 from .13 + 170 from here, which is the arithmetic saying neither
+> merge lost anything — and the schema is **v9**, because .13 bumped it. This
+> build needed no bump and still does not: its callback flags nest inside
+> `crew_operation_state`.
+>
+> Both builds also wired `MIN_CHECKS` in independently and both set it to 10600
+> from their own branch's count, which left the floor 181 short once they were
+> both in. Corrected to 10770 in a follow-up.
 
 ### FS-001.9 — four callbacks, no new machinery
 

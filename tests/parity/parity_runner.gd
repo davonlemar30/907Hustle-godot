@@ -5280,14 +5280,16 @@ func _nested_shape_is_exposed(gs: Node, case_id: String) -> bool:
 		"shark_loan_wrong_types":
 			return str((gs.shark_loans[0] as Dictionary).get("principal", "")) == "not-an-int"
 		"observation_queue_malformed":
-			return (gs.observation_queue[0] as Dictionary).get("spec", null) is Array
-				and str((gs.observation_queue[0] as Dictionary).get("deliver_on_day", "")) == "soon"
+			var observation: Dictionary = gs.observation_queue[0]
+			return observation.get("spec", null) is Array \
+				and str(observation.get("deliver_on_day", "")) == "soon"
 		"phone_inbox_invalid_message":
-			return int((gs.phone_inbox[0] as Dictionary).get("id", -1)) == 7
-				and (gs.phone_inbox[0] as Dictionary).get("from", "sentinel") == null
+			var message: Dictionary = gs.phone_inbox[0]
+			return int(message.get("id", -1)) == 7 and message.get("from", "sentinel") == null
 		"list_holdings_corrupt_nested_data":
-			return (gs.list_holdings[0] as Dictionary).get("item_id", null) is Dictionary
-				and str((gs.list_holdings[0] as Dictionary).get("bought_day", "")) == "yesterday"
+			var holding: Dictionary = gs.list_holdings[0]
+			return holding.get("item_id", null) is Dictionary \
+				and str(holding.get("bought_day", "")) == "yesterday"
 		"consequence_state_malformed":
 			return (gs.active_consequence.get("stage", null) is Array
 				and gs.active_consequence.get("source", "sentinel") == null

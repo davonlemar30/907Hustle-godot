@@ -21,6 +21,7 @@ func _ready() -> void:
 	_test_arrest_record()
 	_test_v9_fields()
 	_test_v10_fields()
+	_test_v15_boost_discovery()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -245,6 +246,71 @@ func _test_v10_fields() -> void:
 	_check("absent v10 job contacts stay absent", not absent_fixed.has("job_contacts"))
 	_check("absent v10 credits stay absent", not absent_fixed.has("pressure_clean_credits"))
 	_check("absent v10 fields need no repair", (absent_result["repairs"] as Array).is_empty())
+
+## v15: the Boost discovery latch.
+##
+## Repaired against the AUTHORED CATALOGUE rather than against a shape, which is
+## what makes this arm different from every array arm above it. `wander_recent`
+## holds card ids and a bogus one costs nothing — it fails to match and the card
+## comes up again. A bogus BOOST target id is load-bearing in the other
+## direction: `blocker()` tests membership in this list before it looks the
+## target up, so an id nothing in the catalogue carries would pass the discovery
+## gate and then resolve to `{}` in `boost_target_by_id`. Dropping it is the only
+## repair with a true history behind it — a run that never discovered a place
+## that does not exist.
+##
+## SABOTAGE: drop the `authored.has()` branch -> "an unknown target id drops"
+##           fails and a fabricated id survives into the run.
+## SABOTAGE: return early instead of defaulting on a wrong type -> "a wrong-type
+##           latch defaults to nothing clocked" fails.
+func _test_v15_boost_discovery() -> void:
+	# A valid payload is a no-op, byte-shape identical. Two real ids from the
+	# authored table, which is the shape a real save carries.
+	var valid := _state("boost_targets_discovered", ["night_owl", "northern_value"])
+	var valid_result := _result(valid)
+	var valid_fixed: Dictionary = valid_result["state"]
+	_check("valid v15 latch survives",
+		valid_fixed["boost_targets_discovered"] == ["night_owl", "northern_value"])
+	_check("valid v15 shape is a validation no-op",
+		(valid_result["repairs"] as Array).is_empty())
+	_check("valid v15 payload remains byte-shape equivalent", valid_fixed == valid)
+
+	# Wrong type at the top.
+	var wrong := _fixed(_state("boost_targets_discovered", "night_owl"))
+	_check("a wrong-type latch defaults to nothing clocked",
+		wrong["boost_targets_discovered"] is Array
+		and (wrong["boost_targets_discovered"] as Array).is_empty())
+
+	# Rows: non-strings, empties, duplicates and ids no catalogue carries.
+	var rows := _fixed(_state("boost_targets_discovered",
+		["night_owl", 7, "night_owl", "", null, "a_shop_that_never_was",
+		"spenard_fuel"]))
+	var clocked: Array = rows["boost_targets_discovered"]
+	_check("a non-string target id drops", not 7 in clocked)
+	_check("an empty target id drops", not "" in clocked)
+	_check("a duplicate target id drops", clocked.count("night_owl") == 1)
+	_check("an unknown target id drops", not "a_shop_that_never_was" in clocked)
+	_check("real target ids survive the sweep",
+		"night_owl" in clocked and "spenard_fuel" in clocked)
+	_check("the sweep keeps only what it should", clocked.size() == 2)
+
+	# Absent is not malformed: a v14 save reaches this validator without the
+	# field and must come out without it, so `_apply()` supplies the default.
+	var absent_result := _result(_state("day", 4))
+	_check("an absent v15 latch stays absent",
+		not (absent_result["state"] as Dictionary).has("boost_targets_discovered"))
+	_check("an absent v15 latch needs no repair",
+		(absent_result["repairs"] as Array).is_empty())
+
+	# And the migration itself: a v14 payload comes through the real chain with
+	# an empty latch, not a missing one and not a guessed one.
+	var save_system: Node = get_node("/root/SaveSystem")
+	var v14: Dictionary = save_system._migrate({"save_version": 14,
+		"state": _state("boost_daily_hits", {"night_owl": 3})})
+	_check("a v14 save migrates", not v14.is_empty())
+	_check("and arrives with nothing clocked",
+		not v14.has("boost_targets_discovered")
+		or (v14["boost_targets_discovered"] as Array).is_empty())
 
 func _test_load_pipeline() -> void:
 	var save_system: Node = get_node("/root/SaveSystem")

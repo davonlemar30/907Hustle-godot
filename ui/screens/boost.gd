@@ -20,12 +20,30 @@ func _build_body() -> void:
 
 	var targets: Array = sys.visible_targets()
 	if targets.is_empty():
-		body.add_child(note("Nothing here you can work yet. Try another district."))
+		body.add_child(note(_empty_line()))
 		return
 
 	body.add_child(section("ROOMS NEARBY"))
 	for t in targets:
 		body.add_child(_target_row(sys, t))
+
+## What an empty board means HERE, which since batch 14 is two different things.
+##
+## The old line was "Nothing here you can work yet. Try another district." and it
+## was the only line, which made it wrong on a fresh run in the most expensive
+## way available: the player who has clocked nothing anywhere is told to spend a
+## slot on a bus to a district where the board is also empty.
+##
+## So the reason is read rather than assumed, and it is read from the WANDER
+## system's own pool — the same list that decides whether a DEAL walk can find
+## anything, so the screen cannot promise a discovery the roll would refuse.
+## A district with nothing left to clock is the one that genuinely wants a bus.
+func _empty_line() -> String:
+	var wander: Object = _gm.system("wander")
+	var here: Array = wander.undiscovered_boost_targets() if wander != null else []
+	if here.is_empty():
+		return "Nothing here you can work yet. Try another district."
+	return "You have not clocked anywhere around here. Walk the block and look for a deal."
 
 ## Local Attention, TI-003 §19 and PX-003 §7.
 ##

@@ -11,8 +11,8 @@ const WANDER_EVENTS := preload("res://data/wander_events.gd")
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v13. Older saves are
-## migrated before this validator runs, so every arm below reads a v13 shape.
+## repaired payload back to disk. The save schema is v15. Older saves are
+## migrated before this validator runs, so every arm below reads a v15 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -38,6 +38,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_venues_entered(state, repairs)
 	_validate_heat_day(state, repairs)
 	_validate_wander(state, repairs)
+	_validate_boost_discovery(state, repairs)
 	return {"state": state, "repairs": repairs}
 
 func _repair(repairs: Array[String], path: String, reason: String) -> void:
@@ -639,6 +640,49 @@ func _validate_wander(state: Dictionary, repairs: Array[String]) -> void:
 			continue
 		clean.append(value)
 	state["wander_recent"] = clean
+
+## v15. The Boost discovery latch.
+##
+## Repaired against the authored catalogue rather than against a shape, which is
+## the difference that matters: a malformed row here is not merely untidy, it is
+## a target id the boost blocker will happily match on and `boost_target_by_id`
+## will answer `{}` for. An id nothing in the catalogue carries is dropped, not
+## defaulted — there is no safe target to substitute, and a run that never
+## discovered it is exactly the state dropping it produces.
+##
+## Duplicates go too. The array is a SET the whole build reads with `in`, so a
+## second copy of an id changes no verdict and is only a way for the file to
+## grow without bound across a long run.
+func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("boost_targets_discovered"):
+		return
+	if not state["boost_targets_discovered"] is Array:
+		state["boost_targets_discovered"] = []
+		_repair(repairs, "boost_targets_discovered", "wrong type; defaulted")
+		return
+	# The authored ids, off the state script rather than a list retyped here.
+	var authored: Dictionary = {}
+	for target in (GAME_STATE.new().boost_targets as Array):
+		if target is Dictionary:
+			authored[str((target as Dictionary).get("id", ""))] = true
+	var found: Array = state["boost_targets_discovered"]
+	var cleaned: Array = []
+	for index in range(found.size()):
+		var entry: Variant = found[index]
+		if not entry is String or str(entry).is_empty():
+			_repair(repairs, "boost_targets_discovered[%d]" % index,
+				"not a target id; dropped")
+			continue
+		if not authored.has(str(entry)):
+			_repair(repairs, "boost_targets_discovered[%d]" % index,
+				"no such boost target; dropped")
+			continue
+		if str(entry) in cleaned:
+			_repair(repairs, "boost_targets_discovered[%d]" % index,
+				"duplicate; dropped")
+			continue
+		cleaned.append(str(entry))
+	state["boost_targets_discovered"] = cleaned
 
 func _validate_arrest_record(state: Dictionary, repairs: Array[String]) -> void:
 	if not state.has("arrest_record"):

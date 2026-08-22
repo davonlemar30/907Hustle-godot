@@ -27,19 +27,38 @@ extends Node
 ##
 ## The mode is PRESENTATION METADATA. It changes how a failed gate looks, never
 ## whether it passes — so a surface can move from hidden to locked without any
-## screen learning a new condition. Progression gates are LOCKED (a lock teaches
-## that something is coming); population and feature-flag checks are HIDDEN (an
-## empty feed teaches nothing, and a padlock on it would be a lie about
-## progression).
+## screen learning a new condition, which is exactly what batch 14 did to the
+## Market Snapshot in one line.
+##
+## v0.1.0 drew the line as "progression is LOCKED, population is HIDDEN".
+## Batch 14 moved it, and the amended rule is worth stating because it is not
+## the obvious one: LOCKED is for a surface the player is MEANT TO KNOW ABOUT
+## and has not earned. A padlock is a promise, and a promise is only worth
+## making about a thing the player can go and do something about.
+##
+## Jobs is the case that still earns it — "meet someone who hires" is an
+## instruction, and Jobs is the authored on-ramp. The Hustle ladder's other five
+## rows are not: six padlocks on a fresh run is the same wall of unusable
+## surface with an apology written on it, and none of the hints would have been
+## actionable. The Market Snapshot failed the rule the other way — it was a
+## padlock over a card of real product names and real prices, which reads as a
+## broken feature rather than a coming one.
+##
+## So: a lock teaches that something is coming and how to reach it. Everything
+## else — an empty feed, a card with nothing to say, a surface the block has not
+## shown you yet — is HIDDEN.
 ##
 ## ## Nothing derived is stored
 ##
 ## Every answer is computed from live GameState on the call. There is no
 ## `unlocked` boolean anywhere, which is what makes "unlocks survive save/load"
 ## true by construction rather than by a migration: the facts persist, the
-## verdicts do not. The two facts that ARE persisted — `districts_unlocked` and
-## `job_contacts` — are one-way discovery latches owned by GameState, not copies
-## of a condition that could contradict it.
+## verdicts do not. The facts that ARE persisted — `districts_unlocked`,
+## `job_contacts`, and `boost_targets_discovered` since batch 14 — are one-way
+## discovery latches owned by GameState, not copies of a condition that could
+## contradict it. The distinction is worth keeping sharp: a latch records
+## something that HAPPENED, and a verdict is an opinion about what that means.
+## Only the first kind belongs in a save file.
 ##
 ## ## Read-only, always
 ##
@@ -71,10 +90,19 @@ const STATE_TEMPORARILY_BLOCKED := "temporarily_blocked"
 const HOME_MARKET_SNAPSHOT := "home.market_snapshot"
 const HOME_TURF_CREW := "home.turf_crew"
 const HOME_TONIGHTS_OPERATION := "home.tonights_operation"
+const HOME_ACTIONS := "home.actions"
 const HOME_TEXT_MESSAGES := "home.text_messages"
 const HOME_ACTIVITY_FEED := "home.activity_feed"
 const MENU_CREW := "menu.crew"
 const MENU_JOBS := "menu.jobs"
+## The Hustle hub's six income rows. Jobs already had a gate; batch 14 gives the
+## other five one each, so the hub opens a surface at a time instead of handing
+## a Day 1 player six doors and no reason to pick any of them.
+const HUSTLE_MARKET := "hustle.market"
+const HUSTLE_LIST := "hustle.list"
+const HUSTLE_BOOST := "hustle.boost"
+const HUSTLE_STICKUP := "hustle.stickup"
+const HUSTLE_SHARK := "hustle.shark"
 const STREET_DOWNTOWN := "street.downtown"
 const STREET_SHIP_CREEK := "street.ship_creek"
 
@@ -98,11 +126,6 @@ const STREET_SHIP_CREEK := "street.ship_creek"
 ## friendly names would be one rename away from gating nothing at all.
 const GATES := {
 	# --- progression gates: LOCKED --------------------------------------
-	HOME_MARKET_SNAPSHOT: {
-		"mode": MODE_LOCKED,
-		"requirements": [{"type": "list_flips_min", "min": 1}],
-		"hint": "Complete your first flip to unlock",
-	},
 	HOME_TURF_CREW: {
 		"mode": MODE_LOCKED,
 		"requirements": [{"type": "crew_count_min", "min": 1}],
@@ -131,9 +154,38 @@ const GATES := {
 	},
 
 	# --- population / feature flags: HIDDEN -----------------------------
+	#
+	# The Market Snapshot moved here in batch 14, from LOCKED. A padlock is a
+	# promise that something is coming, and playtest read this one as a bug
+	# instead: three greyed rows of product names with prices under them, on a
+	# card headed by a number, on Day 1, before the player has traded once. The
+	# lock said "earn this" and the content said "here is your portfolio", and
+	# the content won. There is nothing to snapshot until there has been a flip,
+	# so until then there is no card — which is the HIDDEN argument exactly.
+	HOME_MARKET_SNAPSHOT: {
+		"mode": MODE_HIDDEN,
+		"requirements": [{"type": "list_flips_min", "min": 1}],
+		"hint": "",
+	},
 	HOME_TONIGHTS_OPERATION: {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "fact_true", "fact": "operation_card_live"}],
+		"hint": "",
+	},
+	# The two standing actions, batch 14. They lived on the operation card until
+	# now, which meant they inherited its visibility — and its visibility is
+	# "there is an operation out, or rent is close, or a shift is workable".
+	# None of those is true on a fresh run, so POST ELI and LAY LOW were
+	# UNREACHABLE from Home for exactly as long as the operation card was
+	# hidden, which is the part of the run a player most needs a door out of.
+	#
+	# Their own card, on their own condition. Still HIDDEN rather than LOCKED:
+	# neither is a progression reward the player is meant to see coming, and a
+	# padlock reading "recruit Eli first" on a screen that has not introduced
+	# Eli is a promise about a stranger.
+	HOME_ACTIONS: {
+		"mode": MODE_HIDDEN,
+		"requirements": [{"type": "collection_non_empty", "collection": "home_actions"}],
 		"hint": "",
 	},
 	HOME_TEXT_MESSAGES: {
@@ -144,6 +196,53 @@ const GATES := {
 	HOME_ACTIVITY_FEED: {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "collection_non_empty", "collection": "activity_log"}],
+		"hint": "",
+	},
+
+	# --- the Hustle ladder: HIDDEN --------------------------------------
+	#
+	# Every income surface in the build was on the Hustle screen on Day 1, and
+	# playtest is unambiguous about what that produced: six rows, no order, and
+	# a first hour spent reading rather than doing. The hub is the game's widest
+	# screen and it was also its flattest.
+	#
+	# HIDDEN rather than LOCKED, and that is the one decision worth arguing.
+	# Jobs keeps its lock because Jobs is the authored on-ramp — the player is
+	# meant to know work exists and go and find somebody who hires. The other
+	# five are not promises, they are things the block has not shown you yet,
+	# and six padlocks on a fresh run is the same wall of unusable surface with
+	# an apology written on it. So the rows leave the layout and arrive one at a
+	# time, each on a fact the player can feel themselves producing.
+	#
+	# Two axes on purpose. WALKS gate the two surfaces you find by being out —
+	# the corner you buy from, and the doors you notice are unlatched. DAYS gate
+	# the three that arrive because time passed and word got around: the board,
+	# the desperation, and the man who lends. Neither axis is a substitute for
+	# the other, which is what keeps a player who only walks and a player who
+	# only sits from converging on the same screen.
+	HUSTLE_MARKET: {
+		"mode": MODE_HIDDEN,
+		"requirements": [{"type": "wander_count_min", "min": 1}],
+		"hint": "",
+	},
+	HUSTLE_LIST: {
+		"mode": MODE_HIDDEN,
+		"requirements": [{"type": "day_min", "min": 3}],
+		"hint": "",
+	},
+	HUSTLE_BOOST: {
+		"mode": MODE_HIDDEN,
+		"requirements": [{"type": "wander_count_min", "min": 3}],
+		"hint": "",
+	},
+	HUSTLE_STICKUP: {
+		"mode": MODE_HIDDEN,
+		"requirements": [{"type": "day_min", "min": 2}],
+		"hint": "",
+	},
+	HUSTLE_SHARK: {
+		"mode": MODE_HIDDEN,
+		"requirements": [{"type": "day_min", "min": 5}],
 		"hint": "",
 	},
 }
@@ -187,6 +286,13 @@ func facts() -> Dictionary:
 		"districts_unlocked": gs.districts_unlocked,
 		"list_flips": gs.list_flips,
 		"job_contacts": gs.job_contacts,
+		# Walks taken this RUN. The Hustle ladder's effort axis — see GATES.
+		"wander_count": gs.wander_count,
+		# Boost targets the player has actually clocked. No gate reads it yet;
+		# it is minted here because the discovery latch it reports is the same
+		# shape as `districts_unlocked` and belongs in the one adapter rather
+		# than being reached for out of GameState by whoever needs it first.
+		"boost_targets_discovered": gs.boost_targets_discovered.size(),
 		# Populations. Named for the surface that reads them, not the field
 		# that backs them, so a rename on GameState is one line here.
 		#
@@ -200,6 +306,10 @@ func facts() -> Dictionary:
 			+ (0 if gs.phone_active else 1),
 		"activity_log": gs.activity_log.size(),
 		"operation_card_live": not str(operation_card_reason()).is_empty(),
+		# A population rather than a boolean, because the SCREEN needs the list
+		# and the gate needs its size — and deriving them separately is how a
+		# card ends up visible with nothing on it.
+		"home_actions": home_actions().size(),
 	}
 
 # --- Home's operation card -------------------------------------------------
@@ -246,6 +356,35 @@ func operation_card_reason() -> String:
 		if jobs != null and str(jobs.shift_blocker()).is_empty():
 			return "shift"
 	return ""
+
+# --- Home's standing actions -----------------------------------------------
+
+## Which of Home's two standing actions have a door right now, in render order.
+##
+##   "post_eli"  Eli has offered the bag, so there is somebody to send
+##   "lay_low"   Recovery is relevant, so there is a reason to go quiet
+##
+## The IDs are the screen's render list AND the gate's population, from one
+## derivation. That is the same rule `operation_card_reason()` is written to —
+## the visible state and the content come from one verdict, or a screen ends up
+## hiding a card it is simultaneously filling — applied to a card whose contents
+## VARY rather than one that is simply on or off.
+##
+## Availability, not eligibility. `post_eli` asks whether Eli has offered, not
+## whether he can be assigned this minute: a button that disappears because it
+## is Tuesday afternoon teaches nothing, and both handlers already refuse with a
+## reason the player can act on. The card is about what EXISTS.
+func home_actions() -> Array:
+	var out: Array = []
+	var manager: Node = get_node_or_null("/root/GameManager")
+	if manager == null or gs == null:
+		return out
+	var ops: Object = manager.system("crew_operations")
+	if ops != null and bool(ops.is_discovered("run_the_bag")):
+		out.append("post_eli")
+	if bool(gs.recovery_available()):
+		out.append("lay_low")
+	return out
 
 # --- the verdict -----------------------------------------------------------
 

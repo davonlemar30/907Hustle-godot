@@ -419,6 +419,8 @@ func reset_to_new_game() -> void:
 	boost_merchandise = 0
 	boost_fence_standing = 0
 	boost_daily_hits = {}
+	# Nothing clocked. Every target has to be found before it can be lifted.
+	boost_targets_discovered = []
 	crew_records = {}
 	crew_assignments = {}
 	crew_operation_state = {"discovered": [], "adapters": {}}
@@ -800,6 +802,24 @@ var boost_merchandise: int = 0
 var boost_fence_standing: int = 0
 ## target_id -> day it was last hit. One go per target per day.
 var boost_daily_hits: Dictionary = {}
+
+## The target ids the player has actually clocked (batch 14). A one-way
+## discovery latch, the same shape as `districts_unlocked`.
+##
+## Boost had a TIER axis and nothing else: every target in the district at or
+## below your tier was on the screen from the first minute of the run, so the
+## surface opened at its widest and only ever got narrower — a permanent ban
+## takes a shop off the list and nothing ever puts one back on. Twelve targets,
+## bans permanent, and the list only shrinks.
+##
+## This is the second axis, and it runs the other way. A target arrives on the
+## screen because you were out walking with your eyes open, which means the pool
+## REFILLS with play rather than draining with it, and a run that gets three
+## shops banned has somewhere to go that is not "stop boosting". Discovery is
+## `WanderSystem`'s to grant; this array is only the record of what it granted.
+##
+## Empty is the honest start: a fresh run has never been out looking.
+var boost_targets_discovered: Array = []
 
 func boost_target_by_id(id: String) -> Dictionary:
 	for t in boost_targets:

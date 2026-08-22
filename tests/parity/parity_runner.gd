@@ -148,6 +148,7 @@ func _ready() -> void:
 		_check_batch11(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch12(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch13(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch14(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -719,10 +720,32 @@ func _unlock_every_surface(gs: Node) -> void:
 	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
 	gs.job_contacts = 1
 	gs.list_flips = maxi(int(gs.list_flips), 1)
+	gs.wander_count = maxi(int(gs.wander_count), 3)
+	gs.day = maxi(int(gs.day), 5)
 	if not gs.is_recruited("eli"):
 		gs.crew_records["eli"] = {"recruited": true, "loyalty": 6, "tier": 1,
 			"wage_due": 45, "wage_missed_since": -1, "recruited_day": 1,
 			"status": "active"}
+
+## Put every authored Boost target on the run's map, for the many checks that
+## drive a lift while measuring something other than discovery.
+##
+## Batch 14 gave Boost a second axis: a target is only workable once the player
+## has CLOCKED it, which they do by walking with a DEAL intent. That is the
+## right rule and it is exactly the wrong precondition for a check about heat
+## write paths or arrest bookings, so those say "assume the block is known" in
+## one line here instead of each inventing its own idea of what knowing means.
+##
+## Like `_unlock_every_surface`, it writes the FACT and nothing else. There is
+## no "discovered" flag on a target to set — the latch is a list of ids on the
+## run, and this is the same list `WanderSystem._discover_boost_target` appends
+## to one at a time. A check that wants to measure the gate itself simply does
+## not call this.
+func _clock_every_boost_target(gs: Node) -> void:
+	for target in gs.boost_targets:
+		var target_id := str((target as Dictionary)["id"])
+		if not target_id in gs.boost_targets_discovered:
+			gs.boost_targets_discovered.append(target_id)
 
 ## The Word Around Town pool, straight out of the oracle's exported PHONE_INTEL.
 func _check_phone_intel(gs: Node, phone: RefCounted, rows: Array) -> void:
@@ -1762,8 +1785,11 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# schema change cannot land by accident, which means every real bump edits
 	# it on purpose. 6 → 7 in FS-001.6, 7 → 8 in FS-003.4, 8 → 9 in FS-003.13,
 	# 9 → 10 in v0.1.0, 10 → 11 in batch 7, 11 → 12 in batch 8, 12 → 13 in
-	# batch 10 (Wander), 13 → 14 in batch 13 (the wander intents).
-	_expect_int("save version is 14", saves.SAVE_VERSION, 14)
+	# batch 10 (Wander), 13 → 14 in batch 13 (the wander intents), 14 → 15 in
+	# batch 14 (Boost's discovery latch).
+	_expect_int("save version is 15", saves.SAVE_VERSION, 15)
+	_expect_true("the boost discovery latch persists",
+		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
 
 	# A v5 save mid-day 4: one listing bought today and still held (recoverable),
@@ -4542,6 +4568,9 @@ func _frozen_ready(gs: Node, cash: int = 5000) -> void:
 	gs.current_district_id = "north_star_lot"
 	gs.cash = cash
 	gs.heat = 0.0
+	# Batch 14: a lift needs a target the run has clocked. Every check reached
+	# from here is about what a lift DOES, not about finding one.
+	_clock_every_boost_target(gs)
 
 ## The first behavioural coverage Boost has ever had.
 ##
@@ -11226,6 +11255,7 @@ func _check_retaliation_authored_tables(rules: RefCounted) -> void:
 func _retaliation_ready(gs: Node, day: int, slot: int) -> void:
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
+	_clock_every_boost_target(gs)
 	gs.day = day
 	gs.time_slots_today = slot
 	gs.time_slot = ["MORNING", "AFTERNOON", "EVENING", "NIGHT"][slot]
@@ -12701,7 +12731,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is at batch 13's version", saves.SAVE_VERSION, 14)
+	_expect_int("the schema is at batch 14's version", saves.SAVE_VERSION, 15)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -12933,6 +12963,7 @@ func _check_stage_roundtrip_matrix(gs: Node, gm: Node, engine: RefCounted) -> vo
 func _drift_ready(gs: Node) -> void:
 	gs.street_name = "Drift"
 	gs.reset_to_new_game()
+	_clock_every_boost_target(gs)
 	gs.day = 9
 	gs.time_slots_today = 3
 	gs.time_slot = "NIGHT"
@@ -13181,6 +13212,11 @@ func _simulate(gs: Node, gm: Node, engine: RefCounted, profile: Dictionary) -> D
 	# 29 days, not how long a player takes to earn a bus route. Without it the
 	# travelling profile never leaves Spenard and stops being a second reading.
 	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+	# Batch 14 put Boost behind the same kind of gate, and it is seeded past for
+	# the same reason: the `boost` profile is a reading of what thirty days of
+	# lifting COSTS, and a version of it that spends its first week walking
+	# around clocking shops would be measuring the walk instead.
+	_clock_every_boost_target(gs)
 
 	var days: int = int(profile.get("days", 30))
 	var policy := str(profile.get("policy", "yield"))
@@ -13511,15 +13547,26 @@ func _check_version_stamp(gs: Node) -> void:
 ## Every registered gate, and the fact that opens it. `raise` puts the run one
 ## step past the threshold; `lower` puts it one step short.
 const GATE_CASES: Array[Dictionary] = [
-	{"id": "home.market_snapshot", "mode": "locked", "fact": "list_flips"},
 	{"id": "home.turf_crew", "mode": "locked", "fact": "crew"},
 	{"id": "menu.crew", "mode": "locked", "fact": "crew"},
 	{"id": "menu.jobs", "mode": "locked", "fact": "job_contacts"},
 	{"id": "street.downtown", "mode": "locked", "fact": "downtown"},
 	{"id": "street.ship_creek", "mode": "locked", "fact": "ship_creek"},
+	{"id": "home.market_snapshot", "mode": "hidden", "fact": "list_flips"},
 	{"id": "home.tonights_operation", "mode": "hidden", "fact": "operation"},
+	{"id": "home.actions", "mode": "hidden", "fact": "actions"},
 	{"id": "home.text_messages", "mode": "hidden", "fact": "phone"},
 	{"id": "home.activity_feed", "mode": "hidden", "fact": "feed"},
+	# Batch 14. The five share two facts between them, which is deliberate and
+	# is what the isolation loop below already understands: the ladder is two
+	# rules with five entrances, not five rules. Their individual thresholds are
+	# pinned in `_check_hustle_ladder`, where the shape of the claim is "this one
+	# opens HERE and not one step earlier".
+	{"id": "hustle.market", "mode": "hidden", "fact": "walks"},
+	{"id": "hustle.boost", "mode": "hidden", "fact": "walks"},
+	{"id": "hustle.stickup", "mode": "hidden", "fact": "days"},
+	{"id": "hustle.list", "mode": "hidden", "fact": "days"},
+	{"id": "hustle.shark", "mode": "hidden", "fact": "days"},
 ]
 
 ## Put one gate's fact past its threshold. Facts only — see `_unlock_every_surface`.
@@ -13544,6 +13591,17 @@ func _raise_gate_fact(gs: Node, fact: String) -> void:
 				"day": 1, "slot": 0, "read": false}]
 		"feed":
 			gs.log_activity("Parity feed row")
+		"walks":
+			# Past the LAST wander threshold on the ladder, so raising this fact
+			# opens every gate that reads it — which is what the isolation loop
+			# expects of gates that share a fact.
+			gs.wander_count = 3
+		"days":
+			gs.day = 5
+		"actions":
+			# The cheaper of the card's two doors: Recovery is available the
+			# moment it is relevant, and a point of damage makes it relevant.
+			gs.health = gs.health_max - 1
 		"operation":
 			# The only gate whose fact is not a plain field. Rent inside two days
 			# with nothing in the pocket is one of the three things the card
@@ -13554,7 +13612,11 @@ func _raise_gate_fact(gs: Node, fact: String) -> void:
 func _fresh_gate_run(gs: Node) -> void:
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
-	gs.day = 3
+	# Day 1, because batch 14 made the DAY a gate fact and a fresh run has to be
+	# fresh in every fact a gate can read. It was day 3 — an arbitrary number
+	# picked when nothing read it — and leaving it there would have had the
+	# fresh-run assertion pass 907List and Stickup before it started.
+	gs.day = 1
 	gs.cash = 400
 
 func _check_surface_visibility(gs: Node, gm: Node) -> void:
@@ -13638,6 +13700,10 @@ func _check_surface_visibility(gs: Node, gm: Node) -> void:
 	gs.districts_unlocked = ["north_star_lot"]
 	gs.phone_inbox = []
 	gs.activity_log = []
+	gs.wander_count = 0
+	gs.day = 1
+	gs.health = gs.health_max
+	gs.recovery_introduced = false
 	gs.cash = 400
 	gs.rent_due_day = gs.day + 7
 	_expect_true("the scrambled run is locked again",
@@ -13715,13 +13781,17 @@ func _check_surface_visibility(gs: Node, gm: Node) -> void:
 		"Shell/Scroll/Pad/Content/OpCard": "Tonight's Operation",
 		"Shell/Scroll/Pad/Content/People": "the text card",
 		"Shell/Scroll/Pad/Content/Activity": "the activity feed",
+		# Batch 14 moved both of these into the hidden half — the snapshot from
+		# LOCKED, and the actions card from the operation card it used to ride
+		# on. See `SurfaceVisibility.GATES` for both arguments.
+		"Shell/Scroll/Pad/Content/Columns/Market": "the market snapshot",
+		"Shell/Scroll/Pad/Content/Actions": "the actions card",
 	}
 	for path in hidden_paths:
 		var node := home.get_node_or_null(str(path)) as Control
 		_expect_true("a fresh Home hides %s" % str(hidden_paths[path]),
 			node != null and not node.visible)
 	var locked_paths := {
-		"Shell/Scroll/Pad/Content/Columns/Market": "the market snapshot",
 		"Shell/Scroll/Pad/Content/Columns/Turf": "Turf & Crew",
 	}
 	for path in locked_paths:
@@ -13749,6 +13819,7 @@ func _check_surface_visibility(gs: Node, gm: Node) -> void:
 	_unlock_every_surface(gs)
 	_raise_gate_fact(gs, "phone")
 	_raise_gate_fact(gs, "feed")
+	_raise_gate_fact(gs, "actions")
 	_raise_gate_fact(gs, "operation")
 	var open_home: Node = _instantiate_screen("res://ui/screens/home.tscn")
 	if open_home == null:
@@ -14783,6 +14854,24 @@ const ECON_PROFILES: Array[Dictionary] = [
 		"wander": true, "best_job": true, "seed": "econ-wander-job"},
 	{"name": "wanderer", "job": false, "trade": false, "flip": false,
 		"wander": true, "best_job": true, "seed": "econ-wander"},
+	# The discovery axis, measured (batch 14). `boost` above is handed the whole
+	# board and answers "what is thirty days of lifting worth"; this one starts
+	# with nothing clocked and has to walk for every room, which answers the two
+	# questions the axis was added for.
+	#
+	#   1. WHAT DOES IT COST? Every target is a walk, and a walk is a slot. If
+	#      the toll is severe this row collapses against `boost` and the ramp
+	#      wants loosening.
+	#   2. DOES THE POOL SURVIVE BANS? A ban is permanent by target id, so
+	#      before this batch Boost's board could only shrink — the honest end
+	#      state of a long run was an empty screen. `workable` is what is still
+	#      liftable on the last day, and this row is the one that can hold it
+	#      above zero by finding replacements.
+	#
+	# Reported, never asserted, like every other balance figure in this section.
+	{"name": "boost_finder", "job": false, "trade": false, "flip": false,
+		"lift": true, "wander": true, "roam": true, "find_targets": true,
+		"seed": "econ-boost-find"},
 ]
 
 const ECON_DAYS := 30
@@ -14809,6 +14898,19 @@ func _econ_ready(gs: Node, profile: Dictionary) -> void:
 	# measures the economy over 30 days, not how long a player takes to earn a
 	# bus route.
 	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+	# Boost's targets, on the same argument and with one deliberate exception.
+	#
+	# `boost` is the batch-3 profile and its number is quoted against every
+	# earlier batch, so it keeps its board: what it measures is what thirty days
+	# of LIFTING yields, and a version that spends its first week walking around
+	# would answer a different question with the same name.
+	#
+	# `find_targets` is the profile that answers the new question instead — see
+	# `boost_finder` in ECON_PROFILES. It starts with nothing clocked and has to
+	# walk for every room it works, which is the only honest reading of what the
+	# discovery axis costs.
+	if not bool(profile.get("find_targets", false)):
+		_clock_every_boost_target(gs)
 	# A profile may bring crew. Written onto the record rather than recruited,
 	# for the reason the batch-6b checks do it: what is being measured is what
 	# the crew member is WORTH, not the recruiting path, which has its own
@@ -14896,6 +14998,7 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	var wants_lift: bool = bool(profile.get("lift", false))
 	var local_only: bool = bool(profile.get("local_only", false))
 	var wants_wander: bool = bool(profile.get("wander", false))
+	var wants_roam: bool = bool(profile.get("roam", false))
 	var best_job: bool = bool(profile.get("best_job", false))
 
 	var metrics: Dictionary = {
@@ -14907,6 +15010,7 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		"relief_slots": 0, "rent_missed": 0, "evicted": false, "rent_paid": 0,
 		"phone_paid": 0, "stops": 0, "seizures": 0, "seized_value": 0,
 		"heat_stops": 0, "heat_seized": 0, "bans": 0, "wanders": 0, "found": 0,
+		"clocked": 0, "workable": 0,
 		"shift_pay": 0, "upgrades": 0,
 		"applications": 0, "jobs": 0, "take": 0,
 	}
@@ -15050,13 +15154,29 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		if wants_trade and _econ_try_trade(gs, gm, metrics, local_only):
 			continue
 
+		# --- the roaming leg (batch 14) ---
+		#
+		# Above Wander and below everything that earns, because moving is what
+		# you do when this block has nothing left — not a strategy, a response
+		# to one being exhausted.
+		#
+		# It exists because the first run of `boost_finder` measured the batch's
+		# own claim and found it FALSE as stated. "A renewable pool that
+		# survives bans" is not true inside one district: Spenard carries two
+		# tier-1 rooms and two tier-2, the profile clocked and burned all of
+		# them, and both boost rows ended thirty days with zero workable rooms
+		# and three and a half permanent bans. The refill is real but it is
+		# CROSS-DISTRICT, and a profile that never leaves cannot see it.
+		if wants_roam and _econ_try_roam(gs, gm, metrics):
+			continue
+
 		# --- the wander leg ---
 		#
 		# LAST, immediately above the bare `advance_time` that ends the loop,
 		# because that is precisely Wander's design position: the thing you do
 		# with a slot nothing else wanted. A profile that wandered ahead of its
 		# shift would be measuring a strategy nobody would play.
-		if wants_wander and _econ_try_wander(gs, gm, metrics):
+		if wants_wander and _econ_try_wander(gs, gm, metrics, wants_lift):
 			continue
 
 		gm.dispatch("advance_time", {})
@@ -15087,6 +15207,22 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	# Boost's binding constraint, on the record rather than in a research note.
 	# A ban is permanent, so the final count IS the run's history.
 	metrics["bans"] = int(gs.boost_store_bans.size())
+	# What is STILL on the board when the run ends, which is the question the
+	# discovery axis exists to change. Batch 13 and earlier, this could only
+	# fall: the board opened at its widest and every ban took a room off it
+	# permanently. Reported rather than asserted, like every other balance
+	# figure here — what an assertion would pin is a table somebody may tune.
+	# Not `visible_targets().size()`: that list is what the SCREEN draws, and a
+	# banned shop is still drawn — with the ban as the button's label, which is
+	# the point of showing it. What is being counted here is rooms the player
+	# could actually walk into, so the ban has to come off.
+	var boost_system: Object = gm.system("boost")
+	var open_rooms: int = 0
+	if boost_system != null:
+		for entry in (boost_system.visible_targets() as Array):
+			if not str((entry as Dictionary)["id"]) in gs.boost_store_bans:
+				open_rooms += 1
+	metrics["workable"] = open_rooms
 	if heat_system != null:
 		metrics["heat_stops"] = int(heat_system.stops_settled) - stops_at_start
 		metrics["heat_seized"] = int(heat_system.stops_seized) - seized_at_start
@@ -15112,7 +15248,7 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 		"days_played", "rent_paid", "rent_missed", "phone_paid", "seized_value",
 		"applications", "jobs", "take", "final_stick_tier", "final_boost_tier",
 		"stops", "seizures", "heat_stops", "heat_seized", "bans",
-		"wanders", "found", "shift_pay", "upgrades"]
+		"wanders", "found", "shift_pay", "upgrades", "clocked", "workable"]
 	for key in averaged:
 		var total: float = 0.0
 		for run in runs:
@@ -15310,7 +15446,52 @@ func _econ_job_for(gs: Node, best_job: bool) -> String:
 	return pick
 
 ## One walk, if there is a slot to spend on it.
-func _econ_try_wander(gs: Node, gm: Node, metrics: Dictionary) -> bool:
+## Move on when this block is finished, and only then.
+##
+## "Finished" is both halves of the Boost board: nothing here is workable AND
+## nothing here is left to clock. Either one alone is a reason to stay — an
+## unworked room is worth a lift and an unclocked one is worth a walk.
+##
+## The destination is chosen for what it still HOLDS, not for distance or
+## takings: the first district with something to find or something to work. A
+## fare and a slot are the price, which is exactly the price a player pays, and
+## it is why this is measured rather than assumed to be free.
+func _econ_try_roam(gs: Node, gm: Node, metrics: Dictionary) -> bool:
+	var boost_system: Object = gm.system("boost")
+	var wander: Object = gm.system("wander")
+	if boost_system == null or wander == null:
+		return false
+	if not _econ_board_finished(gs, boost_system, wander):
+		return false
+	var here := str(gs.current_district_id)
+	for district_id in gs.districts_unlocked:
+		if str(district_id) == here:
+			continue
+		var was := str(gs.current_district_id)
+		gs.current_district_id = str(district_id)
+		var worth_it: bool = not _econ_board_finished(gs, boost_system, wander)
+		gs.current_district_id = was
+		if not worth_it:
+			continue
+		if gm.dispatch("travel", {"district_id": str(district_id)}):
+			metrics["travels"] = int(metrics["travels"]) + 1
+			metrics["fares"] = int(metrics["fares"]) + int(gs.TravelFare)
+			return true
+	return false
+
+## Nothing to lift here and nothing to find here.
+##
+## Both reads come from the systems that own them — `visible_targets()` minus
+## the bans it does not filter, and Wander's own discovery pool — so this cannot
+## disagree with what a lift or a walk would actually do.
+func _econ_board_finished(gs: Node, boost_system: Object, wander: Object) -> bool:
+	for entry in (boost_system.visible_targets() as Array):
+		if not str((entry as Dictionary)["id"]) in gs.boost_store_bans:
+			return false
+	return (wander.undiscovered_boost_targets() as Array).is_empty()
+
+func _econ_try_wander(gs: Node, gm: Node, metrics: Dictionary,
+		wants_lift: bool = false) -> bool:
 	var sys: Object = gm.system("wander")
 	if sys == null or not str(sys.blocker()).is_empty():
 		return false
@@ -15322,14 +15503,25 @@ func _econ_try_wander(gs: Node, gm: Node, metrics: Dictionary) -> bool:
 	# Dispatching without an intent defaults to READ, and the first run of this
 	# after the intents landed did exactly that: 0 jobs found and the profile
 	# back down to 113%. That is the gate working, not a regression.
-	var intent: String = B10_EVENTS.INTENT_WORK \
-		if not (sys.undiscovered() as Array).is_empty() else B10_EVENTS.INTENT_READ
+	#
+	# Batch 14 adds the middle rung, and only for a profile that LIFTS. A DEAL
+	# walk clocks boost targets, which is worth a slot to somebody who is going
+	# to work them and worth nothing to somebody who is not — so `wanderer` and
+	# `worker_wanders` are untouched and stay comparable to their batch-13 rows.
+	var intent: String = B10_EVENTS.INTENT_READ
+	if not (sys.undiscovered() as Array).is_empty():
+		intent = B10_EVENTS.INTENT_WORK
+	elif wants_lift and not (sys.undiscovered_boost_targets() as Array).is_empty():
+		intent = B10_EVENTS.INTENT_DEAL
 	var known_before: int = gs.jobs_discovered.size()
+	var clocked_before: int = gs.boost_targets_discovered.size()
 	if not gm.dispatch("wander", {"intent": intent}):
 		return false
 	metrics["wanders"] = int(metrics.get("wanders", 0)) + 1
 	if gs.jobs_discovered.size() > known_before:
 		metrics["found"] = int(metrics.get("found", 0)) + 1
+	if gs.boost_targets_discovered.size() > clocked_before:
+		metrics["clocked"] = int(metrics.get("clocked", 0)) + 1
 	return true
 
 ## The whole table, reported. Percentages are against `legal_worker`, which is
@@ -15389,6 +15581,9 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 				float(row["seizures"]), int(row["seized_value"]),
 				float(row["heat_stops"]), int(row["heat_seized"]),
 				int(round(100.0 * float(row["game_over_rate"]))), int(row["runs"])])
+		if float(row["bans"]) > 0.0 or float(row["clocked"]) > 0.0:
+			print("               targets clocked %.1f \u00b7 still workable %.1f \u00b7 bans %.1f"
+				% [float(row["clocked"]), float(row["workable"]), float(row["bans"])])
 		if float(row["wanders"]) > 0.0:
 			print("               wanders %.1f \u00b7 jobs found %.1f \u00b7 shift pay %.0f"
 				% [float(row["wanders"]), float(row["found"]),
@@ -15459,8 +15654,13 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			_expect_true("flipper actually flipped", float(row["flips"]) > 0.0)
 		if name in ["legal_worker", "hustler"]:
 			_expect_true("%s actually worked" % name, float(row["shifts"]) > 0.0)
-		if name in ["stickup", "boost"]:
+		if name in ["stickup", "boost", "boost_finder"]:
 			_expect_true("%s actually committed crimes" % name, float(row["jobs"]) > 0.0)
+		# The discovery profile has to have DISCOVERED, or its lifting number is
+		# measuring a board it was handed rather than one it earned — the same
+		# instrument-failure guard every row above makes about its own premise.
+		if name == "boost_finder":
+			_expect_true("boost_finder actually clocked targets", float(row["clocked"]) > 0.0)
 
 	# The save goes back exactly as it was found, including having been absent.
 	if previous_save.is_empty():
@@ -16092,6 +16292,599 @@ func _check_adapter_copy_seam(gs: Node, gm: Node) -> void:
 
 # --- plumbing ---------------------------------------------------------------
 
+
+# === batch 14 — the visibility pass and the discovery axis ==================
+#
+# Four playtest findings and one design debt, and every one of them is the same
+# defect wearing a different hat: the build showed the player everything at once
+# and then said nothing about what any of it did.
+#
+# The Hustle hub opened with six income surfaces on Day 1, four of them unusable
+# and none of them ordered. The Home Market Snapshot sat greyed out with real
+# product names and real prices under a padlock, which reads as a bug rather
+# than a promise. Wander produced eleven different outcomes and announced all of
+# them as "You take a walk." POST ELI and LAY LOW were drawn on a card the gate
+# system hides for the whole of a fresh run. And Boost had exactly one axis —
+# tier — so its board opened at its widest and every permanent ban narrowed it
+# for good.
+#
+# The checks below are grouped by which of those they hold down. The gate half
+# is mostly data: `GATE_CASES` now carries the five Hustle rows and the actions
+# card, so the fresh-run, threshold, save/load and blocker-shape coverage came
+# for free with the entries. What is here is what data could NOT say — the exact
+# rung each surface arrives on, the screen actually rendering it, and the whole
+# discovery axis, which is a mechanism rather than a registry entry.
+#
+# SABOTAGE: set every Hustle gate's `min` to 0
+#           ==> "a fresh Hustle screen shows only the Jobs row" fails.
+# SABOTAGE: swap `day_min` for `wander_count_min` in HUSTLE_STICKUP
+#           ==> "Stickup arrives on day 2" fails.
+# SABOTAGE: make `day_min` read `>` instead of `>=`
+#           ==> "907List arrives on day 3" fails on its own threshold.
+# SABOTAGE: drop the discovered filter from `BoostSystem.visible_targets`
+#           ==> "a fresh run can see nothing to lift" fails.
+# SABOTAGE: drop the discovered arm from `BoostSystem.blocker`
+#           ==> "and a lift on one is refused outright" fails — which is the
+#               one that matters, because the filter alone is a list you can
+#               walk around.
+# SABOTAGE: let a WORK walk read the boost pool
+#           ==> "only a walk that went looking for a deal clocks a spot" fails.
+# SABOTAGE: drop the tier filter from `undiscovered_boost_targets`
+#           ==> "a tier-3 room is not something a tier-1 player notices" fails.
+# SABOTAGE: return the generic line from `home.gd::_wander_toast`
+#           ==> "the toast says what the walk turned up" fails.
+# SABOTAGE: hide the actions card whenever the operation card is hidden
+#           ==> "LAY LOW is reachable with no operation card in sight" fails.
+# SABOTAGE: delete the v14 -> v15 migration arm
+#           ==> "a v14 save still loads" fails, which is the validator catching
+#               it rather than the player.
+
+func _check_batch14(gs: Node, gm: Node) -> void:
+	_check_elapsed_requirements()
+	_check_hustle_ladder(gs)
+	_check_hustle_screen(gs)
+	_check_boost_discovery(gs, gm)
+	_check_deal_discovery(gs, gm)
+	_check_discovery_persistence(gs, gm)
+	_check_wander_toast(gs, gm)
+	_check_home_actions(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- the two new requirement types -------------------------------------------
+
+## `day_min` and `wander_count_min`, held to the same standard FS-001.5 holds
+## every other type to: a pass, a fail, and BOTH SIDES of the boundary.
+##
+## Asked of the evaluator directly and with hand-built facts, because that is
+## the contract — it reads only what it is handed, so a check that reached
+## through GameState would be testing the adapter instead.
+func _check_elapsed_requirements() -> void:
+	var requirements: RefCounted = preload("res://systems/requirements.gd").new()
+	for row in [["day_min", "current_day"], ["wander_count_min", "wander_count"]]:
+		var type_name := str((row as Array)[0])
+		var fact := str((row as Array)[1])
+		_expect_true("%s fails one short" % type_name,
+			not bool(requirements.evaluate_requirement(
+				{"type": type_name, "min": 3}, {fact: 2})["ok"]))
+		_expect_true("%s passes exactly at the line" % type_name,
+			bool(requirements.evaluate_requirement(
+				{"type": type_name, "min": 3}, {fact: 3})["ok"]))
+		_expect_true("%s passes past it" % type_name,
+			bool(requirements.evaluate_requirement(
+				{"type": type_name, "min": 3}, {fact: 9})["ok"]))
+		# An ABSENT fact reads zero and therefore blocks, which is the closed
+		# direction and the only safe one for a gate.
+		_expect_true("%s with no fact at all blocks" % type_name,
+			not bool(requirements.evaluate_requirement(
+				{"type": type_name, "min": 1}, {})["ok"]))
+		# The structured answer, which is what a UI translates.
+		var blocked: Dictionary = requirements.evaluate_requirement(
+			{"type": type_name, "min": 4}, {fact: 1})
+		_expect_str("%s names itself as the blocker" % type_name,
+			str(blocked["blocker_code"]), type_name)
+		_expect_str("%s offers a copy key" % type_name,
+			str(blocked["blocker_copy_key"]), "requirements.%s" % type_name)
+		_expect_float("%s reports where you are" % type_name,
+			float(blocked["current"]), 1.0)
+		_expect_float("%s reports where the line is" % type_name,
+			float(blocked["required"]), 4.0)
+
+# --- the Hustle ladder --------------------------------------------------------
+
+## Every income row on the hub, and the exact rung it arrives on.
+##
+## `GATE_CASES` proves each of these is closed on a fresh run and opens when its
+## FACT is raised; it deliberately cannot prove WHERE, because gates that share a
+## fact are raised together there. This is the where, and it is asserted one step
+## either side of the line — a gate that opens a day early and a gate that never
+## opens are the same bug from the player's chair.
+const HUSTLE_RUNGS: Array[Dictionary] = [
+	{"id": "hustle.market", "fact": "walks", "at": 1, "what": "Street Market"},
+	{"id": "hustle.boost", "fact": "walks", "at": 3, "what": "Boost"},
+	{"id": "hustle.stickup", "fact": "days", "at": 2, "what": "Stickup"},
+	{"id": "hustle.list", "fact": "days", "at": 3, "what": "907List"},
+	{"id": "hustle.shark", "fact": "days", "at": 5, "what": "the shark"},
+]
+
+func _check_hustle_ladder(gs: Node) -> void:
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	if access == null:
+		_fail("batch14 ladder", "no SurfaceVisibility autoload")
+		return
+	for entry in HUSTLE_RUNGS:
+		var rung: Dictionary = entry
+		var surface_id := str(rung["id"])
+		var at: int = int(rung["at"])
+		var what := str(rung["what"])
+		# One short.
+		_fresh_gate_run(gs)
+		_set_ladder_fact(gs, str(rung["fact"]), at - 1)
+		_expect_true("%s is not there one step short" % what,
+			not access.is_unlocked(surface_id))
+		_expect_true("and it is hidden rather than locked",
+			not access.is_visible(surface_id))
+		# Exactly at it.
+		_set_ladder_fact(gs, str(rung["fact"]), at)
+		_expect_true("%s arrives at %s %d" % [what, str(rung["fact"]), at],
+			access.is_unlocked(surface_id))
+		_expect_true("and it is in the layout once it does",
+			access.is_visible(surface_id))
+		# Past it. A gate is a floor, not a window.
+		_set_ladder_fact(gs, str(rung["fact"]), at + 4)
+		_expect_true("%s stays once earned" % what, access.is_unlocked(surface_id))
+	# Jobs keeps its LOCK while the other five hide, which is the whole authored
+	# asymmetry: Jobs is the on-ramp the player is meant to know about.
+	_fresh_gate_run(gs)
+	var jobs: Dictionary = access.verdict(access.MENU_JOBS)
+	_expect_str("Jobs is still the one row that locks rather than hides",
+		str(jobs["mode"]), access.MODE_LOCKED)
+	_expect_true("and a locked Jobs row stays in the layout",
+		access.is_visible(access.MENU_JOBS))
+	_expect_true("with a line under it saying what to do",
+		not str(jobs["hint"]).is_empty())
+	for entry in HUSTLE_RUNGS:
+		_expect_str("%s offers no hint, because nobody sees it"
+			% str((entry as Dictionary)["what"]),
+			str(access.verdict(str((entry as Dictionary)["id"]))["hint"]), "")
+	gs.reset_to_new_game()
+
+func _set_ladder_fact(gs: Node, fact: String, value: int) -> void:
+	if fact == "days":
+		gs.day = maxi(1, value)
+	else:
+		gs.wander_count = maxi(0, value)
+
+# --- and the screen that renders it -------------------------------------------
+
+## The hub itself, on a fresh run and then past every rung.
+##
+## Rendered rather than reasoned about: `gate_surface` is what actually removes a
+## row, and a registry that says "hidden" while the screen draws the row anyway
+## is the failure this catches. Six rows in, six rows out.
+func _check_hustle_screen(gs: Node) -> void:
+	const ROWS := {"Jobs": "Jobs", "List": "907List", "Market": "Street Market",
+		"Boost": "Boost", "Stick": "Stickup", "Shark": "the shark"}
+	_fresh_gate_run(gs)
+	var hub: Node = _instantiate_screen("res://ui/screens/hustle.tscn")
+	if hub == null:
+		_fail("batch14 hustle", "the Hustle screen would not instantiate")
+		return
+	(hub as Control).size = FS001_VIEWPORT
+	hub.refresh()
+	for row_name in ROWS:
+		var node := hub.get_node_or_null(
+			"Shell/Scroll/Pad/Content/Rows/" + str(row_name)) as Control
+		if node == null:
+			_fail("batch14 hustle", "the %s row is missing" % str(row_name))
+			continue
+		if str(row_name) == "Jobs":
+			_expect_true("a fresh Hustle screen shows only the Jobs row",
+				node.visible)
+			_expect_true("and shows it locked",
+				bool(node.get_meta("surface_locked", false)))
+			_expect_true("and dimmed", node.modulate.a < 1.0)
+		else:
+			_expect_true("a fresh Hustle screen has no %s row" % str(ROWS[row_name]),
+				not node.visible)
+	_free_screen(hub)
+	# Nothing on the hub overflows the phone, gated or not. Measured through
+	# `_fs001_render` rather than by a second sweep here: that function owns
+	# both the 375 rule and the 44pt one, and it knows the thing a headless
+	# check has to know — that a declared minimum is trustworthy where a
+	# laid-out `size.x` is not.
+	_fs001_render("res://ui/screens/hustle.tscn", "fresh")
+
+	# Past every rung: six rows, all of them in the layout and none of them
+	# dimmed. A gate that never re-opens is as broken as one that never closes.
+	_fresh_gate_run(gs)
+	gs.day = 5
+	gs.wander_count = 3
+	gs.job_contacts = 1
+	var earned: Node = _instantiate_screen("res://ui/screens/hustle.tscn")
+	if earned == null:
+		_fail("batch14 hustle", "the Hustle screen would not instantiate earned")
+		return
+	(earned as Control).size = FS001_VIEWPORT
+	earned.refresh()
+	for row_name in ROWS:
+		var node := earned.get_node_or_null(
+			"Shell/Scroll/Pad/Content/Rows/" + str(row_name)) as Control
+		_expect_true("an earned hub shows %s" % str(ROWS[row_name]),
+			node != null and node.visible)
+		_expect_true("and %s takes a tap" % str(ROWS[row_name]),
+			node != null and not bool(node.get_meta("surface_locked", false)))
+	_free_screen(earned)
+	_fs001_render("res://ui/screens/hustle.tscn", "earned")
+	gs.reset_to_new_game()
+
+# --- Boost's second axis ------------------------------------------------------
+
+## A target nobody has clocked is not on the board and cannot be worked.
+##
+## Both halves, because they answer to different callers. `visible_targets()` is
+## what the screen draws and `blocker()` is what a dispatch has to get past —
+## and a filter with no rule under it is a list you can walk around by calling
+## the action directly, which is exactly what the sabotage line above describes.
+func _check_boost_discovery(gs: Node, gm: Node) -> void:
+	var boost: Object = gm.system("boost")
+	if boost == null:
+		_fail("batch14 boost", "no boost system")
+		return
+	_b10_ready(gs)
+	gs.boost_tier = 3
+	gs.boost_targets_discovered = []
+	_expect_int("a fresh run can see nothing to lift",
+		(boost.visible_targets() as Array).size(), 0)
+	_expect_str("and a lift on one is refused outright",
+		str(boost.blocker("night_owl")), "You don't know that place.")
+	_expect_true("and the dispatch is refused too",
+		not gm.dispatch("boost", {"target_id": "night_owl"}))
+
+	# One clocked room is one room. Not the district, not the tier — the room.
+	gs.boost_targets_discovered = ["night_owl"]
+	var board: Array = boost.visible_targets()
+	_expect_int("clocking one room puts one room on the board", board.size(), 1)
+	_expect_str("and it is the room that was clocked",
+		str((board[0] as Dictionary)["id"]), "night_owl")
+	_expect_str("the clocked room is workable", str(boost.blocker("night_owl")), "")
+	_expect_str("its neighbour still is not",
+		str(boost.blocker("spenard_fuel")), "You don't know that place.")
+
+	# The refusal ORDER matters: a room in the wrong town is the wrong town
+	# first, and a room you have never seen does not report a tier you have not
+	# reached — that would be telling the player about a door they have not
+	# found.
+	_expect_str("a room in another district is the wrong town first",
+		str(boost.blocker("fourth_ave_market")), "Wrong part of town.")
+	gs.boost_tier = 1
+	gs.boost_targets_discovered = []
+	_expect_str("and an unclocked room never reports a tier",
+		str(boost.blocker("warehouse_club")), "You don't know that place.")
+	gs.boost_targets_discovered = ["warehouse_club"]
+	_expect_str("while a clocked one above your tier does",
+		str(boost.blocker("warehouse_club")), "You're not smooth enough yet.")
+
+	# A ban is a face somebody remembers, not a place you forgot. Clocking is
+	# not un-banning, and the ban still outranks nothing that comes after it.
+	gs.boost_tier = 3
+	gs.boost_targets_discovered = ["night_owl"]
+	gs.boost_store_bans = ["night_owl"]
+	_expect_str("a clocked room you are banned from is still banned",
+		str(boost.blocker("night_owl")), "They know your face in there now.")
+	_expect_int("and it is still drawn, so the ban is legible",
+		(boost.visible_targets() as Array).size(), 1)
+	gs.boost_store_bans = []
+	gs.reset_to_new_game()
+
+## The DEAL walk, and the pool it draws from.
+func _check_deal_discovery(gs: Node, gm: Node) -> void:
+	var sys: Object = gm.system("wander")
+	if sys == null:
+		_fail("batch14 deal", "no wander system")
+		return
+
+	# The pool: this district, at or below this tier, not already clocked.
+	_b10_ready(gs)
+	gs.boost_tier = 1
+	gs.boost_targets_discovered = []
+	var pool: Array = sys.undiscovered_boost_targets()
+	_expect_true("the deal pool holds the tier-1 rooms on this block",
+		"night_owl" in pool and "spenard_fuel" in pool)
+	_expect_true("a tier-3 room is not something a tier-1 player notices",
+		not "warehouse_club" in pool)
+	_expect_true("and neither is a room in another district",
+		not "fourth_ave_market" in pool)
+	gs.boost_tier = 3
+	_expect_true("climbing the ladder puts new rooms into the pool",
+		"warehouse_club" in sys.undiscovered_boost_targets())
+	gs.boost_targets_discovered = ["night_owl"]
+	_expect_true("and a clocked room leaves it",
+		not "night_owl" in sys.undiscovered_boost_targets())
+
+	# The roll itself. Swept, because it is a probability — what is asserted is
+	# that a DEAL walk CAN clock a room and a WORK walk never does.
+	# The drought counter is SEEDED before each walk rather than left at the
+	# fresh-run zero, and that is not decoration. Asserting "the ramp reset" on a
+	# run that started at zero is an assertion that cannot fail: the first
+	# version of this check passed with `gs.wander_misses = 0` deleted from
+	# `_discover_boost_target` entirely. Two misses in means a find has something
+	# to reset and a miss has somewhere to climb to.
+	const SEEDED_MISSES := 2
+	var clocked_on_deal := false
+	var missed_on_deal := false
+	for day in range(1, 40):
+		_b10_ready(gs)
+		gs.day = day
+		gs.boost_tier = 1
+		gs.boost_targets_discovered = []
+		gs.activity_log = []
+		gs.wander_misses = SEEDED_MISSES
+		if not gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_DEAL}):
+			continue
+		if gs.boost_targets_discovered.is_empty():
+			if not missed_on_deal:
+				missed_on_deal = true
+				_expect_int("a missed deal walk climbs the same drought",
+					int(gs.wander_misses), SEEDED_MISSES + 1)
+			continue
+		if clocked_on_deal:
+			continue
+		clocked_on_deal = true
+		_expect_int("a clocked room is one room, not a district",
+			gs.boost_targets_discovered.size(), 1)
+		_expect_true("and it came from the pool that was offered",
+			str(gs.boost_targets_discovered[0]) in ["night_owl", "spenard_fuel"])
+		_expect_int("finding something resets the drought", int(gs.wander_misses), 0)
+		var said := false
+		for row in gs.activity_log:
+			if str((row as Dictionary).get("text", "")).begins_with("You clock a spot"):
+				said = true
+		_expect_true("and the feed says so", said)
+	_expect_true("a deal walk can clock a spot", clocked_on_deal)
+	_expect_true("and a deal walk can come back empty", missed_on_deal)
+
+	# The intent gate, from the other side. Forty walks looking for WORK, and
+	# not one of them notices a shop — the same rule that keeps a READ walk from
+	# stumbling into a freight job.
+	var clocked_on_work := false
+	for day in range(1, 40):
+		_b10_ready(gs)
+		gs.day = day
+		gs.boost_tier = 3
+		gs.boost_targets_discovered = []
+		if not gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_WORK}):
+			continue
+		if not gs.boost_targets_discovered.is_empty():
+			clocked_on_work = true
+			break
+	_expect_true("only a walk that went looking for a deal clocks a spot",
+		not clocked_on_work)
+
+	# An exhausted pool turns the roll OFF rather than rolling for nothing: with
+	# everything clocked, a DEAL walk still draws a card and the ramp still
+	# climbs, which is what stops the intent becoming dead once the block is
+	# known.
+	_b10_ready(gs)
+	gs.boost_tier = 3
+	_clock_every_boost_target(gs)
+	gs.activity_log = []
+	var before_misses: int = int(gs.wander_misses)
+	_expect_true("a deal walk on a known block still goes out",
+		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_DEAL}))
+	_expect_true("and still says something", gs.activity_log.size() > 0)
+	_expect_int("and an exhausted pool does not climb a drought it cannot end",
+		int(gs.wander_misses), before_misses)
+	gs.reset_to_new_game()
+
+## The latch persists, and is repaired rather than trusted.
+func _check_discovery_persistence(gs: Node, gm: Node) -> void:
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	_b10_ready(gs)
+	gs.boost_tier = 2
+	gs.boost_targets_discovered = ["night_owl", "northern_value"]
+	saves.save_run()
+	gs.boost_targets_discovered = []
+	_expect_true("a scrambled run has clocked nothing",
+		(gm.system("boost").visible_targets() as Array).is_empty())
+	_expect_true("the run reloads", saves.load_run())
+	_expect_true("and the clocked rooms come back",
+		"night_owl" in gs.boost_targets_discovered
+		and "northern_value" in gs.boost_targets_discovered)
+	_expect_int("exactly the ones that were clocked",
+		gs.boost_targets_discovered.size(), 2)
+
+	# A v14 payload through the real chain. The arm stamps the version only, so
+	# the run arrives having never been out looking — which is the honest
+	# history, and is argued at the arm.
+	var v14: Dictionary = saves._migrate({"save_version": 14, "state": {
+		"day": 9, "cash": 700, "street_name": "Legacy",
+		"boost_tier": 2, "boost_technique": 6,
+		"boost_daily_hits": {"night_owl": 8},
+		"boost_store_bans": ["northern_value"],
+	}})
+	_expect_true("a v14 save still loads", not v14.is_empty())
+	_expect_true("and arrives with nothing clocked",
+		not v14.has("boost_targets_discovered")
+		or (v14["boost_targets_discovered"] as Array).is_empty())
+	_expect_true("its bans are untouched — a ban is not a thing you forget",
+		"northern_value" in (v14.get("boost_store_bans", []) as Array))
+
+	if previous_save.is_empty():
+		if FileAccess.file_exists(saves.SAVE_PATH):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(saves.SAVE_PATH))
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- the toast that says what happened ----------------------------------------
+
+## Home's wander toast reads the line the card wrote.
+##
+## Driven through the SCREEN, because the whole point is what the player is
+## shown. The screen's toast builder is called against a run whose feed has a
+## known row in it, so the assertion is on the copy rather than on a code path.
+func _check_wander_toast(gs: Node, gm: Node) -> void:
+	_b10_ready(gs)
+	var home: Node = _instantiate_screen("res://ui/screens/home.tscn")
+	if home == null:
+		_fail("batch14 toast", "Home would not instantiate")
+		return
+	(home as Control).size = FS001_VIEWPORT
+
+	gs.activity_log = []
+	gs.log_activity("You clock a spot: Night Owl. Worth remembering.")
+	_expect_str("the toast says what the walk turned up",
+		str(home._wander_toast(int(gs.day))),
+		"You clock a spot: Night Owl. Worth remembering.")
+
+	# A day crossing APPENDS rather than replaces. One toast node exists for the
+	# whole session and a second message overwrites the first, so two calls
+	# would show the day and swallow the walk.
+	var crossed: String = str(home._wander_toast(int(gs.day) - 1))
+	_expect_true("a day crossing still carries the walk",
+		crossed.contains("A new day. Day %d." % int(gs.day)))
+	_expect_true("and the day is a second line rather than a second toast",
+		crossed.contains("\n"))
+
+	# Nothing in the feed from this walk falls back rather than quoting an old
+	# row: a toast about something that happened yesterday is worse than a
+	# generic one.
+	gs.activity_log = []
+	gs.log_activity("Something from another day")
+	(gs.activity_log[0] as Dictionary)["day"] = int(gs.day) - 3
+	_expect_true("a stale feed row is not quoted as this walk's outcome",
+		str(home._wander_toast(int(gs.day))).begins_with("You take a walk."))
+	gs.activity_log = []
+	_expect_true("and an empty feed falls back too",
+		str(home._wander_toast(int(gs.day))).begins_with("You take a walk."))
+	_free_screen(home)
+
+	# End to end: a real dispatch leaves a row this walk can quote.
+	_b10_ready(gs)
+	gs.activity_log = []
+	var before_day: int = int(gs.day)
+	_expect_true("a walk dispatches",
+		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ}))
+	var engine: Object = gm.system("consequence")
+	if engine == null or not bool(engine.has_active()):
+		_expect_true("and it wrote a row dated to the day it happened on",
+			not gs.activity_log.is_empty()
+			and int((gs.activity_log[0] as Dictionary).get("day", -1)) == before_day)
+	gs.reset_to_new_game()
+
+# --- the re-homed actions -----------------------------------------------------
+
+## POST ELI and LAY LOW, on a card that exists when they do.
+##
+## The defect this closes is precise: both buttons were drawn on the operation
+## card, `_bind_gates` hides that card whenever there is no operation, no rent
+## crunch and no shift, and that is a fresh run in its entirety. So the checks
+## are written against exactly that state — the operation card hidden, and the
+## action still reachable.
+func _check_home_actions(gs: Node, gm: Node) -> void:
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	if access == null:
+		_fail("batch14 actions", "no SurfaceVisibility autoload")
+		return
+	# 1. A fresh run has neither door, so there is no card.
+	_fresh_gate_run(gs)
+	_expect_int("a fresh run has no standing actions",
+		(access.home_actions() as Array).size(), 0)
+	_expect_true("so the actions card is not in the layout",
+		not access.is_visible(access.HOME_ACTIONS))
+
+	# 2. Recovery becoming relevant opens the card, WITH the operation card
+	#    still hidden. That pairing is the whole finding.
+	gs.health = gs.health_max - 1
+	_expect_true("a scrape makes lay low relevant",
+		"lay_low" in (access.home_actions() as Array))
+	_expect_true("and the actions card arrives",
+		access.is_visible(access.HOME_ACTIONS))
+	_expect_str("while the operation card still has nothing to say",
+		str(access.operation_card_reason()), "")
+	_expect_true("so the operation card is still hidden",
+		not access.is_visible(access.HOME_TONIGHTS_OPERATION))
+
+	var home: Node = _instantiate_screen("res://ui/screens/home.tscn")
+	if home == null:
+		_fail("batch14 actions", "Home would not instantiate")
+		return
+	(home as Control).size = FS001_VIEWPORT
+	home.refresh()
+	var card := home.get_node_or_null("Shell/Scroll/Pad/Content/Actions") as Control
+	var lay := home.get_node_or_null(
+		"Shell/Scroll/Pad/Content/Actions/V/Row/Lay") as Button
+	var post := home.get_node_or_null(
+		"Shell/Scroll/Pad/Content/Actions/V/Row/Post") as Button
+	var op := home.get_node_or_null("Shell/Scroll/Pad/Content/OpCard") as Control
+	_expect_true("LAY LOW is reachable with no operation card in sight",
+		card != null and card.visible and lay != null and lay.visible
+		and op != null and not op.visible)
+	_expect_true("and POST ELI is not offered before Eli has offered",
+		post != null and not post.visible)
+	_expect_str("the button says what it does", lay.text if lay != null else "",
+		"LAY LOW")
+	_expect_true("and it is a real tap target",
+		lay != null and lay.custom_minimum_size.y >= 44.0)
+	_expect_true("the card says what is on offer",
+		not (home.get_node_or_null("Shell/Scroll/Pad/Content/Actions/V/Sub")
+			as Label).text.is_empty())
+	_free_screen(home)
+	# The new card at 375, through the one owner of that rule — which also
+	# holds every visible button on it to 44pt.
+	_fs001_render("res://ui/screens/home.tscn", "actions card")
+
+	# 3. Eli offering opens the other door, and the card carries both.
+	_fresh_gate_run(gs)
+	var ops: Object = gm.system("crew_operations")
+	if ops != null:
+		(gs.crew_operation_state["discovered"] as Array).append("run_the_bag")
+		_expect_true("Eli offering puts POST ELI on the card",
+			"post_eli" in (access.home_actions() as Array))
+		_expect_true("and the card is in the layout",
+			access.is_visible(access.HOME_ACTIONS))
+		var both: Node = _instantiate_screen("res://ui/screens/home.tscn")
+		if both != null:
+			(both as Control).size = FS001_VIEWPORT
+			both.refresh()
+			var eli_button := both.get_node_or_null(
+				"Shell/Scroll/Pad/Content/Actions/V/Row/Post") as Button
+			_expect_true("POST ELI is rendered once Eli has offered",
+				eli_button != null and eli_button.visible)
+			_expect_str("and it says so", eli_button.text if eli_button != null else "",
+				"POST ELI")
+			_free_screen(both)
+
+	# 4. The operation card carries no controls at all any more.
+	_fresh_gate_run(gs)
+	_raise_gate_fact(gs, "operation")
+	var with_op: Node = _instantiate_screen("res://ui/screens/home.tscn")
+	if with_op != null:
+		(with_op as Control).size = FS001_VIEWPORT
+		with_op.refresh()
+		var op_card := with_op.get_node_or_null(
+			"Shell/Scroll/Pad/Content/OpCard") as Control
+		var op_row := with_op.get_node_or_null(
+			"Shell/Scroll/Pad/Content/OpCard/V/Actions") as Control
+		_expect_true("a live operation card is in the layout",
+			op_card != null and op_card.visible)
+		_expect_true("and it carries no buttons of its own",
+			op_row != null and not op_row.visible)
+		_free_screen(with_op)
+	gs.reset_to_new_game()
+
 func _expect_int(label: String, got: int, want: int) -> void:
 	_checks += 1
 	if got != want:
@@ -16269,11 +17062,25 @@ func _fail(label: String, detail: String) -> void:
 ## is for. 11311 - 7 (routes disqualified by the new availability and fare
 ## rules) + 26 = 11330, measured.
 ##
+## Batch 14 takes it to 12239, and most of that is not the new section. 200 of
+## the 360 came from `GATE_CASES`: the gate suite is data-driven, so the five
+## Hustle rows and the actions card each brought the whole fresh-run, mode,
+## blocker-shape, threshold, isolation and save/load battery with them for the
+## price of six lines of table. That is the design pass's "data-driven rather
+## than one bespoke test per button" paying its way three batches later.
+##
+## The other 160 are what data could not say. The evaluator's two new types get
+## the FS-001.5 treatment (a pass, a fail, both sides of the boundary, and the
+## structured blocker); the ladder gets its exact rungs, asserted one step either
+## side; the hub and the actions card are RENDERED rather than reasoned about;
+## and the discovery axis gets a mechanism section, because a registry entry can
+## be proven by a table and a seeded roll cannot.
+##
 ## Ten of margin, the same margin every floor since FS-003.13 has left, because
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11860
+const MIN_CHECKS := 12239
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -17061,7 +17868,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v14", int(saves.SAVE_VERSION), 14)
+	_expect_int("the schema is v15", int(saves.SAVE_VERSION), 15)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -17476,7 +18283,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v14 for Heat's teeth", int(saves.SAVE_VERSION), 14)
+	_expect_int("the schema is v15 for Heat's teeth", int(saves.SAVE_VERSION), 15)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -17929,7 +18736,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v14 for Wander", int(saves.SAVE_VERSION), 14)
+	_expect_int("the schema is v15 for Wander", int(saves.SAVE_VERSION), 15)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -18206,12 +19013,15 @@ func _check_wander_card_is_reachable(gs: Node, gm: Node) -> void:
 		_expect_true("and %s is not disabled on a fresh run" % str(intent), not b.disabled)
 		_expect_true("and it says what it is for: %s" % str(intent), not b.text.is_empty())
 	# The stale MOVE PRODUCT control is gone from the layout rather than
-	# relabelled, so nothing offers two doors onto the same walk.
-	var stale: Button = home.get_node_or_null(
-		"Shell/Scroll/Pad/Content/OpCard/V/Actions/Move") as Button
-	if stale != null:
+	# relabelled, so nothing offers two doors onto the same walk. Batch 14 took
+	# the other two buttons off that card as well, so the assertion is now made
+	# against the ROW: a hidden container is out of the layout whatever its
+	# children still report about themselves.
+	var stale_row: Control = home.get_node_or_null(
+		"Shell/Scroll/Pad/Content/OpCard/V/Actions") as Control
+	if stale_row != null:
 		_expect_true("the old MOVE PRODUCT control is out of the layout",
-			not stale.visible)
+			not stale_row.visible)
 	home.queue_free()
 	gs.reset_to_new_game()
 

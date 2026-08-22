@@ -129,6 +129,34 @@ func undiscovered() -> Array:
 			out.append(str(job_id))
 	return out
 
+## The same read for Boost, and the reason DEAL is now worth walking for.
+##
+## WORK had a discovery pool and DEAL did not, which made the intents unequal in
+## a way the copy never admitted: one of them could put something permanent on
+## your map and the other could only draw a card. This is DEAL's pool.
+##
+## Three filters, and each one is the same argument the job pool makes silently.
+## DISTRICT, because you find what is in front of you. ALREADY-CLOCKED, because
+## the pool is what is left. And TIER — you do not notice the unlatched dock door
+## at Ship Creek Yards while you are still learning which corner shop watches the
+## lot, so a target above your current tier is not yet a thing you would see.
+##
+## That last one is what makes the pool REFILL rather than merely drain: climbing
+## the Boost ladder puts new targets into the discovery pool, so tier progress and
+## walking the block feed each other instead of racing.
+func undiscovered_boost_targets() -> Array:
+	var district := str(gs.current_district_id)
+	var out: Array = []
+	for target in gs.boost_targets:
+		if str(target["area"]) != district:
+			continue
+		if str(target["id"]) in gs.boost_targets_discovered:
+			continue
+		if int(target["tier"]) > int(gs.boost_tier):
+			continue
+		out.append(str(target["id"]))
+	return out
+
 ## The facts a card's requirements are evaluated against.
 ##
 ## **This is the seam FS-001.5 proved is dangerous** — the evaluator is pure and
@@ -248,6 +276,20 @@ func _wander(intent: String) -> Dictionary:
 	# every walk reading the block does not stumble into a freight job, which is
 	# the whole point of the intent being a choice.
 	var open: Array = undiscovered() if intent == EVENTS.INTENT_WORK else []
+	# The DEAL pool, on its own key. Batch 14.
+	#
+	# It is the same roll — same ramp, same effort scaling, same one-find-per-walk
+	# rule — reached by a different intent and answered from a different pool.
+	# Deliberately not a shared "discovery" pool with a mixed draw: WORK finding a
+	# boost target would make the intent choice cosmetic, which is the exact defect
+	# batch 13 removed from Wander in the first place.
+	#
+	# Keyed `:deal` rather than off the bare `key`, so the two intents cannot
+	# resolve off the same draw. Sharing the key would mean a run that spent walk
+	# five looking for work and a run that spent walk five looking for a deal both
+	# hit or both missed, which is one stream pretending to be two.
+	var open_targets: Array = undiscovered_boost_targets() \
+		if intent == EVENTS.INTENT_DEAL else []
 	if not open.is_empty() \
 			and rng.seeded_random(gs.run_seed, key) < discovery_chance() * spent:
 		# WHICH one is seeded too. Taking `open[0]` made the order of a constant
@@ -256,13 +298,25 @@ func _wander(intent: String) -> Dictionary:
 		var pick: int = rng.seeded_int_range(gs.run_seed, key + ":find",
 			0, open.size() - 1)
 		report = _discover(str(open[pick]))
+	elif not open_targets.is_empty() \
+			and rng.seeded_random(gs.run_seed, key + ":deal") < discovery_chance() * spent:
+		var picked_target: int = rng.seeded_int_range(gs.run_seed, key + ":deal_find",
+			0, open_targets.size() - 1)
+		report = _discover_boost_target(str(open_targets[picked_target]))
 	else:
-		if not open.is_empty():
+		if not open.is_empty() or not open_targets.is_empty():
 			# Capped where the ramp itself stops mattering. Past the ceiling the
 			# extra misses buy nothing, and letting the counter run free put the
 			# live path and the load-time validator into disagreement — a save
 			# at five misses came back clamped, with a repair reported against a
 			# run that had done nothing wrong.
+			#
+			# A missed DEAL roll climbs the SAME ramp a missed WORK roll does,
+			# and that is the point rather than an oversight: the ramp measures
+			# a drought of finding things, and a player who has come back with
+			# nothing four walks running has had the same drought whichever way
+			# they were looking. One counter, so "getting warmer" means one
+			# thing.
 			gs.wander_misses = mini(int(gs.wander_misses) + 1,
 				int(EVENTS.miss_ceiling()))
 		report = _draw_card(key, intent, spent)
@@ -289,6 +343,25 @@ func _discover(job_id: String) -> Dictionary:
 		phone.push_message("Around town",
 			"they're taking people on at %s. go early and ask for the shift." % name)
 	return {"ok": true, "kind": "discovery", "card_id": "", "discovered": job_id}
+
+## A place goes on the map. The job version's twin, and it resets the same ramp
+## for the same reason — the drought is over, whatever ended it.
+##
+## The phone line is lower-case and second-hand on purpose. A job discovery is
+## somebody telling you where to turn up; this is somebody mentioning a shop got
+## done, which is the most anybody would ever say out loud about it.
+func _discover_boost_target(target_id: String) -> Dictionary:
+	gs.boost_targets_discovered.append(target_id)
+	gs.wander_misses = 0
+	var target: Dictionary = gs.boost_target_by_id(target_id)
+	var place: String = str(target.get("name", target_id))
+	gs.log_activity("You clock a spot: %s. Worth remembering." % place, GREEN)
+	var phone: Object = gm.system("phone") if gm != null else null
+	if phone != null:
+		phone.push_message("Around town",
+			"heard somebody got into %s clean. might be worth a look." % place.to_lower())
+	return {"ok": true, "kind": "discovery", "card_id": "",
+		"discovered_boost": target_id}
 
 ## One card from the eligible pool, weighted, or a breadcrumb when the pool is
 ## empty. A wander is never nothing.

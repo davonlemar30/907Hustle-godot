@@ -103,6 +103,9 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Hire crew, pay wages, watch loyalty, move them up the ranks | Street → People → Crew |
 | Give Pherris the day to work the board, and get the money back at night | automatic, once she is Trusted enough |
 | Hear from her when she can do it, what she took, and how the night went | Phone · Activity feed · Home · Hustle |
+| Give Eli the day to cover the bag, and get stopped less carrying it | automatic, once he trusts you |
+| Give Deshawn the day to work a corner, and watch its Pressure come down | automatic, once he trusts you |
+| Take a smaller wound because Tone was standing there | automatic, once he is on the crew |
 | Claim corners, post soldiers, collect nightly | Home → Turf |
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
@@ -128,6 +131,14 @@ chain walks v5 to current, a night replayed from a save lands identically, one
 dispatch is one refresh, and a thirty-day economy simulation says what delegation
 is worth. Delegation beyond Pherris and the 907List board was never in the
 milestone; what shipped is the whole vertical slice, end to end.
+
+Batches 6a and 6b then spent that slice. 6a moved the delegation COPY out of the
+coordinator and into the adapters, so a second operation costs no edit to shared
+code and no save-schema bump. 6b added the second and third: Eli covering the
+bag on the carry roll, Deshawn taking Pressure off a corner. Tone, who had been
+on the roster since the port began without changing a single number, now absorbs
+damage at both sites that deal it. Three of the four crew members the game has
+always shown you now do something.
 
 The milestone still ahead is **FS-002 Territory Warfare**.
 
@@ -221,6 +232,8 @@ systems/              # the ONLY writers of GameState
   arrest.gd           # severity, bail, priors, processing time, the record
   retaliation.gd      # the delayed answer: schedule, ambient warnings, street crew
   list_adapter.gd     # Pherris running the board: what she buys, and why she stops
+  runner_adapter.gd   # Eli covering the bag: which exits nobody watches
+  fixer_adapter.gd    # Deshawn working a corner: Pressure off every family on it
   requirements.gd     # pure eligibility evaluator — structured blockers, no state
                       # (the ONE gate language: progression gates author records
                       #  for it, they do not bring their own condition engine)

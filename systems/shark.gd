@@ -1,4 +1,6 @@
 extends RefCounted
+## For the static term-snap helper — see `GameState.nearest_shark_term`.
+const GAME_STATE := preload("res://autoload/game_state.gd")
 ## Shark — lending money out and finding out whether it comes back.
 ##
 ## Ported from game-core.js FUND_SHARK (~7970), resolveSharkLoans (~6556), and
@@ -153,8 +155,15 @@ func default_probability(loan: Dictionary) -> float:
 		- float(attributes.compat("intelligence")) * 0.025
 	return clampf(p, 0.03, 0.82)
 
+## Interest owed on a note. Reads the authored rate for the note's term, or for
+## the nearest authored term if the note carries one that is not — see
+## `GameState.nearest_shark_term`. Indexing SHARK_TERMS directly is what used to
+## take the whole night down when a save carried a term of 3.
 func interest_for(loan: Dictionary) -> int:
-	return int(round(float(loan["amount"]) * float(gs.SHARK_TERMS[int(loan["term"])])))
+	var term: int = int(loan["term"])
+	if not gs.SHARK_TERMS.has(term):
+		term = GAME_STATE.nearest_shark_term(term)
+	return int(round(float(loan["amount"]) * float(gs.SHARK_TERMS[term])))
 
 func _resolve_defaulted(loan_id: int, how: String) -> Dictionary:
 	var loan: Dictionary = loan_by_id(loan_id)

@@ -113,6 +113,22 @@ const DISCOVERY_REQUIREMENTS := {
 		{"type": "crew_active", "crew_id": "pherris"},
 		{"type": "crew_loyalty_min", "crew_id": "pherris", "min": 6},
 	],
+	# Eli and Deshawn are gated on the RELATIONSHIP rather than on a hustle
+	# tier, and the difference is the offer each is making. Pherris offers to
+	# run a board she has watched you get good at, so her gate is your Broker
+	# tier. These two are offering to do their own job for you, and the only
+	# question is whether they trust you enough to spend a day on it.
+	#
+	# A loyalty of 5 is one above the recruiting floor, so neither offer arrives
+	# on the morning you hire them.
+	"run_the_bag": [
+		{"type": "crew_active", "crew_id": "eli"},
+		{"type": "crew_loyalty_min", "crew_id": "eli", "min": 5},
+	],
+	"smooth_it_over": [
+		{"type": "crew_active", "crew_id": "deshawn"},
+		{"type": "crew_loyalty_min", "crew_id": "deshawn", "min": 5},
+	],
 }
 
 ## What has to be true to CLAIM somebody's day for it, this morning.
@@ -129,6 +145,24 @@ const ASSIGNMENT_REQUIREMENTS := {
 		{"type": "crew_unassigned_today", "crew_id": "pherris"},
 		{"type": "planning_window_open"},
 	],
+	# Same five rows in the same authored order, because the order IS the
+	# priority of the reasons and it does not change with the person: "he is not
+	# on the crew" outranks "you already used him today", which outranks "it is
+	# the afternoon".
+	"run_the_bag": [
+		{"type": "crew_active", "crew_id": "eli"},
+		{"type": "crew_loyalty_min", "crew_id": "eli", "min": 5},
+		{"type": "payroll_not_delinquent", "crew_id": "eli"},
+		{"type": "crew_unassigned_today", "crew_id": "eli"},
+		{"type": "planning_window_open"},
+	],
+	"smooth_it_over": [
+		{"type": "crew_active", "crew_id": "deshawn"},
+		{"type": "crew_loyalty_min", "crew_id": "deshawn", "min": 5},
+		{"type": "payroll_not_delinquent", "crew_id": "deshawn"},
+		{"type": "crew_unassigned_today", "crew_id": "deshawn"},
+		{"type": "planning_window_open"},
+	],
 }
 
 ## Which crew member each operation belongs to. A capability is a person's, not
@@ -136,6 +170,8 @@ const ASSIGNMENT_REQUIREMENTS := {
 ## place to keep the same fact.
 const OPERATION_CAPABILITY := {
 	"907list_run_board": {"crew_id": "pherris", "capability_id": "907list_run_board"},
+	"run_the_bag": {"crew_id": "eli", "capability_id": "run_the_bag"},
+	"smooth_it_over": {"crew_id": "deshawn", "capability_id": "smooth_it_over"},
 }
 
 var gs: Node
@@ -266,11 +302,27 @@ func _mark_discovered(operation_id: String) -> void:
 ## The Dictionary is persisted whole and a save written before these flags
 ## existed comes back without them, so every read has to answer "has not happened
 ## yet" for a missing key rather than raising.
-func callback_flag(key: String) -> bool:
-	return bool(gs.crew_operation_state.get(key, false))
+## Callback flags, PER OPERATION as of batch 6b.
+##
+## They were flat keys on `crew_operation_state` — `discovery_notified`,
+## `loyalty_warning_sent` — which was correct while one operation existed and
+## became a bug the moment a second did: the first operation to be discovered
+## consumed the flag and every other one went silent forever. Nobody would ever
+## have heard from Eli or Deshawn.
+##
+## Namespaced rather than nested so an old save needs no migration: a v10 record
+## carries the flat keys, which no longer match any namespaced lookup, so both
+## texts simply arrive once more for a run already in progress. That is a better
+## failure than a migration for two booleans whose whole content is "this has
+## been said once".
+func callback_flag(key: String, operation_id: String = "") -> bool:
+	return bool(gs.crew_operation_state.get(_flag_key(key, operation_id), false))
 
-func _set_callback_flag(key: String, value: bool) -> void:
-	gs.crew_operation_state[key] = value
+func _set_callback_flag(key: String, value: bool, operation_id: String = "") -> void:
+	gs.crew_operation_state[_flag_key(key, operation_id)] = value
+
+func _flag_key(key: String, operation_id: String) -> String:
+	return key if operation_id.is_empty() else "%s:%s" % [operation_id, key]
 
 func _phone() -> Object:
 	return gm.system("phone") if gm != null else null
@@ -305,10 +357,10 @@ func _reconcile_callbacks() -> void:
 		if not is_discovered(operation_id):
 			continue
 		# --- the offer, once per run ---
-		if not callback_flag("discovery_notified"):
+		if not callback_flag("discovery_notified", operation_id):
 			phone.push_message(_sender_for(operation_id),
 				_adapter_copy(operation_id, "discovery_text", [], DISCOVERY_TEXT))
-			_set_callback_flag("discovery_notified", true)
+			_set_callback_flag("discovery_notified", true, operation_id)
 		# --- the loyalty complaint, once per episode ---
 		#
 		# An EPISODE, not a run: the flag clears the moment loyalty recovers, so
@@ -326,15 +378,15 @@ func _reconcile_callbacks() -> void:
 		var loyalty: int = int(record.get("loyalty", 0))
 		var gate: int = _loyalty_gate(operation_id)
 		if loyalty < gate:
-			if not callback_flag("loyalty_warning_sent"):
+			if not callback_flag("loyalty_warning_sent", operation_id):
 				phone.push_message(_sender_for(operation_id),
 					_adapter_copy(operation_id, "loyalty_warning_text", [],
 						LOYALTY_WARNING_TEXT))
-				_set_callback_flag("loyalty_warning_sent", true)
-		elif callback_flag("loyalty_warning_sent"):
+				_set_callback_flag("loyalty_warning_sent", true, operation_id)
+		elif callback_flag("loyalty_warning_sent", operation_id):
 			# Re-armed rather than left set. The flag is "there is a complaint
 			# standing", and once she is loyal again there is not.
-			_set_callback_flag("loyalty_warning_sent", false)
+			_set_callback_flag("loyalty_warning_sent", false, operation_id)
 
 ## The activity-feed line for a claim that just succeeded.
 ##

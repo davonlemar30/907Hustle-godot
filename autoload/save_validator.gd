@@ -1,4 +1,8 @@
 extends RefCounted
+## The state script, for the authored tables this validator repairs against.
+## Preloaded rather than reached through the tree: this is a RefCounted, it has
+## no tree, and a repair table belongs with the data it describes.
+const GAME_STATE := preload("res://autoload/game_state.gd")
 ## Nested save-shape repair for load-time payloads.
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
@@ -194,6 +198,7 @@ func _validate_shark_loans(state: Dictionary, repairs: Array[String]) -> void:
 			_int(loan, "id", -1, "shark_loans[%d].id" % index, repairs)
 			_int(loan, "amount", 0, "shark_loans[%d].amount" % index, repairs)
 			_int(loan, "term", 0, "shark_loans[%d].term" % index, repairs)
+			_shark_term(loan, index, repairs)
 			_int(loan, "opened_day", 0, "shark_loans[%d].opened_day" % index, repairs)
 			_int(loan, "due_day", 0, "shark_loans[%d].due_day" % index, repairs)
 			_string(loan, "status", "active", "shark_loans[%d].status" % index, repairs)
@@ -211,6 +216,18 @@ func _validate_shark_loans(state: Dictionary, repairs: Array[String]) -> void:
 				_int(loan, "term", 0, "shark_loans[%d].term" % index, repairs)
 		clean.append(loan)
 	state["shark_loans"] = clean
+
+## An authored term, or the nearest one. A note whose term is not in the rate
+## table loads fine and then takes down the night it settles, so it is repaired
+## here rather than defended everywhere it is read.
+func _shark_term(loan: Dictionary, index: int, repairs: Array[String]) -> void:
+	var term: int = int(loan.get("term", 0))
+	if GAME_STATE.SHARK_TERMS.has(term):
+		return
+	var snapped: int = GAME_STATE.nearest_shark_term(term)
+	loan["term"] = snapped
+	_repair(repairs, "shark_loans[%d].term" % index,
+		"unauthored term %d snapped to %d" % [term, snapped])
 
 func _validate_observation_queue(state: Dictionary, repairs: Array[String]) -> void:
 	if not state.has("observation_queue"):

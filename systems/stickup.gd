@@ -254,6 +254,10 @@ func _run(target_id: String) -> Dictionary:
 	if INJURY_BANDS.has(tier):
 		var hurt: Array = INJURY_BANDS[tier]
 		damage = rng.seeded_int_range(gs.run_seed, key + ":injury", int(hurt[0]), int(hurt[1]))
+		# Through Tone, who has been surfaced on the Crew screen doing nothing
+		# since the port began. One owner for the reduction — see
+		# `CrewSystem.absorbed_damage`.
+		damage = _crew_absorbed(damage)
 		gs.health = clampi(gs.health - damage, 0, gs.health_max)
 
 	var result: Dictionary
@@ -459,3 +463,9 @@ func _open_booking(target: Dictionary, tier_name: String, cause_id: String,
 
 func _on_day_crossed() -> void:
 	gs.stick_daily_count = 0
+
+## Damage after Tone. Forwarded rather than reached for inline so both of this
+## build's damage sites read identically and neither can drift.
+func _crew_absorbed(raw: int) -> int:
+	var crew: Object = gm.system("crew") if gm != null else null
+	return raw if crew == null else int(crew.absorbed_damage(raw))

@@ -5647,6 +5647,31 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 4 | `codex/batch-4-crime-progression` | The Stickup ladder (`stick_tier` had no writer) · criminal surfaces measured against the job | 11,248 → 11,273 | Merged, PR #57. Four dead targets reachable; stickup at 2% filed for balance. |
 | 5 | `codex/batch-5-route-visible` | The route made visible — live Market route line · Word Around Town prices · both gated on the phone bill | 11,273 → 11,311 | Merged, PR #58. Seven authored route strings retired. |
 | 6a | `codex/batch-6a-operation-substrate` | Adapter-supplied delegation copy · `params` passthrough · three honesty defects in the route line · route count pinned | 11,311 → 11,330 | Merged, PR #59. No schema bump needed for new operations. |
+| 6b | `codex/batch-6b-crew-operations` | Tone absorbs damage at both sites · Eli covers the carry · Deshawn works a corner · per-operation callback flags · the unauthored shark term | 11,330 → 11,402 | Merged, PR #60. Schema unchanged — 6a's substrate held. |
+
+**Two verification defects found in batch 6b, both in the harness rather than
+the game, both now fixed:**
+
+- **The suite was not idempotent.** Run 1 on a clean `user://` passed 11,330;
+  run 2 failed 19. `_check_economy_profiles` (batch 3) plays thirty days of real
+  dispatches per profile, `SaveSystem` autosaves on every successful dispatch,
+  and unlike `_simulate` it never saved or restored `user://907hustle_run.save`.
+  It now captures the file at the start of the section and restores it — or
+  deletes it, if there was none — at the end. Consecutive runs now agree.
+- **`git stash` silently re-armed the editor-only autoload.** The working tree
+  carries `project.godot` with `_mcp_game_helper` and the `godot_ai` editor
+  plugin stripped, because they must not load headless. `git stash push`
+  reverts that file to HEAD, so every "is main green?" comparison run through a
+  stash was loading the editor helper and failing 8-17 checks in ways that
+  looked like real regressions and were not. Several hours went into chasing
+  them. Headless runs now go through a script that strips the autoload if it is
+  present and always starts from a cold `user://`; never run the suite across a
+  `git stash` boundary without checking `project.godot` first.
+- **Sabotage runs need the import cache.** Copying the tree for parallel
+  sabotage without `.godot/` gives a 37-failure baseline (unresolved `uid://`
+  references break every screen check), which makes every sabotage look red for
+  the wrong reason. Always establish the baseline in the copy before trusting a
+  sabotage result.
 
 **Findings carried forward:**
 

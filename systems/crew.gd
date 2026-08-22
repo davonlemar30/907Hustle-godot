@@ -21,9 +21,16 @@ extends RefCounted
 ##   crewRecruitmentEligible proof   → no behaviour/proof tracking
 ##   crewCapacityFor base upgrades   → capacity fixed at canon's floor of 2
 ##
-## Tone's defense multiplier is stored and surfaced but has nothing to multiply
-## until combat encounters land. Deshawn's heat reduction IS applied — see
-## `heat_multiplier()`, which stickup and boost both route through.
+## Tone's defense multiplier IS applied as of batch 6b — see `absorbed_damage()`.
+## It was stored and surfaced for the whole life of the port and multiplied
+## nothing: the Crew screen printed "defense x1.15" at a player it did nothing
+## for. The note here said it was waiting on combat encounters, and combat
+## encounters arrived in FS-003.7 — a blown lift opens a Caught chain with
+## Fight, Run, Talk and Yield, resolved through the outcome resolver, and every
+## bad answer to one costs health. That is the thing it defends against.
+##
+## Deshawn's heat reduction was already applied — see `heat_multiplier()`, which
+## stickup and boost both route through.
 
 const GREEN := Color(0.451, 0.722, 0.404)
 const RED := Color(0.827, 0.161, 0.125)
@@ -228,14 +235,34 @@ func heat_multiplier() -> float:
 	# not the kind of bug that gets noticed, it is the kind that gets shipped.
 	return float(gs.curve_value_for_rank(gs.DESHAWN_HEAT_REDUCTION, tier, 1.0))
 
-## Canon TONE_DEFENSE_MULTIPLIER. Stored and surfaced; nothing multiplies it
-## until combat encounters land in a later phase.
+## Canon TONE_DEFENSE_MULTIPLIER.
 func defense_multiplier() -> float:
 	if not gs.is_recruited("tone"):
 		return 1.0
 	var tier: int = int(gs.crew_record("tone").get("tier", 1))
 	# Same clamp, same reason — see heat_multiplier().
 	return float(gs.curve_value_for_rank(gs.TONE_DEFENSE_MULTIPLIER, tier, 1.0))
+
+## Health damage after Tone has stood where he stands.
+##
+## THE one place his multiplier is consumed, in the shape `heat_multiplier()`
+## established and for the same reason: a benefit applied in two places is a
+## benefit applied twice the day somebody adds a third caller, and "once" is
+## only checkable if there is one function to check.
+##
+## The curve is a defence STRENGTH — {1: 1.15, 2: 1.30, 3: 1.50} — so damage is
+## divided by it rather than multiplied: rank 1 takes about 13% off, rank 3 a
+## third. Rounded rather than truncated, and floored at 1 whenever the raw
+## damage was real: a hit that lands should cost something, and letting a rank-3
+## Tone reduce a 1-point graze to nothing would make him a shield rather than an
+## enforcer.
+func absorbed_damage(raw: int) -> int:
+	if raw <= 0:
+		return 0
+	var defence: float = defense_multiplier()
+	if defence <= 1.0:
+		return raw
+	return maxi(1, int(round(float(raw) / defence)))
 
 ## What this person has PROVEN, for the gates that read behaviour rather than
 ## numbers. Empty for an unknown id, and — the case that matters — empty for a

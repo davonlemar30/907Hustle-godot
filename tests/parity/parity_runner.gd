@@ -140,6 +140,7 @@ func _ready() -> void:
 		_check_stick_ladder(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_route_visibility(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_operation_substrate(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch6b(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -829,6 +830,16 @@ func _check_save_roundtrip() -> void:
 	# without it the reload correctly derives a Downtown the baseline never had,
 	# and the round-trip reads that as drift.
 	gs.reconcile_persistent_invariants()
+	# And the delegation latch, for the same reason and the same way a dispatch
+	# does it. `GameManager.dispatch` reconciles crew operations before
+	# `notify_changed`, and `SaveSystem.load_run` reconciles them again after
+	# applying — so a baseline captured without it is a state the game cannot be
+	# in, and the reload correctly discovers an operation the baseline never
+	# had. Batch 6b made that visible by adding a second and third operation:
+	# Eli's is discoverable off the crew record this check assigns directly.
+	var crew_ops: Object = gm.system("crew_operations")
+	if crew_ops != null:
+		crew_ops.reconcile()
 	gs.notify_changed()
 
 	var before: Dictionary = saves.capture()
@@ -3063,7 +3074,7 @@ func _check_rb_callbacks(gs: Node, gm: Node, ops: RefCounted) -> void:
 	if offered.size() == 1:
 		_expect_str("and it is her offer", str(offered[0]), ops.DISCOVERY_TEXT)
 	_expect_true("the run remembers she offered",
-		bool(ops.callback_flag("discovery_notified")))
+		bool(ops.callback_flag("discovery_notified", RB_OPERATION)))
 
 	# Reconciling again — and dispatching, which reconciles — says nothing more.
 	ops.reconcile()
@@ -3077,7 +3088,7 @@ func _check_rb_callbacks(gs: Node, gm: Node, ops: RefCounted) -> void:
 	gs.crew_operation_state = {"discovered": [], "adapters": {}}
 	_expect_true("the callback save reloads", saves.load_run())
 	_expect_true("the discovery flag came back",
-		bool(ops.callback_flag("discovery_notified")))
+		bool(ops.callback_flag("discovery_notified", RB_OPERATION)))
 	# The inbox is persisted too, so the offer she already sent comes back with
 	# it — that is the message being REMEMBERED, not re-sent. Clearing after the
 	# load is what separates the two, and the re-send is the bug being checked
@@ -3108,7 +3119,7 @@ func _check_rb_callbacks(gs: Node, gm: Node, ops: RefCounted) -> void:
 	gs.crew_records[RB_CREW]["loyalty"] = 8
 	ops.reconcile()
 	_expect_true("recovering re-arms the warning",
-		not bool(ops.callback_flag("loyalty_warning_sent")))
+		not bool(ops.callback_flag("loyalty_warning_sent", RB_OPERATION)))
 	_expect_int("recovering says nothing by itself", _rb_texts(gs).size(), 1)
 	# A second slump is heard again. This is the difference between a character
 	# with a mood and a tutorial that fires once.
@@ -3490,9 +3501,9 @@ func _check_fs001_migration_chain(gs: Node, gm: Node, ops: RefCounted) -> void:
 	_expect_true("a qualifying legacy run discovers on load",
 		ops.is_discovered(RB_OPERATION))
 	_expect_true("and is offered the operation once",
-		bool(ops.callback_flag("discovery_notified")))
+		bool(ops.callback_flag("discovery_notified", RB_OPERATION)))
 	_expect_true("no callback flag survives that was never set",
-		not bool(ops.callback_flag("loyalty_warning_sent")))
+		not bool(ops.callback_flag("loyalty_warning_sent", RB_OPERATION)))
 
 	# A pending assignment survives the round trip and still settles correctly —
 	# the case the migration matrix cares about most, because a claim lost in a
@@ -14334,7 +14345,7 @@ func _check_settlement_day(gs: Node, gm: Node) -> void:
 	gs.reset_to_new_game()
 	gs.day = 7
 	gs.shark_loans = [{"id": 1, "borrower_id": "nora", "amount": 200,
-		"due_day": 7, "term": 3, "status": "active"}]
+		"due_day": 7, "term": 4, "status": "active"}]
 	shark.settle_night(6)
 	_expect_str("a note is not settled before its due day is over",
 		str((gs.shark_loans[0] as Dictionary)["status"]), "active")
@@ -15160,6 +15171,29 @@ func _econ_try_trade(gs: Node, gm: Node, metrics: Dictionary, local_only: bool) 
 ## The whole table, reported. Percentages are against `legal_worker`, which is
 ## the design position's 100%.
 func _check_economy_profiles(gs: Node, gm: Node) -> void:
+	# Put the player's save back when this is done.
+	#
+	# THE SUITE IS NOT HERMETIC AND THIS IS WHY IT WAS NOT. Every profile below
+	# plays thirty days through real dispatches, and `SaveSystem` autosaves on
+	# every successful one — so this section rewrites `user://907hustle_run.save`
+	# hundreds of times and, until now, walked away leaving the last economy
+	# profile's run sitting in it. The consequence sims have always saved and
+	# restored around themselves (`_simulate`); the economy instrument that
+	# batch 3 added copied everything about them except that.
+	#
+	# It hid because the file was always already polluted: every run inherited
+	# the previous run's leftovers and produced the same answer. Deleting the
+	# save file exposed it immediately — a clean first run passed with 11,330
+	# checks, and the second run, reading what the first had left behind, failed
+	# 19 of them.
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
 	var rows: Array[Dictionary] = []
 	for entry in ECON_PROFILES:
 		var profile: Dictionary = entry
@@ -15248,6 +15282,16 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			_expect_true("%s actually worked" % name, float(row["shifts"]) > 0.0)
 		if name in ["stickup", "boost"]:
 			_expect_true("%s actually committed crimes" % name, float(row["jobs"]) > 0.0)
+
+	# The save goes back exactly as it was found, including having been absent.
+	if previous_save.is_empty():
+		if FileAccess.file_exists(saves.SAVE_PATH):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(saves.SAVE_PATH))
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -16050,7 +16094,7 @@ func _fail(label: String, detail: String) -> void:
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11320
+const MIN_CHECKS := 11392
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -16074,3 +16118,439 @@ func _finish() -> void:
 	# Deferred: quitting inside _ready while the tree is still initialising is
 	# exactly the mid-flush free ScreenManager defers to avoid.
 	get_tree().quit.call_deferred(0 if _failures.is_empty() else 1)
+
+# === batch 6b — Tone, Eli, Deshawn ==========================================
+#
+# Three crew members who have been on the roster since the port began and have
+# never once changed a number. Each now has exactly one thing they do, and each
+# check below is the difference between having them and not having them.
+#
+# SABOTAGE: `return raw` unconditionally in CrewSystem.absorbed_damage
+#           ==> "Tone rank 1 takes 20 down to 17" fails.
+# SABOTAGE: drop `damage = _crew_absorbed(damage)` from stickup.gd
+#           ==> "the wound Tone was there for is smaller" fails.
+# SABOTAGE: `return 0.0` in RunnerAdapter.carry_relief
+#           ==> "a day on the bag is worth his authored fraction" fails.
+# SABOTAGE: drop `chance *= (1.0 - relief)` in Economy.resolve_carry
+#           ==> "the trip Eli covered is not the trip that gets stopped" fails.
+# SABOTAGE: recover only the loudest family in FixerAdapter.settle
+#           ==> "he works every family on the corner" fails.
+# SABOTAGE: revert `_flag_key` to the flat key
+#           ==> "each operation announces itself once, on its own" fails.
+
+## For the authored shark tables the term-snap checks read.
+const SHARK_STATE := preload("res://autoload/game_state.gd")
+const B6B_TONE_CURVE := {1: 1.15, 2: 1.30, 3: 1.50}
+## Absorbed damage at each rank for a 20-point hit: round(20 / multiplier).
+const B6B_TONE_ABSORBED := {1: 17, 2: 15, 3: 13}
+const B6B_RELIEF_BY_RANK := {1: 0.45, 2: 0.60, 3: 0.75}
+const B6B_FIXER_BY_RANK := {1: 1.0, 2: 1.5, 3: 2.0}
+
+func _check_batch6b(gs: Node, gm: Node) -> void:
+	_check_tone_defence(gs, gm)
+	_check_tone_at_the_damage_sites(gs, gm)
+	_check_runner_relief(gs, gm)
+	_check_fixer_relief(gs, gm)
+	_check_operation_flag_isolation(gs, gm)
+	_check_unauthored_shark_term(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+## Put one crew member on the roster in a known shape. Written directly rather
+## than recruited because what is under test is the capability curve, not the
+## recruiting path — which has its own checks.
+func _b6b_recruit(gs: Node, crew_id: String, loyalty: int, rank: int) -> void:
+	gs.crew_records[crew_id] = {
+		"recruited": true, "status": "active", "loyalty": loyalty, "tier": rank,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
+	}
+
+# --- Tone --------------------------------------------------------------------
+
+func _check_tone_defence(gs: Node, gm: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	var crew: Object = gm.system("crew")
+	if crew == null:
+		_fail("batch6b tone", "no crew system")
+		return
+
+	_expect_float("without Tone the multiplier is exactly 1", crew.defense_multiplier(), 1.0)
+	_expect_int("without Tone a 20-point hit costs 20", int(crew.absorbed_damage(20)), 20)
+
+	for rank in [1, 2, 3]:
+		_b6b_recruit(gs, "tone", 6, int(rank))
+		_expect_float("Tone rank %d reads his authored curve" % int(rank),
+			crew.defense_multiplier(), float(B6B_TONE_CURVE[rank]))
+		_expect_int("Tone rank %d takes 20 down to %d" % [int(rank), int(B6B_TONE_ABSORBED[rank])],
+			int(crew.absorbed_damage(20)), int(B6B_TONE_ABSORBED[rank]))
+
+	# A hit that lands still lands. Swept rather than spot-checked because the
+	# property is the point: no rank of his may turn a wound into a heal, and no
+	# rank may turn one into nothing. (With the shipped curve the `maxi(1, …)`
+	# floor is never the binding constraint — 1 / 1.50 already rounds to 1 — so
+	# it is belt-and-braces rather than load-bearing, and this sweep is what
+	# would catch a future curve steep enough to make it matter.)
+	var monotone := true
+	var bounded := true
+	for rank in [1, 2, 3]:
+		_b6b_recruit(gs, "tone", 6, int(rank))
+		for raw in range(1, 41):
+			var got: int = int(crew.absorbed_damage(raw))
+			if got < 1 or got > raw:
+				bounded = false
+			if int(rank) > 1 and got > int(crew.absorbed_damage(raw)):
+				monotone = false
+	_expect_true("a hit Tone absorbs still costs between 1 and the raw amount", bounded)
+	_expect_true("no rank of his makes a wound larger", monotone)
+
+	# Nothing is not a wound.
+	_b6b_recruit(gs, "tone", 6, 3)
+	_expect_int("a zero-damage outcome stays zero through Tone", int(crew.absorbed_damage(0)), 0)
+	_expect_int("a negative damage figure clamps to zero", int(crew.absorbed_damage(-5)), 0)
+	gs.reset_to_new_game()
+
+## The consumer, not the curve. A messy robbery is run twice on the same seeded
+## day — once alone, once with Tone on the crew — and the difference in health
+## has to be exactly what `absorbed_damage` says it is. Without the call site
+## the two runs lose the same amount and this fails.
+func _check_tone_at_the_damage_sites(gs: Node, gm: Node) -> void:
+	var stickup: Object = gm.system("stickup")
+	var resolver: Object = gm.system("outcome_resolver")
+	var crew: Object = gm.system("crew")
+	if stickup == null or resolver == null or crew == null:
+		_fail("batch6b tone sites", "a system is missing")
+		return
+
+	_reset_stickup_probe(gs)
+	var day: int = _find_stickup_day(gs, stickup, resolver, "messy")
+	if day < 0:
+		_fail("batch6b tone sites", "no day in the scan window robs messy")
+		return
+
+	# Alone.
+	_reset_stickup_probe(gs)
+	gs.day = day
+	var health_before: int = int(gs.health)
+	_expect_true("the probe robbery goes through alone",
+		gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET}))
+	var alone: int = health_before - int(gs.health)
+	_expect_true("robbing alone costs health", alone > 0)
+
+	# Same day, same seed, with him standing there.
+	_reset_stickup_probe(gs)
+	gs.day = day
+	_b6b_recruit(gs, "tone", 6, 3)
+	health_before = int(gs.health)
+	_expect_true("the probe robbery goes through with Tone",
+		gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET}))
+	var with_tone: int = health_before - int(gs.health)
+	_expect_int("the wound Tone was there for is smaller",
+		with_tone, int(crew.absorbed_damage(alone)))
+	_expect_true("and it is strictly smaller, not merely different", with_tone < alone)
+	_reset_stickup_probe(gs)
+
+# --- Eli ---------------------------------------------------------------------
+
+func _check_runner_relief(gs: Node, gm: Node) -> void:
+	var runner: Object = gm.system("runner_adapter")
+	var ops: Object = gm.system("crew_operations")
+	if runner == null or ops == null:
+		_fail("batch6b runner", "a system is missing")
+		return
+
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 12
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+
+	_expect_float("a runner nobody hired covers nothing", runner.carry_relief(), 0.0)
+	_b6b_recruit(gs, "eli", 6, 1)
+	ops.reconcile()
+	_expect_true("a loyal Eli surfaces the operation", ops.is_discovered("run_the_bag"))
+	_expect_float("but having him is not the same as spending his day",
+		runner.carry_relief(), 0.0)
+
+	for rank in [1, 2, 3]:
+		gs.crew_assignments = {}
+		_b6b_recruit(gs, "eli", 6, int(rank))
+		_expect_true("Eli rank %d takes the assignment" % int(rank),
+			gm.dispatch("assign_crew_operation",
+				{"crew_id": "eli", "operation_id": "run_the_bag"}))
+		_expect_float("a day on the bag is worth his authored fraction at rank %d" % int(rank),
+			runner.carry_relief(), float(B6B_RELIEF_BY_RANK[rank]))
+
+	# A day spent on something else is not a day spent on this. Written straight
+	# onto the record because no other operation of his exists to dispatch.
+	gs.crew_assignments = {"eli": {
+		"day": gs.day, "operation_id": "some_other_thing", "settled": false,
+	}}
+	_expect_float("a day he spent elsewhere covers no bag", runner.carry_relief(), 0.0)
+
+	# Yesterday's day is over.
+	gs.crew_assignments = {"eli": {
+		"day": gs.day - 1, "operation_id": "run_the_bag", "settled": true,
+	}}
+	_expect_float("yesterday's assignment covers nothing today", runner.carry_relief(), 0.0)
+	gs.crew_assignments = {}
+	_check_runner_at_the_carry(gs, gm, ops, runner)
+	gs.reset_to_new_game()
+
+## The consumer. A trip is built that the carry roll stops, then the same trip
+## is run with Eli on it, and the stop has to go away — the relief multiplies
+## the chance rather than sitting in a report nobody reads.
+func _check_runner_at_the_carry(gs: Node, gm: Node, ops: Object, runner: Object) -> void:
+	var economy: Object = gm.system("economy")
+	var rng: Object = get_node("/root/RngManager")
+	if economy == null:
+		_fail("batch6b carry", "no economy system")
+		return
+
+	# Find a day whose keyed carry roll lands between the two chances: stopped
+	# without him, clear with him. Scanned rather than pinned so a balance change
+	# moves the probe instead of quietly invalidating it.
+	var found := -1
+	var probe_units := 6
+	for day in range(1, 90):
+		gs.street_name = "Parity"
+		gs.reset_to_new_game()
+		gs.day = day
+		gs.time_slots_today = 0
+		gs.heat = 8.0
+		gs.inventory = {"weed": probe_units}
+		var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+		var prices: Dictionary = (gs.markets.get(str(gs.current_district_id), {}) as Dictionary).get("prices", {})
+		var value: int = int(prices.get("weed", 0)) * probe_units
+		var bare: float = rules.carry_stop_chance(probe_units, value, 8.0, 0)
+		var covered: float = bare * (1.0 - float(B6B_RELIEF_BY_RANK[3]))
+		var roll: float = rng.seeded_random(gs.run_seed,
+			"%d:%d:carry:%s" % [gs.day, gs.time_slots_today, str(gs.current_district_id)])
+		if roll < bare and roll >= covered:
+			found = day
+			break
+	if found < 0:
+		_fail("batch6b carry", "no day in the scan window separates the two chances")
+		return
+
+	# Without him.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = found
+	gs.time_slots_today = 0
+	gs.heat = 8.0
+	gs.inventory = {"weed": probe_units}
+	var bare_report: Dictionary = economy.resolve_carry(str(gs.current_district_id))
+	_expect_true("the uncovered trip is the trip that gets stopped",
+		bool(bare_report.get("stopped", false)))
+
+	# With him.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = found
+	gs.time_slots_today = 0
+	gs.heat = 8.0
+	gs.inventory = {"weed": probe_units}
+	_b6b_recruit(gs, "eli", 6, 3)
+	ops.reconcile()
+	_expect_true("Eli takes the day before the trip",
+		gm.dispatch("assign_crew_operation",
+			{"crew_id": "eli", "operation_id": "run_the_bag"}))
+	var covered_report: Dictionary = economy.resolve_carry(str(gs.current_district_id))
+	_expect_true("the trip Eli covered is not the trip that gets stopped",
+		covered_report.is_empty())
+	# And the night can say what he did with it.
+	var assignment: Dictionary = ops.assignment_for("eli")
+	_expect_int("the trip he covered is counted on his day",
+		int(assignment.get("trips_covered", 0)), 1)
+	gs.inventory = {}
+	gs.crew_assignments = {}
+
+# --- Deshawn -----------------------------------------------------------------
+
+func _check_fixer_relief(gs: Node, gm: Node) -> void:
+	var fixer: Object = gm.system("fixer_adapter")
+	var ops: Object = gm.system("crew_operations")
+	var engine: Object = gm.system("consequence")
+	if fixer == null or ops == null or engine == null:
+		_fail("batch6b fixer", "a system is missing")
+		return
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 12
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	_b6b_recruit(gs, "deshawn", 6, 1)
+	ops.reconcile()
+	_expect_true("a loyal Deshawn surfaces the operation", ops.is_discovered("smooth_it_over"))
+
+	for rank in [1, 2, 3]:
+		_b6b_recruit(gs, "deshawn", 6, int(rank))
+		var preview: Dictionary = fixer.preview("deshawn", 0)
+		_expect_float("Deshawn rank %d is worth his authored relief" % int(rank),
+			float(preview["relief"]), float(B6B_FIXER_BY_RANK[rank]))
+		_expect_str("and he works the corner he is standing on",
+			str(preview["district_id"]), str(gs.current_district_id))
+
+	# A corner with three different kinds of noise on it. He is not picking one.
+	var district := str(gs.current_district_id)
+	_b6b_recruit(gs, "deshawn", 6, 3)
+	for family in rules.PRESSURE_FAMILIES:
+		engine.add_pressure(district, str(family), 4.0, "cause:batch6b_probe")
+	var before: Dictionary = {}
+	for family in rules.PRESSURE_FAMILIES:
+		before[str(family)] = float(engine.pressure_score(district, str(family)))
+	_expect_true("the probe corner is loud on every family",
+		before.values().all(func(v): return float(v) > 0.0))
+
+	var report: Variant = fixer.settle("deshawn", {"district_id": district}, gs.day)
+	_expect_true("a settled day reports", report is Dictionary)
+	if report is Dictionary:
+		_expect_int("he works every family on the corner",
+			int((report as Dictionary)["families"]), rules.PRESSURE_FAMILIES.size())
+		_expect_float("and the total is his relief on each of them",
+			float((report as Dictionary)["recovered"]),
+			float(B6B_FIXER_BY_RANK[3]) * float(rules.PRESSURE_FAMILIES.size()))
+	for family in rules.PRESSURE_FAMILIES:
+		_expect_float("%s comes down by exactly his rank-3 relief" % str(family),
+			float(engine.pressure_score(district, str(family))),
+			float(before[str(family)]) - float(B6B_FIXER_BY_RANK[3]))
+
+	# A quiet corner is not work. Nothing to recover, nothing claimed.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_b6b_recruit(gs, "deshawn", 6, 3)
+	var quiet: Variant = fixer.settle("deshawn", {"district_id": str(gs.current_district_id)}, gs.day)
+	if quiet is Dictionary:
+		_expect_int("a quiet corner is nobody's day's work",
+			int((quiet as Dictionary)["families"]), 0)
+		_expect_float("and claims nothing", float((quiet as Dictionary)["recovered"]), 0.0)
+	gs.reset_to_new_game()
+
+# --- the flags ---------------------------------------------------------------
+
+## Three operations now share one `crew_operation_state`, and the callback flags
+## used to be flat keys on it. That meant the first operation discovered burned
+## `discovery_notified` for all of them and nobody else ever spoke. This is the
+## check that would have caught it on the day the second adapter landed.
+func _check_operation_flag_isolation(gs: Node, gm: Node) -> void:
+	var ops: Object = gm.system("crew_operations")
+	var phone: Object = gm.system("phone")
+	if ops == null or phone == null:
+		_fail("batch6b flags", "a system is missing")
+		return
+
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 12
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+
+	# Eli first, alone.
+	_b6b_recruit(gs, "eli", 6, 1)
+	ops.reconcile()
+	_expect_true("Eli's operation is known", ops.is_discovered("run_the_bag"))
+	_expect_true("and his flag is the one that got set",
+		ops.callback_flag("discovery_notified", "run_the_bag"))
+	_expect_true("Deshawn's flag is untouched by Eli's offer",
+		not ops.callback_flag("discovery_notified", "smooth_it_over"))
+	_expect_true("and Pherris's is untouched too",
+		not ops.callback_flag("discovery_notified", "907list_run_board"))
+	var after_eli: int = gs.phone_inbox.size()
+	_expect_true("Eli's offer arrived on the phone", after_eli > 0)
+
+	# Now Deshawn, on a run where Eli has already spoken.
+	_b6b_recruit(gs, "deshawn", 6, 1)
+	ops.reconcile()
+	_expect_true("Deshawn's operation is known", ops.is_discovered("smooth_it_over"))
+	_expect_true("and his own flag is now set",
+		ops.callback_flag("discovery_notified", "smooth_it_over"))
+	_expect_true("each operation announces itself once, on its own",
+		gs.phone_inbox.size() > after_eli)
+
+	# And neither repeats.
+	var settled: int = gs.phone_inbox.size()
+	ops.reconcile()
+	ops.reconcile()
+	_expect_int("a reconcile that discovers nothing says nothing",
+		gs.phone_inbox.size(), settled)
+	gs.reset_to_new_game()
+
+# --- the note nobody authored ------------------------------------------------
+#
+# Found by a crash, not by reading: a probe elsewhere in this file wrote a note
+# with a term of 3, the economy instrument settled a night on it, and
+# `interest_for` indexed a rate table that has 2, 4 and 7 in it. The player
+# cannot produce that note — `_fund` refuses — but a save can carry one, and
+# then the night it settles takes the run down.
+#
+# SABOTAGE: index SHARK_TERMS directly again in interest_for
+#           ==> "an unauthored note still settles" fails (script error).
+# SABOTAGE: drop the _shark_term call from the validator
+#           ==> "a save carrying an unauthored term is repaired" fails.
+
+func _check_unauthored_shark_term(gs: Node, gm: Node) -> void:
+	var shark: Object = gm.system("shark")
+	if shark == null:
+		_fail("shark term", "no shark system")
+		return
+
+	# The snap itself: nearest authored term, ties to the longer one.
+	_expect_int("term 2 is already authored", int(SHARK_STATE.nearest_shark_term(2)), 2)
+	_expect_int("term 3 snaps to 4", int(SHARK_STATE.nearest_shark_term(3)), 4)
+	_expect_int("term 5 snaps to 4", int(SHARK_STATE.nearest_shark_term(5)), 4)
+	_expect_int("term 6 snaps to 7", int(SHARK_STATE.nearest_shark_term(6)), 7)
+	_expect_int("term 99 snaps to the longest authored term",
+		int(SHARK_STATE.nearest_shark_term(99)), 7)
+	_expect_int("term 0 snaps to the shortest authored term",
+		int(SHARK_STATE.nearest_shark_term(0)), 2)
+	# The tie. 3 is one away from both 2 and 4; the longer term is the cheaper
+	# rate, and a repair may not quietly charge the player more.
+	_expect_true("a tie goes to the cheaper rate",
+		float(gs.SHARK_TERMS[SHARK_STATE.nearest_shark_term(3)]) < float(gs.SHARK_TERMS[2]))
+
+	# Interest on one, rather than a crash.
+	_expect_int("an unauthored note is priced at its nearest authored rate",
+		int(shark.interest_for({"amount": 200, "term": 3})),
+		int(round(200.0 * float(gs.SHARK_TERMS[4]))))
+	_expect_int("an authored note is priced exactly as before",
+		int(shark.interest_for({"amount": 200, "term": 7})),
+		int(round(200.0 * float(gs.SHARK_TERMS[7]))))
+
+	# And the whole night runs on one without falling over.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 7
+	gs.shark_loans = [{"id": 1, "borrower_id": "nora", "amount": 200,
+		"due_day": 7, "term": 3, "status": "active"}]
+	shark.settle_night(7)
+	_expect_true("an unauthored note still settles",
+		str((gs.shark_loans[0] as Dictionary)["status"]) != "active")
+
+	# The save is repaired at the door, so it never reaches the night at all.
+	var validator: RefCounted = preload("res://autoload/save_validator.gd").new()
+	var state := {"shark_loans": [{"id": 1, "borrower_id": "nora", "amount": 200,
+		"opened_day": 1, "due_day": 7, "term": 3, "status": "active",
+		"risk_label": "LOW"}]}
+	var repaired: Dictionary = validator.validate_state(state)
+	var loans: Array = (repaired["state"] as Dictionary).get("shark_loans", [])
+	_expect_int("the repaired save still has its note", loans.size(), 1)
+	if loans.size() == 1:
+		_expect_int("a save carrying an unauthored term is repaired",
+			int((loans[0] as Dictionary)["term"]), 4)
+	# And it says so. A silent repair is a repair nobody can diagnose.
+	var said := false
+	for line in (repaired["repairs"] as Array):
+		if str(line).begins_with("shark_loans[0].term:"):
+			said = true
+	_expect_true("and the repair is reported rather than silent", said)
+	# An authored term is left completely alone — no repair, no line.
+	var fine: Dictionary = validator.validate_state({"shark_loans": [
+		{"id": 1, "borrower_id": "nora", "amount": 200, "opened_day": 1,
+		"due_day": 7, "term": 7, "status": "active", "risk_label": "LOW"}]})
+	_expect_int("an authored term keeps its own value",
+		int(((fine["state"] as Dictionary)["shark_loans"] as Array)[0]["term"]), 7)
+	_expect_int("and needs no repair", (fine["repairs"] as Array).size(), 0)
+	gs.reset_to_new_game()

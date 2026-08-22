@@ -110,6 +110,7 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## that predate the mechanic. One bump, one arm, both new pieces of state
 ## covered.
 const SAVE_VERSION := 9
+const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 
 ## Every mutable GameState field, captured and applied by name. products.price
 ## is the one mutable value living inside a canon table; it rides separately as
@@ -251,6 +252,7 @@ func load_run() -> bool:
 	var state := _migrate(_read_payload())
 	if state.is_empty():
 		return false
+	state = _validate_nested_shapes(state)
 	_suspended = true
 	_apply(state)
 	# A legacy save may predate a persistent latch while already satisfying its
@@ -276,6 +278,16 @@ func load_run() -> bool:
 	gs.notify_changed()
 	_suspended = false
 	return true
+
+## Validate nested containers only while loading. The returned state is a deep
+## copy, so a repair cannot mutate the parsed payload or live GameState through
+## an alias. Repairs are intentionally not saved back: a malformed save remains
+## diagnosable, while this load receives safe defaults for the current run.
+func _validate_nested_shapes(state: Dictionary) -> Dictionary:
+	var result: Dictionary = SAVE_VALIDATOR.new().validate_state(state)
+	for repair in result.get("repairs", []):
+		push_warning("SaveValidator: repaired %s" % str(repair))
+	return result.get("state", state)
 
 func _read_payload() -> Dictionary:
 	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)

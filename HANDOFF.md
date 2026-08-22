@@ -114,11 +114,12 @@ record of the required change.
 - The requested post-PR #45 base is `5efcb1599b4ec0891b6f95cc76805c5379bc6286`.
 - GitHub had no pushed `codex/fs003-arrest-pressure-retaliation` branch when
   this batch began.
-- The `godot` headless CLI is not on PATH, so the requested shell baseline cannot
-  run here. The connected Godot 4.7.2 editor does parse the edited parity runner;
-  the full parity scene then stops on the existing `ui/components/toast.gd:21`
-  failed-action probe before reporting totals. Headless verification remains
-  pending before merge.
+- The `godot` CLI is available at `/opt/homebrew/bin/godot` and reports
+  `4.7.2.stable.official.ed1daf0bf`. After the isolated toast fix was merged as
+  PR #48, the parity scene baseline is **10,439 checks / 0 failures**.
+- The exact `godot --headless --script tests/parity/parity_runner.gd` form does
+  not exit in this project; the authoritative runnable form is the scene:
+  `godot --headless --path . --scene tests/parity/parity_runner.tscn`.
 
 ### 907List keyed-shuffle update
 
@@ -135,16 +136,27 @@ while sampling a small range. The remaining calls are event-specific value
 rolls (`boost`, `stickup`, `jobs`, and 907List realised values), not sequential
 small-range sampling loops.
 
-### Nested save-shape findings
+### Nested save-shape findings — follow-up validation
 
-The new diagnostic fixtures confirm the current v8 loader accepts correctly
-typed outer arrays/dictionaries while exposing malformed inner records to
-`GameState`: crew records, market district entries, shark loans, observation
-queue rows, phone messages, 907List holdings, and consequence chain/history/
-queue data. These are silent-corruption findings, not fixes; `autoload/save_system.gd`
-is Claude-owned for this build. A later save-hardening PR should reject each
-inner shape or replace it with the safe default and update
-`tests/parity/fixtures/save_nested_shapes.json`.
+PR #46's diagnostic fixtures established that the v8 loader accepted malformed
+inner records and exposed them to `GameState`. The follow-up branch maps the
+requested structures to the actual Godot fields (`shark_loans`,
+`phone_inbox`/`phone_held_inbox`, `list_holdings`, and the three consequence
+containers) and repairs them on `load_run()` only.
+
+Repair behavior is safe-default rather than reject: malformed containers become
+empty containers; malformed rows are dropped; malformed known fields receive
+typed defaults; and unknown keys survive. Repaired payloads are not autosaved,
+so the original malformed file remains diagnosable. `save_nested_shapes.json`
+now records `repaired_with_safe_defaults`, and
+`tests/save_validation/save_validation_runner.tscn` covers all ten requested
+structures plus the migrate → validate seam. The standalone suite passes **47
+checks / 0 failures**. The existing parity runner's direct diagnostic probe is
+left unchanged because `tests/parity/parity_runner.gd` is owned by Claude for
+the concurrent build; the new load-time suite is the repair assertion.
+
+The validator does not bump schema v8 and does not modify the save path. Its
+repair warnings identify each changed path in the runtime log.
 **DONE — Home screen** (`ui/screens/home.tscn`), verified via run + screenshot:
 TopBar (DAY/EVENING, two-tone 907HUSTLE brand, SPENARD/AK, CASH), 6-stat HUD
 with icons, real Spenard street photo (`assets/img/assest1home.png`), red

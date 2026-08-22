@@ -122,8 +122,10 @@ func _ready() -> void:
 		_check_day_lifecycle_order()
 		_check_wallet_and_heat()
 		_check_consequence_state()
+		_check_nested_save_shapes()
 		_check_consequence_engine()
 		_check_outcome_projection()
+		_check_outcome_adversarial_boundaries()
 		_check_boost_caught()
 		_check_arrest_booking()
 		_check_pressure_lifecycle()
@@ -1518,17 +1520,17 @@ func _check_stickup_rng_isolation(gs: Node, gm: Node, resolver: RefCounted) -> v
 const LIST_PROBE_SEED := "907hustle"
 ## Fixed boards for the fresh-run seed at tier 1, day by day.
 const LIST_GOLDEN_BOARDS := {
-	1: ["cracked_tv", "sagging_couch"],
-	2: ["used_tv", "camp_stove"],
-	3: ["used_tv", "shop_vac"],
-	4: ["dresser", "camp_stove"],
-	5: ["sagging_couch", "space_heater"],
+	1: ["winter_coat", "shop_vac"],
+	2: ["dresser", "space_heater"],
+	3: ["winter_coat", "shop_vac"],
+	4: ["shop_vac", "camp_stove"],
+	5: ["dresser", "shop_vac"],
 }
-## Day 2 once `used_tv` has been taken. Not day 2 minus that id: the filter
+## Day 12 once `used_tv` has been taken. Not day 12 minus that id: the filter
 ## runs on the POOL, so the board is regenerated from a smaller set and its
 ## remaining composition moves. That is canon's `listingSlate` and this literal
 ## is what pins it.
-const LIST_GOLDEN_AFTER_TAKE := ["camp_stove", "space_heater"]
+const LIST_GOLDEN_AFTER_TAKE := ["dresser", "space_heater"]
 
 func _check_907list_ownership() -> void:
 	var gs := get_node("/root/GameState")
@@ -1548,7 +1550,9 @@ func _check_907list_ownership() -> void:
 func _reset_list_probe(gs: Node) -> void:
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
-	gs.day = 2
+	# Day 12 is the first pinned probe day whose new keyed shuffle includes
+	# `used_tv`, so the consumption test can exercise a real offered listing.
+	gs.day = 12
 	gs.time_slots_today = 0
 	gs.cash = 5000
 	gs.current_district_id = "north_star_lot"
@@ -5207,6 +5211,91 @@ func _check_consequence_state() -> void:
 			restore.close()
 	gs.reset_to_new_game()
 
+## Diagnostic fixture suite for nested save shapes (FS hardening follow-up).
+##
+## SaveSystem intentionally remains untouched here. `_migrate` validates only
+## the required top-level envelope and `_apply` currently accepts a correctly
+## typed Array/Dictionary without validating its inner records. These fixtures
+## make that posture visible and name the silent-corruption cases so a later
+## defensive SaveSystem change can turn each expectation into safe-default
+## assertions.
+func _check_nested_save_shapes() -> void:
+	var gs := get_node("/root/GameState")
+	var saves := get_node("/root/SaveSystem")
+	var fixture: Dictionary = _load_json("res://tests/parity/fixtures/save_nested_shapes.json")
+	var cases: Array = fixture.get("cases", [])
+	if cases.is_empty():
+		_fail("nested save shapes", "fixture file is empty")
+		return
+
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	var baseline: Dictionary = saves.capture()
+	for entry in cases:
+		var row: Dictionary = entry
+		var case_id := str(row.get("id", ""))
+		var state: Dictionary = baseline.duplicate(true)
+		match case_id:
+			"crew_records_missing_keys":
+				state["crew_records"] = {"eli": {"recruited": true}}
+			"markets_null_inner_entry":
+				state["markets"] = {"north_star_lot": null}
+			"shark_loan_wrong_types":
+				state["shark_loans"] = [{"id": "bad", "principal": "not-an-int", "due_day": "tomorrow"}]
+			"observation_queue_malformed":
+				state["observation_queue"] = [{"npc_id": 7, "spec": [], "deliver_on_day": "soon"}]
+			"phone_inbox_invalid_message":
+				state["phone_inbox"] = [{"id": 7, "from": null}]
+			"list_holdings_corrupt_nested_data":
+				state["list_holdings"] = [{"item_id": {"not": "a-string"}, "bought_day": "yesterday"}]
+			"consequence_state_malformed":
+				state["active_consequence"] = {"stage": [], "source": null}
+				state["consequence_history"] = {"cause:bad": {"effect_receipts": "not-an-array"}}
+				state["consequence_queue"] = [null, {"queue_id": 7}]
+			_:
+				_fail("nested save shapes", "unknown fixture case %s" % case_id)
+				continue
+
+		var migrated: Dictionary = saves._migrate({
+			"save_version": saves.SAVE_VERSION, "state": state})
+		_expect_true("nested save fixture %s reaches apply" % case_id, not migrated.is_empty())
+		if migrated.is_empty():
+			continue
+		gs.reset_to_new_game()
+		saves._apply(migrated)
+		# Current behavior is intentionally recorded as a diagnostic: all seven
+		# containers are accepted and the corrupt inner value reaches GameState.
+		# This assertion must be changed to safe-default expectations when the
+		# later SaveSystem hardening PR lands.
+		_expect_true("nested save fixture %s currently exposes the malformed inner shape" % case_id,
+			_nested_shape_is_exposed(gs, case_id))
+
+func _nested_shape_is_exposed(gs: Node, case_id: String) -> bool:
+	match case_id:
+		"crew_records_missing_keys":
+			return gs.crew_records.get("eli", {}).get("recruited", false) \
+				and not (gs.crew_records.get("eli", {}) as Dictionary).has("status")
+		"markets_null_inner_entry":
+			return gs.markets.get("north_star_lot", "sentinel") == null
+		"shark_loan_wrong_types":
+			return str((gs.shark_loans[0] as Dictionary).get("principal", "")) == "not-an-int"
+		"observation_queue_malformed":
+			return (gs.observation_queue[0] as Dictionary).get("spec", null) is Array
+				and str((gs.observation_queue[0] as Dictionary).get("deliver_on_day", "")) == "soon"
+		"phone_inbox_invalid_message":
+			return int((gs.phone_inbox[0] as Dictionary).get("id", -1)) == 7
+				and (gs.phone_inbox[0] as Dictionary).get("from", "sentinel") == null
+		"list_holdings_corrupt_nested_data":
+			return (gs.list_holdings[0] as Dictionary).get("item_id", null) is Dictionary
+				and str((gs.list_holdings[0] as Dictionary).get("bought_day", "")) == "yesterday"
+		"consequence_state_malformed":
+			return (gs.active_consequence.get("stage", null) is Array
+				and gs.active_consequence.get("source", "sentinel") == null
+				and gs.consequence_queue[0] == null
+				and str((gs.consequence_history.get("cause:bad", {}) as Dictionary)
+					.get("effect_receipts", "")) == "not-an-array")
+	return false
+
 ## Every TI-003 §5 structure is actually in the manifest.
 ##
 ## Asserted by name rather than by round-tripping alone: a field missing from
@@ -6844,6 +6933,113 @@ func _check_projection_edges(resolver: RefCounted) -> void:
 				var p: float = resolver.success_probability(str(action), float(chance), raw, 0)
 				_expect_true("%s c=%.2f attr=%d projects within [0,1]" % [action, chance, raw],
 					p >= 0.0 and p <= 1.0)
+
+## Adversarial boundary coverage for Build 5e's frozen resolver.
+##
+## This is deliberately separate from the broad projection matrix above. The
+## matrix proves the API against measured outcomes; this section proves the
+## exact one-sided boundaries and the two easy-to-misread semantics:
+## advantage keeps the better of BOTH picks, and immunity renormalises the
+## survivors rather than converting catastrophe into failure.
+##
+## Sabotage contract: moving ADVANTAGE_THRESHOLD or
+## CATASTROPHE_IMMUNITY_THRESHOLD by either one makes the exact-equality and
+## one-below assertions below fail. Replacing max(first, second) with a
+## reroll-if-bad path makes the synthetic failure/catastrophe pair fail.
+const ADVERSARIAL_SAMPLES := 512
+const ADVERSARIAL_TOLERANCE := 0.08
+
+func _check_outcome_adversarial_boundaries() -> void:
+	var gm := get_node("/root/GameManager")
+	var resolver: RefCounted = gm.system("outcome_resolver") as RefCounted
+	if resolver == null:
+		_fail("outcome adversarial boundaries", "no resolver registered")
+		return
+
+	var boundaries: Array = [0, 2, 3, 5, 6, 12]
+	for action in resolver.OUTCOME_SHAPES.keys():
+		var action_id := str(action)
+		# Every boundary must resolve, including zero and the maximum attribute.
+		for raw in boundaries:
+			var outcome: Dictionary = resolver.resolve_action(
+				action_id, 0.5, int(raw), "adversarial", "%s:%d" % [action_id, int(raw)])
+			_expect_true("%s Combat %d resolves to a known tier" % [action_id, int(raw)],
+				str(outcome.get("tier", "")) in resolver.TIERS)
+			var projected: float = resolver.success_probability(action_id, 0.5, int(raw), 0)
+			var measured: float = _adversarial_measured_rate(resolver, action_id, int(raw), 0)
+			_expect_true("%s Combat %d projection matches resolution (%.4f vs %.4f)"
+				% [action_id, int(raw), projected, measured],
+				absf(projected - measured) <= ADVERSARIAL_TOLERANCE)
+
+		# Exact threshold and one-below checks. job_interview has no catastrophic
+		# tier, so it is intentionally excluded from the immunity jump.
+		var at_zero: float = resolver.success_probability(action_id, 0.5, 0, 0)
+		var at_two: float = resolver.success_probability(action_id, 0.5, 2, 0)
+		var at_three: float = resolver.success_probability(action_id, 0.5, 3, 0)
+		var at_five: float = resolver.success_probability(action_id, 0.5, 5, 0)
+		var at_six: float = resolver.success_probability(action_id, 0.5, 6, 0)
+		_expect_float("%s Combat 0 and 2 stay below advantage" % action_id,
+			at_two, at_zero)
+		_expect_true("%s Combat 3 activates advantage" % action_id,
+			at_three > at_two)
+		_expect_float("%s Combat 5 remains in the advantage band" % action_id,
+			at_five, at_three)
+		if resolver.OUTCOME_SHAPES[action_id].get("failure", {}).has("catastrophic"):
+			_expect_true("%s Combat 6 activates immunity" % action_id, at_six > at_five)
+		else:
+			_expect_float("%s Combat 6 has no immunity jump without catastrophe" % action_id,
+				at_six, at_five)
+
+		# Bonus is an effective-level modifier at each threshold, including the
+		# max-attribute clamp.
+		_expect_float("%s bonus 2+1 crosses advantage" % action_id,
+			resolver.success_probability(action_id, 0.5, 2, 1), at_three)
+		_expect_float("%s bonus 5+1 crosses immunity" % action_id,
+			resolver.success_probability(action_id, 0.5, 5, 1), at_six)
+		_expect_float("%s max Combat 12 clamps bonus" % action_id,
+			resolver.success_probability(action_id, 0.5, 12, 12),
+			resolver.success_probability(action_id, 0.5, 12, 0))
+
+	# A synthetic pool makes the choice observable without copying an authored
+	# action table. Find a keyed pair where the first pick is failure and the
+	# second is catastrophe; Combat 3 must keep failure, the better of the two.
+	var pool: Array = [
+		{"tier": "failure", "value": 1, "weight": 0.5},
+		{"tier": "catastrophic", "value": 0, "weight": 0.5},
+	]
+	var found_pair := false
+	for i in ADVERSARIAL_SAMPLES * 4:
+		var context := "better:%d" % i
+		var first: Dictionary = resolver.seeded_pick(pool, "adversarial", context)
+		var second: Dictionary = resolver.seeded_pick(pool, "adversarial", context + ":adv")
+		if int(first["value"]) != 1 or int(second["value"]) != 0:
+			continue
+		var picked: Dictionary = resolver.resolve_with_attribute(pool, 3, "adversarial", context)
+		_expect_int("Combat 3 keeps the better first/second result", int(picked["value"]), 1)
+		found_pair = true
+		break
+	_expect_true("the better-of-two adversarial pair was reachable", found_pair)
+
+	# Exact redistribution check. For confrontation at chance .5, the authored
+	# failure weights are .325 and .175; immunity removes the latter and divides
+	# the survivors by .825. A bump-to-failure implementation yields .5 instead.
+	var immune: Dictionary = resolver.tier_probabilities("confrontation", 0.5, 6, 0)
+	_expect_float("immunity redistributes to clean", float(immune["clean"]), 0.25 / 0.825)
+	_expect_float("immunity redistributes to messy", float(immune["messy"]), 0.25 / 0.825)
+	_expect_float("immunity renormalises failure, not catastrophe", float(immune["failure"]), 0.325 / 0.825)
+	_expect_float("immunity removes catastrophe", float(immune["catastrophic"]), 0.0)
+
+func _adversarial_measured_rate(resolver: RefCounted, action_id: String,
+		raw: int, bonus: int) -> float:
+	var hits := 0
+	for i in ADVERSARIAL_SAMPLES:
+		# Index first: this measurement must not reproduce the FNV tail bias.
+		var context := "%d:boundary:%s:%d:%d" % [i, action_id, raw, bonus]
+		var outcome: Dictionary = resolver.resolve_action(
+			action_id, 0.5, raw, "adversarial", context, bonus)
+		if resolver.is_success_tier(str(outcome.get("tier", ""))):
+			hits += 1
+	return float(hits) / float(ADVERSARIAL_SAMPLES)
 
 ## The full distribution, which the result screen reads.
 func _check_tier_probabilities(resolver: RefCounted) -> void:

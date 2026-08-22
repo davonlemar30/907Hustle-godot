@@ -1,0 +1,48 @@
+{
+  "schema": 8,
+  "purpose": "Diagnostic nested-save-shape fixtures. These currently document silent acceptance by SaveSystem; replace expected_behavior with safe-default assertions when defensive validation lands.",
+  "cases": [
+    {
+      "id": "crew_records_missing_keys",
+      "field": "crew_records",
+      "corruption": "record omits status, recruited, tier, loyalty, and wage_due keys",
+      "expected_behavior": "accepted_and_exposed_to_gamestate"
+    },
+    {
+      "id": "markets_null_inner_entry",
+      "field": "markets",
+      "corruption": "district entry is null",
+      "expected_behavior": "accepted_and_exposed_to_gamestate"
+    },
+    {
+      "id": "shark_loan_wrong_types",
+      "field": "shark_loans",
+      "corruption": "principal and due_day are strings",
+      "expected_behavior": "accepted_and_exposed_to_gamestate"
+    },
+    {
+      "id": "observation_queue_malformed",
+      "field": "observation_queue",
+      "corruption": "npc_id is numeric, spec is an array, deliver_on_day is a string",
+      "expected_behavior": "accepted_and_exposed_to_gamestate"
+    },
+    {
+      "id": "phone_inbox_invalid_message",
+      "field": "phone_inbox",
+      "corruption": "message id is numeric and sender is null",
+      "expected_behavior": "accepted_and_exposed_to_gamestate"
+    },
+    {
+      "id": "list_holdings_corrupt_nested_data",
+      "field": "list_holdings",
+      "corruption": "item_id is a dictionary and bought_day is a string",
+      "expected_behavior": "accepted_and_exposed_to_gamestate"
+    },
+    {
+      "id": "consequence_state_malformed",
+      "field": "active_consequence/consequence_history/consequence_queue",
+      "corruption": "chain stage is an array, source is null, receipt list is a string, and queue contains null",
+      "expected_behavior": "accepted_and_exposed_to_gamestate"
+    }
+  ]
+}

@@ -49,16 +49,17 @@ func seeded_int_range(seed: String, context: String, min_v: int, max_v: int) -> 
 		return min_v
 	return min_v + int(floor(seeded_random(seed, context) * (max_v - min_v + 1)))
 
-## Canon seededShuffle. Fisher-Yates over a copied array, with a stream seeded
-## from the normalized run seed and normalized salt. Unlike keyed sampling with
-## a retry counter, this always returns a permutation and therefore cannot
-## under-fill a board through hash collisions.
-func seeded_shuffle(items: Array, seed_value: Variant, salt_value: Variant) -> Array:
-	var random := make_stream(string_hash("%d:%d" % [
-		normalize_seed(seed_value), normalize_seed(salt_value)]))
-	var out: Array = items.duplicate()
-	for index in range(out.size() - 1, 0, -1):
-		var swap: int = random.next_int(0, index)
+## Canon seededShuffle. Fisher-Yates over a copied array. Each swap is a keyed
+## roll, and the varying swap index is placed at the FRONT of the hash key.
+## FNV-1a's high bits barely move when a small counter is appended to the tail;
+## seeded_random reads those high bits, so `"%d:%s" % [index, key]` is part of
+## the parity contract. Unlike retry sampling, this always returns a full
+## permutation and therefore cannot under-fill a board through collisions.
+func seeded_shuffle(seed: String, key: String, pool: Array) -> Array:
+	var out: Array = pool.duplicate()
+	for index in range(out.size() - 1):
+		var swap_key := "%d:%s" % [index, key]
+		var swap: int = seeded_int_range(seed, swap_key, index, out.size() - 1)
 		var held: Variant = out[index]
 		out[index] = out[swap]
 		out[swap] = held

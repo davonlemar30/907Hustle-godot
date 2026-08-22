@@ -151,8 +151,8 @@ func todays_listings() -> Array:
 	if eligible.is_empty():
 		return []
 	var want: int = int(tier["listings"])
-	var salt: int = rng.string_hash("907list:%d:%d" % [gs.day, int(gs.list_tier)])
-	var order: Array = rng.seeded_shuffle(eligible, gs.run_seed, salt)
+	var key := "907list:%d:%d" % [gs.day, int(gs.list_tier)]
+	var order: Array = rng.seeded_shuffle(gs.run_seed, key, eligible)
 	return order.slice(0, mini(want, order.size()))
 
 func capacity() -> int:

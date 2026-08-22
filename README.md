@@ -59,6 +59,14 @@ answer to "may the player go here" no matter who asked. Nothing about an unlock 
 stored: every verdict is derived from the run's own facts, which is why unlocks
 survive a save without a migration.
 
+Crime is now priced. The courier route — buy cheap in one district, carry, sell dear in
+another — used to move hundreds of units for exactly zero Heat and land at nearly four
+times the day job's net worth, against a design position that says smart crime should
+approach the job and never beat it. A sale writes Heat now, scaled by what it was worth
+and by which district it happened in; a corner that has watched you all week pays less
+for the next handoff; and a trip taken holding can be stopped, with the bag being what
+you lose. The route still pays — that is the point of it — but it pays for itself.
+
 Existing ported formulas retain oracle-backed parity where that remains the approved
 Godot decision. Newer approved Godot/ClickUp decisions take precedence over historical
 web behavior; named divergences are listed in `HANDOFF.md`.
@@ -341,7 +349,7 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (11,177 checks after batch 2, floor enforced at 11,167); fixtures grow with each system |
+| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (11,248 checks after batch 3, floor enforced at 11,238); fixtures grow with each system |
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
 | 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
 | 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
@@ -369,6 +377,7 @@ regardless of how small the source file is.
 | **v0.1.0. Playtest polish** | ✅ build versioning, the surface-visibility access layer (progression gates + feature flags), the seeded-key composition audit, the HOT escape lever, the Phone tap-target fix and the canonical location rename, save v10; parity → 11,110 checks, floor at 11,000 |
 | Batch 1. Hardening | ✅ crew/shark settle against the ending day (canon), every persisted Exposure/Curtis mutator behind the dispatch guard, standing guarantees for the 907List board fill and the crew-capacity accessor; parity → 11,147 checks |
 | Batch 2. The settlement contract | ✅ the four audited day-cross ordering dependencies documented in `time_system.gd` and asserted (one of them had silently inverted); three playtest findings verified as not reproducing and pinned so they cannot start; parity → 11,177 checks |
+| Batch 3. The risk term | ✅ the economy instrument (five profiles × four seeds, measuring the trading path against the day job for the first time) and the risk term it made possible — a sale writes Heat, a watched corner pays less, and a trip taken holding can be stopped. The pure courier route goes **384% → 90%** of the day job. Parity → 11,248 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

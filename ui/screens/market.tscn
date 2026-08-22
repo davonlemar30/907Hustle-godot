@@ -720,6 +720,15 @@ theme_override_font_sizes/font_size = 17
 horizontal_alignment = 2
 text = "$27"
 
+[node name="Sell" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Right"]
+visible = false
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 2
+text = "SELL $0"
+
 [node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R0/H/Right"]
 layout_mode = 2
 theme_override_constants/separation = 4
@@ -810,6 +819,15 @@ theme_override_colors/font_color = Color(0.373, 0.663, 0.847, 1)
 theme_override_font_sizes/font_size = 17
 horizontal_alignment = 2
 text = "$72"
+
+[node name="Sell" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Right"]
+visible = false
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 2
+text = "SELL $0"
 
 [node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R1/H/Right"]
 layout_mode = 2
@@ -903,6 +921,15 @@ theme_override_font_sizes/font_size = 17
 horizontal_alignment = 2
 text = "$105"
 
+[node name="Sell" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Right"]
+visible = false
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 2
+text = "SELL $0"
+
 [node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R2/H/Right"]
 layout_mode = 2
 theme_override_constants/separation = 4
@@ -994,6 +1021,15 @@ theme_override_font_sizes/font_size = 17
 horizontal_alignment = 2
 text = "$155"
 
+[node name="Sell" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Right"]
+visible = false
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 2
+text = "SELL $0"
+
 [node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R3/H/Right"]
 layout_mode = 2
 theme_override_constants/separation = 4
@@ -1084,6 +1120,15 @@ theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
 theme_override_font_sizes/font_size = 17
 horizontal_alignment = 2
 text = "$215"
+
+[node name="Sell" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Right"]
+visible = false
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 2
+text = "SELL $0"
 
 [node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R4/H/Right"]
 layout_mode = 2
@@ -1177,6 +1222,15 @@ theme_override_font_sizes/font_size = 17
 horizontal_alignment = 2
 text = "$290"
 
+[node name="Sell" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Right"]
+visible = false
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 2
+text = "SELL $0"
+
 [node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R5/H/Right"]
 layout_mode = 2
 theme_override_constants/separation = 4
@@ -1267,6 +1321,15 @@ theme_override_colors/font_color = Color(0.85, 0.72, 0.42, 1)
 theme_override_font_sizes/font_size = 17
 horizontal_alignment = 2
 text = "$296"
+
+[node name="Sell" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Right"]
+visible = false
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 2
+text = "SELL $0"
 
 [node name="Btns" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Rows/R6/H/Right"]
 layout_mode = 2
@@ -1359,6 +1422,15 @@ theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
 theme_override_font_sizes/font_size = 17
 horizontal_alignment = 2
 text = "$176"
+
+[node name="Sell" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R7/H/Right"]
+visible = false
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 9
+horizontal_alignment = 2
+text = "SELL $0"
 
 [node name="Lock" type="Label" parent="Shell/Scroll/Pad/Content/Rows/R7/H/Right"]
 layout_mode = 2

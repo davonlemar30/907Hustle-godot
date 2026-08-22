@@ -5176,6 +5176,181 @@ tables and fails the build on any uncovered character.
 | B2-S3 | `dominant_category` defaults to `presence` | ✅ 26 failures — **reports "Hustler", the exact filed symptom** |
 | B2-S4 | a Home row added to `more.gd` | ✅ 1 failure, names the destination |
 
+## Batch 3 — The Risk Term  (added 2026-08-22)
+
+Branch `codex/batch-3-trading-risk`, from `main` at `40ea377`. Commissioned as
+two design gaps: "the trading path carries no risk" and "pure crime is
+capital-constrained".
+
+**Parity: 11,248 checks, 0 failures** (from 11,177). Floor 11,167 → 11,238.
+Save schema unchanged at v10. 21/21 screens, glyph coverage, save-shape suite 82.
+
+### The instrument came first, and it had to
+
+Both gaps arrived with detailed prior analysis from the **web** build (v1.34,
+PR #96): `arbitrage` at 17% of the day job, `hustler` at 110%, 383 purchases for
+0 Heat. Its own pre-plan carries a standing instruction, earned the hard way:
+
+> *"This project has now had four build prompts whose central premise was false,
+> and the review process caught all four by RE-RUNNING rather than inheriting."*
+
+So nothing was inherited. This port has its own economy, its own wallet split
+and its own Pressure layer, and **it had never once been measured** — the five
+existing simulation profiles measure the consequence layer and not one of them
+buys or sells a unit of product. The game's central economic claim was
+unfalsifiable for the whole port.
+
+`_check_economy_profiles` is the instrument: five profiles (`legal_worker`,
+`hustler`, `arbitrage`, `flipper`, `trader`) over four seeds each, thirty days,
+reporting net worth, **net trade and margin alongside it** (never net worth
+alone — unsold stock inflates it as the trade gets worse), peak Heat, arrests,
+Pressure, seizures and dead ends.
+
+### What it found, and five things it found about itself first
+
+The instrument was wrong five times before it was right, and each error would
+have produced a confident, false number:
+
+| # | Instrument bug | What it would have reported |
+| --- | --- | --- |
+| 1 | Rent is never auto-paid — `_settle_rent` has no branch that takes the money | Every profile evicted, `legal_worker` sitting on $2,345 and evicted anyway |
+| 2 | `_pay_phone` leaves `phone_active` false until the next slot, so a `not phone_active` condition pays again immediately | `legal_worker` earning $2,086 and ending on $86 |
+| 3 | `apply_job` returns `ok: true` with an empty `hired` on a failed interview, so a profile that latches on the return value stops applying | Baseline halved — 15 shifts instead of 30, which is the denominator every percentage is quoted against |
+| 4 | The courier put 100% of its capital in one bag | Every trading profile at 2-3% with 75% dead ends the moment carry risk existed |
+| 5 | Trades ranked by per-unit edge without checking affordability | Fourteen units bought across a month |
+
+**One seed is not enough**, and that was measured too: an early sweep moved a
+lever that turned out to be irrelevant and watched `hustler` go 369% → 413%,
+which is the seeded market walk realigning. Everything is a mean over four.
+
+### The measured baseline (before the term)
+
+| profile | netWorth | vs job | trade margin | peak Heat | arrests |
+| --- | --- | --- | --- | --- | --- |
+| `legal_worker` | 1,553 | **100%** | n/a | 0.0 | 0 |
+| `hustler` | 16,730 | **1077%** | +38.8% | 0.0 | 0 |
+| `arbitrage` | 5,961 | **384%** | +23.6% | 0.0 | 0 |
+| `flipper` | 61 | 4% | n/a | 0.0 | 0 |
+| `trader` | 33 | 2% | +0.0% | 0.0 | 0 |
+
+**194 units moved for exactly 0.0 Heat.** The premise is confirmed and it is
+worse here than in the web build, which at least had a structurally-zero BUY
+term — `economy.gd` contains no reference to heat at all.
+
+**The second gap does not transfer.** The web build's "pure crime is
+capital-constrained at 17%" is not this port's problem: `arbitrage` is at 384%
+and the binding constraint is CARGO, not capital. Every capital-curve lever that
+ticket lists — transportation, a bank, more lenders — would have been actively
+harmful here. That finding alone justified re-running.
+
+### Three structural findings
+
+1. **Heat has no teeth on the trading path.** `gs.heat` is read in exactly five
+   places: Stickup's success chance, the job interview roll, Exposure's
+   broadcast thresholds, Lay Low's relief cap, and the arrest gates inside
+   Boost's and Stickup's consequence chains. A courier who never lifts and never
+   robs touches none of them. Heat pinned at 15.0 in the sweep and the run
+   carried on exactly as before. **Heat 15 does not end a run in this port.**
+2. **Rotation defeats per-district memory.** Market Pressure caps at +1 per
+   district per day and sheds 1.5-2.0 on a quiet one, so a courier alternating
+   two districts never reaches even KNOWN — measured peak 1.75 against a
+   threshold of 3.0. The stationary `trader` hit 9.0 and felt the whole penalty;
+   the profile that was actually winning never saw it.
+3. **In-market spread is exactly zero.** `_buy` charges `prod.price * qty` and
+   `_sell` credited the identical figure. Every dollar of trading profit is
+   cross-district arbitrage. `trader` moved 130 units for a net trade of $0.
+4. **Jobs are Spenard-only**, so the route and the shift compete for whole DAYS,
+   not slots (`shift_blocker`: *"Every canon job is in Spenard, so this is really
+   'are you home'"*). A hybrid that does not go home to work does neither well.
+
+### The term
+
+Four legs were designed. Three were measured and rejected as the main lever,
+and the rejections are the design:
+
+| leg | measured effect | why |
+| --- | --- | --- |
+| Heat on SELL | 382% → 382% | no teeth on this path (finding 1) |
+| Pressure price penalty | 382% → 382% | defeated by rotation (finding 2) |
+| A slot for the handoff | 369% → 413% | slots are not the constraint; the courier has idle days |
+| **The carry** | **384% → 90%** | scales with cargo, which IS the constraint |
+
+**All four shipped anyway**, because the three that do not move the number are
+each correct on their own terms and each closes a hole: the sale finally writes
+Heat (and finally gives `HeatSystem`'s `market` district multiplier — authored
+in FS-003.9, never once fired — something to scale), the corner that has watched
+you pays less, and the carry is the leg with the teeth.
+
+```gdscript
+MARKET_SELL_HEAT_PER_DOLLAR := 0.006   # capped at 1.5 raw per sale
+MARKET_PRESSURE_PRICE_SCALE := 1.0     # x the band's authored penalty
+CARRY_STOP_BASE  := 0.010
+CARRY_STOP_PER_UNIT := 0.006
+CARRY_STOP_PER_HEAT := 0.006
+CARRY_STOP_PER_PRESSURE_STEP := 0.025
+CARRY_STOP_MAX := 0.55
+```
+
+A stop's OUTCOME is the existing resolver's `escape` shape read against
+Intelligence, not a second dice table. Clean is a walk; messy takes a third of
+the bag; failure and catastrophic take all of it. **A seizure is not a fine** —
+it takes product and never touches the wallet, asserted.
+
+The sell price is now two numbers, and the Market screen shows both: the board
+price, and what a sale here actually pays. Both read
+`economy.sell_unit_price()` — the same function the reducer credits from,
+because a preview that re-derives is a second implementation of the price.
+
+### After
+
+| profile | netWorth | vs job | margin | seizures | dead ends |
+| --- | --- | --- | --- | --- | --- |
+| `legal_worker` | 1,553 | 100% | n/a | 0.0 | 0% |
+| `hustler` | 14,467 | 932% | +33.1% | 2.8 ($1,725) | 0% |
+| **`arbitrage`** | 1,401 | **90%** | **+6.2%** | 2.0 ($1,144) | 0% |
+| `flipper` | 61 | 4% | n/a | 0.0 | 0% |
+| `trader` | 33 | 2% | +0.0% | 0.0 | 0% |
+
+**The pure courier route: 384% → 90%**, inside the design position's 70-90%
+band, with a margin that is still positive — the route survives its own risk
+term, which was the point.
+
+### What is NOT fixed, and why it is a design call rather than another sweep
+
+**`hustler` is at 932%.** A value-scaled carry term is the only thing that
+reaches it, and it was built and swept:
+
+| per $100 of bag | `hustler` | `arbitrage` | `arbitrage` margin | dead ends |
+| --- | --- | --- | --- | --- |
+| 0.000 | 932% | 90% | +6.2% | 0% |
+| 0.008 | 487% | 46% | −10.4% | 25% |
+| 0.020 | 263% | 2% | −19.1% | 25% |
+
+**The two profiles move in opposite directions and no rate puts both in band.**
+The reason is structural, not a matter of rate: **wages are insurance.**
+`hustler` has a floor under it, so a seized bag is a bad week; `arbitrage` is
+carrying its whole capital, so the same bag is the run. Pricing the carry by
+value therefore taxes the fragile strategy harder than the robust one, which is
+backwards.
+
+Whether a day job should insure criminal risk is Marcus's call, not a sweep's.
+`CARRY_STOP_PER_100` ships at 0 — expressed rather than deleted, the way
+`PRESSURE_QUIET_GRACE_DAYS` is — with the surface above recorded beside it.
+
+**Arrests are still 0 for traders.** The carry has no arrest gate, deliberately:
+that converts a balance change into a lose-condition change, and it wants its
+own vertical slice the way FS-003.7 was one.
+
+### Sabotage log
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| T-S1 | `MARKET_SELL_HEAT_PER_DOLLAR` → 0 | ✅ 2 failures |
+| T-S2 | district multiplier dropped from the sell gain | ✅ 1 failure |
+| T-S3 | `MARKET_PRESSURE_PRICE_SCALE` → 0 | ✅ 1 failure |
+| T-S4 | carry stop chance flattened | ✅ 4 failures |
+| T-S5 | `_sell` credits the board price again | ✅ 1 failure — *"the sell action pays the price the screen shows: got 728, want 554"* |
+
 ## Overnight Build Log — 2026-08-22
 
 Autonomous loop. Each entry: branch, tasks, parity, outcome.
@@ -5185,6 +5360,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | — | `claude/v0.1.0-playtest-polish-b4nlnx` | v0.1.0: versioning · surface visibility · seeded key audit · HOT lever · phone tap target · canonical locations | 10,781 → 11,110 | Merged, PR #53. Save v9 → v10. |
 | 1 | `codex/batch-1-hardening` | A1 settlement day · A2 board fill (verified + guaranteed) · A3 crew capacity (verified + guaranteed) · A4 dispatch guards | 11,110 → 11,147 | Merged, PR #54. Schema unchanged. |
 | 2 | `codex/batch-2-docs-and-glyphs` | B2 settlement contract · B1, B3, C1, C2, C3 verified | 11,147 → 11,177 | Merged, PR #55. No production behaviour changed. |
+| 3 | `codex/batch-3-trading-risk` | The economy instrument · the trading path's risk term (sell Heat · corner pricing · the carry) | 11,177 → 11,248 | Merged, PR #56. Pure courier route 384% → 90% of the day job. |
 
 **Findings carried forward:**
 
@@ -5207,6 +5383,15 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 - **C2 is not applicable to this port.** The Godot build has no popup surface at
   all — no `PopupPanel`, `PopupMenu`, `Window` or positioned floating panel
   anywhere under `ui/`. It is a web-build finding.
+- **The web build's second design gap does not transfer.** "Pure crime is
+  capital-constrained at 17%" is not this port's problem — `arbitrage` measured
+  at 384% and is limited by CARGO, not capital. Every capital-curve lever that
+  ticket lists (transportation, a bank, more lenders) would have been actively
+  harmful here. Re-running rather than inheriting is what caught it.
+- **The hybrid ceiling is open and needs Marcus.** `hustler` sits at 932%. The
+  only term that reaches it taxes the fragile strategy harder than the robust
+  one, because wages insure against variance. Sweep surface recorded beside the
+  constant, which ships at 0.
 - **One documented contract had silently inverted.** The day-cross audit
   recorded that `day_crossed` listeners see pre-evolution markets; FS-003.2
   moved the signal below `economy.evolve()` deliberately and nothing updated the

@@ -136,6 +136,8 @@ func _ready() -> void:
 		_check_v010()
 		_check_batch1()
 		_check_batch2()
+		_check_trading_risk(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
 func _load_fixtures() -> Dictionary:
@@ -14653,6 +14655,687 @@ func _check_no_duplicate_home_entry() -> void:
 	_free_screen(street)
 
 
+# =============================================================================
+# The economy instrument — measuring the trading path against the day job
+# =============================================================================
+#
+# The design position, from `ARCHITECTURE.md` under Economy philosophy:
+#
+#   > The legal path is the HIGHEST EXPECTED-VALUE outcome. Criminal income is
+#   > higher per-action but lower in expectation after costs. Each new district,
+#   > product tier, or scale level increases both the CEILING and the FLOOR of
+#   > criminal income proportionally, preserving this relationship.
+#
+# Crime is faster, riskier and worse in expectation. Smart crime APPROACHES the
+# job's net return and does not beat it. The hustle is seductive and the hustle
+# is a lie.
+#
+# Nothing in this build had ever measured that. The five consequence profiles
+# above measure the consequence layer — arrests, Pressure, retaliation — and not
+# one of them ever buys or sells a unit of product. So the central economic
+# claim of the game has been unfalsifiable for the whole port.
+#
+# These five profiles are the instrument. They REPORT; they assert only
+# structural invariants that would be bugs at any balance. The web build's
+# equivalent harness found four consecutive build briefs whose central premise
+# was false, every one of them caught by re-running rather than inheriting, so
+# nothing here is inherited from those numbers — this port has its own economy,
+# its own wallet split and its own Pressure layer, and it gets its own reading.
+
+## Buy in the cheap district, carry, sell in the dear one. The only profitable
+## trade the game has: in-market spread is exactly ZERO here (`_buy` charges
+## `prod.price * qty` and `_sell` credits `prod.price * qty`), so every dollar
+## of trading profit is cross-district arbitrage minus fare.
+const ECON_TRADE_PRODUCTS: Array[String] = ["weed", "shrooms", "cocaine"]
+## Below this the trip does not pay for its own fare and slot.
+const ECON_MIN_EDGE := 8
+## How much of the bankroll goes into one bag. Not 100%: see `_econ_try_trade`.
+const ECON_LOAD_SHARE := 0.8
+## The job a legal profile applies for. Four slots a day, so it can always work.
+const ECON_JOB := "wash_go"
+
+## What each profile is allowed to do, read down a fixed priority ladder — the
+## same shape the web harness uses, and for the same reason: a strategy that is
+## data rather than code can be diffed, and a new one cannot accidentally change
+## an old one's behaviour.
+const ECON_PROFILES: Array[Dictionary] = [
+	{"name": "legal_worker", "job": true, "trade": false, "flip": false,
+		"seed": "econ-legal"},
+	{"name": "hustler", "job": true, "trade": true, "flip": false,
+		"seed": "econ-hustler"},
+	{"name": "arbitrage", "job": false, "trade": true, "flip": false,
+		"seed": "econ-arbitrage"},
+	{"name": "flipper", "job": false, "trade": false, "flip": true,
+		"seed": "econ-flipper"},
+	{"name": "trader", "job": false, "trade": true, "flip": false,
+		"local_only": true, "seed": "econ-trader"},
+]
+
+const ECON_DAYS := 30
+const ECON_START_CASH := 400
+## Seeds per profile. One is not enough and that was measured, not assumed: the
+## first sweep moved a lever that turned out to be irrelevant and watched
+## `hustler` go from 369% to 413%, which is the seeded market walk realigning,
+## not the lever. Every reported number below is a mean over these.
+const ECON_SEEDS: Array[String] = ["-a", "-b", "-c", "-d"]
+
+func _econ_ready(gs: Node, profile: Dictionary) -> void:
+	gs.street_name = "Econ"
+	gs.reset_to_new_game()
+	gs.day = 1
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.run_seed = str(profile["seed"]) + str(profile.get("seed_suffix", ""))
+	gs.current_district_id = "north_star_lot"
+	gs.cash = ECON_START_CASH
+	gs.clean_cash = ECON_START_CASH
+	gs.dirty_cash = 0
+	gs.rng_state = 246810
+	# The whole city, for the same reason the consequence profiles get it: this
+	# measures the economy over 30 days, not how long a player takes to earn a
+	# bus route.
+	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+
+## The best cross-district trade available right now: what to buy here, where to
+## take it, and what the edge is per unit.
+##
+## Reads `gs.markets` directly rather than `prod.price`, because `prod.price` is
+## the DISPLAY mirror and only ever holds the district the player is standing
+## in. A courier deciding where to go has to price a market they are not in —
+## which is exactly the thing no player-facing surface can do either, and is
+## filed as its own finding below.
+func _econ_best_trade(gs: Node, budget: int, room: int) -> Dictionary:
+	var here: String = str(gs.current_district_id)
+	var here_market: Dictionary = gs.markets.get(here, {})
+	if here_market.is_empty():
+		return {}
+	var best: Dictionary = {}
+	var best_profit: int = 0
+	for product_id in ECON_TRADE_PRODUCTS:
+		var buy_price: int = int((here_market.get("prices", {}) as Dictionary).get(product_id, 0))
+		var supply: int = int((here_market.get("availability", {}) as Dictionary).get(product_id, 0))
+		if buy_price <= 0 or supply <= 0:
+			continue
+		# How many of THIS one the trip could actually take. Ranking on
+		# per-unit edge alone picked the dearest product every time and then
+		# could not afford a single unit of it, which is what the first
+		# reserve run measured: two units bought across a whole month.
+		var quantity: int = mini(mini(room, budget / buy_price), supply)
+		if quantity <= 0:
+			continue
+		for district in gs.districts:
+			var there: String = str((district as Dictionary)["id"])
+			if there == here:
+				continue
+			var there_market: Dictionary = gs.markets.get(there, {})
+			if there_market.is_empty():
+				continue
+			var sell_price: int = int((there_market.get("prices", {}) as Dictionary).get(product_id, 0))
+			var edge: int = sell_price - buy_price
+			if edge < ECON_MIN_EDGE:
+				continue
+			var profit: int = edge * quantity
+			if profit > best_profit:
+				best_profit = profit
+				best = {"product_id": product_id, "buy_at": here, "sell_at": there,
+					"buy_price": buy_price, "sell_price": sell_price,
+					"edge": edge, "supply": supply, "quantity": quantity}
+	return best
+
+## What the profile is holding that this district pays for.
+func _econ_sellable_here(gs: Node) -> Dictionary:
+	var here_market: Dictionary = gs.markets.get(str(gs.current_district_id), {})
+	var prices: Dictionary = here_market.get("prices", {})
+	var best_id: String = ""
+	var best_value: int = 0
+	for product_id in gs.inventory.keys():
+		var qty: int = int(gs.inventory[product_id])
+		if qty <= 0:
+			continue
+		var value: int = int(prices.get(str(product_id), 0)) * qty
+		if value > best_value:
+			best_value = value
+			best_id = str(product_id)
+	return {} if best_id.is_empty() else {"product_id": best_id,
+		"quantity": int(gs.inventory[best_id])}
+
+## One profile, played to `ECON_DAYS`, reporting what the economy did to it.
+##
+## Deliberately NOT asserted against expected values. This is measurement; the
+## only assertions are invariants that would be bugs at any balance.
+func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
+	_econ_ready(gs, profile)
+	var wants_job: bool = bool(profile.get("job", false))
+	var wants_trade: bool = bool(profile.get("trade", false))
+	var wants_flip: bool = bool(profile.get("flip", false))
+	var local_only: bool = bool(profile.get("local_only", false))
+
+	var metrics: Dictionary = {
+		"buys": 0, "units_bought": 0, "sells": 0, "units_sold": 0,
+		"spent_on_product": 0, "earned_from_product": 0,
+		"shifts": 0, "wages": 0, "flips": 0, "travels": 0, "fares": 0,
+		"peak_heat": 0.0, "arrests": 0, "peak_financial_pressure": 0,
+		"heat_from_trading": 0.0, "market_pressure_peak": 0.0,
+		"relief_slots": 0, "rent_missed": 0, "evicted": false, "rent_paid": 0,
+		"phone_paid": 0, "stops": 0, "seizures": 0, "seized_value": 0,
+		"applications": 0,
+	}
+	var guard: int = 0
+	while int(gs.day) <= ECON_DAYS and guard < ECON_DAYS * 40 and not bool(gs.game_over):
+		guard += 1
+		# A blocking consequence has to be answered before anything else. These
+		# profiles read the odds, the same as the `odds` consequence profile.
+		if not (gs.active_consequence as Dictionary).is_empty():
+			var before_priors: int = int(gs.arrest_record["priors"])
+			_sim_answer_chain(gs, gm, gm.system("consequence") as RefCounted, SIM_POLICY_ODDS)
+			metrics["arrests"] = int(metrics["arrests"]) \
+				+ maxi(0, int(gs.arrest_record["priors"]) - before_priors)
+			continue
+		metrics["peak_heat"] = maxf(float(metrics["peak_heat"]), float(gs.heat))
+		metrics["peak_financial_pressure"] = maxi(
+			int(metrics["peak_financial_pressure"]), int(gs.financial_pressure))
+		var engine: Object = gm.system("consequence")
+		if engine != null:
+			metrics["market_pressure_peak"] = maxf(float(metrics["market_pressure_peak"]),
+				float(engine.pressure_score(str(gs.current_district_id), "market")))
+
+		# --- solvency, above everything, for every profile ---
+		#
+		# Rent is NOT paid automatically. `obligations._settle_rent` increments
+		# `rent_missed` whenever the due day passes and has no branch that takes
+		# the money — paying is an explicit action a player takes. A profile
+		# that does not take it hoards cash until the second warning evicts it,
+		# which is what the first run of this instrument measured for all five:
+		# `legal_worker` sitting on $2,345 and evicted anyway.
+		#
+		# That is an instrument bug and not a finding. Solvency sits above the
+		# earning legs because it does for a player too.
+		var obligations: Object = gm.system("obligations")
+		if obligations != null and str(obligations.pay_rent_blocker()).is_empty():
+			if gm.dispatch("pay_rent", {}):
+				metrics["rent_paid"] = int(metrics.get("rent_paid", 0)) + 1
+				continue
+		# The phone is paid on the BILL's clock, never on `phone_active`.
+		# `_pay_phone` reactivates by setting `phone_reactivate_at_slot` and
+		# leaves `phone_active` false until the next slot advance — so a
+		# condition reading `not phone_active` pays again on the very next
+		# iteration, and again, until the wallet is empty. That is what the
+		# second run of this instrument measured: `legal_worker` earning $2,086
+		# in wages and ending on $86, with `hustler` down to two shifts because
+		# the loop guard was spent on phone bills.
+		if obligations != null \
+				and (int(gs.day) >= int(gs.phone_due_day)
+					or int(gs.phone_days_past_due) > 0) \
+				and int(gs.cash) >= int(gs.PHONE_BILL):
+			if gm.dispatch("pay_phone_bill", {"surface": "store"}):
+				metrics["phone_paid"] = int(metrics.get("phone_paid", 0)) + 1
+				continue
+
+		# --- the legal leg, first on the ladder for the profiles that have it ---
+		var jobs_system: Object = gm.system("jobs")
+		if wants_job and str(gs.active_job_id).is_empty():
+			# Apply, and keep applying. `_apply` returns `ok: true` with an
+			# EMPTY `hired` when the interview goes the other way — the
+			# interview happened, it just did not land — so a profile that
+			# latches on the dispatch's return value stops applying the first
+			# time it is turned down. That is what the first multi-seed run
+			# measured: `legal_worker` averaging fifteen shifts instead of
+			# thirty, which halved the denominator every other percentage in
+			# this table is quoted against.
+			#
+			# The retry has to spend a slot. The interview key is
+			# `day:slot:job_interview:job`, so re-applying in the same slot
+			# re-reads the same seeded answer forever.
+			metrics["applications"] = int(metrics.get("applications", 0)) + 1
+			gm.dispatch("apply_job", {"job_id": ECON_JOB})
+			if str(gs.active_job_id).is_empty():
+				gm.dispatch("advance_time", {})
+			continue
+		if wants_job and not str(gs.active_job_id).is_empty() \
+				and jobs_system != null and str(jobs_system.shift_blocker()).is_empty():
+			var clean_before: int = int(gs.clean_cash)
+			if gm.dispatch("work_shift", {"approach": "work_hard"}):
+				metrics["shifts"] = int(metrics["shifts"]) + 1
+				metrics["wages"] = int(metrics["wages"]) + (int(gs.clean_cash) - clean_before)
+				continue
+
+		# A hybrid has to GO HOME to work. `shift_blocker` says it plainly —
+		# "Every canon job is in Spenard, so this is really 'are you home'" —
+		# which means the route and the shift compete for whole DAYS, not for
+		# slots, and a profile that simply tries both every slot ends up doing
+		# neither. That is what the first carry sweeps measured: `hustler` on
+		# five shifts out of thirty and a negative trade margin, which is not a
+		# hybrid strategy, it is two strategies interfering.
+		#
+		# So: empty-handed, employed, not home, and today's shift still unworked
+		# — go home. The fare is the cost of running both, and it should be.
+		if wants_job and not str(gs.active_job_id).is_empty() \
+				and int(gs.cargo_used()) == 0 \
+				and str(gs.current_district_id) != "north_star_lot" \
+				and int((gs.job_records.get(str(gs.active_job_id), {}) as Dictionary)
+					.get("last_worked_day", -1)) != int(gs.day):
+			if gm.dispatch("travel", {"district_id": "north_star_lot"}):
+				metrics["travels"] = int(metrics["travels"]) + 1
+				metrics["fares"] = int(metrics["fares"]) + int(gs.TravelFare)
+				continue
+
+		# --- the flip leg ---
+		if wants_flip and _econ_try_flip(gs, gm, metrics):
+			continue
+
+		# --- the trading leg ---
+		if wants_trade and _econ_try_trade(gs, gm, metrics, local_only):
+			continue
+
+		gm.dispatch("advance_time", {})
+
+	metrics["days_played"] = int(gs.day)
+	metrics["game_over"] = bool(gs.game_over)
+	metrics["evicted"] = bool(gs.game_over)
+	metrics["game_over_reason"] = str(gs.game_over_reason)
+	metrics["rent_missed"] = int(gs.rent_missed)
+	metrics["cash"] = int(gs.cash)
+	metrics["clean_cash"] = int(gs.clean_cash)
+	metrics["dirty_cash"] = int(gs.dirty_cash)
+	metrics["heat"] = float(gs.heat)
+	metrics["inventory_value"] = _econ_inventory_value(gs)
+	metrics["net_worth"] = int(gs.cash) + int(metrics["inventory_value"])
+	metrics["net_trade"] = int(metrics["earned_from_product"]) \
+		- int(metrics["spent_on_product"]) - int(metrics["fares"])
+	var spent: int = int(metrics["spent_on_product"])
+	metrics["trade_margin"] = (float(metrics["net_trade"]) / float(spent)) if spent > 0 else 0.0
+	return metrics
+
+## One profile over every seed, averaged.
+##
+## Means for the continuous measures and SUMS for the counters, because "how
+## many units did it move" is only comparable per-run. Booleans become rates.
+func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
+	var runs: Array[Dictionary] = []
+	for suffix in ECON_SEEDS:
+		var seeded: Dictionary = profile.duplicate(true)
+		seeded["seed_suffix"] = str(suffix)
+		runs.append(_simulate_economy(gs, gm, seeded))
+	var out: Dictionary = {"profile": str(profile["name"]), "runs": runs.size()}
+	var averaged: Array[String] = ["net_worth", "net_trade", "trade_margin",
+		"peak_heat", "heat_from_trading", "arrests", "peak_financial_pressure",
+		"market_pressure_peak", "units_bought", "units_sold", "inventory_value",
+		"buys", "sells", "shifts", "wages", "flips", "travels", "fares",
+		"days_played", "rent_paid", "rent_missed", "phone_paid", "seized_value",
+		"applications",
+		"stops", "seizures"]
+	for key in averaged:
+		var total: float = 0.0
+		for run in runs:
+			total += float(run.get(key, 0))
+		out[key] = total / float(maxi(1, runs.size()))
+	var overs: int = 0
+	for run in runs:
+		if bool(run.get("game_over", false)):
+			overs += 1
+	out["game_over_rate"] = float(overs) / float(maxi(1, runs.size()))
+	out["game_over"] = overs > 0
+	out["game_over_reason"] = str((runs[runs.size() - 1] as Dictionary).get("game_over_reason", ""))
+	return out
+
+## Unsold stock, priced where the profile is standing.
+##
+## Reported so `net_worth` can be read honestly and never on its own. The web
+## harness's standing trap: unsold inventory counts toward net worth, so a WORSE
+## trade rule can make net worth RISE while the trade itself collapses.
+func _econ_inventory_value(gs: Node) -> int:
+	var prices: Dictionary = (gs.markets.get(str(gs.current_district_id), {}) as Dictionary).get("prices", {})
+	var total: int = 0
+	for product_id in gs.inventory.keys():
+		total += int(prices.get(str(product_id), 0)) * int(gs.inventory[product_id])
+	return total
+
+func _econ_try_flip(gs: Node, gm: Node, metrics: Dictionary) -> bool:
+	var lst: Object = gm.system("list")
+	if lst == null:
+		return false
+	# Sell anything ready before buying more — capacity is the binding limit.
+	for index in range(gs.list_holdings.size()):
+		if str(lst.sell_blocker(index)).is_empty():
+			if gm.dispatch("list_sell", {"index": index}):
+				metrics["flips"] = int(metrics["flips"]) + 1
+				return true
+	for listing in lst.todays_listings():
+		var item_id := str((listing as Dictionary)["id"])
+		if str(lst.buy_blocker(item_id)).is_empty():
+			if gm.dispatch("list_buy", {"item_id": item_id}):
+				return true
+	return false
+
+func _econ_try_trade(gs: Node, gm: Node, metrics: Dictionary, local_only: bool) -> bool:
+	# Sell first when the market pays for what is held. `local_only` is the
+	# naive rule — buy here, sell here — which the zero in-market spread makes
+	# a guaranteed loss once fare and time are counted. It is in the table to
+	# show what the route is worth ABOVE doing the obvious thing.
+	var sellable: Dictionary = _econ_sellable_here(gs)
+	if not sellable.is_empty():
+		var here_prices: Dictionary = (gs.markets.get(str(gs.current_district_id), {}) as Dictionary).get("prices", {})
+		var revenue: int = int(here_prices.get(str(sellable["product_id"]), 0)) \
+			* int(sellable["quantity"])
+		var heat_before: float = float(gs.heat)
+		if gm.dispatch("market_sell", sellable):
+			metrics["sells"] = int(metrics["sells"]) + 1
+			metrics["units_sold"] = int(metrics["units_sold"]) + int(sellable["quantity"])
+			metrics["earned_from_product"] = int(metrics["earned_from_product"]) + revenue
+			metrics["heat_from_trading"] = float(metrics["heat_from_trading"]) \
+				+ maxf(0.0, float(gs.heat) - heat_before)
+			return true
+
+	# A PROPORTIONAL hold-back, not a fixed one. A flat week's rent kept back
+	# was the second wrong model: on a $400 start it leaves $150 to trade with,
+	# rent eats the profit before it can compound, and the courier ends the
+	# month having moved fourteen units. Holding back a SHARE scales with the
+	# bankroll the way a real hold-back does — it costs a beginner little and a
+	# established courier a lot.
+	var committable: int = maxi(0, int(round(float(gs.cash) * ECON_LOAD_SHARE)))
+	var room: int = int(gs.cargo_max) - int(gs.cargo_used())
+	var trade: Dictionary = _econ_best_trade(gs, committable, room) if not local_only else {}
+	if local_only:
+		# Buy whatever is cheapest here and hold it; the sell branch above will
+		# take it at whatever the same market pays tomorrow.
+		var here_market: Dictionary = gs.markets.get(str(gs.current_district_id), {})
+		var cheapest: String = ""
+		var cheapest_price: int = 0x7FFFFFFF
+		for product_id in ECON_TRADE_PRODUCTS:
+			var price: int = int((here_market.get("prices", {}) as Dictionary).get(product_id, 0))
+			var supply: int = int((here_market.get("availability", {}) as Dictionary).get(product_id, 0))
+			if price > 0 and supply > 0 and price < cheapest_price:
+				cheapest_price = price
+				cheapest = product_id
+		if cheapest.is_empty():
+			return false
+		trade = {"product_id": cheapest, "buy_price": cheapest_price,
+			"sell_at": str(gs.current_district_id), "edge": 0,
+			"supply": int((here_market.get("availability", {}) as Dictionary).get(cheapest, 0))}
+	if trade.is_empty():
+		return false
+	# The load: what `_econ_best_trade` already proved affordable, or for the
+	# naive local rule what the same budget allows.
+	#
+	# The profile keeps a week's rent back and commits a share of what is left
+	# rather than emptying the wallet into one bag. It used to take everything
+	# it could afford; that was fine while the carry was free and became
+	# nonsense the moment it was not — the first carry sweep put every trading
+	# profile at 2-3% of the job with three quarters of the runs ending, because
+	# a courier holding 100% of its capital in one bag loses all of it to a
+	# single stop and then cannot make rent. Nobody plays that way once bags get
+	# taken, and a harness that cannot hold something back is measuring a
+	# strategy no player would run.
+	var quantity: int = int(trade.get("quantity", 0)) if not local_only \
+		else mini(mini(room, committable / maxi(1, int(trade["buy_price"]))),
+			int(trade["supply"]))
+	if quantity <= 0:
+		return false
+	var cost: int = int(trade["buy_price"]) * quantity
+	var heat_before_buy: float = float(gs.heat)
+	if not gm.dispatch("market_buy", {"product_id": str(trade["product_id"]),
+			"quantity": quantity}):
+		return false
+	metrics["buys"] = int(metrics["buys"]) + 1
+	metrics["units_bought"] = int(metrics["units_bought"]) + quantity
+	metrics["spent_on_product"] = int(metrics["spent_on_product"]) + cost
+	metrics["heat_from_trading"] = float(metrics["heat_from_trading"]) \
+		+ maxf(0.0, float(gs.heat) - heat_before_buy)
+	if local_only:
+		return true
+	# Carry it to the market that pays.
+	var held_before: int = int(gs.cargo_used())
+	if gm.dispatch("travel", {"district_id": str(trade["sell_at"])}):
+		metrics["travels"] = int(metrics["travels"]) + 1
+		metrics["fares"] = int(metrics["fares"]) + int(gs.TravelFare)
+		# The carry, measured off the inventory rather than off the return
+		# value: `dispatch` reports success, not the system's report, and a
+		# seizure is exactly a trip that succeeded.
+		var lost: int = held_before - int(gs.cargo_used())
+		if lost > 0:
+			metrics["seizures"] = int(metrics["seizures"]) + 1
+			metrics["seized_value"] = int(metrics["seized_value"]) \
+				+ lost * int(trade["buy_price"])
+	return true
+
+## The whole table, reported. Percentages are against `legal_worker`, which is
+## the design position's 100%.
+func _check_economy_profiles(gs: Node, gm: Node) -> void:
+	var rows: Array[Dictionary] = []
+	for entry in ECON_PROFILES:
+		var profile: Dictionary = entry
+		rows.append(_econ_mean_over_seeds(gs, gm, profile))
+	var baseline: float = 1.0
+	for row in rows:
+		if str(row["profile"]) == "legal_worker":
+			baseline = maxf(1.0, float(row["net_worth"]))
+	for row in rows:
+		var pct: int = int(round(100.0 * float(row["net_worth"]) / baseline))
+		print(("economy: %-13s netWorth %5d (%3d%% of job) · net trade %5d · margin %+6.1f%%"
+			+ " · peak heat %4.1f · arrests %d")
+			% [str(row["profile"]), int(row["net_worth"]), pct, int(row["net_trade"]),
+				100.0 * float(row["trade_margin"]), float(row["peak_heat"]),
+				int(row["arrests"])])
+		print(("               buys %3d/%3du · sells %3d/%3du · shifts %2d ($%d) · flips %2d"
+			+ " · travels %2d ($%d fares) · heat from trading %.1f")
+			% [int(row["buys"]), int(row["units_bought"]), int(row["sells"]),
+				int(row["units_sold"]), int(row["shifts"]), int(row["wages"]),
+				int(row["flips"]), int(row["travels"]), int(row["fares"]),
+				float(row["heat_from_trading"])])
+		print(("               rent paid %.1f / missed %.1f · stops %.1f · seizures %.1f"
+			+ " ($%d) · game over %d%% of %d seeds")
+			% [float(row["rent_paid"]), float(row["rent_missed"]), float(row["stops"]),
+				float(row["seizures"]), int(row["seized_value"]),
+				int(round(100.0 * float(row["game_over_rate"]))), int(row["runs"])])
+		print("economy-metrics: %s" % JSON.stringify({
+			"profile": str(row["profile"]),
+			"net_worth": int(row["net_worth"]),
+			"pct_of_job": pct,
+			"net_trade": int(row["net_trade"]),
+			"trade_margin_pct": snappedf(100.0 * float(row["trade_margin"]), 0.1),
+			"peak_heat": float(row["peak_heat"]),
+			"heat_from_trading": float(row["heat_from_trading"]),
+			"arrests": int(row["arrests"]),
+			"peak_financial_pressure": int(row["peak_financial_pressure"]),
+			"market_pressure_peak": float(row["market_pressure_peak"]),
+			"units_bought": int(row["units_bought"]),
+			"units_sold": int(row["units_sold"]),
+			"inventory_value": int(row["inventory_value"]),
+			"days": int(row["days_played"]),
+			"game_over_rate": snappedf(float(row["game_over_rate"]), 0.01),
+			"rent_missed": snappedf(float(row["rent_missed"]), 0.1),
+			"stops": snappedf(float(row["stops"]), 0.1),
+			"seizures": snappedf(float(row["seizures"]), 0.1),
+			"seized_value": int(row["seized_value"]),
+			"seeds": int(row["runs"]),
+		}))
+
+	# --- invariants, not balance ---
+	#
+	# Everything above is a report. These are the things that would be bugs at
+	# any balance, and they are what makes the instrument trustworthy enough to
+	# tune against.
+	var wallet: RefCounted = gm.system("wallet") as RefCounted
+	_expect_true("the wallet balances after the economy sweep", wallet.is_balanced())
+	for row in rows:
+		var name := str(row["profile"])
+		_expect_true("%s played some days" % name, float(row["days_played"]) > 1.0)
+		_expect_true("%s never sold more than it bought" % name,
+			float(row["units_sold"]) <= float(row["units_bought"]))
+		_expect_true("%s reports non-negative fares" % name, float(row["fares"]) >= 0.0)
+		_expect_true("%s kept heat inside the scale" % name,
+			float(row["peak_heat"]) >= 0.0 and float(row["peak_heat"]) <= float(gs.heat_max))
+		_expect_true("%s kept Financial Pressure inside its scale" % name,
+			float(row["peak_financial_pressure"]) >= 0.0
+			and float(row["peak_financial_pressure"]) <= float(wallet.FINANCIAL_PRESSURE_MAX))
+	# A trading profile that never traded is an instrument failure, not a
+	# result — the exact hazard the web harness named after four builds whose
+	# premise was false. Assert the instrument WORKED before believing it.
+	for row in rows:
+		var name := str(row["profile"])
+		if name in ["hustler", "arbitrage", "trader"]:
+			_expect_true("%s actually traded" % name, float(row["buys"]) > 0.0)
+		if name == "flipper":
+			_expect_true("flipper actually flipped", float(row["flips"]) > 0.0)
+		if name in ["legal_worker", "hustler"]:
+			_expect_true("%s actually worked" % name, float(row["shifts"]) > 0.0)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# =============================================================================
+# The trading path's risk term
+# =============================================================================
+#
+# SABOTAGE: MARKET_SELL_HEAT_PER_DOLLAR -> 0.0  ==> "a sale writes Heat" fails.
+# SABOTAGE: drop the district multiplier from the sell gain ==> "the market's
+#           district multiplier finally fires" fails.
+# SABOTAGE: MARKET_PRESSURE_PRICE_SCALE -> 0.0 ==> "a HOT corner pays less"
+#           fails.
+# SABOTAGE: CARRY_STOP_BASE/PER_UNIT/PER_HEAT -> 0 ==> "a big hot load is
+#           riskier than a small cold one" fails.
+# SABOTAGE: `_sell` credits `prod.price` again ==> "the sell action pays the
+#           price the screen shows" fails.
+
+func _check_trading_risk(gs: Node, gm: Node) -> void:
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	var economy: RefCounted = gm.system("economy") as RefCounted
+	var engine: RefCounted = gm.system("consequence") as RefCounted
+
+	# --- Leg 1: the handoff writes Heat, scaled by the district ---
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 5
+	gs.inventory = {"coke": 4}
+	gs.current_district_id = "north_star_lot"
+	var before: float = float(gs.heat)
+	_expect_true("a sale dispatches", gm.dispatch("market_sell",
+		{"product_id": "coke", "quantity": 4}))
+	var spenard_gain: float = float(gs.heat) - before
+	_expect_true("a sale writes Heat", spenard_gain > 0.0)
+
+	# The same sale in Downtown writes MORE, because `market` is 1.2 there and
+	# 0.8 in Spenard. That table has existed since FS-003.9 and had never fired:
+	# nothing in the market wrote Heat for it to scale.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 5
+	gs.inventory = {"coke": 4}
+	gs.current_district_id = "downtown"
+	before = float(gs.heat)
+	_expect_true("the downtown sale dispatches", gm.dispatch("market_sell",
+		{"product_id": "coke", "quantity": 4}))
+	var downtown_gain: float = float(gs.heat) - before
+	_expect_true("the market's district multiplier finally fires (%.3f > %.3f)"
+		% [downtown_gain, spenard_gain], downtown_gain > spenard_gain)
+
+	# Value, not units: the cap is what stops one enormous handoff ending a run.
+	_expect_float("the per-sale Heat cap is authored",
+		float(rules.MARKET_SELL_HEAT_CAP), 1.5)
+
+	# --- Leg 2: a corner that has watched you pays less ---
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 5
+	gs.current_district_id = "north_star_lot"
+	var quiet_price: int = int(economy.sell_unit_price("north_star_lot", "coke"))
+	_expect_true("a quiet corner pays the board price", quiet_price > 0)
+	_expect_float("a quiet corner holds nothing back",
+		economy.market_price_penalty("north_star_lot"), 0.0)
+	engine.add_pressure("north_star_lot", rules.FAMILY_MARKET, 9.0, "parity:price")
+	_expect_str("the corner is HOT", engine.pressure_band("north_star_lot",
+		rules.FAMILY_MARKET), rules.BAND_HOT)
+	var hot_price: int = int(economy.sell_unit_price("north_star_lot", "coke"))
+	_expect_true("a HOT corner pays less (%d < %d)" % [hot_price, quiet_price],
+		hot_price < quiet_price)
+	_expect_float("and it holds back exactly the band's authored penalty",
+		economy.market_price_penalty("north_star_lot"),
+		float(rules.pressure_penalty(9.0)) * float(rules.MARKET_PRESSURE_PRICE_SCALE))
+	# It never pays nothing: a corner that pays zero is a button that takes your
+	# product.
+	_expect_true("even a burned corner pays something", hot_price >= 1)
+
+	# The screen and the action read the SAME function. A preview that
+	# re-derives is a second implementation of the price.
+	gs.inventory = {"coke": 2}
+	var dirty_before: int = int(gs.dirty_cash)
+	_expect_true("the hot sale dispatches", gm.dispatch("market_sell",
+		{"product_id": "coke", "quantity": 2}))
+	_expect_int("the sell action pays the price the screen shows",
+		int(gs.dirty_cash) - dirty_before, hot_price * 2)
+
+	# --- Leg 4: the carry ---
+	_expect_float("an empty bag is never stopped",
+		rules.carry_stop_chance(0, 0, 15.0, 3), 0.0)
+	var small_cold: float = rules.carry_stop_chance(1, 30, 0.0, 0)
+	var big_cold: float = rules.carry_stop_chance(9, 270, 0.0, 0)
+	var small_hot: float = rules.carry_stop_chance(1, 30, 12.0, 0)
+	var watched: float = rules.carry_stop_chance(1, 30, 0.0, 3)
+	_expect_true("a bigger bag is riskier (%.3f > %.3f)" % [big_cold, small_cold],
+		big_cold > small_cold)
+	_expect_true("carrying Heat is riskier (%.3f > %.3f)" % [small_hot, small_cold],
+		small_hot > small_cold)
+	_expect_true("leaving a watched corner is riskier (%.3f > %.3f)"
+		% [watched, small_cold], watched > small_cold)
+	_expect_true("the chance is capped",
+		rules.carry_stop_chance(10, 5000, 15.0, 3) <= float(rules.CARRY_STOP_MAX))
+
+	# What each tier costs, and the one that costs nothing.
+	_expect_float("a clean stop takes nothing", rules.carry_seize_fraction("clean"), 0.0)
+	_expect_true("a messy stop takes some of it",
+		rules.carry_seize_fraction("messy") > 0.0
+		and rules.carry_seize_fraction("messy") < 1.0)
+	_expect_float("a failed stop takes the load", rules.carry_seize_fraction("failure"), 1.0)
+	_expect_float("a catastrophe takes the load",
+		rules.carry_seize_fraction("catastrophic"), 1.0)
+	# Unknown tiers take everything: the closed direction for a seizure table.
+	_expect_float("an unknown tier fails closed", rules.carry_seize_fraction("nonsense"), 1.0)
+
+	# A trip with nothing in the bag is never a stop, however hot the player is.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 5
+	gs.heat = 15.0
+	gs.inventory = {}
+	_expect_true("an empty-handed trip is quiet",
+		(economy.resolve_carry("north_star_lot") as Dictionary).is_empty())
+
+	# And a stop, when it lands, takes product and only product — the wallet is
+	# not touched, because a seizure is not a fine.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 5
+	gs.cash = 1000
+	gs.clean_cash = 1000
+	gs.dirty_cash = 0
+	gs.inventory = {"weed": 6}
+	var cash_before: int = int(gs.cash)
+	var stopped_at_all := false
+	for day in range(1, 40):
+		gs.day = day
+		gs.heat = 15.0
+		gs.inventory = {"weed": 6}
+		var report: Dictionary = economy.resolve_carry("north_star_lot")
+		if not report.is_empty():
+			stopped_at_all = true
+			_expect_true("a stop reports the tier it resolved",
+				str(report.get("tier", "")) in ["clean", "messy", "failure", "catastrophic"])
+			_expect_true("a stop never takes more than was carried",
+				int(report["units_seized"]) <= int(report["units_before"]))
+			if str(report["tier"]) == "clean":
+				_expect_int("a clean stop leaves the bag alone",
+					int(report["units_seized"]), 0)
+			else:
+				_expect_true("a stop that is not clean takes something",
+					int(report["units_seized"]) > 0)
+	_expect_true("a hot courier is stopped at least once in forty trips", stopped_at_all)
+	_expect_int("a seizure is not a fine", int(gs.cash), cash_before)
+
+	var wallet: RefCounted = gm.system("wallet") as RefCounted
+	_expect_true("the wallet balances after the risk-term checks", wallet.is_balanced())
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -14800,11 +15483,19 @@ func _fail(label: String, detail: String) -> void:
 ## keep: "this does not happen" is a claim with a shelf life unless something
 ## holds it. 11147 + 30 = 11177, measured.
 ##
+## Batch 3 raises it to 11238. Two thirds of its 71 checks are the ECONOMY
+## INSTRUMENT -- five profiles over four seeds, reporting rather than asserting,
+## with a hard invariant layer under it. The instrument's own assertions are the
+## unusual ones and the important ones: they check that the instrument WORKED.
+## A trading profile that never traded reads as a balanced economy, and that
+## hazard has cost this project's web build four consecutive builds whose
+## central premise was false. 11177 + 71 = 11248, measured.
+##
 ## Ten of margin, the same margin every floor since FS-003.13 has left, because
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11167
+const MIN_CHECKS := 11238
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

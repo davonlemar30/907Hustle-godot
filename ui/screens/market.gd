@@ -148,3 +148,20 @@ func _fill_products() -> void:
 		if pr:
 			pr.text = "$%d" % p.price
 			pr.add_theme_color_override("font_color", col)
+
+		# What a sale here actually pays, when the corner is holding something
+		# back. Shown only when it differs from the board price: a QUIET
+		# district pays the board exactly, and a second identical number would
+		# be noise on every row of a screen that is already dense.
+		#
+		# Read from `economy.sell_unit_price()` — the same function the sell
+		# action credits from. A screen that computed its own would be a second
+		# implementation of the price, and the day it drifted would be the day
+		# the player was shown a number the game does not honour.
+		var sell_label := get_node_or_null(base + "/H/Right/Sell") as Label
+		if sell_label:
+			var economy: Object = _gm.system("economy") if _gm else null
+			var pays: int = int(economy.sell_unit_price(gs.current_district_id, str(p.id))) \
+				if economy != null else int(p.price)
+			sell_label.visible = pays < int(p.price)
+			sell_label.text = "SELL $%d" % pays

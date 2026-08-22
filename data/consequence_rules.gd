@@ -482,6 +482,202 @@ const PRESSURE_BOOST_SUCCESS := 0.5
 const PRESSURE_MARKET_SALE := 0.25
 const PRESSURE_MARKET_DAILY_CAP := 1.0
 
+# --- The trading path's risk term (v0.2.0) ---------------------------------
+#
+# Measured before it was designed. The economy instrument
+# (`_check_economy_profiles`) played five profiles over thirty days and found
+# the courier route at **382% of the day job's net worth** on a **+23% trade
+# margin**, having moved 358 units of product for **exactly 0.0 Heat**.
+#
+# That is not a balance problem. `ARCHITECTURE.md`'s Economy philosophy says the
+# legal path is the highest expected-value outcome and that smart crime
+# APPROACHES the job's return without beating it — "the hustle is seductive and
+# the hustle is a lie". At 382% with no risk at all, the lie was the design
+# position, not the hustle.
+#
+# The term has two legs, and each attacks a different lever, because a tax on
+# one lever is a tax the player routes around:
+#
+#   LEG 1  A sale writes Heat, scaled by the VALUE moved.
+#   LEG 2  Market Pressure prices the corner down — the district pays less for
+#          what it has already watched you sell too much of.
+#
+# The CARRY leg — a police stop while holding, opening a real consequence chain
+# — is deliberately not here. It is the most invasive of the three and the one
+# that turns arrests into a trading outcome, which is a lose-condition change
+# rather than a balance change, and it wants its own vertical slice.
+
+## Leg 1. Heat per dollar of a completed sale, before the district multiplier.
+##
+## Keyed on value rather than on `product.heat` or unit count, deliberately. A
+## per-unit rate makes eight units of weed the same risk as eight of cocaine; a
+## per-product rate is a price-table edit in disguise and touches every other
+## system reading that field. What a handoff is worth is what makes it worth
+## watching.
+##
+## The district multiplier this feeds has existed since FS-003.9 and has NEVER
+## FIRED: `HeatSystem.DISTRICT_FAMILY_MULTIPLIERS` authors a `market` row for
+## all three districts (Spenard 0.8, Downtown 1.2, Ship Creek 1.1) and nothing
+## in the market has ever written Heat for it to scale. TI-003 §7 wrote it for
+## this.
+const MARKET_SELL_HEAT_PER_DOLLAR := 0.006
+## Ceiling on one sale's raw Heat, before scaling. A ten-unit cocaine handoff is
+## the loudest thing in the game's market; it should not also be the last thing
+## that ever happens in the run.
+const MARKET_SELL_HEAT_CAP := 1.5
+
+## Leg 2. How hard the Market Pressure band prices a corner down, as a multiple
+## of the band's authored `pressure_penalty` (QUIET 0.00 · KNOWN 0.08 ·
+## WATCHED 0.16 · HOT 0.24).
+##
+## Market Pressure has accrued on every criminal sale since FS-003.9 and has
+## never been READ by anything. `ConsequenceEngine.difficulty_penalty` says so
+## in as many words: "Market has no criminal success roll to apply it to yet, so
+## it accrues and displays Pressure without consuming a penalty." The band shows
+## on the Market screen, bleeds to neighbours, decays on quiet days, and does
+## nothing at all.
+##
+## Now it is the price. A corner that has watched you all week pays less for the
+## next handoff, which attacks the arbitrage EDGE rather than taxing around it,
+## and which makes rotation the counterplay instead of volume. It is also
+## self-limiting in a way a flat tax is not: the penalty decays with quiet days
+## and, since v0.1.0, with clean outcomes.
+const MARKET_PRESSURE_PRICE_SCALE := 1.0
+
+## Leg 3. Does a completed sale cost a time slot?
+##
+## The measurement that forced this lever: legs 1 and 2 together moved the
+## courier from 382% of the day job to 382%. Neither touched it, for two
+## different reasons, and both are worth writing down.
+##
+## HEAT HAS NO TEETH ON THIS PATH. `gs.heat` is read in exactly five places —
+## Stickup's success chance, the job interview roll, Exposure's broadcast
+## thresholds, Lay Low's relief cap, and the arrest gates inside Boost's and
+## Stickup's consequence chains. A courier who never lifts and never robs
+## touches none of them. Heat pinned at 15.0 in the sweep and the run carried on
+## exactly as before: 382%, no arrests, no game over. Heat 15 does not end a run
+## in this port, whatever the web build does.
+##
+## ROTATION DEFEATS PER-DISTRICT MEMORY. Market Pressure caps at +1 per district
+## per day and sheds 1.5-2.0 on a quiet one, so a courier who buys in Spenard
+## and sells in Downtown never lets either corner reach even the KNOWN band —
+## measured peak 1.75 against a KNOWN threshold of 3.0. The stationary `trader`
+## profile hit 9.0 and felt the whole penalty; the profile that is actually
+## winning never saw it.
+##
+## What the courier is actually limited by is SLOTS. Buying and selling both
+## cost nothing but a tap, so the only clock on the loop is the one travel slot
+## per cycle — four cycles a day against the day job's one shift. Making the
+## handoff cost a slot is the one lever that reaches the strategy that is
+## winning, and it is the honest fiction too: a handoff is a meeting, not a tap.
+## Buying stays free. You are the customer.
+const MARKET_SELL_COSTS_SLOT := false
+
+# --- Leg 4: the carry, which is the one that reaches the courier ------------
+#
+# Measured, not guessed. Legs 1-3 each failed to move the number and each failed
+# for its own reason, and the reasons are the design:
+#
+#   Heat        no teeth on this path (nothing a trader does reads `gs.heat`)
+#   Pressure    defeated by rotation (peak 1.75 against a KNOWN threshold of 3)
+#   Slots       not the constraint — the courier has idle slots every day
+#
+# What binds the courier is CARGO. Ten units, ~$800 of value, carried across
+# town and back roughly once a day. So the only lever that can reach the
+# strategy that is winning is one that scales with the thing it is limited by,
+# and that lever is the carry: riding the People Mover holding.
+#
+# It is also the leg the design debt named as most thematically right and most
+# invasive, and both halves are true. It gives Heat its first consequence on the
+# trading path, it makes load size a decision rather than a slider you always
+# max, and it is the one place the courier route can lose money rather than
+# merely earn less of it.
+
+## Chance of being stopped on a trip, built up from what makes a stop likely.
+## Clamped by `CARRY_STOP_MAX` — a route that is stopped every time is not a
+## risk, it is a wall, and the player would simply stop using it.
+const CARRY_STOP_BASE := 0.010
+## Per unit in the bag. The visible half: a bag that size is what gets noticed.
+const CARRY_STOP_PER_UNIT := 0.006
+## Per $100 of value in the bag.
+##
+## Units alone were not enough and the measurement is why. Cargo caps at ten,
+## so a unit term treats $3,000 of cocaine and $250 of weed as the same trip --
+## and the strategy winning hardest (`hustler`, running tight round trips on a
+## large bankroll) simply carried more VALUE per unit and paid the same risk. It
+## sat at 932% of the day job with the unit term at its measured setting, against
+## `arbitrage`'s 90%.
+##
+## What gets a bag noticed is what is in it. This is the term that makes load
+## SIZE a decision rather than a slider you always max, and the one that scales
+## with the bankroll instead of being outgrown by it.
+##
+## SET TO 0, DELIBERATELY, AND THE SWEEP IS WHY. It works — it is the only term
+## that reaches `hustler` at all — but the two trading profiles move in OPPOSITE
+## directions under it, and no single rate puts both in band:
+##
+##     per$100    hustler    arbitrage    arbitrage margin    dead ends
+##     0.000        932%          90%              +6.2%           0%
+##     0.008        487%          46%             -10.4%          25%
+##     0.020        263%           2%             -19.1%          25%
+##
+## The reason is structural rather than a matter of rate: WAGES ARE INSURANCE.
+## `hustler` has a floor under it, so a seized bag is a bad week; `arbitrage` is
+## carrying its whole capital, so the same bag is the run. Pricing the carry by
+## value therefore taxes the fragile strategy far harder than the robust one,
+## which is backwards.
+##
+## That is a design call about whether a job should insure criminal risk, and it
+## wants Marcus rather than another sweep. Left expressed rather than deleted,
+## the same way `PRESSURE_QUIET_GRACE_DAYS` is: restoring it is a constant
+## change, and the surface above says what each setting costs.
+const _CARRY_VALUE_TERM_FILED := "hybrid ceiling, needs a systems-design call"
+const CARRY_STOP_PER_100 := 0.0
+## Per point of Heat. This is the term that makes Leg 1 matter — selling writes
+## Heat, Heat makes the next carry riskier, and the loop closes on itself.
+const CARRY_STOP_PER_HEAT := 0.006
+## Per difficulty step of the Market Pressure band in the district being LEFT.
+## Working one corner raises the odds on the road out of it, which is what stops
+## "rotate districts" from being a free answer to Leg 2.
+const CARRY_STOP_PER_PRESSURE_STEP := 0.025
+const CARRY_STOP_MAX := 0.55
+
+## How a stop goes is the resolver's business, not a second dice table. The
+## `escape` shape is already authored — {clean 0.6, messy 0.4} on a success,
+## {failure 0.8, catastrophic 0.2} on a miss — and Intelligence is already what
+## reads it. What is authored here is only what each tier COSTS.
+const CARRY_RESOLVER_ACTION := "escape"
+## The chance handed to the resolver: how good the odds of talking out of it are
+## before Intelligence modifies them.
+const CARRY_ESCAPE_CHANCE := 0.55
+
+## Fraction of the load that goes, by resolved tier. Clean is a walk.
+const CARRY_SEIZE_BY_TIER := {
+	"clean": 0.0, "messy": 0.34, "failure": 1.0, "catastrophic": 1.0,
+}
+## Heat a stop writes, by resolved tier. Small: the stop's real cost is the bag.
+const CARRY_HEAT_BY_TIER := {
+	"clean": 0.0, "messy": 0.5, "failure": 1.0, "catastrophic": 2.0,
+}
+
+## The odds of a stop, given what is being carried and who is carrying it.
+func carry_stop_chance(units: int, value: int, heat: float,
+		pressure_steps: int) -> float:
+	if units <= 0:
+		return 0.0
+	var chance: float = CARRY_STOP_BASE \
+		+ CARRY_STOP_PER_UNIT * float(units) \
+		+ CARRY_STOP_PER_100 * (float(maxi(0, value)) / 100.0) \
+		+ CARRY_STOP_PER_HEAT * maxf(0.0, heat) \
+		+ CARRY_STOP_PER_PRESSURE_STEP * float(maxi(0, pressure_steps))
+	return clampf(chance, 0.0, CARRY_STOP_MAX)
+
+func carry_seize_fraction(tier_name: String) -> float:
+	return float(CARRY_SEIZE_BY_TIER.get(tier_name, 1.0))
+
+func carry_stop_heat(tier_name: String) -> float:
+	return float(CARRY_HEAT_BY_TIER.get(tier_name, 0.0))
+
 ## FS-003 §6: "New local pressure bleeds once to adjacent current districts at
 ## 50% of the new gain on the next day-cross." The NEW GAIN, not the stored
 ## score — regression #17 in spirit: the whole score never copies outward again.

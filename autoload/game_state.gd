@@ -594,6 +594,25 @@ var shark_borrowers: Array = [
 
 ## Interest rate by term length in days. Shorter term, higher rate.
 const SHARK_TERMS := {2: 0.40, 4: 0.25, 7: 0.15}
+
+## The authored term nearest a given one, for input that is not authored.
+##
+## Nothing the player can reach produces an unauthored term — the Shark screen
+## offers three buttons and `_fund` refuses anything else. A SAVE can carry one:
+## hand-edited, corrupted, or written by a build whose term table differed. Left
+## alone that save loads cleanly and then crashes on the night it settles, in
+## `interest_for`, reading a rate that is not there. Snapping is the fail-closed
+## answer — the note keeps a rate the player can be shown, and ties go to the
+## longer (cheaper) term because a repair should not silently cost them money.
+static func nearest_shark_term(term: int) -> int:
+	var best: int = -1
+	var best_gap: int = 1 << 30
+	for authored in SHARK_TERMS.keys():
+		var gap: int = absi(int(authored) - term)
+		if gap < best_gap or (gap == best_gap and int(authored) > best):
+			best = int(authored)
+			best_gap = gap
+	return best
 ## Dre takes a cut of the interest on every note that comes back.
 const SHARK_DRE_CUT := 0.12
 
@@ -826,9 +845,42 @@ func curve_value_for_rank(curve: Variant, rank: int, fallback: Variant = 1.0) ->
 ## migrate away from. Their existing effects (Tone's defense multiplier,
 ## Deshawn's heat reduction) are presence effects, not delegable operations —
 ## a different mechanism, already shipped, and untouched here.
+## GENERALISED in batch 6b. The note that stood here said only Pherris was
+## authored and that this was canon rather than an omission — that the oracle
+## has no capabilities for the other three and inventing some would hand FS-001.6
+## data to migrate away from.
+##
+## That was the right call then and it is the wrong one now, for a reason that
+## has nothing to do with the oracle: two of the three had a shipped effect that
+## did nothing. Tone's defence multiplier was printed on the Crew screen and
+## multiplied nothing until batch 6b; Eli had no effect of any kind. A crew
+## member who costs a nightly wage and returns a number nobody reads is worse
+## than one who is not implemented, because the player is paying for it.
+##
+## The two added here are DELEGABLE OPERATIONS — a day claimed, a wage owed, a
+## result at settlement — which is the shape `907list_run_board` established.
+## Tone stays a presence effect and is deliberately not here: what he does is
+## stand near you, and standing near you is not something you assign.
+##
+## Capability ids are constrained. `tests/parity/fixtures/requirements/
+## fs001_fixtures.json` asserts `eli/territory_operations` and
+## `deshawn/network_operations` are `has: false` at rank 3, so those two names
+## are burned and these are deliberately not them.
 const CREW_CAPABILITIES := {
 	"pherris": {
 		"907list_run_board": {"min_rank": 1, "max_cycles_by_rank": [1, 2, 3]},
+	},
+	# "Moves small bundles and knows service-road exits." Batch 3 gave a trip
+	# taken holding a real chance of being stopped; this is the answer to it.
+	# The curve is the FRACTION of that chance he takes off.
+	"eli": {
+		"run_the_bag": {"min_rank": 1, "carry_relief_by_rank": [0.45, 0.60, 0.75]},
+	},
+	# "De-escalates conflicts, recruits through trust, keeps Spenard talking."
+	# v0.1.0 made District Pressure recoverable on a clean outcome; this is the
+	# other way down. The curve is points of Pressure taken off one district.
+	"deshawn": {
+		"smooth_it_over": {"min_rank": 1, "pressure_relief_by_rank": [1.0, 1.5, 2.0]},
 	},
 }
 

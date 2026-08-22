@@ -276,9 +276,20 @@ func resolve_carry(origin_district_id: String) -> Dictionary:
 			engine.pressure_score(origin_district_id, rules.FAMILY_MARKET)))
 	var chance: float = rules.carry_stop_chance(units, _carried_value(),
 		float(gs.heat), steps)
+	# Eli, if his day was spent on it (batch 6b). He knows which exits nobody
+	# watches, and the relief is the fraction of the chance that buys off.
+	# Asked of the adapter rather than of the roster: having him on the crew is
+	# not the same as having spent his day on this.
+	var runner: Object = gm.system("runner_adapter") if gm != null else null
+	var relief: float = float(runner.carry_relief()) if runner != null else 0.0
+	if relief > 0.0:
+		chance *= (1.0 - relief)
 	# One keyed roll per trip. Leading with the varying components, per the
 	# v0.1.0 seeded-key audit: day and slot move every trip, the district does
 	# not.
+	# Count the trip on his assignment before the roll, so a quiet day still
+	# reports as a day he walked rather than as a day nothing happened.
+	_credit_runner_trip(false)
 	var key := "%d:%d:carry:%s" % [gs.day, gs.time_slots_today, origin_district_id]
 	if rng.seeded_random(gs.run_seed, key) >= chance:
 		return {}
@@ -307,6 +318,23 @@ func resolve_carry(origin_district_id: String) -> Dictionary:
 	}
 	gs.log_activity(_carry_line(report), RED if int(seized["units"]) > 0 else AMBER)
 	return report
+
+## Tally a carried trip against Eli's assignment, if he is out on it.
+##
+## Written on the ASSIGNMENT record rather than on GameState: it is a fact about
+## his day, it round-trips with `crew_assignments` and needs no new save field,
+## and it is gone when the day is.
+func _credit_runner_trip(was_stopped: bool) -> void:
+	var ops: Object = gm.system("crew_operations") if gm != null else null
+	if ops == null:
+		return
+	var assignment: Dictionary = ops.assignment_for("eli")
+	if assignment.is_empty() or str(assignment.get("operation_id", "")) != "run_the_bag":
+		return
+	if was_stopped:
+		assignment["stops_absorbed"] = int(assignment.get("stops_absorbed", 0)) + 1
+	else:
+		assignment["trips_covered"] = int(assignment.get("trips_covered", 0)) + 1
 
 ## What the bag is worth, priced where it is standing.
 func _carried_value() -> int:

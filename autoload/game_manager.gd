@@ -125,6 +125,17 @@ func _ready() -> void:
 	list_adapter.setup(_gs, self, nine07list, crew_operations)
 	register_system("list_adapter", list_adapter)
 
+	# The other two domain adapters (batch 6b). Same runtime registration as the
+	# 907List one and for the same reason: an adapter is a handle, and a handle
+	# never goes in a save.
+	var runner_adapter = preload("res://systems/runner_adapter.gd").new()
+	runner_adapter.setup(_gs, self, crew_operations)
+	register_system("runner_adapter", runner_adapter)
+
+	var fixer_adapter = preload("res://systems/fixer_adapter.gd").new()
+	fixer_adapter.setup(_gs, self, crew_operations)
+	register_system("fixer_adapter", fixer_adapter)
+
 	var territory = preload("res://systems/territory.gd").new()
 	territory.setup(_gs, self)
 	register_system("territory", territory)

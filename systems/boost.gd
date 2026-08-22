@@ -386,6 +386,9 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 		var damage: int = rng.seeded_int_range(gs.run_seed,
 			"consequence:%s:boost_caught:%s:injury" % [cause_id, choice_id],
 			int(band[0]), int(band[1]))
+		# Through Tone. See `CrewSystem.absorbed_damage` for why there is one
+		# owner rather than a multiply at each site.
+		damage = _crew_absorbed(damage)
 		gs.health = clampi(gs.health - damage, 0, gs.health_max)
 		result["health"] = -damage
 
@@ -537,3 +540,9 @@ func _update_tier() -> void:
 		gs.boost_tier = maxi(gs.boost_tier, 3)
 	if gs.boost_tier > was:
 		gs.log_activity("You're getting smooth. Bigger rooms are open now.", GREEN)
+
+## Damage after Tone. Forwarded rather than reached for inline so both of this
+## build's damage sites read identically and neither can drift.
+func _crew_absorbed(raw: int) -> int:
+	var crew: Object = gm.system("crew") if gm != null else null
+	return raw if crew == null else int(crew.absorbed_damage(raw))

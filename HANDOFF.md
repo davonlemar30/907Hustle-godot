@@ -652,7 +652,17 @@ board only by opening the 907List screen and reading a panel; they found out how
 her day went by noticing the cash total had moved. FS-001.9 gives the feature a
 voice. FS-001.10 is the milestone's exit gate.
 
-**Parity: 10,439 → 10,609 checks, 0 failures. Save schema stays v8.**
+**Parity: 10,439 → 10,609 checks, 0 failures on the branch. Save schema stays v8.**
+
+> **Merge note.** FS-003.13 (PR #50) landed on `main` first, so this work merged
+> on top of it and the branch now carries **v9** — the schema bump is .13's, not
+> this build's, and nothing here needed one. The merged suite runs **10,781**
+> checks: 10,439 + 172 from .13 + 170 from here, which is the arithmetic
+> confirming neither side lost a check. The only real conflicts were the three
+> places both builds independently touched: the `MIN_CHECKS` paragraph, the
+> `_finish()` floor enforcement, and the `_read_save_text` helper — each of which
+> both builds wrote because both needed it, and each of which the merge keeps one
+> copy of.
 
 ### FS-001.9 — four callbacks, no new machinery
 
@@ -811,6 +821,193 @@ at the tail, so the same item bought on consecutive days is worth nearly the sam
 The bands are narrow enough that the effect is small, and the hash is
 oracle-locked to the web build, so this is a key-composition audit rather than a
 hash change. Filed.
+## FS-003.13: the loop stops being monotone  (added 2026-08-22)
+
+A balance pass, not a redesign. Every system in the consequence layer worked;
+FS-003.12's long-run simulations said what they *felt* like, which was one note
+held for a month. District Pressure saturated on day three and stayed there.
+Arrests landed on activity rather than on aggression — fifteen in twenty-nine
+days for the aggressive profile, with no gap between booking periods. Financial
+Pressure never fired for two of three profiles. And the retaliation queue's only
+counterplay, leaving the district, was invisible: eleven threats across three
+profiles, zero avoided, because nothing ever suggested there was anything to
+avoid.
+
+**Parity: 10,439 → 10,611 checks, 0 failures. Save schema v8 → v9.**
+
+### The harness came first, deliberately
+
+The three inherited profiles each committed to ONE response for a whole run and
+none of them ever travelled, which measures the consequence layer against a
+player who does not exist. Tuning against that would have been tuning against an
+artefact. Two profiles were added before a single constant moved:
+
+- **mixed strategy** answers a Caught by reading `choice_summaries()` and taking
+  the highest projected success chance — the same number the screen shows, read
+  the same way, so a drift between projection and outcome would move the SIM
+  too instead of hiding behind it.
+- **travelling** rotates Spenard → Downtown → Industrial every four days, works
+  district-appropriate targets, and pays the fare and the slot each time.
+
+Both print a `simulation-metrics:` JSON line alongside the prose, which is what
+the before/after table below is built from rather than re-read out of paragraphs.
+
+### What moved
+
+| Constant | Was | Now | Why |
+| --- | --- | --- | --- |
+| `PRESSURE_QUIET_GRACE_DAYS` | 1 | 0 | Laying off a district should show the next morning, not the one after |
+| `PRESSURE_QUIET_RECOVERY` | 1.0 | 1.5 | Three quiet days should clear a band, not three points of nine |
+| `PRESSURE_ACCELERATED_RECOVERY` | — | 2.0 at HOT | The band you most need a way out of was the hardest to leave |
+| `STICK_FAILURE_ARREST_HEAT` | 10 / 8 / 6 | 12 / 10 / 8 | The gate was authored before Pressure existed; the working Heat band moved up under it |
+| `ARREST_COOLDOWN_DAYS` | — | 2 | The same precinct does not pick you up on the way out of its own parking lot |
+| `FINANCIAL_PRESSURE_FREE_DIRTY` | $400 | $200 | A transaction had to move >$450 of street money to register one point |
+| `FINANCIAL_PRESSURE_PER_DOLLAR` | 0.01 | 0.015 | Against a decay of 1/day, the old rate could not out-climb its own decay |
+| `FINANCIAL_PRESSURE_FOLD_AT` | 6 | 4 | Reachable from two bails in a week, which is the authored scenario |
+
+### The post-arrest cooldown, and why it needed no field of its own
+
+Counted from the day the booking **committed**, not from release. Release time
+varies with the lane the player chose, so tying the cooldown to it would quietly
+reward SERVE IT over posting bail with extra immunity — a balance decision
+nobody made, hiding inside a fiction.
+
+It is stamped on `arrest_record.cooldown_until_day`, beside `last_arrest_day`
+and behind the same receipt. `arrest_record` is already persisted whole, so the
+cooldown survives a save with no manifest entry and no migration arm, and a
+pre-FS-003.13 save comes back with the key simply absent —
+`ArrestSystem.cooldown_until_day()` reads that as -1, which is the correct
+history for arrests that predate the mechanic. Arming a cooldown from
+`last_arrest_day` during migration would have been worse than doing nothing: it
+would suppress arrests on a loaded run for a booking the mechanic did not exist
+during.
+
+Both source systems apply it **after** their own authored gate, never inside it.
+That order is the point: the gate keeps answering "were you already hot when you
+tried this", and the cooldown answers the separate question of whether the same
+precinct is picking you up two days running. A cooldown folded into the gate's
+own table would have made the gate's tests depend on the arrest record.
+
+### PX-003 §8's ambient signals
+
+The activity feed carries at most one line a day while a threat is queued in the
+district the player is standing in, starting the day after it was scheduled. The
+line is chosen by seeded RNG keyed on `(queue_id, day)`, so a reload shows the
+same feed rather than rerolling the atmosphere.
+
+Hiding the window is **structural**, not careful. Nothing in
+`push_ambient_warnings` reads `trigger_day` or `expires_end_day` for anything
+except deciding whether a row is still live; the copy never varies with how much
+time is left; and the parity suite audits every authored line for digits, timing
+words and the actor's name. A warning that intensified as the window closed
+would be a countdown with adjectives.
+
+The first time a run ever avoids a threat into expiry, the Phone carries a
+one-time callback. Once per RUN rather than once per threat: it exists to teach
+that leaving works, and a lesson repeated every time it applies stops being a
+lesson. The flag lives in `consequence_flags`, which is the one field v9 adds —
+a Dictionary rather than a field per flag, so the next one-shot callback is a key
+rather than a schema decision.
+
+`day_lifecycle.gd` gained a third `DAY_START_ORDER` step, `retaliation_ambient`,
+appended after `surface_delayed`. Nothing above it moved. It runs LAST for the
+same reason expiry runs first: a threat that already expired must not whisper,
+and one that just walked through the door in person is not something the feed
+then hints at.
+
+### The check floor was documentation, and now it is a check
+
+`MIN_CHECKS` has carried a careful paragraph per slice since FS-003.1 and
+**nothing has ever read it**. A suite that lost half its checks to an aborted
+section would still have printed PASS — precisely the failure the constant was
+written to catch. `_finish()` now compares against it. Sabotaging the floor to
+20,000 fails one check, which is the whole proof.
+
+The floor also explains the 10,439 in the parity line above: the Codex hardening
+batch (PR #46) carried the suite from 10,211 to 10,439 without moving `MIN_CHECKS`.
+The new floor is 10,600 and covers both.
+
+### Before and after
+
+Five profiles, same seeds, same days, run before and after the constants moved.
+Bold is the value that changed.
+
+| Profile | Days | Arrests | Booking slots | Worst-family HOT days | FP days at fold | Threats queued | Avoided into expiry | Ambient warnings |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| frequent crime, fights everything | 29 | 15 → **8** | 58 → **30** | 19 | 0 → **3** | 4 → **10** | 0 | 0 → **11** |
+| frequent crime, yields everything | 29 | 12 → **8** | 50 → **30** | 19 | 4 → **8** | 8 → **9** | 0 | 0 → **8** |
+| cautious, crime every third day | 26 | 5 → **4** | 19 → **15** | 0 | 0 | 1 | 0 | 0 → **1** |
+| mixed strategy, plays the odds | 29 | 13 → **8** | 52 → **36** | 14 → **16** | 0 | 3 → **7** | 0 | 0 → **9** |
+| travelling, rotates districts | 29 | 12 → **8** | 50 → **34** | 13 → **11** | 0 → **6** | 2 → **4** | 1 → **2** | 0 → **6** |
+
+### Two acceptance targets the tuning brief set that this build does not hit
+
+Both are reported rather than papered over, and both have the same root: the
+brief's Task 2 and Task 3 targets were measured in isolation and they interact.
+
+**The aggressive profile still spends 19 of 29 days at HOT (target: ≤12).** With
+Task 2 alone it dropped to 12; Task 3 put it back to 19, and the reason is worth
+stating plainly because it is a design finding rather than a tuning miss.
+Pressure only recovers on a QUIET day — a day the family took no gain — and the
+aggressive profile boosts twice and robs once in the same district *every single
+day*. It has no quiet days at all. The ones it used to have were days it spent
+in booking. **Before this build, District Pressure's counterplay was being
+delivered by jail time rather than by player choice**, and cutting arrests in
+half removed it.
+
+That is the mechanic working as designed, against a profile that never lets up.
+The counterplay it was meant to have is visible in the profiles that use it: the
+travelling profile went 13 → 11 worst-family HOT days and holds Downtown and
+Industrial at QUIET/KNOWN throughout, and the cautious profile never reaches HOT
+at all. A player who works one block three times a day for a month *should* be
+permanently recognisable there. Filed as a follow-up — the honest lever is on the
+gain side (`PRESSURE_BOOST_SUCCESS`, `PRESSURE_BY_TIER`) or a per-family daily
+gain cap like the one Market already has, and neither is in this brief's scope.
+
+**The cautious profile lands at 4 arrests over 26 days (target: ≤3).** Down from
+5. The cooldown barely bites a profile that only commits crime every third day —
+an arrest on day 3 covers days 3–5, and day 6 is exposed again. The dominant
+arrest source for that profile is not the Stick Heat gate this build raised: it
+is Boost's `RUN_FAILURE_ARREST_TIER`, which arrests *unconditionally* on a failed
+Run at tier 3 regardless of Heat. That constant is not one of the levers the
+brief named. Filed as a follow-up.
+
+### A stated inconsistency in the brief, resolved toward the constants
+
+FS-003.13's Task 4 asks for `FINANCIAL_PRESSURE_FREE_DIRTY` = $200 and also says
+"Rent ($150) paid from dirty should contribute". Those cannot both be true: $150
+is under a $200 free band. The numbered constants are the tuning decision and the
+acceptance criteria agree with them ("routine small dirty spends under $200 still
+produce zero pressure"), so the constants won and a check pins the rent case
+explicitly — a week's rent in street money is deliberately quiet. If the intent
+was for rent to register, the free band wants to be $100, and that is a decision
+rather than a fix.
+
+### Sabotage results
+
+Every new constant and both new behaviours, reverted one at a time against the
+full suite:
+
+| Sabotage | Result |
+| --- | --- |
+| `PRESSURE_QUIET_RECOVERY` back to 1.0 | RED — 14 failures |
+| `PRESSURE_QUIET_GRACE_DAYS` back to 1 | RED — 14 failures |
+| `PRESSURE_ACCELERATED_RECOVERY` down to 1.5 | RED — 8 failures |
+| `STICK_FAILURE_ARREST_HEAT` back to 10/8/6 | RED — 3 failures |
+| `arrest_suppressed()` never suppresses | RED — 9 failures |
+| Stick gate ignores the cooldown | RED — 2 failures |
+| Boost gate ignores the cooldown | RED — 1 failure |
+| Booking commit never stamps the deadline | RED — 4 failures |
+| `FINANCIAL_PRESSURE_FREE_DIRTY` back to $400 | RED — 8 failures |
+| `FINANCIAL_PRESSURE_PER_DOLLAR` back to 0.01 | RED — 8 failures |
+| `FINANCIAL_PRESSURE_FOLD_AT` back to 6 | RED — 4 failures |
+| Ambient warning never writes to the feed | RED — 2 failures |
+| Ambient warning ignores the district gate | RED — 2 failures |
+| Ambient warning ignores row status | RED — 3 failures |
+| First-expiry flag never set | RED — 3 failures |
+| `consequence_flags` dropped from `PERSIST_FIELDS` | RED — 2 failures, total drops by 1 |
+| `retaliation_ambient` dropped from `DAY_START_ORDER` | RED — 5 failures |
+| `MIN_CHECKS` raised to 20,000 | RED — 1 failure (the floor itself) |
 
 ## FS-003.12: the integration gate, and what FS-003 leaves behind  (added 2026-08-22)
 

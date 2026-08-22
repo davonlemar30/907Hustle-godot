@@ -1674,8 +1674,8 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 
 	# Pinned deliberately, and bumped deliberately: this assertion exists so a
 	# schema change cannot land by accident, which means every real bump edits
-	# it on purpose. 6 → 7 in FS-001.6, 7 → 8 in FS-003.4.
-	_expect_int("save version is 8", saves.SAVE_VERSION, 8)
+	# it on purpose. 6 → 7 in FS-001.6, 7 → 8 in FS-003.4, 8 → 9 in FS-003.13.
+	_expect_int("save version is 9", saves.SAVE_VERSION, 9)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
 
 	# A v5 save mid-day 4: one listing bought today and still held (recoverable),
@@ -4994,7 +4994,11 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# activation: a row that ran out overnight has to be gone before anything
 	# asks what is eligible, or the day's one delayed slot could be spent on an
 	# encounter that had already expired.
+	# FS-003.13 appends `retaliation_ambient` and reorders nothing above it: a
+	# threat that expired overnight must not whisper, and one that just surfaced
+	# in person is not something the feed then hints at.
 	"DAY_START", "DAY_START:expire_retaliation", "DAY_START:surface_delayed",
+	"DAY_START:retaliation_ambient",
 ]
 
 func _check_day_lifecycle_order() -> void:
@@ -5637,32 +5641,62 @@ func _check_wallet_policies(gs: Node, wallet: RefCounted) -> void:
 	# --- the invariant, after everything above ---
 	_expect_true("cash equals dirty plus clean", wallet.is_balanced())
 
-## TI-003 §6: financial_pressure_gain = round((dirty_used - 400) * 0.01), cap 10.
+## TI-003 §6 at FS-003.13's constants:
+##
+##     financial_pressure_gain = round((dirty_used - 200) * 0.015), cap 10.
 ##
 ## The figures below are the formula's output at the boundaries, written out.
+## Written out rather than re-derived from the constants on purpose: a check that
+## recomputes the formula it is checking cannot fail when the formula moves, and
+## these numbers ARE the tuning decision.
 func _check_wallet_financial_pressure(gs: Node, wallet: RefCounted) -> void:
-	# Under the free band: no Pressure at all.
+	_expect_int("the free band is the authored one",
+		int(wallet.FINANCIAL_PRESSURE_FREE_DIRTY), 200)
+	_expect_float("the rate is the authored one",
+		float(wallet.FINANCIAL_PRESSURE_PER_DOLLAR), 0.015)
+
+	# Under the free band: no Pressure at all. This is the half of §6 that the
+	# tuning must NOT move — ordinary street spending stays invisible, it just
+	# starts lower down.
 	_wallet_ready(gs, 5000, 0)
-	var tx: Dictionary = wallet.spend(400, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
-	_expect_int("400 dirty in the open is free", int(tx["financial_pressure_gain"]), 0)
+	var tx: Dictionary = wallet.spend(200, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("200 dirty in the open is free", int(tx["financial_pressure_gain"]), 0)
 	_expect_int("a free-band spend stores no Pressure", int(gs.financial_pressure), 0)
+
+	# A week's rent out of street money is still under the band, which is worth
+	# an explicit check rather than an inference: $150 is the single most common
+	# high-visibility spend in the game, and it is deliberately quiet.
+	_wallet_ready(gs, 5000, 0)
+	tx = wallet.spend(gs.WEEKLY_RENT, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("a week's rent in street money is still free",
+		int(tx["financial_pressure_gain"]), 0)
 
 	# Just above it — and rounding to zero is still zero.
 	_wallet_ready(gs, 5000, 0)
-	tx = wallet.spend(440, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
-	_expect_int("40 dirty over the band rounds to no Pressure",
+	tx = wallet.spend(230, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("30 dirty over the band rounds to no Pressure",
 		int(tx["financial_pressure_gain"]), 0)
 
 	_wallet_ready(gs, 5000, 0)
-	tx = wallet.spend(450, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
-	_expect_int("50 dirty over the band rounds to 1 Pressure",
+	tx = wallet.spend(234, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("34 dirty over the band rounds to 1 Pressure",
 		int(tx["financial_pressure_gain"]), 1)
 	_expect_int("the gain is stored", int(gs.financial_pressure), 1)
 
 	_wallet_ready(gs, 5000, 0)
-	tx = wallet.spend(900, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
-	_expect_int("500 dirty over the band is 5 Pressure",
+	tx = wallet.spend(700, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("500 dirty over the band is 8 Pressure",
+		int(tx["financial_pressure_gain"]), 8)
+
+	# The scenario the tuning exists for: a $500 bail paid entirely in street
+	# money clears the fold threshold on its own.
+	_wallet_ready(gs, 5000, 0)
+	tx = wallet.spend(500, wallet.HIGH_VISIBILITY_CLEAN_FIRST, {})
+	_expect_int("an all-dirty $500 bail registers 5 Pressure",
 		int(tx["financial_pressure_gain"]), 5)
+	_expect_true("which is over the fold on its own",
+		int(gs.financial_pressure)
+			>= int(preload("res://data/consequence_rules.gd").new().FINANCIAL_PRESSURE_FOLD_AT))
 
 	# Clean money in the open is invisible however much of it there is.
 	_wallet_ready(gs, 0, 5000)
@@ -6312,6 +6346,9 @@ func _v7_payload(cash: int) -> Dictionary:
 ## `_restore_save_text` so a check that has to write or overwrite a save can put
 ## back whatever was there — several sections read SAVE_PATH and the order they
 ## run in is not something any of them should have to know.
+##
+## FS-003.13 and FS-001.10 each needed this and each wrote it; the merge keeps
+## one copy.
 func _read_save_text(saves: Node) -> String:
 	if not FileAccess.file_exists(saves.SAVE_PATH):
 		return ""
@@ -9051,6 +9088,7 @@ func _check_arrest_booking() -> void:
 	_check_arrest_release_projection(arrest)
 	_check_booking_projection(gs, gm, engine, arrest, rules)
 	_check_stick_arrest_gate(gs, gm, engine, rules)
+	_check_arrest_cooldown(gs, gm, engine, arrest, rules)
 	_check_booking_full_bail(gs, gm, engine, rules)
 	_check_booking_all_cash(gs, gm, engine, rules)
 	_check_booking_serve_time(gs, gm, engine, rules)
@@ -9143,12 +9181,27 @@ func _check_arrest_authored_tables(rules: RefCounted) -> void:
 	_expect_int("a shortfall adds to processing under the cap",
 		rules.total_booking_slots("boost_t1", 0, 300), 3)
 
-	# TI-003 §14's Stick gate. Both sides of every threshold, plus the two tiers
-	# that do not gate at all.
-	var gates := [[1, 10.0], [2, 8.0], [3, 6.0]]
-	for row in gates:
-		var tier: int = int((row as Array)[0])
-		var gate: float = float((row as Array)[1])
+	# TI-003 §14's Stick gate at FS-003.13's thresholds. The authored numbers are
+	# pinned once, as literals — a table read back from itself proves only that
+	# the code is self-consistent — and the boundary walk below then reads the
+	# table, so a tier added later is covered without a second literal to update.
+	_expect_float("tier 1 books above heat 12",
+		float(rules.STICK_FAILURE_ARREST_HEAT[1]), 12.0)
+	_expect_float("tier 2 books above heat 10",
+		float(rules.STICK_FAILURE_ARREST_HEAT[2]), 10.0)
+	_expect_float("tier 3 books above heat 8",
+		float(rules.STICK_FAILURE_ARREST_HEAT[3]), 8.0)
+	# The direction is the design and is easy to invert: a bigger job books at
+	# LESS existing Heat, never more.
+	_expect_true("a bigger stick books at less heat",
+		float(rules.STICK_FAILURE_ARREST_HEAT[1])
+			> float(rules.STICK_FAILURE_ARREST_HEAT[2])
+		and float(rules.STICK_FAILURE_ARREST_HEAT[2])
+			> float(rules.STICK_FAILURE_ARREST_HEAT[3]))
+	# Both sides of every threshold, plus the two tiers that do not gate at all.
+	for tier_key in rules.STICK_FAILURE_ARREST_HEAT.keys():
+		var tier: int = int(tier_key)
+		var gate: float = float(rules.STICK_FAILURE_ARREST_HEAT[tier_key])
 		_expect_true("stick tier %d failure does not book at the gate" % tier,
 			not rules.stick_arrests(tier, "failure", gate))
 		_expect_true("stick tier %d failure books above the gate" % tier,
@@ -9481,6 +9534,218 @@ func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
 			_fail("stick gate tier %d" % tier, "no clean day at high heat")
 	gs.reset_to_new_game()
 
+## The Cause sequence this section pins its lifts to.
+##
+## Every other Caught check CARRIES the sequence forward (`_caught_carry`) so two
+## checks never share a cause_id. This one must do the opposite: the Caught
+## outcome is keyed on the cause_id, so a carried sequence means the same lift on
+## the same day resolves DIFFERENTLY on every call — and a cooldown check whose
+## two runs resolve differently is measuring the roll, not the cooldown.
+##
+## Safe to reuse across calls because each call resets the run first, which
+## clears `consequence_history` along with everything else. Placed far above the
+## sequences a real run reaches so it cannot collide with a carried one.
+const COOLDOWN_CAUSE_SEQUENCE := 900000
+
+## Run one lift on one day and report whether it ended in an arrest.
+##
+## `cooldown_until` is written onto the record BEFORE the lift. With the Cause
+## sequence pinned, everything else about the two runs is identical — same seed,
+## same day, same target, same response — so the arrest flag is the only thing
+## that can differ between them.
+func _lift_arrests(gs: Node, gm: Node, engine: RefCounted, target_id: String,
+		tier: int, day: int, cooldown_until: int) -> bool:
+	_caught_ready(gs, day, tier)
+	# Offset by the day so the sweep below has more than one outcome to find —
+	# the Caught roll is keyed on the cause_id, so a sequence pinned FLAT would
+	# hand every day the same answer. Same day → same sequence → same answer is
+	# what the paired runs need, and this gives both.
+	gs.next_cause_sequence = COOLDOWN_CAUSE_SEQUENCE + day
+	gs.heat = 0.0
+	gs.health = gs.health_max
+	gs.cash = 5000
+	gs.clean_cash = 5000
+	gs.dirty_cash = 0
+	gs.arrest_record = {
+		"priors": 0, "last_arrest_day": -1, "charges": [],
+		"cooldown_until_day": cooldown_until,
+	}
+	var lifted: bool = gm.dispatch("boost", {"target_id": target_id})
+	if not lifted or (gs.active_consequence as Dictionary).is_empty():
+		return false
+	# Fight failure and Fight catastrophic both arrest unconditionally, so the
+	# response reaches the gate without depending on the Heat condition.
+	if not gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"}):
+		gs.active_consequence = {}
+		return false
+	var outcome: Dictionary = engine.result_summary()
+	var arrested: bool = bool((outcome["result"] as Dictionary)["arrested"])
+	gs.active_consequence = {}
+	return arrested
+
+## The first day whose lift ends in an arrest with a clear record.
+func _find_arresting_lift_day(gs: Node, gm: Node, engine: RefCounted,
+		target_id: String, tier: int) -> int:
+	for day in range(1, 260):
+		if _lift_arrests(gs, gm, engine, target_id, tier, day, -1):
+			return day
+	return -1
+
+## FS-003.13 Task 3's post-arrest cooldown, at every layer it exists in.
+##
+## The rule, the record it is stamped on, the two source gates that read it, and
+## the save that has to carry it. Four layers because the mechanic is a NO that
+## nothing renders: a cooldown that silently stopped working would show up only
+## as "arrests feel frequent again" months later, which is not a bug report.
+##
+## The back-compat case is asserted rather than assumed. `arrest_record` is
+## persisted whole, so a save written before this build comes back WITHOUT the
+## key — and reading a missing key as day 0 rather than as -1 would arm a
+## permanent cooldown on every old run, which is the one way this could have
+## needed a schema bump and does not.
+func _check_arrest_cooldown(gs: Node, gm: Node, engine: RefCounted,
+		arrest: RefCounted, rules: RefCounted) -> void:
+	# --- layer 1: the rule ---
+	_expect_int("the cooldown is two days", int(rules.ARREST_COOLDOWN_DAYS), 2)
+	_expect_int("a booking on day 7 covers through day 9",
+		rules.arrest_cooldown_until(7), 9)
+	_expect_true("the day of the arrest is covered",
+		rules.arrest_suppressed(7, 9))
+	_expect_true("the day after is covered", rules.arrest_suppressed(8, 9))
+	_expect_true("the last covered day is covered", rules.arrest_suppressed(9, 9))
+	_expect_true("the day after that is exposed again",
+		not rules.arrest_suppressed(10, 9))
+	# The sentinel. A run that has never been booked is never in cooldown, and
+	# -1 must not be compared as if it were a real day.
+	_expect_true("a run that has never been booked is not in cooldown",
+		not rules.arrest_suppressed(0, -1))
+	_expect_true("and is not in cooldown on any later day",
+		not rules.arrest_suppressed(999, -1))
+
+	# --- layer 2: the record ---
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_expect_int("a fresh run carries no cooldown", arrest.cooldown_until_day(), -1)
+	_expect_true("and is not suppressed", not arrest.in_cooldown(1))
+	# A pre-FS-003.13 record shape: the key simply is not there.
+	gs.arrest_record = {"priors": 2, "last_arrest_day": 4, "charges": []}
+	_expect_int("a record written before the cooldown existed reads as -1",
+		arrest.cooldown_until_day(), -1)
+	_expect_true("and does not suppress anything",
+		not arrest.in_cooldown(5))
+
+	# --- layer 3: committing a booking arms it ---
+	if _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		var booked_day: int = int(gs.day)
+		_expect_true("the cooldown booking commits",
+			gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+		_expect_int("the commit stamps the cooldown deadline",
+			arrest.cooldown_until_day(), booked_day + int(rules.ARREST_COOLDOWN_DAYS))
+		_expect_int("and stamps it beside the arrest day",
+			arrest.last_arrest_day(), booked_day)
+		_expect_true("the day of the booking is suppressed",
+			arrest.in_cooldown(booked_day))
+		_expect_true("the next day is suppressed",
+			arrest.in_cooldown(booked_day + 1))
+		_expect_true("the day after that is suppressed",
+			arrest.in_cooldown(booked_day + 2))
+		_expect_true("and the third day is exposed again",
+			not arrest.in_cooldown(booked_day + 3))
+		gs.active_consequence = {}
+	else:
+		_fail("arrest cooldown", "no arrested lift found to commit")
+
+	# --- layer 4: the source gates honour it ---
+	#
+	# The same tier-3 robbery, at the same Heat, on the same day, run twice: once
+	# with the record clear and once with the cooldown armed. Everything except
+	# the record is identical, so the only thing the second run can be measuring
+	# is the cooldown.
+	var gate: float = float(rules.STICK_FAILURE_ARREST_HEAT[3])
+	var above: float = gate + 0.5
+	var slot: int = int((STICK_GATE_TARGETS[3] as Dictionary)["slot"])
+	var target_id := str((STICK_GATE_TARGETS[3] as Dictionary)["id"])
+	var day_above: int = _find_stick_day(gs, gm, 3, "failure", above, slot)
+	if day_above > 0:
+		_stick_gate_ready(gs, above, slot)
+		gs.day = day_above
+		_expect_true("the uncooled robbery dispatches",
+			gm.dispatch("stickup", {"target_id": target_id}))
+		_expect_true("a blown tier 3 above the gate books with no cooldown",
+			not (gs.active_consequence as Dictionary).is_empty())
+		gs.active_consequence = {}
+
+		_stick_gate_ready(gs, above, slot)
+		gs.day = day_above
+		gs.arrest_record["cooldown_until_day"] = day_above
+		_expect_true("the cooled robbery still dispatches",
+			gm.dispatch("stickup", {"target_id": target_id}))
+		_expect_true("the same robbery inside the cooldown does not book",
+			(gs.active_consequence as Dictionary).is_empty())
+		# It is a suppressed ARREST, not a suppressed robbery: the job still
+		# happened and still cost its slot. A cooldown that skipped the whole
+		# action would read the same on the arrest counter and would be a bug.
+		_expect_int("a suppressed arrest still spends the robbery's slot",
+			int(gs.time_slots_today), slot + 1)
+
+		# And the day AFTER the cooldown lapses, the same robbery books again.
+		_stick_gate_ready(gs, above, slot)
+		gs.day = day_above
+		gs.arrest_record["cooldown_until_day"] = day_above - 1
+		_expect_true("the lapsed-cooldown robbery dispatches",
+			gm.dispatch("stickup", {"target_id": target_id}))
+		_expect_true("a lapsed cooldown books again",
+			not (gs.active_consequence as Dictionary).is_empty())
+		gs.active_consequence = {}
+	else:
+		_fail("arrest cooldown", "no tier 3 failure day above the gate")
+
+	# --- layer 4b: Boost's gate honours it too ---
+	#
+	# Boost decides arrests through a different table and a different call site,
+	# so a cooldown wired into Stick alone would pass every check above. The same
+	# lift, on the same day, answered the same way — once clear, once cooled.
+	var lift_day: int = _find_arresting_lift_day(gs, gm, engine, "night_owl", 1)
+	if lift_day > 0:
+		_expect_true("the cooled lift arrests with a clear record",
+			_lift_arrests(gs, gm, engine, "night_owl", 1, lift_day, -1))
+		_expect_true("the same lift inside the cooldown does not arrest",
+			not _lift_arrests(gs, gm, engine, "night_owl", 1, lift_day, lift_day))
+		_expect_true("and arrests again once the cooldown has lapsed",
+			_lift_arrests(gs, gm, engine, "night_owl", 1, lift_day, lift_day - 1))
+	else:
+		_fail("arrest cooldown", "no arresting lift day found for the boost gate")
+
+	# --- layer 5: the save carries it ---
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+	gs.reset_to_new_game()
+	gs.day = 11
+	gs.arrest_record = {
+		"priors": 3, "last_arrest_day": 11, "charges": [], "cooldown_until_day": 13,
+	}
+	saves.save_run()
+	gs.arrest_record = {
+		"priors": 0, "last_arrest_day": -1, "charges": [], "cooldown_until_day": -1,
+	}
+	_expect_true("the cooldown save reloads", saves.load_run())
+	_expect_int("the cooldown deadline survives a reload",
+		arrest.cooldown_until_day(), 13)
+	_expect_true("and still suppresses after the reload", arrest.in_cooldown(12))
+	_expect_true("and still lapses on schedule after the reload",
+		not arrest.in_cooldown(14))
+	if not previous_save.is_empty():
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+	gs.reset_to_new_game()
+
 # --- layer 4: the commit ----------------------------------------------------
 
 func _check_booking_full_bail(gs: Node, gm: Node, engine: RefCounted,
@@ -9635,10 +9900,12 @@ func _check_booking_provenance(gs: Node, gm: Node, engine: RefCounted,
 		int(gs.dirty_cash), 800 - (quote - 400))
 	_expect_true("the wallet still balances",
 		int(gs.cash) == int(gs.clean_cash) + int(gs.dirty_cash))
-	# TI-003 §6: round((dirty_used - 400) * 0.01). Clean-first uses $100 of
-	# dirty money here, which is under the $400 free band, so this payment is
-	# QUIET. Dirty-first would use $500 and register — so the pressure figure is
-	# the second signal that the policy is right, alongside the buckets.
+	# TI-003 §6 at FS-003.13's constants: round((dirty_used - 200) * 0.015).
+	# Clean-first uses $100 of dirty money here, which is under the $200 free
+	# band, so this payment is QUIET. Dirty-first would use $500 and register 5 —
+	# so the pressure figure is the second signal that the policy is right,
+	# alongside the buckets, and the tuning did not weaken it: the gap between
+	# the two policies got WIDER, not narrower.
 	_expect_int("a clean-first bail stays under the dirty threshold",
 		int(receipt["financial_pressure_gain"]), 0)
 	_expect_int("and creates no financial pressure", int(gs.financial_pressure), 0)
@@ -9660,8 +9927,13 @@ func _check_booking_provenance(gs: Node, gm: Node, engine: RefCounted,
 		var loud: Dictionary = engine.booking_summary()
 		_expect_int("a bail paid entirely in street money uses no clean",
 			int(loud["clean_used"]), 0)
-		var want_pressure: int = int(round(float(maxi(0, quote - 400)) * 0.01))
+		# $500 of street money: round((500 - 200) * 0.015) = 5. Written out
+		# rather than recomputed from the constants, so a change to either
+		# constant fails here instead of silently agreeing with itself.
+		var want_pressure: int = 5
 		_expect_true("this bail was loud enough to register at all", want_pressure > 0)
+		_expect_true("and loud enough to clear the fold on its own",
+			want_pressure >= int(rules.FINANCIAL_PRESSURE_FOLD_AT))
 		_expect_int("the bail payment reports its financial pressure",
 			int(loud["financial_pressure_gain"]), want_pressure)
 		_expect_int("the financial pressure landed on the run",
@@ -10317,15 +10589,34 @@ func _check_pressure_bleed(gs: Node, gm: Node, engine: RefCounted,
 
 # --- quiet recovery ---------------------------------------------------------
 
-## FS-003 §6: "First full quiet day: score holds. Second consecutive quiet day
-## and each quiet day after: -1 pressure per day."
+## FS-003 §6's recovery at FS-003.13's rates: every quiet day takes points off,
+## 1.5 ordinarily and 2.0 while the score is still HOT.
 ##
-## TI-003 regression #18 is "First quiet day decays Pressure early", which is an
-## off-by-one nobody would notice in play — the score simply falls a day sooner
-## than designed, forever. So the whole ramp is walked day by day rather than
-## sampled at the end.
+## TI-003 regression #18 is "First quiet day decays Pressure early", and the half
+## of it that still binds is asserted first: the day a gain landed on is not a
+## quiet day, however small the gain was. What the tuning removed is the extra
+## HOLD day that used to sit on top of that, so the ramp below starts one day
+## earlier than FS-003.9's did and moves 1.5 at a time.
+##
+## The whole ramp is walked day by day rather than sampled at the end, because
+## an off-by-one here is invisible in play — the score simply falls a day sooner
+## or later than designed, forever.
 func _check_pressure_recovery(gs: Node, gm: Node, engine: RefCounted,
 		rules: RefCounted) -> void:
+	_expect_float("the ordinary quiet rate is the authored one",
+		float(rules.PRESSURE_QUIET_RECOVERY), 1.5)
+	_expect_int("no quiet day is held any more",
+		int(rules.PRESSURE_QUIET_GRACE_DAYS), 0)
+	_expect_float("HOT sheds faster than the rest of the scale",
+		float(rules.PRESSURE_ACCELERATED_RECOVERY), 2.0)
+	# The rate is read off the score, and only HOT gets the accelerated one.
+	_expect_float("a HOT score takes the accelerated step",
+		float(rules.quiet_recovery(9.0)), 2.0)
+	_expect_float("a WATCHED score takes the ordinary step",
+		float(rules.quiet_recovery(8.9)), 1.5)
+	_expect_float("a QUIET score takes the ordinary step",
+		float(rules.quiet_recovery(0.5)), 1.5)
+
 	gs.reset_to_new_game()
 	gs.day = 9
 	gs.time_slots_today = 3
@@ -10345,28 +10636,20 @@ func _check_pressure_recovery(gs: Node, gm: Node, engine: RefCounted,
 		engine.pressure_score("north_star_lot", "boost"), 5.0)
 	_expect_int("and counts no quiet days yet", int(row["quiet_days"]), 0)
 
-	# Night 10 → day 11. Day 10 was the FIRST full quiet day: it holds.
+	# Night 10 → day 11. Day 10 was the first full quiet day, and it now pays.
 	gs.time_slots_today = 3
 	gs.time_slot = "NIGHT"
 	_expect_true("night 10 dispatches", gm.dispatch("advance_time", {}))
-	_expect_float("the first full quiet day holds the score",
-		engine.pressure_score("north_star_lot", "boost"), 5.0)
+	_expect_float("the first full quiet day takes its step",
+		engine.pressure_score("north_star_lot", "boost"), 3.5)
 	_expect_int("the first quiet day is counted", int(row["quiet_days"]), 1)
 
-	# Night 11 → day 12. Day 11 was the second: -1.
-	gs.time_slots_today = 3
-	gs.time_slot = "NIGHT"
-	_expect_true("night 11 dispatches", gm.dispatch("advance_time", {}))
-	_expect_float("the second quiet day takes a point",
-		engine.pressure_score("north_star_lot", "boost"), 4.0)
-	_expect_int("the second quiet day is counted", int(row["quiet_days"]), 2)
-
-	# And every day after.
-	for expected in [3.0, 2.0, 1.0, 0.0]:
+	# And every day after, at the same rate while the score is below HOT.
+	for expected in [2.0, 0.5]:
 		gs.time_slots_today = 3
 		gs.time_slot = "NIGHT"
 		gm.dispatch("advance_time", {})
-		_expect_float("quiet day %d takes another point" % int(row["quiet_days"]),
+		_expect_float("quiet day %d takes another step" % int(row["quiet_days"]),
 			engine.pressure_score("north_star_lot", "boost"), float(expected))
 	# It floors at zero rather than going negative.
 	gs.time_slots_today = 3
@@ -10374,6 +10657,39 @@ func _check_pressure_recovery(gs: Node, gm: Node, engine: RefCounted,
 	gm.dispatch("advance_time", {})
 	_expect_float("recovery floors at zero",
 		engine.pressure_score("north_star_lot", "boost"), 0.0)
+
+	# --- the HOT ramp: laying off a saturated district shows within a week ---
+	#
+	# The design promise of this tuning, asserted as the numbers and the BANDS it
+	# produces. Night one is the day the gain landed on, which still holds; every
+	# night after is quiet. 9.0 → 7.0 (the accelerated step, read while the score
+	# is still HOT) → 5.5 → 4.0 → 2.5.
+	gs.reset_to_new_game()
+	gs.day = 20
+	gs.cash = 5000
+	var hot_row: Dictionary = engine.pressure_row("airport_industrial", "stick")
+	hot_row["score"] = 9.0
+	hot_row["last_gain_day"] = 20
+	hot_row["quiet_days"] = 0
+	_expect_str("the row starts HOT",
+		engine.pressure_band("airport_industrial", "stick"), "HOT")
+	var hot_ramp: Array = [
+		{"score": 9.0, "band": "HOT", "label": "the gain day still holds"},
+		{"score": 7.0, "band": "WATCHED", "label": "one quiet day leaves HOT"},
+		{"score": 5.5, "band": "KNOWN", "label": "two quiet days reach KNOWN"},
+		{"score": 4.0, "band": "KNOWN", "label": "three quiet days stay KNOWN"},
+		{"score": 2.5, "band": "QUIET", "label": "four quiet days reach QUIET"},
+	]
+	for entry in hot_ramp:
+		var step: Dictionary = entry
+		gs.time_slots_today = 3
+		gs.time_slot = "NIGHT"
+		gm.dispatch("advance_time", {})
+		_expect_float("%s (score)" % str(step["label"]),
+			engine.pressure_score("airport_industrial", "stick"),
+			float(step["score"]))
+		_expect_str("%s (band)" % str(step["label"]),
+			engine.pressure_band("airport_industrial", "stick"), str(step["band"]))
 
 	# --- a new gain resets the count, and the ramp starts over ---
 	gs.reset_to_new_game()
@@ -10388,13 +10704,15 @@ func _check_pressure_recovery(gs: Node, gm: Node, engine: RefCounted,
 		gs.time_slot = "NIGHT"
 		gm.dispatch("advance_time", {})
 	_expect_int("two nights in, one quiet day is banked", int(reset_row["quiet_days"]), 1)
+	_expect_float("and that quiet day took its step",
+		engine.pressure_score("downtown", "stick"), 3.5)
 	engine.add_pressure("downtown", "stick", 1.0, "cause:recovery:reset")
 	_expect_int("a new gain resets the quiet count", int(reset_row["quiet_days"]), 0)
 	gs.time_slots_today = 3
 	gs.time_slot = "NIGHT"
 	gm.dispatch("advance_time", {})
 	_expect_float("and the score holds again the day after",
-		engine.pressure_score("downtown", "stick"), 6.0)
+		engine.pressure_score("downtown", "stick"), 4.5)
 	gs.reset_to_new_game()
 
 # --- source gains through the real path -------------------------------------
@@ -10527,7 +10845,11 @@ func _check_financial_pressure_rollover(gs: Node, gm: Node, engine: RefCounted,
 
 	# --- the boundary, on the side the ordering decides ---
 	#
-	# At 6, decay drops it to 5 and NOTHING folds. Folding first would see 6,
+	# The threshold is FS-003.13's 4, pinned here as a literal so lowering it
+	# again is a decision rather than a silent consequence of an edit elsewhere.
+	_expect_int("the fold threshold is the authored one",
+		int(rules.FINANCIAL_PRESSURE_FOLD_AT), 4)
+	# At 4, decay drops it to 3 and NOTHING folds. Folding first would see 4,
 	# apply the Heat, and only then decay — which is regression #25 exactly, and
 	# is invisible unless the value is sitting on the threshold.
 	gs.reset_to_new_game()
@@ -10535,23 +10857,23 @@ func _check_financial_pressure_rollover(gs: Node, gm: Node, engine: RefCounted,
 	gs.time_slots_today = 3
 	gs.time_slot = "NIGHT"
 	gs.cash = 5000
-	gs.financial_pressure = 6
+	gs.financial_pressure = 4
 	gs.heat = 0.0
 	_expect_true("the boundary night dispatches", gm.dispatch("advance_time", {}))
-	_expect_int("six decays to five", int(gs.financial_pressure), 5)
-	_expect_float("and five does not fold", float(gs.heat), 0.0)
+	_expect_int("four decays to three", int(gs.financial_pressure), 3)
+	_expect_float("and three does not fold", float(gs.heat), 0.0)
 
-	# At 7, decay drops it to 6 and the fold DOES fire.
+	# At 5, decay drops it to 4 and the fold DOES fire.
 	gs.reset_to_new_game()
 	gs.day = 9
 	gs.time_slots_today = 3
 	gs.time_slot = "NIGHT"
 	gs.cash = 5000
-	gs.financial_pressure = 7
+	gs.financial_pressure = 5
 	gs.heat = 0.0
 	_expect_true("the fold night dispatches", gm.dispatch("advance_time", {}))
-	_expect_int("seven decays to six", int(gs.financial_pressure), 6)
-	_expect_float("and six folds into exactly one point of heat", float(gs.heat), 1.0)
+	_expect_int("five decays to four", int(gs.financial_pressure), 4)
+	_expect_float("and four folds into exactly one point of heat", float(gs.heat), 1.0)
 
 	# The fold is a DIRECT change, not a criminal gain: Deshawn does not damp it
 	# and no district scales it. TI-003 §7 routes it through `apply_direct`
@@ -10699,6 +11021,8 @@ func _check_retaliation() -> void:
 	_check_retaliation_no_arrest(gs, gm, engine)
 	_check_retaliation_reload(gs, gm, engine)
 	_check_retaliation_rng_non_drift(gs, gm, engine, retaliation)
+	_check_retaliation_ambient(gs, gm, engine, retaliation, rules)
+	_check_retaliation_expiry_callback(gs, gm, engine, retaliation, rules)
 	gs.reset_to_new_game()
 
 # --- layer 1: the authored tables ------------------------------------------
@@ -10960,6 +11284,239 @@ func _check_retaliation_window(gs: Node, gm: Node, engine: RefCounted) -> void:
 	_expect_int("an expired row is not eligible",
 		(engine.eligible_queued(15, "north_star_lot") as Array).size(), 0)
 	gs.reset_to_new_game()
+
+## Every activity-feed line written on the current day.
+func _feed_today(gs: Node) -> Array:
+	var lines: Array = []
+	for entry in gs.activity_log:
+		var row: Dictionary = entry
+		if int(row.get("day", -1)) == int(gs.day):
+			lines.append(str(row.get("text", "")))
+	return lines
+
+func _feed_ambient_count(gs: Node, rules: RefCounted) -> int:
+	var count: int = 0
+	for line in _feed_today(gs):
+		if str(line) in rules.RETALIATION_AMBIENT_LINES:
+			count += 1
+	return count
+
+## PX-003 §8's ambient warnings, FS-003.13 Task 5.
+##
+## The mechanic is a line in a feed, which makes it unusually easy to ship
+## broken: a warning that never fires, fires twice, follows the player across
+## town, or keeps whispering about a threat that is already over all read as
+## "atmosphere" rather than as a bug. Each of those is a check here.
+func _check_retaliation_ambient(gs: Node, gm: Node, engine: RefCounted,
+		retaliation: RefCounted, rules: RefCounted) -> void:
+	# --- the authored copy, and what it is not allowed to contain ---
+	_expect_true("there are ambient lines to draw from",
+		(rules.RETALIATION_AMBIENT_LINES as Array).size() >= 3)
+	_expect_int("the feed carries at most one a day",
+		int(rules.RETALIATION_AMBIENT_DAILY_CAP), 1)
+	_expect_int("and nothing on the night it was scheduled",
+		int(rules.RETALIATION_AMBIENT_FROM_DAY), 1)
+	# PX-003 §8: the window stays hidden. A line carrying a digit, a day count or
+	# the word "tomorrow" would be a countdown however carefully it was phrased.
+	for entry in rules.RETALIATION_AMBIENT_LINES:
+		var line := str(entry)
+		var lower := line.to_lower()
+		var has_digit: bool = false
+		for character in line:
+			if str(character) in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]:
+				has_digit = true
+		_expect_true("an ambient line names no number: %s" % line, not has_digit)
+		# Word by word rather than by substring: "today" is fine and contains
+		# "day", and a substring test would either ban the wrong line or have to
+		# be loosened until it banned nothing.
+		var words: Array = []
+		for token in lower.split(" ", false):
+			words.append(str(token).strip_edges().trim_suffix(".").trim_suffix(","))
+		for banned in ["day", "days", "tomorrow", "tonight", "soon", "until", "left"]:
+			_expect_true("an ambient line leaks no timing (%s): %s" % [banned, line],
+				not (str(banned) in words))
+		# And nothing names who is coming — that is the encounter's reveal.
+		_expect_true("an ambient line names no actor: %s" % line,
+			not ("goodie" in lower))
+
+	# --- one per day, in the threatened district, from day + 1 ---
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = 5000
+	gs.current_district_id = "north_star_lot"
+	_queue_retaliation(gs, engine, 9, "north_star_lot")
+	# The scheduling day itself is silent: the robbery is the event, not a hint.
+	_expect_int("nothing whispers on the night it was scheduled",
+		retaliation.push_ambient_warnings(9), 0)
+
+	_retaliation_night(gs, gm)
+	_expect_int("the run reached day 10", int(gs.day), 10)
+	_expect_int("the first quiet day carries one warning",
+		_feed_ambient_count(gs, rules), 1)
+	# The cap. Asking again on the same day writes nothing more, which is what
+	# stops travel and the day-start step from both speaking.
+	_expect_int("a second ask on the same day writes nothing",
+		retaliation.push_ambient_warnings(10), 0)
+	_expect_int("and the feed still carries exactly one",
+		_feed_ambient_count(gs, rules), 1)
+
+	# --- the same day always picks the same line ---
+	#
+	# Seeded, not rolled: a reload has to show the player the same feed. Cleared
+	# and re-asked rather than compared across a save, because this is a claim
+	# about the KEY rather than about persistence.
+	var first_line: String = ""
+	for line in _feed_today(gs):
+		if str(line) in rules.RETALIATION_AMBIENT_LINES:
+			first_line = str(line)
+	gs.consequence_flags.erase("retaliation_last_ambient_day")
+	_expect_int("re-asking the same day writes again once the cap is cleared",
+		retaliation.push_ambient_warnings(10), 1)
+	var repeat_line: String = ""
+	for line in _feed_today(gs):
+		if str(line) in rules.RETALIATION_AMBIENT_LINES:
+			repeat_line = str(line)
+	_expect_str("the same row on the same day picks the same line",
+		repeat_line, first_line)
+
+	# --- leaving the district silences it ---
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = 5000
+	gs.current_district_id = "north_star_lot"
+	_queue_retaliation(gs, engine, 9, "north_star_lot")
+	gs.current_district_id = "downtown"
+	_retaliation_night(gs, gm)
+	_expect_int("a threat in another district says nothing",
+		_feed_ambient_count(gs, rules), 0)
+	# And walking back in starts it again the next morning.
+	gs.current_district_id = "north_star_lot"
+	_expect_int("standing in it again is heard",
+		retaliation.push_ambient_warnings(int(gs.day)), 1)
+
+	# --- a row that is no longer pending says nothing ---
+	for finished in ["surfaced", "resolved", "expired"]:
+		gs.reset_to_new_game()
+		gs.day = 12
+		gs.cash = 5000
+		gs.current_district_id = "north_star_lot"
+		var row: Dictionary = _queue_retaliation(gs, engine, 9, "north_star_lot")
+		(gs.consequence_queue[0] as Dictionary)["status"] = str(finished)
+		_expect_int("a row marked %s is not whispered about" % str(finished),
+			retaliation.push_ambient_warnings(12), 0)
+		_expect_true("and the row it came from is untouched",
+			str(row.get("cause_id", "")) == "cause:00000900")
+
+	# --- and one past its window says nothing either ---
+	gs.reset_to_new_game()
+	gs.day = 15
+	gs.cash = 5000
+	gs.current_district_id = "north_star_lot"
+	_queue_retaliation(gs, engine, 9, "north_star_lot")
+	_expect_int("a row past its expiry day is not whispered about",
+		retaliation.push_ambient_warnings(15), 0)
+	gs.reset_to_new_game()
+
+## PX-003 §8's one-time callback, FS-003.13 Task 5.
+##
+## Once per RUN, through the Phone, and only ever for a threat the player
+## genuinely avoided. The flag is persisted, so the interesting failure is not
+## "it never fires" — it is "it fires again after a reload", which is exactly
+## what a flag kept in memory instead of in the save would do.
+func _check_retaliation_expiry_callback(gs: Node, gm: Node, engine: RefCounted,
+		retaliation: RefCounted, rules: RefCounted) -> void:
+	var phone: RefCounted = gm.system("phone") as RefCounted
+	if phone == null:
+		_fail("retaliation callback", "phone system not registered")
+		return
+
+	# --- it fires on the first avoided expiry ---
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = 5000
+	gs.current_district_id = "north_star_lot"
+	# The bills are pushed out of the way: six nights from day 9 would otherwise
+	# take the phone past its grace period, and a callback landing in the HELD
+	# inbox is a different claim — it gets its own check further down.
+	gs.phone_due_day = 90
+	gs.rent_due_day = 90
+	_queue_retaliation(gs, engine, 9, "north_star_lot")
+	gs.current_district_id = "downtown"
+	gs.phone_inbox = []
+	for _night in range(6):
+		_retaliation_night(gs, gm)
+	_expect_true("the line was still live when it expired", bool(gs.phone_active))
+	_expect_str("the avoided row expired",
+		str((gs.consequence_queue[0] as Dictionary)["status"]), "expired")
+	var callbacks: Array = _phone_callbacks(gs, rules)
+	_expect_int("the first avoided expiry texts once", callbacks.size(), 1)
+	if callbacks.size() == 1:
+		var message: Dictionary = callbacks[0]
+		_expect_str("and it names the district the player walked away from",
+			str(message["text"]),
+			rules.RETALIATION_EXPIRY_CALLBACK % "Spenard")
+		_expect_str("from the district rather than from a crew member",
+			str(message["from"]), rules.RETALIATION_EXPIRY_CALLBACK_FROM % "Spenard")
+	_expect_true("and the run remembers it happened",
+		bool(gs.consequence_flags.get("retaliation_first_expiry_seen", false)))
+
+	# --- and never again in the same run ---
+	gs.phone_inbox = []
+	gs.phone_due_day = 90
+	gs.rent_due_day = 90
+	_queue_retaliation(gs, engine, int(gs.day), "north_star_lot", "tone",
+		"cause:00000901")
+	for _night in range(6):
+		_retaliation_night(gs, gm)
+	_expect_int("a second avoided expiry says nothing",
+		_phone_callbacks(gs, rules).size(), 0)
+
+	# --- the flag survives a reload, which is the whole point of persisting it ---
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := _read_save_text(saves)
+	saves.save_run()
+	gs.consequence_flags = {}
+	_expect_true("the callback save reloads", saves.load_run())
+	_expect_true("the one-shot flag came back",
+		bool(gs.consequence_flags.get("retaliation_first_expiry_seen", false)))
+	# And a reload that already fired it does not fire it again.
+	gs.phone_inbox = []
+	gs.reset_to_new_game()
+	gs.consequence_flags = {"retaliation_first_expiry_seen": true}
+	_expect_true("a run that already learned it is not told again",
+		not retaliation.note_expiries([{"district_id": "north_star_lot"}]))
+	_expect_int("and nothing reached the inbox",
+		_phone_callbacks(gs, rules).size(), 0)
+
+	# --- a dead line HOLDS it rather than losing it ---
+	gs.reset_to_new_game()
+	gs.phone_active = false
+	gs.phone_inbox = []
+	gs.phone_held_inbox = []
+	_expect_true("the callback fires with the phone off",
+		retaliation.note_expiries([{"district_id": "downtown"}]))
+	_expect_int("nothing reached the live inbox", gs.phone_inbox.size(), 0)
+	_expect_int("and the held inbox caught it", gs.phone_held_inbox.size(), 1)
+	if gs.phone_held_inbox.size() == 1:
+		_expect_str("the held callback names the right district",
+			str((gs.phone_held_inbox[0] as Dictionary)["text"]),
+			rules.RETALIATION_EXPIRY_CALLBACK % "Downtown")
+	gs.phone_active = true
+	if not previous_save.is_empty():
+		_restore_save_text(saves, previous_save)
+	gs.reset_to_new_game()
+
+## Every inbox message that is the avoidance callback, whichever district it
+## named. Matched on the authored template's stable half rather than on the
+## sender, so a change to the sender does not quietly stop these from counting.
+func _phone_callbacks(gs: Node, rules: RefCounted) -> Array:
+	var found: Array = []
+	var marker := str(rules.RETALIATION_EXPIRY_CALLBACK).split("%s")[1]
+	for entry in gs.phone_inbox:
+		var message: Dictionary = entry
+		if str(message.get("text", "")).ends_with(marker):
+			found.append(message)
+	return found
 
 ## TI-003 regression #29: "Retaliation follows the player across districts."
 func _check_retaliation_district_presence(gs: Node, gm: Node, engine: RefCounted) -> void:
@@ -12043,14 +12600,23 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is still v8", saves.SAVE_VERSION, 8)
+	_expect_int("the schema is at FS-003.13's version", saves.SAVE_VERSION, 9)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
 		_expect_true("v8 persists %s" % str(required),
 			str(required) in saves.PERSIST_FIELDS)
+	# --- and what v9 added, which is exactly one field ---
+	#
+	# FS-003.13's arrest cooldown is deliberately NOT here: it rides inside
+	# `arrest_record`, which v8 already carried whole. One bump, one new manifest
+	# entry, and a second piece of new state that needed neither.
+	_expect_true("v9 persists consequence_flags",
+		"consequence_flags" in saves.PERSIST_FIELDS)
+	_expect_true("the cooldown is not a manifest entry of its own",
+		not ("arrest_cooldown_until_day" in saves.PERSIST_FIELDS))
 
-	# --- v8 → current is identity, and a populated one round-trips ---
+	# --- v8 → v9 is additive, and a v8 payload survives it ---
 	gs.reset_to_new_game()
 	gs.arrest_record = {"priors": 3, "last_arrest_day": 11,
 		"charges": [{"cause_id": "cause:00000001", "day": 11, "severity": "stick_t2"}]}
@@ -12059,9 +12625,44 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	gs.boost_store_bans = ["night_owl"]
 	_queue_retaliation(gs, engine, int(gs.day), "north_star_lot", "goodie", "cause:mig:2")
 	var populated: Dictionary = saves.capture()
-	var identity: Dictionary = saves._migrate({"save_version": 8, "state": populated})
-	_expect_true("a v8 save needs no transform", not identity.is_empty())
+	# A genuine v8 payload carries neither of FS-003.13's new pieces of state.
+	var v8_shape: Dictionary = populated.duplicate(true)
+	v8_shape.erase("consequence_flags")
+	(v8_shape["arrest_record"] as Dictionary).erase("cooldown_until_day")
+	var migrated_v8: Dictionary = saves._migrate({"save_version": 8, "state": v8_shape})
+	_expect_true("a v8 save migrates", not migrated_v8.is_empty())
+	# The arm stamps the version and touches nothing: the defaults do the rest,
+	# in `apply()`, which is where every additive field in this chain lands.
+	_expect_str("and the v8 → v9 arm transforms nothing",
+		_canonical(migrated_v8), _canonical(v8_shape))
+	# Through the real load path as well as the migrator, because `_migrate`
+	# leaving a field absent and `apply()` defaulting it correctly are two
+	# different claims. The save file is put back afterwards — this section is
+	# not the only thing in the suite that reads it.
+	var saved_before_v8_probe := _read_save_text(saves)
+	_write_save(saves, 8, v8_shape)
+	_expect_true("a migrated v8 save loads", saves.load_run())
+	_expect_int("a migrated v8 run has no cooldown armed",
+		int((gs.arrest_record as Dictionary).get("cooldown_until_day", -1)), -1)
+	_expect_true("and no consequence flag has been seen yet",
+		(gs.consequence_flags as Dictionary).is_empty())
+	_restore_save_text(saves, saved_before_v8_probe)
+
+	# --- v9 → current is identity, and a populated one round-trips ---
+	gs.reset_to_new_game()
+	gs.arrest_record = {"priors": 3, "last_arrest_day": 11, "cooldown_until_day": 13,
+		"charges": [{"cause_id": "cause:00000001", "day": 11, "severity": "stick_t2"}]}
+	engine.add_pressure("downtown", "stick", 4.5, "cause:mig:1")
+	gs.financial_pressure = 7
+	gs.boost_store_bans = ["night_owl"]
+	gs.consequence_flags = {"retaliation_first_expiry_seen": true}
+	_queue_retaliation(gs, engine, int(gs.day), "north_star_lot", "goodie", "cause:mig:2")
+	populated = saves.capture()
+	var identity: Dictionary = saves._migrate({"save_version": 9, "state": populated})
+	_expect_true("a v9 save needs no transform", not identity.is_empty())
 	_expect_str("and arrives unchanged", _canonical(identity), _canonical(populated))
+	_expect_true("the cooldown rode along inside the arrest record",
+		(identity["arrest_record"] as Dictionary).has("cooldown_until_day"))
 	gs.reset_to_new_game()
 
 	# --- a save with Financial Pressure at 7 folds correctly the next morning ---
@@ -12355,20 +12956,87 @@ func _check_market_stream_non_drift(gs: Node, gm: Node, engine: RefCounted) -> v
 
 # --- long-run simulation ----------------------------------------------------
 
+## The mixed-strategy policy id. Not a choice id, which is why it is a constant
+## rather than a string literal at the two call sites that compare against it.
+const SIM_POLICY_ODDS := "odds"
+
+## What a profile works in each district, so a travelling profile keeps doing
+## crime after it moves instead of silently falling through to `advance_time`
+## and reading as a quiet week.
+##
+## One tier-1 Boost target and one Stick target per district, chosen so the
+## Stick tier matches what is actually available there — Spenard is the only
+## district with a tier-3 stick target, and pretending otherwise would make the
+## travelling profile's numbers incomparable with the stationary ones for a
+## reason that has nothing to do with Pressure.
+const SIM_DISTRICT_TARGETS := {
+	"north_star_lot": {"boost": "night_owl", "stick": "goodie_stash"},
+	"downtown": {"boost": "fourth_ave_market", "stick": "downtown_fuel_till"},
+	"airport_industrial": {"boost": "service_stop", "stick": "lot_hauler"},
+}
+
+## The rotation a travelling profile walks. Spenard → Downtown → Industrial,
+## which exercises both an adjacent hop (Pressure bleeds) and a non-adjacent one.
+const SIM_TRAVEL_ROTATION: Array[String] = [
+	"north_star_lot", "downtown", "airport_industrial",
+]
+
+## The response a profile picks when it is playing the odds rather than a habit.
+##
+## FS-003.13 Task 1. The three original profiles each committed to ONE response
+## for the whole run, which measures the consequence layer against a player who
+## does not exist: nobody fights a 12% fight and nobody yields a 90% one. This
+## picks the highest projected success chance the decision is actually showing,
+## and falls back to the first deterministic choice when nothing carries odds —
+## which is the same information the player has on the screen, read the same way.
+##
+## It reads `shown_probabilities` through `choice_summaries()` rather than
+## re-deriving anything: the projection the player was shown is the projection
+## the profile decides on, so a drift between the two would change the SIM as
+## well as the screen instead of hiding behind it.
+func _sim_pick_by_odds(rows: Array) -> String:
+	var best := ""
+	var best_odds: float = -1.0
+	var first_deterministic := ""
+	for entry in rows:
+		var row: Dictionary = entry
+		var choice_id := str(row.get("choice_id", ""))
+		if choice_id.is_empty():
+			continue
+		if not bool(row.get("has_odds", false)):
+			if first_deterministic.is_empty():
+				first_deterministic = choice_id
+			continue
+		var odds: float = float(row.get("success_probability", 0.0))
+		if odds > best_odds:
+			best_odds = odds
+			best = choice_id
+	if not best.is_empty():
+		return best
+	return first_deterministic
+
 ## Answer whatever is blocking, with a declared policy.
 ##
 ## The simulator has to be able to get UNSTUCK from any stage, or a profile that
 ## walks into a chain it cannot answer would silently stop playing and report
 ## whatever it had reached — which reads as a clean run rather than as a stuck
 ## one.
+##
+## `policy` is a choice id, or `SIM_POLICY_ODDS` for the mixed strategy above.
 func _sim_answer_chain(gs: Node, gm: Node, engine: RefCounted, policy: String) -> void:
 	match engine.active_stage():
 		engine.STAGE_DECISION:
+			var rows: Array = engine.choice_summaries()
 			var allowed: Array = []
-			for entry in engine.choice_summaries():
+			for entry in rows:
 				allowed.append(str((entry as Dictionary)["choice_id"]))
-			var pick: String = policy if policy in allowed else \
-				(str(allowed[0]) if not allowed.is_empty() else "")
+			var pick := ""
+			if policy == SIM_POLICY_ODDS:
+				pick = _sim_pick_by_odds(rows)
+			else:
+				pick = policy if policy in allowed else ""
+			if pick.is_empty() and not allowed.is_empty():
+				pick = str(allowed[0])
 			if pick.is_empty() or not gm.dispatch("resolve_consequence_choice",
 					{"choice_id": pick}):
 				gs.active_consequence = {}
@@ -12411,12 +13079,16 @@ func _simulate(gs: Node, gm: Node, engine: RefCounted, profile: Dictionary) -> D
 	var days: int = int(profile.get("days", 30))
 	var policy := str(profile.get("policy", "yield"))
 	var crime_every: int = int(profile.get("crime_every", 1))
+	# 0 means "never move", which is what the three original profiles do.
+	var travel_every: int = int(profile.get("travel_every", 0))
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
 	var metrics: Dictionary = {
 		"arrests": 0, "booking_slots": 0, "heat_folds": 0,
 		"financial_days_at_fold": 0, "retaliation_queued": 0,
 		"retaliation_surfaced": 0, "retaliation_expired": 0,
 		"retaliation_suppressed": 0, "obligation_misses_while_booked": 0,
 		"band_days": {}, "reload_checkpoints": 0, "reload_mismatches": 0,
+		"ambient_warnings": 0, "travels": 0, "districts_worked": {},
 	}
 	var saves := get_node("/root/SaveSystem")
 	var previous_save := ""
@@ -12456,8 +13128,25 @@ func _simulate(gs: Node, gm: Node, engine: RefCounted, profile: Dictionary) -> D
 						by_band[key] = {}
 					var counts: Dictionary = by_band[key]
 					counts[band] = int(counts.get(band, 0)) + 1
-			if int(gs.financial_pressure) >= 6:
+			if int(gs.financial_pressure) >= int(rules.FINANCIAL_PRESSURE_FOLD_AT):
 				metrics["financial_days_at_fold"] = int(metrics["financial_days_at_fold"]) + 1
+			var worked: Dictionary = metrics["districts_worked"]
+			worked[str(gs.current_district_id)] = \
+				int(worked.get(str(gs.current_district_id), 0)) + 1
+			# The ambient warnings the feed carried overnight, counted off the
+			# queue rather than by parsing the log: a row that warned today
+			# stamps the day it warned on.
+			for queued_entry in gs.consequence_queue:
+				if int((queued_entry as Dictionary).get("last_warned_day", -1)) == last_day:
+					metrics["ambient_warnings"] = int(metrics["ambient_warnings"]) + 1
+			# A travelling profile moves on its own cadence, before it works.
+			# The move costs a slot and a fare, exactly as it does in play.
+			if travel_every > 0 and last_day % travel_every == 0:
+				var next_index: int = (SIM_TRAVEL_ROTATION.find(
+					str(gs.current_district_id)) + 1) % SIM_TRAVEL_ROTATION.size()
+				var destination := str(SIM_TRAVEL_ROTATION[next_index])
+				if gm.dispatch("travel", {"district_id": destination}):
+					metrics["travels"] = int(metrics["travels"]) + 1
 			# A reload checkpoint every fifth day.
 			if last_day % 5 == 0:
 				var before: String = _save_digest(saves)
@@ -12474,11 +13163,13 @@ func _simulate(gs: Node, gm: Node, engine: RefCounted, profile: Dictionary) -> D
 		gs.boost_daily_hits = {}
 		gs.boost_store_bans = []
 		gs.stick_daily_count = 0
+		var here: Dictionary = SIM_DISTRICT_TARGETS.get(str(gs.current_district_id),
+			SIM_DISTRICT_TARGETS["north_star_lot"])
 		if int(gs.time_slots_today) % 2 == 0:
-			if not gm.dispatch("boost", {"target_id": "night_owl"}):
+			if not gm.dispatch("boost", {"target_id": str(here["boost"])}):
 				gm.dispatch("advance_time", {})
 		else:
-			if not gm.dispatch("stickup", {"target_id": "goodie_stash"}):
+			if not gm.dispatch("stickup", {"target_id": str(here["stick"])}):
 				gm.dispatch("advance_time", {})
 		# Counters that only move on the way past.
 		if int(gs.arrest_record["priors"]) > last_priors:
@@ -12510,6 +13201,42 @@ func _simulate(gs: Node, gm: Node, engine: RefCounted, profile: Dictionary) -> D
 			restore.close()
 	return metrics
 
+## The four metrics FS-003.13 tunes against, flattened into one JSON row.
+##
+## `band_days` is reduced to the district/family the profile actually WORKED —
+## a run that never leaves Spenard reports Downtown's untouched QUIET days too,
+## and averaging those in would make every profile look calm. The worked rows
+## are the ones a player would describe as "this block".
+func _sim_metrics_row(profile: Dictionary, metrics: Dictionary) -> Dictionary:
+	var worked: Dictionary = metrics["districts_worked"]
+	var bands: Dictionary = metrics["band_days"]
+	var totals: Dictionary = {"QUIET": 0, "KNOWN": 0, "WATCHED": 0, "HOT": 0}
+	var worst_hot: int = 0
+	for key in bands.keys():
+		var district_id := str(key).split("/")[0]
+		if not worked.has(district_id):
+			continue
+		var counts: Dictionary = bands[key]
+		for band in totals.keys():
+			totals[band] = int(totals[band]) + int(counts.get(band, 0))
+		worst_hot = maxi(worst_hot, int(counts.get("HOT", 0)))
+	return {
+		"profile": str(profile["name"]),
+		"seed": str(profile.get("seed", "")),
+		"days": int(metrics["days_played"]),
+		"arrests": int(metrics["arrests"]),
+		"booking_slots": int(metrics["booking_slots"]),
+		"pressure_band_days": totals,
+		"worst_family_hot_days": worst_hot,
+		"financial_days_at_fold": int(metrics["financial_days_at_fold"]),
+		"retaliation_queued": int(metrics["retaliation_queued"]),
+		"retaliation_surfaced": int(metrics["retaliation_surfaced"]),
+		"retaliation_expired": int(metrics["retaliation_expired"]),
+		"ambient_warnings": int(metrics["ambient_warnings"]),
+		"travels": int(metrics["travels"]),
+		"game_over": bool(metrics["game_over"]),
+	}
+
 ## TI-003 §23's long-run profiles, measured and reported.
 ##
 ## The assertions here are INVARIANTS, not balance: the wallet must balance, the
@@ -12524,6 +13251,14 @@ func _check_long_run_simulations(gs: Node, gm: Node, engine: RefCounted) -> void
 			"days": 30, "policy": "yield", "crime_every": 1, "cash": 400},
 		{"name": "cautious, crime every third day", "seed": "sim-cautious",
 			"days": 25, "policy": "run", "crime_every": 3, "cash": 1200},
+		# FS-003.13 Task 1. Two profiles the balance pass needs and the first
+		# three cannot supply: somebody who answers a Caught by reading the
+		# odds, and somebody who does not stand in one district for a month.
+		{"name": "mixed strategy, plays the odds", "seed": "sim-odds",
+			"days": 30, "policy": SIM_POLICY_ODDS, "crime_every": 1, "cash": 400},
+		{"name": "travelling, rotates districts", "seed": "sim-travel",
+			"days": 30, "policy": SIM_POLICY_ODDS, "crime_every": 1, "cash": 400,
+			"travel_every": 4},
 	]
 	for entry in profiles:
 		var profile: Dictionary = entry
@@ -12532,9 +13267,11 @@ func _check_long_run_simulations(gs: Node, gm: Node, engine: RefCounted) -> void
 			% [str(profile["name"]), int(metrics["days_played"]), int(metrics["arrests"]),
 				int(metrics["booking_slots"]), int(metrics["priors"])])
 		print(("            retaliation queued %d / surfaced %d / expired %d · "
+			+ "ambient warnings %d · travels %d · "
 			+ "financial-pressure days at fold %d · obligation misses while booked %d")
 			% [int(metrics["retaliation_queued"]), int(metrics["retaliation_surfaced"]),
 				int(metrics["retaliation_expired"]),
+				int(metrics["ambient_warnings"]), int(metrics["travels"]),
 				int(metrics["financial_days_at_fold"]),
 				int(metrics["obligation_misses_while_booked"])])
 		# `game over` here is almost always eviction, and is a property of the
@@ -12550,6 +13287,11 @@ func _check_long_run_simulations(gs: Node, gm: Node, engine: RefCounted) -> void
 			var counts: Dictionary = bands[key]
 			if counts.size() > 1 or not counts.has("QUIET"):
 				print("            pressure %s: %s" % [str(key), str(counts)])
+		# One machine-readable line per profile, so a tuning pass can diff two
+		# runs instead of re-reading prose. Deliberately printed in ADDITION to
+		# the human lines above: the prose is what a designer reads, this is what
+		# the before/after table in HANDOFF.md is built from.
+		print("simulation-metrics: %s" % JSON.stringify(_sim_metrics_row(profile, metrics)))
 
 		# --- the invariants ---
 		var label_text := str(profile["name"])
@@ -12667,21 +13409,45 @@ func _fail(label: String, detail: String) -> void:
 ## already prove, because a slice proves its piece in isolation and only walking
 ## the whole path proves the pieces still fit.
 ##
-## FS-001.9 raises it to 10,499 and FS-001.10 to 10,600. The Codex hardening
-## batch (PR #46) had already carried the suite from 10,211 to 10,439 without
-## moving this line, which is the floor doing exactly half its job: it caught
-## nothing because nothing regressed, and it would have caught nothing if
-## something had. The new floor covers that batch and both slices.
-const MIN_CHECKS := 10600
-
-## And it is a CHECK now, not a comment.
+## The Codex hardening batch (PR #46) carried the suite to 10439 without moving
+## this line, which is the floor doing exactly half its job: it caught nothing
+## because nothing regressed, and it would have caught nothing if something had.
+## FS-003.13 raises it to 10600, which covers that batch and its own additions.
 ##
-## `MIN_CHECKS` has carried a careful paragraph per slice since FS-003.1 and
-## nothing has ever read it: a suite that lost half its checks to an aborted
-## section would still have printed PASS, which is precisely the failure the
-## constant was written to catch. `_finish()` compares against it.
+## FS-003.13's own contribution is mostly BOUNDARIES rather than surface: a
+## balance pass moves numbers, and a number that moved without a check pinning it
+## is indistinguishable from a number that drifted. Most of the growth is the new
+## constants pinned as literals, the post-arrest cooldown at each of the five
+## layers it exists in, and PX-003 §8's ambient signal — including its
+## hidden-information audit, which is the only thing standing between "a warning"
+## and "a countdown with adjectives".
+##
+## FS-001.9 and .10 raise it to 10800 on top of that. The two builds were
+## developed in parallel off the same base and both wired this constant in
+## independently, which is why the paragraph above and this one both claim to
+## have done it: FS-003.13 merged first and its version is the one that shipped.
+##
+## The merged total is larger than either branch measured alone, because the two
+## sets of checks are disjoint — .13's are the consequence layer's boundaries and
+## .9/.10's are delegation's callbacks and gate. 10,439 + 172 + 170 = 10,781, and
+## the merged run measures exactly that, which is the arithmetic confirming
+## neither side lost a check to the merge.
+##
+## The floor is set from the merged run with about ten of margin, the same margin
+## FS-003.13 left: several sections sweep until they find the outcome they need,
+## so their contribution is deterministic but shifts by one or two when an
+## unrelated seeded key moves.
+const MIN_CHECKS := 10770
 
 func _finish() -> void:
+	# The floor, enforced rather than merely declared.
+	#
+	# `MIN_CHECKS` has carried a careful paragraph per slice since FS-003.1 and
+	# nothing has ever read it: the constant was documentation, and a suite that
+	# lost half its checks to an aborted section would still have printed PASS.
+	# That is precisely the failure it was written to catch, so FS-003.13 wires
+	# it in. It costs one comparison and it is the only check that can fail
+	# because of what did NOT run.
 	if _checks < MIN_CHECKS:
 		_fail("check floor",
 			"ran %d checks, floor is %d — a section aborted before it finished"

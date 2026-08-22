@@ -390,16 +390,38 @@ func suppress_cause(cause_id: String) -> int:
 
 ## Mark rows past their expiry. TI-003 §15: a retaliation the player avoided
 ## through the whole window simply expires.
+##
+## The rows that transitioned are handed to the retaliation system, which owns
+## PX-003 §8's one-time "it stopped" callback. The engine decides WHAT expired —
+## that is the queue's business — and says nothing about it; the copy, the
+## channel and the once-per-run flag all belong to the system that authored the
+## threat. Passing the rows rather than a count is what lets the callback name
+## the district the player actually walked away from.
 func expire_stale(today: int) -> int:
-	var expired: int = 0
+	var expired: Array = []
 	for row in gs.consequence_queue:
 		var r: Dictionary = row
 		if str(r.get("status", "pending")) != "pending":
 			continue
 		if today > int(r.get("expires_end_day", 0x7FFFFFFF)):
 			r["status"] = "expired"
-			expired += 1
-	return expired
+			expired.append(r)
+	if not expired.is_empty():
+		var owner: Object = gm.system("retaliation") if gm != null else null
+		if owner != null and owner.has_method("note_expiries"):
+			owner.note_expiries(expired)
+	return expired.size()
+
+## Today's one ambient warning, if a live threat is standing where the player is.
+##
+## Forwarded rather than implemented here for the same reason `expire_stale`
+## forwards its rows: the queue is the engine's, the voice is the retaliation
+## system's. The lifecycle calls this by name from `DAY_START_ORDER`.
+func push_retaliation_ambient(today: int) -> int:
+	var owner: Object = gm.system("retaliation") if gm != null else null
+	if owner == null or not owner.has_method("push_ambient_warnings"):
+		return 0
+	return int(owner.push_ambient_warnings(today))
 
 ## The rows that could surface right now, in the order TI-003 §15 declares:
 ## `trigger_day`, then `created_sequence`.
@@ -896,13 +918,18 @@ func apply_pressure_bleed(today: int) -> int:
 	gs.pressure_bleed_pending = still_pending
 	return applied
 
-## FS-003 §6's recovery: the first full quiet day holds, the second and every one
-## after takes a point off.
+## FS-003 §6's recovery, at FS-003.13's rates: every quiet day takes points off,
+## and a district in the HOT band sheds them faster than one lower down.
 ##
 ## Runs post-increment on day `today`, so the day that just ended is `today - 1`.
 ## A row whose last gain was on or after that day was not quiet, and its counter
 ## resets. Bleed runs BEFORE this (TI-003 §9), so a bleed landing this morning
 ## has already stamped `last_gain_day = today` and correctly reads as not quiet.
+##
+## The grace check stays even though `PRESSURE_QUIET_GRACE_DAYS` is now 0. With
+## a grace of zero the `continue` is unreachable, which is the point: the hold
+## behaviour is one constant away rather than one commit away, and the quiet
+## counter it reads is still what the Pressure card shows.
 func apply_pressure_recovery(today: int) -> int:
 	var rules: RefCounted = _rules()
 	var recovered: int = 0
@@ -920,7 +947,8 @@ func apply_pressure_recovery(today: int) -> int:
 			var before: float = float(row.get("score", 0.0))
 			if before <= rules.PRESSURE_MIN:
 				continue
-			row["score"] = maxf(rules.PRESSURE_MIN, before - rules.PRESSURE_QUIET_RECOVERY)
+			row["score"] = maxf(rules.PRESSURE_MIN,
+				before - rules.quiet_recovery(before))
 			recovered += 1
 	return recovered
 

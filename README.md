@@ -26,7 +26,8 @@ a bad enough answer ends in a booking, where you trade cash against calendar tim
 while rent and wages keep settling without you. The block remembers: work the same
 hustle in the same district often enough and the odds there get worse, until you
 change districts, change hustles, or slow down. And the people you rob can send
-somebody after you two days later, in the part of town you did it in.
+somebody after you two days later, in the part of town you did it in — though the
+block starts talking about them first, if you are standing where they are.
 
 Existing ported formulas retain oracle-backed parity where that remains the approved
 Godot decision. Newer approved Godot/ClickUp decisions take precedence over historical
@@ -50,6 +51,7 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Get booked, and trade cash against calendar time | automatic, when an answer goes badly enough |
 | Watch a district start recognising your routine, and cool off when you stop | Boost · Stickup · Market — LOCAL ATTENTION |
 | Have the people you robbed find you days later | automatic, in the district you did it in |
+| Hear the block warn you they are coming, and hear it stop when you leave | Activity feed · Phone |
 | Pay a formal bill in street money and draw attention for it | automatic, on rent · phone · bail |
 | Lend at interest and decide what a default costs | Hustle → Shark |
 | Hire crew, pay wages, watch loyalty, move them up the ranks | Street → People → Crew |
@@ -96,6 +98,45 @@ The milestone still ahead is **FS-002 Territory Warfare**.
 | .10 | Retaliation scheduling and the `retaliation_street_crew` encounter |
 | .11 | Consequence UX, Local Attention, and the hidden-information audit |
 | .12 | Integration gate: TI-003 §23 scenarios, migration matrix, 30-day RNG non-drift, long-run simulations |
+| .13 | Balance pass: Pressure recovery, arrest cooldown, Financial Pressure activation, ambient retaliation signals; save v9 |
+
+### What FS-003.13 tuned
+
+The consequence loop worked and read as monotone. `.13` moved constants, not
+mechanics — the simulation harness gained two profiles first, so the moves could
+be measured rather than argued about.
+
+| Constant | Where | Was | Now |
+| --- | --- | --- | --- |
+| `PRESSURE_QUIET_RECOVERY` | `data/consequence_rules.gd` | 1.0 | 1.5 |
+| `PRESSURE_QUIET_GRACE_DAYS` | `data/consequence_rules.gd` | 1 | 0 |
+| `PRESSURE_ACCELERATED_RECOVERY` | `data/consequence_rules.gd` | — | 2.0 while HOT |
+| `STICK_FAILURE_ARREST_HEAT` | `data/consequence_rules.gd` | 10 / 8 / 6 | 12 / 10 / 8 |
+| `ARREST_COOLDOWN_DAYS` | `data/consequence_rules.gd` | — | 2 |
+| `FINANCIAL_PRESSURE_FREE_DIRTY` | `systems/wallet.gd` | $400 | $200 |
+| `FINANCIAL_PRESSURE_PER_DOLLAR` | `systems/wallet.gd` | 0.01 | 0.015 |
+| `FINANCIAL_PRESSURE_FOLD_AT` | `data/consequence_rules.gd` | 6 | 4 |
+| `RETALIATION_AMBIENT_LINES` | `data/consequence_rules.gd` | — | five authored lines |
+
+Two behavioural additions ride with them, both signals rather than mechanics:
+
+- **The post-arrest cooldown.** For two days after a booking commits, no arrest
+  gate fires — the same precinct does not pick you up on the way out of its own
+  parking lot. It is stamped on `arrest_record.cooldown_until_day` and applied
+  by Boost and Stickup *after* their own authored gates, so the gates keep their
+  meaning and the cooldown can only ever turn a yes into a no.
+- **Ambient retaliation warnings.** While a threat is queued in the district you
+  are standing in, the activity feed carries one line a day — *"Same car passed
+  the lot twice."* It stops when you leave, when the threat surfaces, or when it
+  expires. The first time a run ever avoids a threat into expiry, the Phone
+  carries a one-time callback. Neither ever names a day, a count, or the actor:
+  PX-003 §8 keeps the window hidden, and the parity suite audits the copy for it.
+
+`day_lifecycle.gd` gained a third `DAY_START_ORDER` step, `retaliation_ambient`,
+appended after `surface_delayed`. Nothing above it moved. Save schema is **v9**:
+one additive field, `consequence_flags`, for the consequence layer's run-level
+one-shot flags. The arrest cooldown needed no field of its own — it rides inside
+`arrest_record`, which v8 already persisted whole.
 
 ## Project layout
 
@@ -130,7 +171,7 @@ systems/              # the ONLY writers of GameState
   heat.gd             # the only writer of heat; district x family scaling, relief
   consequence_engine.gd # one blocking chain, receipts, the delayed queue, Pressure
   arrest.gd           # severity, bail, priors, processing time, the record
-  retaliation.gd      # the delayed answer: schedule, activation, street crew
+  retaliation.gd      # the delayed answer: schedule, ambient warnings, street crew
   list_adapter.gd     # Pherris running the board: what she buys, and why she stops
   requirements.gd     # pure eligibility evaluator — structured blockers, no state
   territory.gd        # corners, soldiers, passive income
@@ -266,7 +307,7 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (10,609 checks at FS-001.10, floor enforced at 10,600); fixtures grow with each system |
+| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (10,781 checks at FS-001.10, floor enforced at 10,770); fixtures grow with each system |
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
 | 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
 | 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
@@ -290,6 +331,7 @@ regardless of how small the source file is.
 | FS-003.10. Retaliation | ✅ the delayed path: schedule, dedupe, Day +2/+5 window, district presence, arrest suppression, Dirty-only loss; parity → 9905 checks |
 | FS-003.11. Consequence UX | ✅ qualitative odds, arrest warnings, exact deltas, return routes, Local Attention on Boost/Stickup/Market; parity → 10044 checks |
 | FS-003.12. Integration gate | ✅ TI-003 §23 scenarios, save migration matrix, 30-day market non-drift, seeded long-run simulations; parity → 10211 checks |
+| FS-003.13. Balance pass | ✅ Pressure recovery, arrest gates + cooldown, Financial Pressure activation, PX-003 §8 ambient signals, save v9; parity → 10611 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

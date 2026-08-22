@@ -241,7 +241,7 @@ func _run(target_id: String) -> Dictionary:
 	# The RAW combat value, not compat() — anything routed through the resolver
 	# reads the stored attribute and carries no inline offset. See its header.
 	var outcome: Dictionary = resolver.resolve_action(
-		"robbery", chance_for(t), attributes.value("combat"), gs.run_seed, key)
+		"robbery", chance_for(t), attributes.effective("combat"), gs.run_seed, key)
 	var tier: String = str(outcome["tier"])
 	var success: bool = resolver.is_success_tier(tier)
 

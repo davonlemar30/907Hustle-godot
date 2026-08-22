@@ -113,7 +113,7 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## a missing key as -1: no cooldown, which is the correct history for arrests
 ## that predate the mechanic. One bump, one arm, both new pieces of state
 ## covered.
-const SAVE_VERSION := 10
+const SAVE_VERSION := 11
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 
 ## Every mutable GameState field, captured and applied by name. products.price
@@ -175,6 +175,10 @@ const PERSIST_FIELDS: Array[String] = [
 	"consequence_flags",
 	# Progression discovery latches (v10, surface visibility).
 	"districts_unlocked", "job_contacts",
+	# Venue interiors (v11). The session counts and the gym streak are the state
+	# behind `effectiveAttribute`; `venues_entered` is what the player has walked
+	# into, which is what makes the Night Owl's shift findable at all.
+	"attribute_sessions", "gym_streak", "gym_last_day", "venues_entered",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -493,6 +497,20 @@ func _migrate(payload: Dictionary) -> Dictionary:
 								and str((record as Dictionary).get("status", "active")) == "active":
 							contacts += 1
 				state["job_contacts"] = contacts
+			10:
+				# v10 -> v11: the venue interiors. Every field is additive and
+				# every default IS the history rather than standing in for it —
+				# a v10 save was written by a build with no gym and no counter
+				# to walk into, so zero sessions, no streak and nothing entered
+				# is exactly what happened.
+				#
+				# The one thing worth being explicit about: `jobs_discovered` is
+				# NOT touched. The Night Owl shift has been unreachable in every
+				# build up to this one, and a v10 run has genuinely never been
+				# offered it. Stamping it in would hand a loading save a job it
+				# was never told about; walking into the counter offers it, the
+				# same as for a fresh run.
+				pass
 			_:
 				return {}
 		version += 1

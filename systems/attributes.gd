@@ -46,18 +46,22 @@ extends RefCounted
 ##     footprint, because canon's `OUTCOME_OBSERVATIONS` keys what the
 ##     neighborhood learns off the tier. That is a build of its own; porting the
 ##     resolver now would ship a large untested branch with no caller.
-##   - **Streaks** (`gymStreakBonus`, `nileStreakBonus`, `effectiveAttribute`).
-##     Three consecutive days at the Spenard Gym or The Nile are worth +1
-##     effective level on the next check. Neither venue exists, so the bonus is
-##     always 0 and `effectiveAttribute` would be `value` with extra steps.
+##   - **Streaks** — `gymStreakBonus` and `effectiveAttribute` are ported as of
+##     batch 7, because the Spenard Gym now exists and the only reason they were
+##     not was that it did not. Three consecutive days at the gym are worth +1
+##     effective Combat on the next check. `nileStreakBonus` stays unported and
+##     the original reason still holds for it: The Nile has no venue, so its
+##     bonus would always be 0.
 ##   - **Street Identity** is ported as of part 2, below — the Character screen
 ##     is its caller.
-##   - **Six of nine growth sources.** `GROWTH_RATES` is ported whole because it
-##     is one table and canon's design is that a new growth source is a row
-##     rather than a code path — but only `list_flip` has a surface today. The
-##     gym three (bag_work, cardio, sparring) and The Nile's five wait on their
-##     venues. A source with no attribute returns null so a typo at a call site
-##     fails loudly instead of training nothing, which is canon's rule.
+##   - **Five of nine growth sources**, down from eight as of batch 7.
+##     `GROWTH_RATES` is ported whole because it is one table and canon's design
+##     is that a new growth source is a row rather than a code path. The gym
+##     three (bag_work, cardio, sparring) and `night_owl_social` now have their
+##     venues; The Nile's four (nile_social, tonk_game, celo_game,
+##     coffee_ceremony) wait on a venue that needs a gambling system this build
+##     does not have. A source with no attribute returns null so a typo at a
+##     call site fails loudly instead of training nothing, which is canon's rule.
 
 const IDS: Array[String] = ["combat", "charisma", "intelligence"]
 const DEFAULTS := {"combat": 1, "charisma": 1, "intelligence": 1}
@@ -65,6 +69,10 @@ const MIN := 0
 ## Not a design ceiling — canon calls this the clamp that stops a corrupt save
 ## producing a 400-combat player. "8+" is simply the top display tier.
 const MAX := 12
+
+## Canon's streak: three consecutive days at a venue, worth +1 effective level.
+const STREAK_DAYS := 3
+const STREAK_BONUS := 1
 
 ## Canon's ATTRIBUTES table: what each one is for, in the player's words.
 const TABLE := [
@@ -87,9 +95,10 @@ const LABEL_TIERS := [
 
 ## Base rate per session, before log2 diminishing returns.
 const GROWTH_RATES := {
-	# Combat — the Spenard Gym. No venue yet.
+	# Combat — the Spenard Gym (batch 7).
 	"bag_work": 0.3, "cardio": 0.2, "sparring": 0.5,
-	# Charisma — The Nile's two floors plus Night Owl nights. No venue yet.
+	# Charisma — The Nile's two floors (no venue: needs a gambling system) plus
+	# Night Owl nights (batch 7).
 	"nile_social": 0.25, "tonk_game": 0.4, "night_owl_social": 0.15,
 	# Intelligence — reading a table, a listing, a man's hands. `list_flip` is
 	# the one source this build can reach.
@@ -192,6 +201,36 @@ func normalized() -> Dictionary:
 func value(attribute: String) -> int:
 	return int(normalized().get(attribute, MIN))
 
+## Canon `effectiveAttribute`: the stored value plus whatever streak is running.
+##
+## **This, not `value`, is what a check reads.** `value` is who the player has
+## become; `effective` is who they are this morning, and the difference is the
+## three days running they just spent at the gym. Growth still banks against
+## `value` — a streak is a loan on the next check, not progress, and letting it
+## feed `growth`'s cap penalty would make a hot week permanently worth less.
+func effective(attribute: String) -> int:
+	return clampi(value(attribute) + streak_bonus(attribute), MIN, MAX)
+
+## Canon `gymStreakBonus`. +1 Combat once three consecutive days have been
+## trained, and only while the streak is still live.
+##
+## The liveness half is the part that is easy to leave out. `gym_streak` records
+## how many days in a row were trained, and nothing walks it back down — a run
+## that trained on days 3, 4 and 5 and then never returned would carry +1 for
+## the rest of the game if the bonus only read the count. So it also asks when
+## the last session was: today or yesterday keeps the streak on its feet,
+## anything older is a streak that has already been broken and simply has not
+## been told yet.
+func streak_bonus(attribute: String) -> int:
+	if attribute != "combat":
+		return 0
+	if int(gs.gym_streak) < STREAK_DAYS:
+		return 0
+	var last: int = int(gs.gym_last_day)
+	if last < 0 or gs.day - last > 1:
+		return 0
+	return STREAK_BONUS
+
 ## **The compatibility scale — read the file header before changing this.**
 ##
 ## Canon's pre-v1.10 formulas were tuned against attributes running 1-5 from a
@@ -199,7 +238,7 @@ func value(attribute: String) -> int:
 ## as the old default of 2, and the old ceiling of 5 still caps it. Every inline
 ## `(x - 2) * k` term in the game expects THIS value, not the stored one.
 func compat(attribute: String) -> int:
-	return clampi(value(attribute) + 1, 1, 5)
+	return clampi(effective(attribute) + 1, 1, 5)
 
 ## Canon attributeLabel. The player is told this and never the number.
 func label(v: int) -> String:

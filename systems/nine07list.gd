@@ -350,7 +350,7 @@ func settle_holding(index: int, execution_mode: String) -> Dictionary:
 	if resolver != null:
 		var key := "meetup:%d:%d:%s" % [gs.day, gs.time_slots_today, str(held["item_id"])]
 		var outcome: Dictionary = resolver.resolve_action("market_meetup", MEETUP_CHANCE,
-			attributes.value("intelligence"), gs.run_seed, key)
+			attributes.effective("intelligence"), gs.run_seed, key)
 		tier = str(outcome["tier"])
 		resolver.broadcast_outcome("market_meetup", tier, gs.current_district_id, got)
 

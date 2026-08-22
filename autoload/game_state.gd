@@ -324,6 +324,11 @@ func reset_to_new_game() -> void:
 	# Progression starts where the player does: home turf, nobody met.
 	districts_unlocked = ["north_star_lot"]
 	job_contacts = 0
+	# Venues: nothing walked into, nothing trained, no streak running.
+	attribute_sessions = {}
+	gym_streak = 0
+	gym_last_day = -1
+	venues_entered = []
 	# Jobs and obligations reset with the run.
 	active_job_id = ""
 	job_records = {}
@@ -1135,6 +1140,35 @@ var job_contacts: int = 0
 ##
 ## Always empty between days. `apply_clean_recovery` clears it as it pays.
 var pressure_clean_credits: Dictionary = {}
+
+# --- Venues (batch 7) --------------------------------------------------------
+
+## activity id -> how many sessions of it have happened. Read by
+## `AttributesSystem.train`, whose whole diminishing-returns curve is a function
+## of "how many came before this one".
+##
+## A Dictionary rather than a field per activity, because `GROWTH_RATES` is a
+## table and canon's design is that a new growth source is a row rather than a
+## code path — a counter per row would undo that.
+var attribute_sessions: Dictionary = {}
+
+## Canon `gymStreakBonus`: three consecutive days at the Spenard Gym are worth
+## +1 effective Combat on the next check.
+##
+## Two fields rather than a list of days: the streak only ever needs to answer
+## "how many in a row" and "was the last one recent enough to still count", and
+## a list would grow without bound for a question with two integers in it.
+## `gym_last_day` is -1 for a run that has never trained.
+var gym_streak: int = 0
+var gym_last_day: int = -1
+
+## Which venue interiors the player has walked into. Ordering is arrival order.
+##
+## Its one job today is first-visit copy and the Night Owl's shift offer — the
+## `night_owl` job has been in `jobs` since the port began with nothing in the
+## codebase ever adding it to `jobs_discovered`, which made it dead data. Now
+## the counter is where you find out about the counter.
+var venues_entered: Array = []
 
 ## Run-level one-shot flags owned by the consequence layer (FS-003.13 Task 5).
 ##

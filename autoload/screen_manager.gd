@@ -18,6 +18,10 @@ const STREET := "res://ui/screens/street.tscn"
 const MARKET := "res://ui/screens/market.tscn"
 const HUSTLE := "res://ui/screens/hustle.tscn"
 const JOBS := "res://ui/screens/jobs.tscn"
+## The two venue interiors (batch 7). Not in NAV_ROUTES — a venue is reached
+## from the Street card that names it, never from the bottom bar.
+const SPENARD_GYM := "res://ui/screens/spenard_gym.tscn"
+const NIGHT_OWL := "res://ui/screens/night_owl.tscn"
 const STICKUP := "res://ui/screens/stickup.tscn"
 const SHARK := "res://ui/screens/shark.tscn"
 const LIST := "res://ui/screens/nine07list.tscn"

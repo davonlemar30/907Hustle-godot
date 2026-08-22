@@ -141,6 +141,7 @@ func _ready() -> void:
 		_check_route_visibility(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_operation_substrate(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch6b(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch7(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -1753,8 +1754,9 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 
 	# Pinned deliberately, and bumped deliberately: this assertion exists so a
 	# schema change cannot land by accident, which means every real bump edits
-	# it on purpose. 6 → 7 in FS-001.6, 7 → 8 in FS-003.4, 8 → 9 in FS-003.13.
-	_expect_int("save version is 10", saves.SAVE_VERSION, 10)
+	# it on purpose. 6 → 7 in FS-001.6, 7 → 8 in FS-003.4, 8 → 9 in FS-003.13,
+	# 9 → 10 in v0.1.0, 10 → 11 in batch 7 (the venue interiors).
+	_expect_int("save version is 11", saves.SAVE_VERSION, 11)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
 
 	# A v5 save mid-day 4: one listing bought today and still held (recoverable),
@@ -12680,7 +12682,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is at v0.1.0's version", saves.SAVE_VERSION, 10)
+	_expect_int("the schema is at batch 7's version", saves.SAVE_VERSION, 11)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -16094,7 +16096,7 @@ func _fail(label: String, detail: String) -> void:
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11392
+const MIN_CHECKS := 11480
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -16553,4 +16555,380 @@ func _check_unauthored_shark_term(gs: Node, gm: Node) -> void:
 	_expect_int("an authored term keeps its own value",
 		int(((fine["state"] as Dictionary)["shark_loans"] as Array)[0]["term"]), 7)
 	_expect_int("and needs no repair", (fine["repairs"] as Array).size(), 0)
+	gs.reset_to_new_game()
+
+# === batch 7 — the two venue interiors ======================================
+#
+# Two doors onto systems that were already built and could not be reached: the
+# gym onto `AttributesSystem`'s growth table (eight of nine sources had no
+# caller), the Night Owl onto a job that has been in `gs.jobs` since the port
+# began with nothing in the codebase ever adding it to `jobs_discovered`.
+#
+# The streak is the part that needed the most care. `effectiveAttribute` was
+# unported specifically BECAUSE the venues did not exist; shipping one makes
+# that reason false, so it is ported here — and a streak that never expires
+# would be a permanent free point, which is what most of these checks are about.
+#
+# SABOTAGE: `return value(attribute)` in AttributesSystem.effective
+#           ==> "three days running reads one step above the stored value" fails.
+# SABOTAGE: drop the liveness half of streak_bonus (count only)
+#           ==> "a streak the run walked away from is over" fails.
+# SABOTAGE: advance the streak per SESSION instead of per day
+#           ==> "two sessions in one day are still one day" fails.
+# SABOTAGE: make growth() read effective() instead of value()
+#           ==> "a streak is a loan on the check, not on the growth" fails.
+# SABOTAGE: drop the _offer_the_counter call from _enter
+#           ==> "walking in is how the counter shift is found" fails.
+# SABOTAGE: drop the `jobs_discovered` guard in _offer_the_counter
+#           ==> "the counter is only ever listed once" fails.
+# SABOTAGE: drop BOTH the has_entered guard and the jobs_discovered one
+#           ==> "the offer does not arrive twice" fails. Either guard alone
+#           holds the property, so removing one is not enough to prove it —
+#           the first sabotage pass caught that and this is the honest test.
+# SABOTAGE: drop the advance_time call from _train
+#           ==> "and it costs a slot" fails.
+# SABOTAGE: drop _validate_gym_streak's future-day arm
+#           ==> "a save that trained tomorrow loses the streak" fails.
+
+const B7_GYM := "spenard_gym"
+const B7_OWL := "night_owl"
+
+func _check_batch7(gs: Node, gm: Node) -> void:
+	_check_effective_attribute(gs, gm)
+	_check_gym_sessions(gs, gm)
+	_check_night_owl_door(gs, gm)
+	_check_venue_persistence(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- the streak --------------------------------------------------------------
+
+func _check_effective_attribute(gs: Node, gm: Node) -> void:
+	var attributes: Object = gm.system("attributes")
+	if attributes == null:
+		_fail("batch7 effective", "no attributes system")
+		return
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 10
+	gs.attributes = {"combat": 3, "charisma": 3, "intelligence": 3}
+
+	_expect_int("with no streak the effective value is the stored one",
+		int(attributes.effective("combat")), 3)
+	_expect_int("and the bonus is zero", int(attributes.streak_bonus("combat")), 0)
+
+	# Three days running, trained today.
+	gs.gym_streak = 3
+	gs.gym_last_day = gs.day
+	_expect_int("three days running reads one step above the stored value",
+		int(attributes.effective("combat")), 4)
+	_expect_int("the stored value is untouched by it", int(attributes.value("combat")), 3)
+
+	# Yesterday still counts — a streak survives the morning before you train.
+	gs.gym_last_day = gs.day - 1
+	_expect_int("yesterday's session keeps the streak on its feet",
+		int(attributes.effective("combat")), 4)
+
+	# Two days ago does not.
+	gs.gym_last_day = gs.day - 2
+	_expect_int("a streak the run walked away from is over",
+		int(attributes.effective("combat")), 3)
+	gs.gym_last_day = -1
+	_expect_int("a run that never trained has no streak",
+		int(attributes.effective("combat")), 3)
+
+	# Two days is not three.
+	gs.gym_streak = 2
+	gs.gym_last_day = gs.day
+	_expect_int("two days running is not yet worth anything",
+		int(attributes.effective("combat")), 3)
+
+	# The gym trains Combat and only Combat.
+	gs.gym_streak = 5
+	gs.gym_last_day = gs.day
+	_expect_int("the gym streak does not read on Charisma",
+		int(attributes.effective("charisma")), 3)
+	_expect_int("nor on Intelligence", int(attributes.effective("intelligence")), 3)
+
+	# It cannot push past the clamp.
+	gs.attributes = {"combat": attributes.MAX, "charisma": 3, "intelligence": 3}
+	_expect_int("the streak cannot push Combat past its ceiling",
+		int(attributes.effective("combat")), int(attributes.MAX))
+
+	# compat() is what the inline `(x - 2) * k` formulas read, so it has to see
+	# the streak too, or the bonus would be invisible to half the game.
+	gs.attributes = {"combat": 2, "charisma": 3, "intelligence": 3}
+	gs.gym_streak = 0
+	gs.gym_last_day = -1
+	var bare: int = int(attributes.compat("combat"))
+	gs.gym_streak = 3
+	gs.gym_last_day = gs.day
+	_expect_int("the compatibility scale reads the streak as well",
+		int(attributes.compat("combat")), bare + 1)
+
+	# But growth does not. A streak is a loan on the next check; letting it feed
+	# the cap penalty would make a hot week permanently worth less.
+	gs.attributes = {"combat": 5, "charisma": 3, "intelligence": 3}
+	gs.gym_streak = 0
+	gs.gym_last_day = -1
+	var unstreaked: float = float(attributes.growth(
+		int(attributes.value("combat")), 0, "bag_work"))
+	gs.gym_streak = 3
+	gs.gym_last_day = gs.day
+	var streaked: float = float(attributes.growth(
+		int(attributes.value("combat")), 0, "bag_work"))
+	_expect_float("a streak is a loan on the check, not on the growth",
+		streaked, unstreaked)
+	# And the value it reads is genuinely below the penalty floor, so this is
+	# not vacuous — at 5 there is no penalty, at 6 there is.
+	_expect_true("the probe sits one below the cap-penalty floor",
+		int(attributes.GROWTH_CAP_PENALTY_FLOOR) == 6)
+	gs.reset_to_new_game()
+
+# --- the gym -----------------------------------------------------------------
+
+func _check_gym_sessions(gs: Node, gm: Node) -> void:
+	var venues: Object = gm.system("venues")
+	var attributes: Object = gm.system("attributes")
+	if venues == null or attributes == null:
+		_fail("batch7 gym", "a system is missing")
+		return
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 5
+	gs.cash = 500
+	gs.dirty_cash = 500
+	gs.clean_cash = 0
+
+	# Eight of nine growth sources had no caller. Three of them now do.
+	for activity in venues.GYM_ACTIVITIES:
+		_expect_true("%s is a real growth source" % str(activity["growth_id"]),
+			attributes.GROWTH_RATES.has(str(activity["growth_id"])))
+		_expect_str("and it trains Combat",
+			str(attributes.growth_attribute(str(activity["growth_id"]))), "combat")
+
+	# A session: money out, a slot gone, the counter up.
+	var cash_before: int = int(gs.cash)
+	var slot_before: int = int(gs.time_slots_today)
+	_expect_true("a gym session dispatches",
+		gm.dispatch("gym_train", {"activity_id": "cardio"}))
+	_expect_int("it costs what the card says", cash_before - int(gs.cash), 15)
+	_expect_true("and it costs a slot", int(gs.time_slots_today) != slot_before)
+	_expect_int("the session is counted", int(venues.sessions("cardio")), 1)
+	_expect_int("and only that session", int(venues.sessions("bag_work")), 0)
+
+	# Sparring costs health, the other two do not.
+	gs.time_slots_today = 0
+	var health_before: int = int(gs.health)
+	_expect_true("sparring dispatches", gm.dispatch("gym_train", {"activity_id": "sparring"}))
+	_expect_int("and you leave wearing it", health_before - int(gs.health), 8)
+
+	# It also has a floor. At 44 health the ring is not an option.
+	gs.time_slots_today = 0
+	gs.health = 44
+	_expect_str("the ring refuses you in no shape for it",
+		str(venues.train_blocker("sparring")), "You are in no shape for it")
+	_expect_true("and the dispatch refuses too",
+		not gm.dispatch("gym_train", {"activity_id": "sparring"}))
+	_expect_str("while the treadmill still takes you",
+		str(venues.train_blocker("cardio")), "")
+
+	# Money is a blocker, not a debt.
+	gs.health = 100
+	gs.cash = 5
+	gs.dirty_cash = 5
+	gs.clean_cash = 0
+	_expect_str("an empty pocket is the blocker",
+		str(venues.train_blocker("cardio")), "You need $15")
+	_expect_true("and it refuses", not gm.dispatch("gym_train", {"activity_id": "cardio"}))
+	_expect_str("an activity nobody authored is refused by name",
+		str(venues.train_blocker("yoga")), "No such session")
+
+	# The curve: the first session of anything is the valuable one.
+	_expect_true("the first session is worth more than the sixth",
+		float(attributes.growth(1, 0, "sparring")) > float(attributes.growth(1, 5, "sparring")))
+	_expect_true("and sparring is worth more than the treadmill",
+		float(attributes.growth(1, 0, "sparring")) > float(attributes.growth(1, 0, "cardio")))
+	_check_gym_streak_advance(gs, gm, venues)
+	gs.reset_to_new_game()
+
+func _check_gym_streak_advance(gs: Node, gm: Node, venues: Object) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 5
+	gs.cash = 5000
+	gs.dirty_cash = 5000
+	gs.clean_cash = 0
+
+	_expect_int("a fresh run has no streak", int(gs.gym_streak), 0)
+	_expect_int("and has never trained", int(gs.gym_last_day), -1)
+
+	gs.time_slots_today = 0
+	_expect_true("day one at the gym", gm.dispatch("gym_train", {"activity_id": "cardio"}))
+	_expect_int("counts as one day", int(gs.gym_streak), 1)
+	_expect_int("stamped today", int(gs.gym_last_day), 5)
+
+	# A second session the same day is a second session, not a second day.
+	gs.day = 5
+	gs.time_slots_today = 0
+	_expect_true("a second session the same day", gm.dispatch("gym_train", {"activity_id": "bag_work"}))
+	_expect_int("two sessions in one day are still one day", int(gs.gym_streak), 1)
+	_expect_int("but both sessions are counted", int(venues.sessions("bag_work")), 1)
+
+	gs.day = 6
+	gs.time_slots_today = 0
+	_expect_true("day two", gm.dispatch("gym_train", {"activity_id": "cardio"}))
+	_expect_int("is two days running", int(gs.gym_streak), 2)
+	gs.day = 7
+	gs.time_slots_today = 0
+	_expect_true("day three", gm.dispatch("gym_train", {"activity_id": "cardio"}))
+	_expect_int("is three", int(gs.gym_streak), 3)
+	var state: Dictionary = venues.gym_streak_state()
+	_expect_true("and the bonus is live", bool(state["live"]))
+	_expect_int("with nothing more to do for it", int(state["to_bonus"]), 0)
+
+	# A day off breaks it, and the next session starts from one.
+	gs.day = 9
+	gs.time_slots_today = 0
+	var lapsed: Dictionary = venues.gym_streak_state()
+	_expect_true("a day off reads as no streak at all", not bool(lapsed["live"]))
+	_expect_int("and the screen shows nothing running", int(lapsed["days"]), 0)
+	_expect_true("training again", gm.dispatch("gym_train", {"activity_id": "cardio"}))
+	_expect_int("starts over at one", int(gs.gym_streak), 1)
+	gs.reset_to_new_game()
+
+# --- the Night Owl -----------------------------------------------------------
+
+func _check_night_owl_door(gs: Node, gm: Node) -> void:
+	var venues: Object = gm.system("venues")
+	if venues == null:
+		_fail("batch7 night owl", "no venues system")
+		return
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 5
+	gs.cash = 500
+	gs.dirty_cash = 500
+	gs.clean_cash = 0
+
+	# The defect this venue exists to fix: the job is real, priced, slotted, and
+	# nothing in the build ever made it findable.
+	var job_exists := false
+	for job in gs.jobs:
+		if str(job["id"]) == B7_OWL:
+			job_exists = true
+	_expect_true("the counter shift is real data", job_exists)
+	_expect_true("and a fresh run has never heard of it",
+		not (B7_OWL in gs.jobs_discovered))
+
+	var inbox_before: int = gs.phone_inbox.size()
+	_expect_true("walking in dispatches", gm.dispatch("enter_venue", {"venue_id": B7_OWL}))
+	_expect_true("walking in is how the counter shift is found",
+		B7_OWL in gs.jobs_discovered)
+	_expect_true("and Mina says so", gs.phone_inbox.size() > inbox_before)
+	_expect_true("the run remembers you came in", venues.has_entered(B7_OWL))
+
+	# Once. Guarded in two places, and the two are NOT the same guard — the
+	# first sabotage pass proved it: removing the inner one changed nothing,
+	# because `_enter` returns early on a venue already entered and the inner
+	# guard never ran. Each is now exercised on its own.
+	var inbox_after: int = gs.phone_inbox.size()
+	_expect_true("coming back in dispatches", gm.dispatch("enter_venue", {"venue_id": B7_OWL}))
+	_expect_true("the offer does not arrive twice", gs.phone_inbox.size() == inbox_after)
+	_expect_int("and the job is listed once",
+		gs.jobs_discovered.count(B7_OWL), 1)
+
+	# The inner guard, on its own. Reachable in the one case the outer guard
+	# cannot cover: a save whose `venues_entered` the validator repaired away
+	# while `jobs_discovered` kept the job. Called directly for the same reason
+	# the v10 migration check calls `_migrate` directly — through the dispatch
+	# it is unreachable, and an unreachable guard is one nobody can prove.
+	venues._offer_the_counter()
+	venues._offer_the_counter()
+	_expect_int("the counter is only ever listed once",
+		gs.jobs_discovered.count(B7_OWL), 1)
+
+	# The gym is a different door and offers nothing.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_expect_true("walking into the gym dispatches",
+		gm.dispatch("enter_venue", {"venue_id": B7_GYM}))
+	_expect_true("the gym does not put you behind a counter",
+		not (B7_OWL in gs.jobs_discovered))
+	_expect_true("but it is remembered", venues.has_entered(B7_GYM))
+	_expect_true("a venue nobody authored is refused",
+		not gm.dispatch("enter_venue", {"venue_id": ""}))
+
+	# A night at the counter: money, a slot, a Charisma session, and Mina seeing
+	# you somewhere that is not a crime scene.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 5
+	gs.cash = 500
+	gs.dirty_cash = 500
+	gs.clean_cash = 0
+	gs.time_slots_today = 0
+	var exposure := get_node("/root/Exposure")
+	var ledger_before: int = (exposure.ledger_of("mina") as Array).size()
+	var cash_before: int = int(gs.cash)
+	_expect_true("a night at the counter dispatches", gm.dispatch("night_owl_social", {}))
+	_expect_int("it costs what the card says",
+		cash_before - int(gs.cash), int(venues.NIGHT_OWL_SOCIAL_COST))
+	_expect_int("and the night is counted",
+		int(venues.sessions(venues.NIGHT_OWL_GROWTH)), 1)
+	_expect_true("Mina saw a quiet night",
+		(exposure.ledger_of("mina") as Array).size() > ledger_before)
+	gs.reset_to_new_game()
+
+# --- the save ----------------------------------------------------------------
+
+func _check_venue_persistence(gs: Node, gm: Node) -> void:
+	var saves := get_node("/root/SaveSystem")
+	_expect_int("the schema is v11", int(saves.SAVE_VERSION), 11)
+	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
+		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
+
+	# v10 -> v11 is additive, and deliberately does NOT stamp the counter shift
+	# in: a v10 run has genuinely never been offered it.
+	var v10 := {"save_version": 10, "state": {
+		"day": 9, "cash": 400, "street_name": "Legacy",
+		"jobs_discovered": ["wash_go"],
+	}}
+	var migrated: Dictionary = saves._migrate(v10)
+	_expect_true("a v10 save migrates", not migrated.is_empty())
+	if not migrated.is_empty():
+		_expect_true("and is not handed a job it was never told about",
+			not (B7_OWL in (migrated.get("jobs_discovered", []) as Array)))
+		_expect_true("nor a streak it never ran",
+			not migrated.has("gym_streak") or int(migrated["gym_streak"]) == 0)
+
+	# The validator: three ways a save could hand back a free point.
+	var validator: RefCounted = preload("res://autoload/save_validator.gd").new()
+	var bad: Dictionary = validator.validate_state({
+		"day": 10,
+		"attribute_sessions": {"cardio": -4, "bag_work": "many"},
+		"gym_streak": 9, "gym_last_day": 40,
+		"venues_entered": [B7_GYM, B7_GYM, 7],
+	})
+	var fixed: Dictionary = bad["state"]
+	_expect_int("a negative session count is clamped",
+		int((fixed["attribute_sessions"] as Dictionary)["cardio"]), 0)
+	_expect_int("and a non-numeric one is defaulted",
+		int((fixed["attribute_sessions"] as Dictionary)["bag_work"]), 0)
+	_expect_int("a save that trained tomorrow loses the streak",
+		int(fixed["gym_streak"]), 0)
+	_expect_int("and its last day with it", int(fixed["gym_last_day"]), -1)
+	_expect_int("a duplicated venue is listed once",
+		(fixed["venues_entered"] as Array).size(), 1)
+	_expect_true("and the repairs are reported",
+		(bad["repairs"] as Array).size() >= 4)
+
+	# An honest save is left alone.
+	var good: Dictionary = validator.validate_state({
+		"day": 10, "attribute_sessions": {"cardio": 4},
+		"gym_streak": 3, "gym_last_day": 10, "venues_entered": [B7_GYM],
+	})
+	_expect_int("an honest streak survives validation",
+		int((good["state"] as Dictionary)["gym_streak"]), 3)
+	_expect_int("with no repairs", (good["repairs"] as Array).size(), 0)
 	gs.reset_to_new_game()

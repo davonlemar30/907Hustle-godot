@@ -29,6 +29,9 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_districts_unlocked(state, repairs)
 	_validate_job_contacts(state, repairs)
 	_validate_pressure_clean_credits(state, repairs)
+	_validate_attribute_sessions(state, repairs)
+	_validate_gym_streak(state, repairs)
+	_validate_venues_entered(state, repairs)
 	return {"state": state, "repairs": repairs}
 
 func _repair(repairs: Array[String], path: String, reason: String) -> void:
@@ -467,6 +470,80 @@ func _validate_pressure_clean_credits(state: Dictionary, repairs: Array[String])
 				_repair(repairs, path, "negative credit; defaulted")
 			else:
 				families[family] = float(families[family])
+
+## v11. Session counts feed `AttributesSystem.growth`'s log2 denominator, so a
+## negative one produces a growth rate larger than the authored base and a
+## non-integer one produces a float where the curve expects a count. Both are
+## clamped rather than dropped: the count is evidence the activity happened, and
+## losing it would hand the player back the valuable early sessions.
+func _validate_attribute_sessions(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("attribute_sessions"):
+		return
+	if not state["attribute_sessions"] is Dictionary:
+		state["attribute_sessions"] = {}
+		_repair(repairs, "attribute_sessions", "wrong type; defaulted")
+		return
+	var sessions: Dictionary = state["attribute_sessions"]
+	for activity in sessions.keys():
+		var path := "attribute_sessions.%s" % str(activity)
+		if not (sessions[activity] is int or sessions[activity] is float):
+			sessions[activity] = 0
+			_repair(repairs, path, "wrong type; defaulted")
+		elif int(sessions[activity]) < 0:
+			sessions[activity] = 0
+			_repair(repairs, path, "negative session count; defaulted")
+		else:
+			sessions[activity] = int(sessions[activity])
+
+## v11. The streak grants +1 effective Combat, so a corrupt one is a free
+## permanent point. `gym_last_day` is the liveness half — a day in the future
+## would keep a broken streak alive forever, so it is snapped back to -1, which
+## reads as "never trained" and costs the player only the streak they were not
+## honestly holding.
+func _validate_gym_streak(state: Dictionary, repairs: Array[String]) -> void:
+	if state.has("gym_streak"):
+		if not (state["gym_streak"] is int or state["gym_streak"] is float):
+			state["gym_streak"] = 0
+			_repair(repairs, "gym_streak", "wrong type; defaulted")
+		elif int(state["gym_streak"]) < 0:
+			state["gym_streak"] = 0
+			_repair(repairs, "gym_streak", "negative streak; defaulted")
+		else:
+			state["gym_streak"] = int(state["gym_streak"])
+	if not state.has("gym_last_day"):
+		return
+	if not (state["gym_last_day"] is int or state["gym_last_day"] is float):
+		state["gym_last_day"] = -1
+		_repair(repairs, "gym_last_day", "wrong type; defaulted")
+		return
+	state["gym_last_day"] = int(state["gym_last_day"])
+	var day_value: Variant = state.get("day", 0)
+	var today: int = int(day_value) if (day_value is int or day_value is float) else 0
+	if int(state["gym_last_day"]) > today:
+		state["gym_last_day"] = -1
+		state["gym_streak"] = 0
+		_repair(repairs, "gym_last_day", "trained in the future; streak cleared")
+
+## v11. Ids only, no duplicates — the array's whole job is `has_entered`, and a
+## duplicate or a non-string cannot make that answer more true.
+func _validate_venues_entered(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("venues_entered"):
+		return
+	if not state["venues_entered"] is Array:
+		state["venues_entered"] = []
+		_repair(repairs, "venues_entered", "wrong type; defaulted")
+		return
+	var clean: Array = []
+	for index in (state["venues_entered"] as Array).size():
+		var value: Variant = (state["venues_entered"] as Array)[index]
+		if not value is String:
+			_repair(repairs, "venues_entered[%d]" % index, "non-string dropped")
+			continue
+		if value in clean:
+			_repair(repairs, "venues_entered[%d]" % index, "duplicate dropped")
+			continue
+		clean.append(value)
+	state["venues_entered"] = clean
 
 func _validate_arrest_record(state: Dictionary, repairs: Array[String]) -> void:
 	if not state.has("arrest_record"):

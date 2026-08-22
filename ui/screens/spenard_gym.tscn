@@ -1,0 +1,645 @@
+[gd_scene load_steps=23 format=3]
+
+[ext_resource type="Theme" path="res://ui/theme/hustle_theme.tres" id="theme"]
+[ext_resource type="Script" path="res://ui/screens/spenard_gym.gd" id="scr"]
+[ext_resource type="PackedScene" path="res://ui/components/atmosphere.tscn" id="atmo"]
+[ext_resource type="Texture2D" path="res://assets/textures/bg-street.webp" id="bg_hustle"]
+[ext_resource type="Texture2D" path="res://assets/textures/logo1trans.webp" id="logo"]
+[ext_resource type="Texture2D" uid="uid://ciawbrqicop31" path="res://assets/icons/nav/icon-home.svg" id="ic_home"]
+[ext_resource type="Texture2D" uid="uid://qxxecxf6e7f8" path="res://assets/icons/nav/icon-market.svg" id="ic_market"]
+[ext_resource type="Texture2D" uid="uid://cqkn2m0xs6w3d" path="res://assets/icons/ui/icon-menu.svg" id="ic_menu"]
+[ext_resource type="Texture2D" uid="uid://c51emj88yov0m" path="res://assets/icons/ui/icon-warning.svg" id="ic_warning"]
+[ext_resource type="Texture2D" uid="uid://dxeaajkgr7tyr" path="res://assets/icons/hud/icon-heat.svg" id="ic_heat"]
+[ext_resource type="Texture2D" uid="uid://c11k5uwpyoqbd" path="res://assets/icons/hud/icon-health.svg" id="ic_health"]
+[ext_resource type="Texture2D" uid="uid://luq1ybqq3kxr" path="res://assets/icons/hud/icon-debt.svg" id="ic_debt"]
+[ext_resource type="Texture2D" uid="uid://bw130ej2fexja" path="res://assets/icons/hud/icon-cargo.svg" id="ic_cargo"]
+[ext_resource type="Texture2D" uid="uid://dmae0luhr7igo" path="res://assets/icons/hud/icon-respect.svg" id="ic_respect"]
+[ext_resource type="Texture2D" uid="uid://c24qf4w1hbbqc" path="res://assets/icons/hud/icon-crewpower.svg" id="ic_crewpwr"]
+[ext_resource type="Texture2D" uid="uid://r7311yoxptea" path="res://assets/icons/ui/icon-cash.svg" id="ic_cash"]
+[ext_resource type="Texture2D" uid="uid://1bbv00nt3ok8" path="res://assets/icons/ui/icon-external.svg" id="ic_ext"]
+[ext_resource type="Texture2D" uid="uid://c51emj88yov0m" path="res://assets/icons/ui/icon-warning.svg" id="ic_warn"]
+[ext_resource type="Texture2D" path="res://assets/icons/nav/icon-street.webp" id="ic_nav_street"]
+[ext_resource type="Texture2D" path="res://assets/icons/nav/icon-hustle.webp" id="ic_nav_hustle"]
+[ext_resource type="Texture2D" path="res://assets/icons/nav/icon-phone.webp" id="ic_nav_phone"]
+
+[sub_resource type="StyleBoxFlat" id="SB_fab"]
+bg_color = Color(0.7, 0.13, 0.1, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.35, 0.3, 1)
+corner_radius_top_left = 28
+corner_radius_top_right = 28
+corner_radius_bottom_right = 28
+corner_radius_bottom_left = 28
+shadow_color = Color(0.83, 0.16, 0.12, 0.55)
+shadow_size = 11
+
+[node name="Spenard_Gym" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("theme")
+script = ExtResource("scr")
+
+[node name="BG" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.043, 0.039, 0.055, 1)
+
+[node name="BGPhoto" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("bg_hustle")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Shell" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
+
+[node name="TopBar" type="PanelContainer" parent="Shell"]
+layout_mode = 2
+theme_type_variation = &"TopBar"
+
+[node name="HBox" type="HBoxContainer" parent="Shell/TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DayBox" type="PanelContainer" parent="Shell/TopBar/HBox"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Inset"
+
+[node name="V" type="VBoxContainer" parent="Shell/TopBar/HBox/DayBox"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Day" type="Label" parent="Shell/TopBar/HBox/DayBox/V"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+text = "DAY 14"
+
+[node name="Part" type="Label" parent="Shell/TopBar/HBox/DayBox/V"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "EVENING"
+
+[node name="Brand" type="TextureRect" parent="Shell/TopBar/HBox"]
+custom_minimum_size = Vector2(0, 66)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+texture = ExtResource("logo")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Right" type="VBoxContainer" parent="Shell/TopBar/HBox"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="LocBox" type="PanelContainer" parent="Shell/TopBar/HBox/Right"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="V" type="VBoxContainer" parent="Shell/TopBar/HBox/Right/LocBox"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="L1" type="Label" parent="Shell/TopBar/HBox/Right/LocBox/V"]
+layout_mode = 2
+theme_type_variation = &"CardTitle"
+horizontal_alignment = 1
+text = "SPENARD"
+
+[node name="L2" type="Label" parent="Shell/TopBar/HBox/Right/LocBox/V"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+horizontal_alignment = 1
+text = "ANCHORAGE, AK"
+
+[node name="CashBox" type="PanelContainer" parent="Shell/TopBar/HBox/Right"]
+layout_mode = 2
+theme_type_variation = &"Inset"
+
+[node name="V" type="VBoxContainer" parent="Shell/TopBar/HBox/Right/CashBox"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="C1" type="Label" parent="Shell/TopBar/HBox/Right/CashBox/V"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+horizontal_alignment = 1
+text = "CASH"
+
+[node name="C2" type="Label" parent="Shell/TopBar/HBox/Right/CashBox/V"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 1
+text = "$847"
+
+[node name="Line" type="ColorRect" parent="Shell"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+color = Color(0.2, 0.2, 0.2, 1)
+
+[node name="Hud" type="PanelContainer" parent="Shell"]
+layout_mode = 2
+
+[node name="HudRow" type="HBoxContainer" parent="Shell/Hud"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="C0" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C0"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C0/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_heat")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.29, 0.239, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C0/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "HEAT"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C0"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "6/15"
+
+[node name="S0" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C1" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C1"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C1/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_health")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.451, 0.722, 0.404, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C1/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "HEALTH"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C1"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "78/100"
+
+[node name="S1" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C2" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C2"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C2/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_debt")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.29, 0.239, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C2/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "DEBT"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C2"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "$1,200"
+
+[node name="S2" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C3" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C3"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C3/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_cargo")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.882, 0.651, 0.227, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C3/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "CARGO"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C3"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.882, 0.651, 0.227, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "9/18"
+
+[node name="S3" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C4" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C4"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C4/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_respect")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.475, 0.733, 0.757, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C4/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "RESPECT"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C4"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.475, 0.733, 0.757, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "4"
+
+[node name="S4" type="VSeparator" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+
+[node name="C5" type="VBoxContainer" parent="Shell/Hud/HudRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="Shell/Hud/HudRow/C5"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+
+[node name="Ico" type="TextureRect" parent="Shell/Hud/HudRow/C5/Top"]
+custom_minimum_size = Vector2(13, 13)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_crewpwr")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.62, 0.5, 0.85, 1)
+
+[node name="N" type="Label" parent="Shell/Hud/HudRow/C5/Top"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 9
+text = "CREW"
+
+[node name="V" type="Label" parent="Shell/Hud/HudRow/C5"]
+layout_mode = 2
+theme_type_variation = &"Mono"
+theme_override_colors/font_color = Color(0.62, 0.5, 0.85, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+text = "11"
+
+[node name="Scroll" type="ScrollContainer" parent="Shell"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Pad" type="MarginContainer" parent="Shell/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 20
+
+[node name="Content" type="VBoxContainer" parent="Shell/Scroll/Pad"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="VBoxContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="H" type="Label" parent="Shell/Scroll/Pad/Content/Title"]
+layout_mode = 2
+theme_type_variation = &"Brand"
+theme_override_font_sizes/font_size = 26
+text = "SPENARD GYM"
+
+[node name="Sub" type="Label" parent="Shell/Scroll/Pad/Content/Title"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 12
+text = "Nobody here cares what you do for money"
+
+[node name="Gap" type="Control" parent="Shell/Scroll/Pad/Content"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Body" type="VBoxContainer" parent="Shell/Scroll/Pad/Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="NavBar" type="PanelContainer" parent="Shell"]
+layout_mode = 2
+theme_type_variation = &"NavBar"
+
+[node name="NavRow" type="HBoxContainer" parent="Shell/NavBar"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="Street" type="Button" parent="Shell/NavBar/NavRow"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+flat = true
+
+[node name="V" type="VBoxContainer" parent="Shell/NavBar/NavRow/Street"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Street/V"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Street/V"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_nav_street")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Street/V"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+horizontal_alignment = 1
+text = "STREET"
+
+[node name="Hustle" type="Button" parent="Shell/NavBar/NavRow"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+flat = true
+
+[node name="V" type="VBoxContainer" parent="Shell/NavBar/NavRow/Hustle"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Hustle/V"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(1, 0.29, 0.239, 1)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Hustle/V"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_nav_hustle")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.29, 0.239, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Hustle/V"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+horizontal_alignment = 1
+text = "HUSTLE"
+
+[node name="HomeSlot" type="Control" parent="Shell/NavBar/NavRow"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Phone" type="Button" parent="Shell/NavBar/NavRow"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+flat = true
+
+[node name="V" type="VBoxContainer" parent="Shell/NavBar/NavRow/Phone"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/Phone/V"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/Phone/V"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_nav_phone")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/Phone/V"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+horizontal_alignment = 1
+text = "PHONE"
+
+[node name="More" type="Button" parent="Shell/NavBar/NavRow"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+flat = true
+
+[node name="V" type="VBoxContainer" parent="Shell/NavBar/NavRow/More"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/More/V"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/More/V"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_menu")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/More/V"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+horizontal_alignment = 1
+text = "MORE"
+
+[node name="HomeFab" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -34.0
+offset_top = -86.0
+offset_right = 34.0
+offset_bottom = -9.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_constants/separation = 5
+
+[node name="Circle" type="PanelContainer" parent="HomeFab"]
+custom_minimum_size = Vector2(56, 56)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_styles/panel = SubResource("SB_fab")
+
+[node name="Center" type="CenterContainer" parent="HomeFab/Circle"]
+layout_mode = 2
+
+[node name="Ico" type="TextureRect" parent="HomeFab/Circle/Center"]
+custom_minimum_size = Vector2(26, 26)
+layout_mode = 2
+texture = ExtResource("ic_home")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 0.93, 0.92, 1)
+
+[node name="L" type="Label" parent="HomeFab"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+theme_override_colors/font_color = Color(1, 0.29, 0.239, 1)
+horizontal_alignment = 1
+text = "HOME"
+
+[node name="HomeBtn" type="Button" parent="."]
+layout_mode = 1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -34.0
+offset_top = -86.0
+offset_right = 34.0
+offset_bottom = -9.0
+grow_horizontal = 2
+grow_vertical = 0
+focus_mode = 0
+flat = true
+
+[node name="Atmosphere" parent="." instance=ExtResource("atmo")]

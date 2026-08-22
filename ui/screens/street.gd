@@ -45,8 +45,34 @@ func _on_district(district_id: String) -> void:
 	if _gm.dispatch("travel", {"district_id": district_id}):
 		nav.show_toast("Traveled to %s. -$%d fare." % [target.get("name", "?"), gs.TravelFare])
 
+## Which venues have interiors, keyed by the name the card carries.
+##
+## Keyed on the display NAME rather than an index because that is what
+## `_wire_taps` binds and what `spenard_venues` actually carries — the venue
+## rows have no ids. A venue with no row here still toasts, which is the honest
+## answer for the two that are not built: The Nile needs a gambling system this
+## build does not have, and a Home interior would duplicate the Home nav tab.
+const VENUE_ROUTES := {
+	"Spenard Gym": "res://ui/screens/spenard_gym.tscn",
+	"Night Owl": "res://ui/screens/night_owl.tscn",
+}
+
+## Walking in. The `enter_venue` dispatch runs BEFORE the navigation, because
+## first entry is a mutation — it is what puts the Night Owl's shift on the
+## board — and a screen never mutates. Navigating first would render the
+## interior from the state of not having entered it.
 func _on_venue(venue_name: String) -> void:
-	nav.show_toast("%s — coming soon." % venue_name)
+	var route: Variant = VENUE_ROUTES.get(venue_name)
+	if not (route is String):
+		nav.show_toast("%s — coming soon." % venue_name)
+		return
+	_gm.dispatch("enter_venue", {"venue_id": _venue_id_for(venue_name)})
+	nav.go_to(str(route))
+
+## The venue rows carry no id, so one is derived from the name the same way a
+## route is looked up by it. Kept next to VENUE_ROUTES so the two cannot drift.
+func _venue_id_for(venue_name: String) -> String:
+	return venue_name.to_lower().replace(" ", "_")
 
 ## The People row on Street is where crew lives — it is the same idea as the
 ## contacts list it sits under, and there is no other route to it yet.

@@ -166,8 +166,20 @@ func _sell(p: Dictionary) -> Dictionary:
 		gs.inventory.erase(id)
 	else:
 		gs.inventory[id] = left
-	# Canon SELL does not restore availability — supply is what restocks
-	# overnight, not what the player hands back.
+	# FS-003 §6: "A completed criminal market sale adds +0.25 Market pressure,
+	# capped at +1 Market pressure per district per day from ordinary sales."
+	#
+	# The cap is the point of the rule rather than an afterthought: it lets
+	# dealing VOLUME become locally recognisable without turning each individual
+	# sale into a crisis. Four sales in a district make it known; the fifth is
+	# free, and tomorrow starts over.
+	#
+	# Sales only. Buying product is not what makes a corner recognisable — the
+	# repeated handoff is. And it is one gain per TRANSACTION, not per unit: a
+	# ten-unit sale is one handoff.
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine != null:
+		engine.add_market_pressure(gs.current_district_id)
 	return {"ok": true}
 
 ## Canon evolveMarkets (game-core.js:4483): one stream batch off rng_state,

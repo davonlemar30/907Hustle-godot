@@ -46,22 +46,22 @@ extends RefCounted
 ## touches earliest and most. FS-003.1 froze that with a named assertion and
 ## FS-001.8 fixed it. Nothing in this file rounds.
 ##
-## ## The district/family table ships as data, wired in FS-003.9
+## ## The district/family table, live as of FS-003.9
 ##
-## TI-003 §7 authors a district x family multiplier table. It is here, complete
-## and tested as a pure function, and `apply_gain` does NOT consult it this
-## slice.
+## TI-003 §7 authors a district x family multiplier table. FS-003.3 shipped it
+## as authored, pure, tested data that `apply_gain` deliberately did NOT consult,
+## because applying it inside a refactor whose acceptance criterion was "current
+## source outcomes preserve inherited totals" would have been a balance change
+## smuggled into a no-op.
 ##
-## That is deliberate. Applying it now would change what every stickup and boost
-## costs in Heat — a balance change to a shipped formula, inside a refactor
-## whose acceptance criterion is "current source outcomes preserve inherited
-## totals BEFORE new TI-003 modifiers are layered". The multipliers also only
-## make sense beside District Pressure (§8), which is FS-003.9's slice, and they
-## belong to the same edit.
+## FS-003.9 is where it belongs, beside District Pressure (§8), and this is where
+## it was turned on. Every criminal Heat gain is now scaled by where it happened
+## and what kind of crime it was: a robbery in Spenard is 1.3x, the same robbery
+## downtown is 1.0x, and market work in Spenard is 0.8x. Criminal geography
+## finally costs something.
 ##
-## So: `district_multiplier()` is authored, pure and covered now, so the values
-## are reviewable and cannot drift; `_district_scaling_enabled` is the single
-## line FS-003.9 flips. Freeze what is; file what is next.
+## The numbers this moved are named in the FS-003.9 HANDOFF section rather than
+## discovered by whoever next reads a Heat assertion and finds it changed.
 
 ## TI-003 §7 criminal families. The string a caller passes for `family`.
 const FAMILY_MARKET := "market"
@@ -90,8 +90,13 @@ const NEUTRAL_MULTIPLIER := 1.0
 var gs: Node
 var gm: Node
 
-## FS-003.9 flips this to true. See the file header for why it is false here.
-var _district_scaling_enabled := false
+## LIVE as of FS-003.9. See the file header for why it was false until then, and
+## the FS-003.9 section of HANDOFF.md for what flipping it changed.
+##
+## Kept as a variable rather than inlined so a test can turn it off and measure
+## the unscaled pipeline directly — which is what proves the multiplier is being
+## applied rather than baked into a number that happens to match.
+var _district_scaling_enabled := true
 
 func setup(game_state: Node, manager: Node) -> void:
 	gs = game_state

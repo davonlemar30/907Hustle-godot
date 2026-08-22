@@ -14,7 +14,49 @@ func _ready() -> void:
 		_gm.action_failed.connect(_on_action_failed)
 
 func _bind_content() -> void:
+	_fill_context()
 	_fill_products()
+
+## The district context strip: which part of town this board is, and what the
+## neighbourhood makes of the trade.
+##
+## This was previously the one place on the screen that never bound at all — the
+## blurb and all three pip meters were editor previews baked into the .tscn, so
+## they read SPENARD's numbers wherever the player actually was. Non-negotiable
+## rule 4 ("no hardcoded game values in .tscn files") had a hole in it here.
+##
+## The first meter is now **Local Attention** rather than the district's static
+## risk score: FS-003.11 asks the Market surface to read District Pressure bands
+## instead of the old static values, and Pressure is the one of the three that
+## the player's own behaviour moves. Police and Rival stay what they always were
+## — facts about the district, not about the player — and are bound live so they
+## follow the selected board.
+const ATTENTION_PIPS := 4
+const POLICE_MAX := 3
+const RIVAL_MAX := 3
+const POLICE_TINT := Color(0.475, 0.733, 0.757, 1)
+const RIVAL_TINT := Color(0.827, 0.161, 0.125, 1)
+
+func _fill_context() -> void:
+	var district: Dictionary = gs.current_district()
+	var base := "Shell/Scroll/Pad/Content/Districts/V/Ctx"
+	_set_text(base + "/Blurb", str(district.get("blurb", "")))
+
+	# TI-003 §19: qualitative only. The pips carry the BAND's difficulty steps
+	# (QUIET 0 · KNOWN 1 · WATCHED 2 · HOT 3), never the raw score behind them —
+	# four dots cannot leak a 0-to-9 number, which is the point of using them.
+	var band: String = attention_band("market")
+	var manager: Node = get_node_or_null("/root/GameManager")
+	var steps: int = 0
+	if manager != null:
+		var engine: Object = manager.system("consequence")
+		if engine != null:
+			steps = preload("res://data/consequence_rules.gd").new().pressure_steps(
+				engine.pressure_score(gs.current_district_id, "market"))
+	_set_text(base + "/Risk/N", band)
+	_set_pips(base + "/Risk/P", steps, ATTENTION_PIPS, attention_tone(band))
+	_set_pips(base + "/Police/P", int(district.get("police", 0)), POLICE_MAX, POLICE_TINT)
+	_set_pips(base + "/Rival/P", int(district.get("rival", 0)), RIVAL_MAX, RIVAL_TINT)
 
 func _connect_buttons() -> void:
 	for i in range(gs.products.size()):

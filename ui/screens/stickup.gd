@@ -12,6 +12,7 @@ func _build_body() -> void:
 		return
 
 	body.add_child(_status_card())
+	body.add_child(_attention_card("stick"))
 
 	var targets: Array = sys.visible_targets()
 	if targets.is_empty():
@@ -21,6 +22,22 @@ func _build_body() -> void:
 	body.add_child(section("MARKS NEARBY"))
 	for t in targets:
 		body.add_child(_target_row(sys, t))
+
+## Local Attention for the Stick family. Same shape as Boost's, deliberately:
+## PX-003 §7 wants one vocabulary the player learns once and reads everywhere,
+## and the two surfaces differ only in which family they are asking about.
+func _attention_card(family: String) -> Control:
+	var band: String = attention_band(family)
+	var tone: Color = attention_tone(band)
+	var c := card()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	v.add_child(label("LOCAL ATTENTION: %s" % band, "CardTitle", 13, tone))
+	var copy := str(ATTENTION_COPY.get(band, ""))
+	if not copy.is_empty():
+		v.add_child(label(copy, "Muted", 11, MUTED, true))
+	c.add_child(v)
+	return c
 
 func _status_card() -> Control:
 	var c := card()

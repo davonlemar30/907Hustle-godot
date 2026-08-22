@@ -544,6 +544,782 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.12: the integration gate, and what FS-003 leaves behind  (added 2026-08-22)
+
+The milestone gate. Everything above proves one slice; this proves they are one
+LAYER — that TI-003 §23's named scenarios run end to end, that every save path
+arrives somewhere coherent, and that thirty days of heavy criminal activity move
+the market stream exactly as far as thirty quiet days do.
+
+**Parity: 10,044 → 10,211 checks, 0 failures. Save schema stays v8.**
+
+### The schema did not need to move, and that is worth stating
+
+FS-003.8 through .11 persist an arrest record with charge history, District
+Pressure ledgers with their daily market caps, a bleed queue, a delayed
+retaliation queue, booking quotes and arrest warnings — and **not one of them
+needed a new field.** Everything rides in structures FS-003.4 allocated: the
+booking block and the arrest warnings live inside `active_consequence`, which is
+persisted whole.
+
+A version bump with no new field is a migration arm nobody can test, so the
+schema stayed at v8 and the suite now asserts both halves: that `SAVE_VERSION`
+is 8, and that every field these four slices depend on is in `PERSIST_FIELDS`.
+The second assertion is the one with teeth — dropping `district_pressure` from
+the manifest fails three checks and drops the total by 38.
+
+### Two verification bugs the gate found in its own tests
+
+Both are the same species as FS-003.8's provenance hole, and both are worth
+recording because neither was in the product.
+
+**`str(capture())` is not a state digest.** A freshly-built state carries its
+Dictionary keys in insertion order; one reconstructed from the save file carries
+them in the order the JSON parser produced, which is sorted. The two are
+byte-for-byte different and semantically identical — so the first version of the
+stage round-trip matrix reported *every* stage as a mismatch, on states that were
+in fact perfect. `_canonical()` sorts recursively and normalises whole-valued
+floats, which is what makes the comparison mean "the same facts" rather than "the
+same typing order".
+
+**A round trip cannot be compared against an unreconciled wallet.** The setups
+reach their stages through `_frozen_ready`, which sets `gs.cash` directly — one
+of TI-003 §6's named test exceptions. `SaveSystem` reconciles on load, so an
+unreconciled save comes back reconciled and the digest reports a difference that
+is really the harness's own shortcut. The matrix now reconciles first and asserts
+`cash == clean + dirty` before capturing, so both sides are states the game can
+actually be in.
+
+### The market non-drift check, and why it is sampled by day
+
+TI-003 §21's headline claim is that TI-003 adds zero market-stream draws. The
+check is two runs from one seed to day 39. One does nothing but sleep. The other
+lifts, robs Goodie's stash, gets caught, answers, gets booked, serves time, and
+takes the retaliation that robbery scheduled.
+
+Sampled **by day**, not by dispatch count — the only comparison that means
+anything, because a booking advances several slots at once and the two runs reach
+day 39 after very different numbers of calls. What must be equal is the number of
+nightly evolves, and that is one per day either way.
+
+Result: **30 days compared, 0 cursor mismatches, 0 board mismatches.**
+
+Two things had to be equalised for the comparison to be about the stream rather
+than about survival. Rent and the phone bill are pushed out of range in both arms
+— the loud arm is the one that spends slots inside bookings, so it is the one
+that would reach eviction first, and comparing a thirty-day run against a
+nineteen-day one proves nothing. And neither arm buys or sells product: market
+transactions consume availability, which the nightly walk reads.
+
+### Simulation findings
+
+Three seeded profiles, reported rather than asserted. FS-003.12's brief is
+explicit that balance findings become follow-up tasks rather than in-flight
+fixes, so the only assertions here are invariants that would be bugs at any
+balance: the wallet balances, Pressure stays inside 0–9, Heat inside 0–15,
+Financial Pressure inside 0–10, priors never outrun arrests, and every reload
+checkpoint matches.
+
+| Profile | Days | Arrests | Booking slots | Retaliation queued / surfaced | FP days ≥6 |
+| --- | --- | --- | --- | --- | --- |
+| Frequent crime, fights everything | 29 | 15 | 58 | 4 / 3 | 0 |
+| Frequent crime, yields everything | 29 | 12 | 50 | 8 / 4 | 4 |
+| Cautious, crime every third day | 26 | 5 | 19 | 1 / 1 | 0 |
+
+Pressure band distribution, home district, aggressive profile:
+
+    north_star_lot/boost   QUIET 1 · KNOWN 5 · WATCHED 2 · HOT 19
+    north_star_lot/stick   QUIET 4 · KNOWN 7 · WATCHED 4 · HOT 12
+
+**Four findings, filed rather than fixed:**
+
+1. **Arrest frequency.** A player committing crime every slot is arrested roughly
+   every other day and spends 58 of 29 days' worth of slots in booking. That may
+   be the intended cost of that playstyle; it is worth a designer looking at,
+   because it is close to the point where the arrest loop *is* the game.
+2. **Pressure saturates and stays saturated.** The home district sits at HOT for
+   19 of 29 days on the aggressive profile. Recovery is −1/day after a grace day,
+   and a single messy outcome is +1.0 — so any player working one district daily
+   outruns the decay permanently. The bands function; whether the top one should
+   be that easy to live in is a balance question.
+3. **The Financial Pressure fold almost never fires.** Zero days at the fold
+   threshold on two of three profiles. Bail is the main high-visibility spend in
+   these runs and most quotes are under the $400 free band, so the dirty portion
+   rarely clears it. The mechanic is correct and currently near-dormant.
+4. **Retaliation never expires when the player does not travel.** Expired count
+   is 0 across all three profiles, because none of them leaves the district. That
+   is the mechanic working — avoidance is the counterplay — but it means the
+   *avoidance* path gets no exercise in an ordinary aggressive run.
+
+`game over` in two profiles is eviction and is a property of the PROFILE rather
+than of the consequence layer: none of them ever works a shift or pays rent.
+
+### Sabotage results
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| 1 | A consequence roll draws from the market stream | **caught** — 1 failure |
+| 2 | v7 saves migrate cash to Dirty (canon's rule, not TI-003's) | **caught** — 6 failures |
+| 3 | `district_pressure` dropped from `PERSIST_FIELDS` | **caught** — 3 failures, and the total fell by 38 |
+
+Sabotage 1 exposed a gap in the drift check itself and was fixed rather than
+noted: the loud arm was robbing `washgo_regular`, which has no retaliation row,
+so the 30-day comparison never exercised the schedule roll at all. It robs
+Goodie's stash now, which schedules at 1.00 — so the arm covers the delayed path
+as well as Caught and Booking, and the check asserts it reached both.
+
+### The full TI-003 picture
+
+**Ownership, as shipped.** `GameManager` is the mutation boundary. `GameState`
+owns persisted facts. `ConsequenceEngine` owns the active chain, Cause receipts,
+the delayed queue and District Pressure. `ArrestSystem` owns booking quotes and
+the arrest record. `RetaliationSystem` owns the delayed path. `WalletSystem` and
+`HeatSystem` own every runtime Cash and Heat write, enforced by an audit that
+scans the source. `DayLifecycle` owns the ordered rollover. `OutcomeResolver`
+remains the tier authority and the odds projection. Source systems own their own
+state, tables and observations — and nothing else.
+
+**Known weaknesses, named.**
+
+- The Boost/Stickup surfaces still show a raw percentage for the ACTION's own
+  odds, while the consequence screen shows bands. Two vocabularies for the same
+  kind of number. FS-003.11 changed only what the brief scoped; unifying them is
+  a design call, not an implementation one.
+- The simulator answers chains with a fixed policy, so the metrics describe three
+  specific playstyles rather than a distribution. A profile that picks responses
+  by the odds it is shown would measure something closer to real play.
+- The retaliation `:injury` RNG key TI-003 reserves is unused, because §16 gives
+  Health as a flat number rather than a band. If a later pass makes it a band,
+  the key is already named.
+- District Pressure and Global Heat now BOTH scale by district — Pressure through
+  the difficulty penalty, Heat through the §7 multiplier table. They are separate
+  systems with separate storage, but a player experiences them as one "this
+  district is worse" and may not be able to tell them apart.
+
+**Migration path from a pre-TI-003 save.** A v7 save loads. Its aggregate cash
+enters Clean (TI-003 §20, a deliberate divergence from canon, which classifies
+its own pre-split saves Dirty). Every consequence structure defaults empty, and
+empty is the only true answer — a v7 save cannot hold an unfinished consequence,
+because none of these systems existed while it was being played. Nothing is
+inferred and no active chain is created.
+
+## FS-003.11: numbers underneath, situations on top  (added 2026-08-22)
+
+The consequence layer becomes a player experience. The engine could already
+hold a chain across a reload; what it could not do was explain itself.
+
+**Parity: 9,905 → 10,044 checks, 0 failures.**
+
+### The suite builds screens now
+
+This is the first section that instantiates real scenes against real state and
+reads back what they rendered. It matters because TI-003 §19 and PX-003 §11 are
+a list of values that must NOT reach the player, and a screen is exactly where
+one of them leaks. A rule enforced only in a system is a rule the presentation
+layer has never been asked about.
+
+The audit is blunt on purpose: **no Label on the consequence screen may contain
+a `%` character.** Nothing legitimate on that screen does, and a percent sign is
+precisely what a well-meaning edit reintroduces — showing the number is easier
+than choosing a word for it.
+
+Two mechanical things had to be right before any of that worked, and both are
+worth writing down:
+
+**`queue_free()` is wrong in this harness.** The runner does its whole job inside
+one `_ready()` and never yields a frame, so a queued node is never actually
+freed — and every instantiated screen stays connected to
+`GameState.state_changed` while it waits. Twenty leaked screens later, every
+dispatch in every section *below* re-renders all of them. The suite went from
+ninety seconds to not finishing at all. `free()` disconnects on the spot.
+`_free_screen()` is that, and the pre-existing `people.tscn` instantiation was
+leaking the same way and now goes through it too.
+
+**A screen that is not the current scene must not change scenes.** The
+consequence screen routes away when its chain clears, which is the fix for a real
+dead end (see below) and a catastrophe inside a harness that instantiates it
+alongside twenty others. `_is_live()` — `get_tree().current_scene == self` — is
+the guard.
+
+### The dead end this slice removes
+
+Before it, pressing CONTINUE cleared the chain and left the player on the
+consequence screen rendering "The moment has passed." — with no bottom
+navigation, because that is the whole point of the scene. `screen_base.refresh()`
+routes TO a blocking screen and has never had a reason to route away from one.
+
+`consequence.gd` now overrides `refresh()` and leaves for the chain's own
+`return_route`, so a blown Boost puts the player back on Boost rather than
+generically at Home. Losing your place is a small cost the game had no reason to
+charge.
+
+The scene also lost its `HomeFab` — a red circular HOME control, wired to
+nothing, sitting on a screen the player cannot leave. It looked like the way out
+and was not one.
+
+### Odds became words, which is a divergence from PX-003
+
+FS-003.11's brief: *"Use qualitative labels derived from exact probability. Do
+NOT show raw percentages. The numbers exist underneath; the player reads
+situations."* Verification checklist item 9 repeats it, and the acceptance
+criteria repeat it again.
+
+**PX-003 §4 and §19 point 6 say the opposite**, sketching `[chance]%` on the
+response cards and arguing from the existing Boost and Stickup surfaces, which
+do show percentages.
+
+Implemented per the build brief — qualitative bands — and recorded here and in
+the design log rather than silently chosen. Three reasons it is the better
+reading even setting authority aside: the brief is the later and more specific
+instruction; PX-003's own §11 already keeps "raw probability percentages" on the
+hidden list, so the document is not internally consistent; and the odds shown on
+a consequence card are a projection through advantage and catastrophe immunity,
+which is a genuinely different kind of number from the flat chance a Boost target
+displays. Precision the player cannot act on is not information, it is noise
+with a decimal point.
+
+The bands are uneven, deliberately. The gap between 70% and 60% changes what a
+player does; the gap between 20% and 10% does not — both are "this is going to
+hurt". So the top of the range is described more finely than the bottom.
+
+### Arrest warnings are derived, never restated
+
+PX-003 §19 point 8: a player must not discover a booking gate after choosing Run.
+So each response carries a risk CODE, snapshotted with its odds when the decision
+opens, and the scene turns codes into copy.
+
+`caught_arrest_risk()` derives the code from the authored effect table rather
+than duplicating it, so a balance edit to `CAUGHT_EFFECTS` moves the warning with
+it. A warning kept in sync by hand would eventually tell the player the wrong
+thing, which is worse than telling them nothing.
+
+Run gets two different warnings because its failure row is the one conditional
+one, and the player deserves to know **which** condition made it true: "this
+target" is something they chose and can choose differently, "your Heat" is
+something they carry. Both are surfaced without the threshold — `HIGH HEAT: A
+FAILED RUN CAN BOOK YOU`, never `above 6`.
+
+### The Market strip was never bound at all
+
+Binding Local Attention onto the Market context strip turned up a hole in
+non-negotiable rule 4 ("no hardcoded game values in .tscn files"): the blurb and
+all three pip meters were editor previews baked into the scene, so they showed
+**Spenard's** numbers wherever the player actually was. Nothing bound them.
+
+They bind now. The first meter reads the Market family's Pressure band rather
+than the district's static risk — FS-003.11 asks for exactly that swap, and
+Pressure is the one of the three the player's own behaviour moves. Four dots
+carrying a 0-to-3 band cannot leak a 0-to-9 score, which is part of why pips are
+the right control for it.
+
+### Sabotage results
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| 1 | Odds render as `62%` again | **caught** — 3 failures |
+| 2 | Arrest risk dropped from the projection | **caught** — 2 failures |
+| 3 | Run/failure blames Heat when the target is the cause | **caught** — 2 failures |
+| 4 | A HOME button added to the blocking scene | **caught** — 5 failures |
+| 5 | KNOWN odds band swallows RISKY | **caught** — 4 failures |
+
+Sabotage 2 is worth a note on process rather than on the code: the first attempt
+targeted the wrong file, the anchor did not match, and the run came back green.
+A green run after a sabotage that never applied looks identical to a sabotage
+that was not caught. The injector now asserts its anchor exists and fails loudly,
+which is why the second attempt found the two failures it should have.
+
+### Art and audio the consequence screen does not have
+
+Required by PX-003 but not blocking, using placeholder tints and labels today:
+
+| Asset | Where | What is used instead |
+| --- | --- | --- |
+| Consequence background plate | Blocking scene backdrop | `bg-street.webp`, shared with Hustle |
+| Per-tier opponent portraits (Clerk, Store Security, Armed Guard) | Decision stage | Text only |
+| Retaliation actor art | Retaliation decision stage | The actor's label |
+| Booking / procedural iconography | Booking and release stages | Theme `Kicker` text |
+| Impact audio for a committed choice | On commit | Silent |
+| Band icons for QUIET/KNOWN/WATCHED/HOT | Boost, Stickup, Market | Coloured text label |
+
+None of them is load-bearing: PX-003 §16 requires colour to travel with text and
+it does, so every one of these is additive rather than a gap in comprehension.
+
+### What FS-003.12 inherits
+
+A suite that can build a screen and read it back, which is what a hidden-
+information audit needs. And an interaction surface where every action is 46px
+and every terminal stage has exactly one control — both now asserted rather than
+inspected.
+
+## FS-003.10: the one consequence that waits  (added 2026-08-22)
+
+`systems/retaliation.gd`. Everything else in the consequence layer happens inside
+the dispatch that caused it. This is the one thing that does not: you rob a
+register on Tuesday, and on Thursday the people who own it find you standing in
+the same district.
+
+**Parity: 9,637 → 9,905 checks, 0 failures.**
+
+### It is a system, not an adapter on Stick
+
+Stick creates the debt; it does not collect it. By the time a retaliation
+surfaces the robbery is two days gone, and what resolves it is a completely
+different table from the one that resolved the robbery. Hanging it off
+`stickup.gd` would put two unrelated encounters in one file and make Stick the
+owner of a queue it never reads.
+
+It registers through the same runtime source-adapter registry Boost uses.
+"Source adapter" there really means *whoever resolves this chain*, and a delayed
+consequence resolves itself — the chain's `action_id` is `"retaliation"`, which
+the registry turns back into a system on every boot including after a load.
+
+### Presence is the design, and it needed a second activation point
+
+TI-003 §15 gates activation on four things, all of which live on the engine
+because "may this surface" is a question about the queue: the blocking slot is
+free (regression #27), the daily allowance is unspent (#28), the row is inside
+its window, and **the player is standing in the district** (#29).
+
+TI-003 §9 puts activation in the day-start lifecycle, and that alone would have
+made the presence rule almost decorative. `current_district_id` persists across
+days, so a day-start-only check catches exactly one player: the one who *slept*
+in the threatened district. Somebody who works Spenard every afternoon and ends
+each day at home would never meet anybody, and "avoid the district" would quietly
+degrade to "avoid sleeping in the district".
+
+So activation is asked at two moments — the declared day-start step, and after a
+completed travel. The engine still owns every gate; travel only asks the question
+again now that the answer can have changed. Named here because it is an addition
+to §9's list rather than something it says.
+
+### DAY_START became a declared list too
+
+`DAY_START_ORDER = [expire_retaliation, surface_delayed]`, run inside
+`run_night_transition` rather than registered as a `day_start_hook`. Two reasons:
+the hooks are somebody else's extension point and the ordering tests assert they
+ship empty, and `clear_hooks()` must not be able to remove the game.
+
+Expiry runs before activation, which is not arbitrary — a row that ran out
+overnight has to be gone before anything asks what is eligible, or the day's one
+delayed slot could be spent on an encounter that had already expired.
+
+### Scheduling happens before the arrest gate, not instead of it
+
+A catastrophic hit on Goodie's stash both schedules at 1.00 *and* books at every
+tier, so one robbery produces both halves. The row is queued when the robbery
+resolves and cleared when the booking commits (TI-003 §13 step 7).
+
+Skipping the schedule on an arrest would have been simpler and is wrong: it would
+make the queue depend on a decision the player has not made yet. A save taken
+between the robbery and the booking choice legitimately carries a row that is
+about to be cleared, because the arrest has not happened yet.
+
+### Cash reads the Dirty bucket, and that is the split finally doing something
+
+TI-003 §16 and regression #39. They take what you took. The loss is computed
+against the live dirty balance — a player who spent the take between the robbery
+and the reckoning genuinely has less to lose — and it is bounded by that balance
+before it reaches the wallet, so Clean is unreachable by arithmetic as well as by
+policy.
+
+The test that matters most is the empty one: a player holding $5,000 of wage
+money and nothing dirty loses **nothing**. Until this slice, the provenance split
+was information the wallet kept for later. This is the first thing in the build
+that reads it to decide something a player can feel.
+
+### `source_time_owed()` had to learn about zero
+
+A delayed consequence owes no source slot: the robbery paid its slot two days
+ago, which satisfies TI-003 §26's "one source action pays its normal time cost
+once". But `source_time_owed()` was `not settled`, so a chain carrying zero slots
+still answered "owed" — and the booking projection would have told the player
+they were about to lose time they were not.
+
+It now reads `remaining > 0 and not settled`, and `_continue` stamps the settled
+flag either way so a zero-slot chain closes the same way a one-slot chain does.
+
+### Values authored here rather than found in the spec
+
+TI-003 §15 gives schedule chances by target and names only Goodie's `actor_id`.
+The other three are derived from the target — `till_crew_spenard`,
+`till_crew_downtown`, `dice_crew` — with labels to match. Deriving them from the
+target is what makes "the same crew cannot come twice for the same night" true
+without a lookup table nobody maintains.
+
+TI-003's key list reserves `retaliation:<cause>:<actor>:<choice>:injury`, but §16
+gives Health as one flat number per row rather than a band. **Nothing rolls for
+damage**, and that key is deliberately unused: rolling a band the design does not
+have would be inventing a value.
+
+### Sabotage results
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| 1 | Plain Failure becomes a qualifying tier | **caught** — 5 failures |
+| 2 | District gate removed from `eligible_queued` | **caught** — 7 failures |
+| 3 | Cash loss spends `HIGH_VISIBILITY_CLEAN_FIRST` | **caught** — 14 failures |
+| 4 | Trigger delay 2 → 1 day | **caught** — 3 failures |
+| 5 | Daily delayed cap never claimed | **caught** — 2 failures |
+| 6 | Arrest stops suppressing same-Cause rows | **caught** — 3 failures |
+| 7 | Yield removed from the deterministic list | **caught** — 3 failures |
+| 8 | Street crew gains a Talk lane | **caught** — 4 failures |
+
+### What FS-003.11 inherits
+
+Three chain kinds that all reach the same scene, and the two projections it will
+render: `choice_summaries()` already carries `deterministic`, `has_odds` and a
+persisted `disabled`, and `local_attention_summary()` is waiting for the Boost
+and Stickup status cards. The consequence screen currently prints raw
+percentages, which is what .11 replaces.
+
+## FS-003.9: the city starts recognising the routine  (added 2026-08-22)
+
+Two systems that share a slice because they share a rollover. District Pressure
+is local memory of a criminal pattern; Financial Pressure is what happens when
+street money moves through a formal bill. Neither is a number the player ever
+sees, which is exactly why both needed testing at the level of what they do.
+
+**Parity: 9,440 → 9,637 checks, 0 failures.**
+
+### Pressure lives on the engine, not on the sources
+
+TI-003 §8 puts it there and the reason is structural rather than tidy: a Boost, a
+Stick and a Market sale all write into the same district ledger under different
+families, and the score a lift reads back may have been raised by a robbery two
+days ago. No single source system can own a number every other source writes to.
+So `boost.gd`'s FS-003.7 ledger write is now a two-line forward to
+`engine.add_pressure()`, and the bleed those gains schedule is the engine's
+business.
+
+### Three rules that are easy to state and easy to get subtly wrong
+
+**Bleed carries the new gain, never the stored score.** FS-003 §6: "Bleed uses
+the new gain from the cause. The entire stored score never copies outward
+again." Bleeding the score compounds — Spenard's 4 puts 2 into Downtown, whose 2
+puts 1 back into Spenard the day after, forever. So a bled gain is applied to the
+destination row directly rather than through `add_pressure()`, which is what
+stops it scheduling a bleed of its own. It still resets the destination's quiet
+count, because §6 names a bled gain alongside a direct one.
+
+**The first full quiet day holds.** Regression #18 is "First quiet day decays
+Pressure early", an off-by-one nobody would ever notice in play — the score just
+falls a day sooner than designed, permanently. The recovery test walks the ramp
+night by night rather than sampling the end: gain on day 9, hold on 10, hold on
+11 (day 10 was the first quiet day), −1 on 12, −1 every day after, floor at 0.
+
+**The market cap's memory is persisted.** Regression #19 is "Market exceeds its
++1/day Pressure cap". A counter held in memory is exactly how that happens, so
+`market_gain_day` / `market_gain_today` live on the ledger row. Four sales in a
+district reach the cap, the fifth is free, and tomorrow starts over.
+
+### The lifecycle grew a ROLLOVER phase, and Exposure and Curtis moved into it
+
+TI-003 §9's post-increment sequence is now a declared list:
+
+    ROLLOVER_ORDER = [
+        pressure_bleed, pressure_recovery,
+        financial_decay, financial_fold,
+        exposure, curtis,
+    ]
+
+Two of those six positions are regressions in their own right. #25 is the
+Financial Pressure fold running before the decay; #26 is Exposure propagating
+morning Heat before the fold. Both produce plausible numbers, neither crashes,
+and both are one moved line away at all times.
+
+`Exposure` and `Curtis` used to hang off the `day_crossed` signal — which put
+them at whatever position their `connect()` call happened to occupy, the exact
+problem `day_lifecycle.gd` exists to remove, surviving in the two places it
+mattered most. TI-003 §2 asks for explicit rollover methods and they now have
+them. Their scoring math is untouched; only who calls them changed.
+
+The #26 test is worth describing because it took a second attempt to make it
+capable of failing. Exposure broadcasts past 10.0 on the `neighborhood` channel
+and past 8.0 on `household`. Starting the morning at Heat 9.6 with Financial
+Pressure 7, the fold's +1 carries the meter to 10.6 — a neighborhood broadcast.
+Run Exposure first and it sees 9.6 and broadcasts to the household instead: a
+different set of people find out, one day late, forever. Nothing about the final
+state differs. Only who heard.
+
+### District Heat scaling went live, and it moved shipped numbers
+
+FS-003.3 authored TI-003 §7's district × family multiplier table, tested it as a
+pure function, and deliberately did not consult it — applying it inside a
+refactor whose acceptance criterion was "current source outcomes preserve
+inherited totals" would have been a balance change smuggled into a no-op. This
+is the slice it belongs to, and `_district_scaling_enabled` is now `true`.
+
+Every criminal Heat gain is scaled by where it happened and what kind of crime it
+was. The numbers that moved, named here rather than left for whoever next reads a
+changed assertion:
+
+| What | Was | Now | Why |
+| --- | --- | --- | --- |
+| Boost tier 1 success in Spenard | 0.5 | **0.45** | Spenard Boost ×0.9 |
+| Boost tier 2 / 3 in Spenard | 1.0 / 2.0 | **0.9 / 1.8** | ×0.9 |
+| Stickup clean, Spenard tier 1 | 1.0 | **1.3** | Spenard Stick ×1.3 |
+| Stickup messy | 2.0 | **2.6** | ×1.3 |
+| Stickup catastrophic | 3.0 | **3.9** | ×1.3 |
+| Caught Fight/clean in Spenard | 1.0 | **0.9** | ×0.9 |
+
+Relief and direct changes still bypass it, which grew a second half worth
+asserting: laying low in Spenard must not be scaled by 1.3 either, or going quiet
+would work differently depending on where you slept. The Financial Pressure fold
+is +1 in every district for the same reason.
+
+Every Deshawn check moved to a district the table does not name. "Applies once"
+asserted against a figure two multipliers produced is a claim about neither of
+them — if the product is wrong, either could be the cause.
+
+### A ruling the build brief and TI-003 disagree on
+
+The brief's Task 2 says *"Deshawn interaction: Heat fold goes through HeatSystem
+(Deshawn applies)"*. TI-003 §7 routes the fold through `apply_direct`, and
+`apply_direct` — shipped in FS-003.3 — bypasses the gain multipliers entirely.
+
+**Ruled in favour of TI-003 and the shipped behaviour: the fold is +1 flat.**
+Non-negotiable rule 8 makes TI-003 the authority for these systems, §7 lists
+Deshawn under the *criminal gain pipeline* and names `apply_direct` separately
+for the fold, and the fiction agrees — Financial Pressure Heat is not heat a
+crime generated, it is the paper trail catching up, and Deshawn has nothing to
+damp. The acceptance criterion that IS satisfied either way is the one that
+matters architecturally: the fold routes through HeatSystem rather than writing
+`gs.heat`, so the writer audit still holds. Asserted across all three districts
+with Deshawn at rank 3.
+
+### A band table the build brief states differently from the spec
+
+The brief summarises the bands as QUIET (0–1.9), KNOWN (2–4.9), WATCHED (5–7.9),
+HOT (8+). TI-003 §8 and FS-003 §6 both give QUIET 0–2.99, KNOWN 3–5.99, WATCHED
+6–8.99, HOT at exactly 9, with penalties of 0.00 / 0.08 / 0.16 / 0.24.
+
+**Implemented per TI-003/FS-003**, which non-negotiable rule 8 makes the
+authority. The two specs agree with each other; the brief's summary is the
+outlier. Worth flagging because it changes when a district starts biting: under
+the brief's numbers a single messy Boost (+1.0) would put a fresh district a
+fifth of the way to WATCHED, and under the approved numbers it does not reach
+KNOWN until the third incident.
+
+### Sabotage results
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| 1 | KNOWN band starts at 2.0 | **caught** — 3 failures |
+| 2 | `PRESSURE_QUIET_GRACE_DAYS` 1 → 0 | **caught** — 6 failures |
+| 3 | Exposure moved before the fold | **caught** — trace + the #26 behavioural check |
+| 4 | Fold moved before the decay | **caught** — trace + "five does not fold" |
+| 5 | Bleed carries the full gain | **caught** — 3 failures |
+| 6 | Market daily cap 1.0 → 10.0 | **caught** — 2 failures |
+| 7 | Bleed due on the source day | **caught** — 2 failures |
+| 8 | Boost stops subtracting the penalty | **caught** — 3 failures |
+| 9 | Recovery counts the gain day as quiet | **caught** — 10 failures |
+
+Sabotage 6 was initially caught for the wrong reason: several Market assertions
+compared against `rules.PRESSURE_MARKET_DAILY_CAP` rather than against the
+authored `1.0`, so raising the constant moved both sides of the comparison. Every
+Pressure assertion now carries FS-003 §6's literal instead of the module's own
+answer to the same question. Same class of mistake as FS-003.8's provenance hole:
+a check that agrees with the code rather than with the design document.
+
+### What FS-003.10 inherits
+
+A declared ROLLOVER phase with a DAY_START after it, which is where retaliation
+expiry and activation belong (TI-003 §9 step 6). `add_pressure` with a
+`cause_id`, which retaliation resolution will use for its own Pressure rows.
+And `local_attention_summary()`, which FS-003.11 renders.
+
+## FS-003.8: what it costs when they actually have you  (added 2026-08-22)
+
+`systems/arrest.gd`. Boost could already decide that a Caught result ended in
+cuffs; Stick could not, and neither of them could say what happened next. Now
+both hand the same system one fact — *this is what I am and this is how big it
+was* — and everything after that is one owner's problem.
+
+**Parity: 9,100 → 9,440 checks, 0 failures.**
+
+### The two things a source system is not allowed to know
+
+`attach_booking(chain, {family, tier, target_id, cause_id})` is the whole
+interface. Boost passes `boost` and a tier; Stick passes `stick` and a tier.
+Neither knows the severity table exists, that Boost tier 3 shares tier 2's
+booking row, that a second arrest costs half again as much, or that four priors
+add a slot. If they did, the second source would have to reproduce all of it,
+and the two copies would drift the first time a balance pass touched one.
+
+### The quote is frozen at arrest, but the release point is not
+
+This looked like one rule and is two.
+
+The **price** — bail, priors, multiplier, processing slots, Heat relief — is
+computed once when the arrest is decided and stored on the chain. Recomputing it
+at render time would reproduce the same number today and would start lying the
+moment anything it reads moved. The live example is not hypothetical: the priors
+count increments during the commit, so a quote recomputed after payment prices
+the arrest the player is currently standing in as if it had already happened.
+
+The **release point** is projected from the live clock instead. Both are stable
+across reload — `day` and `time_slots_today` persist like everything else — but
+only the live clock agrees with what the commit itself computes. An earlier
+version projected from the quote's stamped position and disagreed with its own
+receipt the moment a test moved the clock between the arrest and the decision;
+in ordinary play nothing can, which is exactly the kind of agreement that holds
+until it does not.
+
+### The source slot and the booking slots are different time
+
+TI-003 §13 separates them into steps 8 and 9, and it matters:
+
+    8. settle the source action's one slot once;
+    9. advance additional booking slots one by one;
+
+The source slot is what the lift or the robbery costs, owed whether or not it
+ended badly. The booking slots are what the arrest costs on top. The release
+receipt counts them separately (`source_slots_settled`, `slots_served`) because
+folding them together would quietly make the second arrest of a run cheaper in
+wall-clock terms than the first, and nobody would have decided that.
+
+Every one of those slots runs the ordinary night one at a time. The day-boundary
+check parks the clock at NIGHT with rent due and somebody on the payroll, serves
+the booking out, and asserts the run landed exactly where the projection
+promised, that rent was **missed** rather than skipped, that a wage accrued for
+each night inside, and that the market cursor moved. TI-003 regression #13 is
+"Booking jumps days and skips obligations"; jail gets its weight from the
+simulation that was already running.
+
+### The arrest waits at `result`, and Continue is what books you
+
+Behaviour change to shipped code, and a fix rather than an addition. FS-003.7
+advanced an arrested Caught chain straight to `booking`, so the bail quote
+rendered over a result the player never read. PX-003 §5 shows the arrested
+result as a screen with a `BOOKING` action under it — the outcome first, then
+the procedure. `_continue` now moves a `result` stage with a pending booking to
+`booking` and settles nothing on the way, because §13 step 8 makes settling the
+source slot part of the commit.
+
+`open_chain` also gained an `initial_stage`. A Stick arrest has no decision — the
+robbery already resolved through the source system's own tier roll — so its chain
+opens at `result` rather than opening a decision with an empty choice list and
+walking past it. The stage is validated against the same transition table every
+later move is.
+
+### The sabotage that passed, and why it is the most useful result here
+
+Four of five planned sabotages failed the suite as intended. The fifth did not:
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| 1 | Prior bail multiplier 1.50 → 1.25 | **caught** — 8 failures |
+| 2 | Bail spends `ROUTINE_DIRTY_FIRST` | **PASSED — hole found** |
+| 3 | Heat relief through `apply_gain` | **caught** — 5 failures |
+| 4 | `settle_source_time()` deleted | **caught** — 3 failures |
+| 5 | Stick gate `>` → `>=` | **caught** — 6 failures |
+| 6 | Four-slot total cap removed | **caught** — 3 failures |
+| 7 | Same-Cause suppression removed | **caught** — 2 failures |
+| 2b | Bail spends `ROUTINE_DIRTY_FIRST` (after fix) | **caught** — 6 failures |
+
+Sabotage 2 is the one worth writing down. The provenance check paid a bail out of
+a wallet holding exactly the bail — clean $150, dirty $0, bill $150. Clean-first
+and dirty-first move identical money in that situation, so the policy could be
+swapped and nothing could see it. The check was not weak; it was **incapable**.
+
+The fix is a wallet larger than the bill and mixed: $400 clean and $800 dirty
+against an $875 quote. Clean-first takes $400 then $475; dirty-first takes $800
+then $75. The Financial Pressure that falls out differs too (1 versus 4), so the
+same setup carries the slice's Financial-Pressure-feedback requirement instead of
+needing a second scenario.
+
+The general lesson, worth more than the specific bug: **a check whose two
+outcomes are indistinguishable under the fault it is meant to catch is not a weak
+check, it is a decoration.** Rule 9 of this build ("every new verification check
+must be sabotage-tested before being trusted") is what surfaced it, and it would
+not have been found by reading the test.
+
+### Decisions taken, and where they came from
+
+- **Total time is capped at 4 slots, shortfall included.** TI-003 §13 says "cap
+  base + prior adjustment at 4 slots" and lists the shortfall conversion
+  separately; FS-003 §7 says "Maximum total booking/serving time from one arrest
+  is 4 time slots" and repeats "Total time remains capped at 4 slots" under both
+  shortfall lanes. The total reading satisfies both documents and is what makes
+  TI-003 regression #14 ("a broke player loses every legal Booking option")
+  false in practice: SERVE IT is always offered, always $0, and never longer
+  than a day. Without it, serving a $1,000 bail at four priors is eleven slots.
+- **The arrest observation is authored here.** FS-003 §7 says an arrest writes an
+  Exposure observation "only where an authored observer/channel qualifies" and
+  never names the row. It is `heat_exposure` / `neighborhood`: the category whose
+  existing weights already price "you brought police into my life" correctly
+  (Yalonda −3.0, Mina −1.5), on the one-day channel the household and the block
+  actually hear things through. Curtis is not on `neighborhood`, and
+  `heat_exposure` does not clear his network filter either — an arrest is not how
+  he finds out, which the suite asserts rather than assumes.
+- **`all_cash` is hidden when full bail is affordable, and at $0.** FS-003 §7's
+  own availability rule. Offering "put up what you have" beside "post full bail"
+  at the same price is two buttons for one action; offering it at $0 is Serve
+  with extra steps.
+- **Stick allocates a Cause on every attempt, not only on an arrest.** TI-003 §4:
+  "Every qualifying risky source action gets one stable Cause ID." Two consumers
+  need it and neither is knowable at allocation time — the arrest gate, and
+  FS-003.10's retaliation scheduler, which keys its schedule roll on the Cause.
+  Allocation is a counter bump that writes no history row, so an attempt nothing
+  ever answers costs one integer.
+
+### What FS-003.9 inherits
+
+A booking that settles time through the ordinary lifecycle, which is the seam
+Pressure bleed and the Financial Pressure fold will run inside. `district_pressure`
+already has real history in it from FS-003.7's Caught gains — .9 starts from a
+ledger with entries rather than from zero. And `heat.gd`'s `_district_scaling_enabled`
+is still `false`: that one line is .9's, and flipping it changes what every
+existing crime costs in Heat.
+
+## Doc drift cleanup: making the baseline honest before layering on it  (added 2026-08-22)
+
+The first commit of the FS-003.8-.12 branch changes no behaviour. It fixes three
+places where the written record had drifted from the merged one, because every
+statement made after this point is layered on top of these.
+
+**1. `README.md` claimed the engine was the next gap.** It said *"The consequence
+encounter engine is the next real gap"* — written before FS-003.3 through .7 and
+true when it was written. PR #45 merged all five. The section now says what
+actually shipped (one blocking chain with exactly-once receipts, Wallet/Heat as
+sole writers, pure odds projection, and Failed Boost -> Caught end to end) and
+carries a table of the five slices that genuinely remain. A README that
+overstates what is missing is the same failure as one that overstates what is
+done: the next person cannot tell which sentences to trust.
+
+**2. The ClickUp `Current Godot Build State` callout was three merges stale.**
+It named PR #34 and 2,399 parity checks as the current baseline. Merged `main` is
+PR #45, save schema v8, 9,100 parity checks. A new authoritative callout now sits
+at the top of that document.
+
+The old callout is **retained directly beneath it rather than deleted**, and the
+new one says so explicitly. That is a tooling decision, not an editorial one: the
+page is ~150,000 characters and the available update path is whole-page replace or
+prepend. Re-emitting 150,000 characters to change one paragraph risks a
+transcription error somewhere in the other 149,800, and a corrupted living doc is
+a worse outcome than a superseded paragraph that is labelled as superseded. The
+"BASELINE UPDATE" sections further down were already audit-trail by convention;
+this one joins them.
+
+**3. ClickUp slice statuses were checked against the merge, not assumed.**
+FS-003.1 through FS-003.7 all read `shipped`, which is correct — PR #45 is merged
+to `main`, and `shipped` means exactly that. FS-003.8 through FS-003.12 read `not
+started`, which is also correct at the time of this commit. No status was moved on
+trust; each was read back from the API. The rule this branch inherits and keeps:
+a slice reads `shipped` when the PR carrying its work is merged, never when the
+code is written.
+
+### Baseline verified before any of it
+
+Godot 4.7.2 headless, `main` at `5efcb15`:
+
+```
+parity: PASS — 9100 checks, 0 failures
+```
+
+That number is the floor `MIN_CHECKS` enforces, and it is what the four feature
+commits after this one have to move up rather than down.
+
 ## FS-003.7: the first thing that answers back  (added 2026-08-21)
 
 A failed Boost no longer ends in a toast. It opens a Caught encounter, holds the

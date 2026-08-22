@@ -14,10 +14,26 @@ extends RefCounted
 ##
 ##   1. PRE_SETTLE  — `day_ending(ended_day)`, clock still reads the old day
 ##   2. SETTLE      — crew · territory · shark · jobs · obligations, in that order
-##   3. POST_SETTLE — hooks (TI-003: Pressure rollover, retaliation activation)
+##   3. POST_SETTLE — hooks
 ##   4. INCREMENT   — day += 1, slot back to MORNING
-##   5. MARKET      — economy.evolve(), then `day_crossed` for legacy listeners
-##   6. DAY_START   — hooks (TI-003: Financial Pressure decay, Exposure delivery)
+##   5. ROLLOVER    — TI-003 §9's post-increment lifecycle, in `ROLLOVER_ORDER`
+##   6. MARKET      — economy.evolve(), then `day_crossed` for legacy listeners
+##   7. DAY_START   — hooks (retaliation expiry and activation)
+##
+## ## Why Exposure and Curtis moved off `day_crossed`
+##
+## TI-003 §2: "DayLifecycle calls explicit rollover methods on Exposure and
+## Curtis in a fixed order while their scoring math remains intact."
+##
+## Both used to hang off the `day_crossed` signal, which put them at whatever
+## position in the handler list their `connect()` call happened to occupy — the
+## exact problem this file exists to remove, surviving in the two places it
+## mattered most. It mattered because TI-003 §17 requires the Financial Pressure
+## fold to land BEFORE Exposure propagates the morning's Heat, and a signal
+## cannot express "before".
+##
+## Their MATH is untouched. `Exposure.rollover()` and `Curtis.rollover()` are the
+## same functions the signal used to reach, called by name from a declared list.
 ##
 ## ## Why the hooks are Callables and not signals
 ##
@@ -50,8 +66,50 @@ const PRE_SETTLE := "PRE_SETTLE"
 const SETTLE := "SETTLE"
 const POST_SETTLE := "POST_SETTLE"
 const INCREMENT := "INCREMENT"
+const ROLLOVER := "ROLLOVER"
 const MARKET := "MARKET"
 const DAY_START := "DAY_START"
+
+## TI-003 §9's post-increment lifecycle, as a list rather than as six statements
+## whose order nobody wrote down.
+##
+## Two of these six orderings are on TI-003's regression list by themselves:
+##
+##   #25  Financial Pressure folds into Heat before daily decay
+##   #26  Exposure propagates Heat before the Financial Pressure fold
+##
+## Both are ordering bugs that produce plausible numbers. Folding before the
+## decay charges the player for pressure they no longer have; Exposure running
+## before the fold means the morning's broadcast is measured against yesterday's
+## Heat, and the +1 the fold just applied reaches the block a day late. Neither
+## crashes, neither is visible in a single run, and both are one moved line away
+## at all times. So the order is a constant a test reads.
+##
+## Bleed before recovery for the same reason it is written that way in §9: a
+## bleed landing this morning is a GAIN, and a family that gained today is not
+## having a quiet day. Recovering first would decay a district that is about to
+## be handed more Pressure.
+const ROLLOVER_ORDER: Array[String] = [
+	"pressure_bleed",
+	"pressure_recovery",
+	"financial_decay",
+	"financial_fold",
+	"exposure",
+	"curtis",
+]
+
+## TI-003 §9 step 6's day-start lifecycle. Expiry before activation, and the
+## order is not arbitrary: a row that ran out overnight must be gone before
+## anything asks what is eligible, or the day's one delayed slot could be spent
+## on an encounter that had already expired.
+##
+## Declared here rather than registered as a `day_start_hook` because these are
+## the lifecycle's own work, not somebody else's. The hooks stay empty and
+## available, and `clear_hooks()` cannot remove the game.
+const DAY_START_ORDER: Array[String] = [
+	"expire_retaliation",
+	"surface_delayed",
+]
 
 ## The settlement order, declared. Each entry is the system name as registered
 ## in GameManager; each of those systems exposes `settle_night(ended_day: int)`.
@@ -153,7 +211,12 @@ func run_night_transition(ended_day: int) -> void:
 	gs.time_slots_today = 0
 	gs.time_slot = TimeSystem_SLOT_MORNING
 
-	# 5. MARKET — the overnight walk, then the legacy signal.
+	# 5. ROLLOVER — TI-003 §9's post-increment lifecycle, in declared order.
+	for step in ROLLOVER_ORDER:
+		_mark("%s:%s" % [ROLLOVER, step])
+		_run_rollover_step(step, gs.day)
+
+	# 6. MARKET — the overnight walk, then the legacy signal.
 	#
 	# `day_crossed` fires here rather than in SETTLE because everything still
 	# connected to it was written expecting the NEW day on the clock. Anything
@@ -165,11 +228,71 @@ func run_night_transition(ended_day: int) -> void:
 	_mark("%s:day_crossed" % MARKET)
 	gs.day_crossed.emit()
 
-	# 6. DAY_START — the new day is on the clock and the board is priced.
+	# 7. DAY_START — the new day is on the clock and the board is priced.
 	_mark(DAY_START)
+	for step in DAY_START_ORDER:
+		_mark("%s:%s" % [DAY_START, step])
+		_run_day_start_step(step, gs.day)
 	for hook in day_start_hooks:
 		if hook.is_valid():
 			hook.call(gs.day)
+
+## One rollover step, by name.
+##
+## A `match` rather than a Dictionary of Callables so the list above and the work
+## below cannot drift: a name with no arm here is a silent no-op, and the
+## ordering test asserts every name in `ROLLOVER_ORDER` produced a trace entry.
+##
+## Every step is null-guarded. The lifecycle has to survive a build where a
+## system is not registered — the ordering tests drive it directly — and a
+## missing owner must read as "that step did nothing" rather than crash the
+## whole night.
+func _run_rollover_step(step: String, today: int) -> void:
+	match step:
+		"pressure_bleed":
+			var engine: Object = gm.system("consequence") if gm != null else null
+			if engine != null:
+				engine.apply_pressure_bleed(today)
+		"pressure_recovery":
+			var engine: Object = gm.system("consequence") if gm != null else null
+			if engine != null:
+				engine.apply_pressure_recovery(today)
+		"financial_decay":
+			var engine: Object = gm.system("consequence") if gm != null else null
+			if engine != null:
+				engine.decay_financial_pressure()
+		"financial_fold":
+			var engine: Object = gm.system("consequence") if gm != null else null
+			if engine != null:
+				engine.fold_financial_pressure()
+		"exposure":
+			var exposure: Node = _autoload("Exposure")
+			if exposure != null:
+				exposure.rollover()
+		"curtis":
+			var curtis: Node = _autoload("Curtis")
+			if curtis != null:
+				curtis.rollover()
+
+## One day-start step, by name. Same shape and same null-guarding as
+## `_run_rollover_step`.
+func _run_day_start_step(step: String, today: int) -> void:
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine == null:
+		return
+	match step:
+		"expire_retaliation":
+			engine.expire_stale(today)
+		"surface_delayed":
+			# The district the player is actually standing in. A retaliation
+			# waits for presence and does not travel (TI-003 regression #29).
+			engine.try_surface_delayed(today, str(gs.current_district_id))
+
+func _autoload(node_name: String) -> Node:
+	var loop: MainLoop = Engine.get_main_loop()
+	if loop == null or not (loop is SceneTree):
+		return null
+	return (loop as SceneTree).root.get_node_or_null("/root/%s" % node_name)
 
 ## MORNING, without reaching into TimeSystem for a constant it owns. Duplicated
 ## as a literal rather than imported: this file must stay constructible without

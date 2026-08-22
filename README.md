@@ -21,6 +21,13 @@ between three districts, hire crew and pay their wages, take corners and post so
 on them — while rent, the phone bill and Curtis's attention all advance on their own
 schedule. Miss enough rent and you are evicted, which ends the run.
 
+Crime answers back. A blown lift holds the screen until you decide how to play it;
+a bad enough answer ends in a booking, where you trade cash against calendar time
+while rent and wages keep settling without you. The block remembers: work the same
+hustle in the same district often enough and the odds there get worse, until you
+change districts, change hustles, or slow down. And the people you rob can send
+somebody after you two days later, in the part of town you did it in.
+
 Existing ported formulas retain oracle-backed parity where that remains the approved
 Godot decision. Newer approved Godot/ClickUp decisions take precedence over historical
 web behavior; named divergences are listed in `HANDOFF.md`.
@@ -39,6 +46,11 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Lift stock from rooms that may be watching | Hustle → Boost |
 | Rob marks for fast money and real Heat | Hustle → Stickup |
 | Have it go clean, messy, wrong, or badly wrong | automatic, on any risky action |
+| Get caught mid-lift and choose how to play it | automatic, on a blown Boost |
+| Get booked, and trade cash against calendar time | automatic, when an answer goes badly enough |
+| Watch a district start recognising your routine, and cool off when you stop | Boost · Stickup · Market — LOCAL ATTENTION |
+| Have the people you robbed find you days later | automatic, in the district you did it in |
+| Pay a formal bill in street money and draw attention for it | automatic, on rent · phone · bail |
 | Lend at interest and decide what a default costs | Hustle → Shark |
 | Hire crew, pay wages, watch loyalty, move them up the ranks | Street → People → Crew |
 | Give Pherris the day to work the board, and get the money back at night | automatic, once she is Trusted enough |
@@ -54,10 +66,30 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 
 ### Not built yet
 
-Arrest/jail, venue interiors, combat encounters, and equipment. The consequence
-encounter engine is the next real gap: canon routes a blown boost and a hard
-collection into it, and it is what would let those two surfaces reach the tiers
-that already exist for them.
+Venue interiors, tactical combat, equipment, and court/trial/prison simulation.
+
+**The consequence-encounter engine is complete.** FS-003 closed with FS-003.12:
+a blown lift or a bad robbery now runs all the way from the action, through a
+blocking encounter you cannot navigate away from, into an arrest, a bail
+decision, time served while the world keeps moving, and — days later, in the
+same part of town — the people you robbed finding you.
+
+The two milestones still ahead are **FS-001 Crew Operations** (delegation beyond
+Pherris and the 907List board) and **FS-002 Territory Warfare**.
+
+### What FS-003 delivered
+
+| Slice | What shipped |
+| --- | --- |
+| .1 · .2 | Behaviour freeze, then the night as a declared sequence rather than signal-connection order |
+| .3 · .4 | `WalletSystem` and `HeatSystem` as the sole writers, with automated writer audits; save v8 |
+| .5 · .6 | One blocking chain with exactly-once receipts and a queue; pure odds projection |
+| .7 | Failed Boost → Caught: contested take, Fight/Run/Talk/Yield, persistent store bans |
+| .8 | `ArrestSystem` — severity, bail, priors, processing time, booking, release |
+| .9 | District Pressure and Financial Pressure lifecycle; district Heat scaling live |
+| .10 | Retaliation scheduling and the `retaliation_street_crew` encounter |
+| .11 | Consequence UX, Local Attention, and the hidden-information audit |
+| .12 | Integration gate: TI-003 §23 scenarios, migration matrix, 30-day RNG non-drift, long-run simulations |
 
 ## Project layout
 
@@ -88,6 +120,11 @@ systems/              # the ONLY writers of GameState
   crew.gd             # roster, loyalty, ranks, the nightly wage clock
   crew_operations.gd  # delegation lifecycle — discovery, assignment, settlement
   day_lifecycle.gd    # the night sequence, in declared order rather than by accident
+  wallet.gd           # the only writer of cash; clean/dirty provenance
+  heat.gd             # the only writer of heat; district x family scaling, relief
+  consequence_engine.gd # one blocking chain, receipts, the delayed queue, Pressure
+  arrest.gd           # severity, bail, priors, processing time, the record
+  retaliation.gd      # the delayed answer: schedule, activation, street crew
   list_adapter.gd     # Pherris running the board: what she buys, and why she stops
   requirements.gd     # pure eligibility evaluator — structured blockers, no state
   territory.gd        # corners, soldiers, passive income
@@ -215,7 +252,7 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (2399 checks); fixtures grow with each system |
+| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (10,211 checks at FS-003.12); fixtures grow with each system |
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
 | 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
 | 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
@@ -232,6 +269,11 @@ regardless of how small the source file is.
 | FS-003.5. ConsequenceEngine core | ✅ one blocking chain with receipts, stage machine, queue arbitration and a blocking scene navigation cannot bypass; parity → 8267 checks |
 | FS-003.6. Odds projection | ✅ pure `success_probability` / `tier_probabilities`, proved against the resolver over 4000 keys per cell; parity → 8785 checks |
 | FS-003.7. Failed Boost → Caught | ✅ first end-to-end encounter: contested take, Fight/Run/Talk/Yield, bans, arrest handoff, source time settles once; parity → 9100 checks |
+| FS-003.8. Arrest + Booking | ✅ one owner for severity, bail, priors, processing time and the record; both source gates feed it; parity → 9440 checks |
+| FS-003.9. Pressure lifecycle | ✅ District Pressure bands/bleed/recovery, Financial Pressure decay and ≥6 Heat fold, district Heat scaling live; parity → 9637 checks |
+| FS-003.10. Retaliation | ✅ the delayed path: schedule, dedupe, Day +2/+5 window, district presence, arrest suppression, Dirty-only loss; parity → 9905 checks |
+| FS-003.11. Consequence UX | ✅ qualitative odds, arrest warnings, exact deltas, return routes, Local Attention on Boost/Stickup/Market; parity → 10044 checks |
+| FS-003.12. Integration gate | ✅ TI-003 §23 scenarios, save migration matrix, 30-day market non-drift, seeded long-run simulations; parity → 10211 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

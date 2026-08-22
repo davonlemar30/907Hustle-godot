@@ -78,7 +78,7 @@ func _ready() -> void:
 	rng = get_node("/root/RngManager")
 	exposure = get_node("/root/Exposure")
 	game_manager = get_node("/root/GameManager")
-	gs.day_crossed.connect(_on_day_crossed)
+	# NOT connected to `day_crossed` — see `rollover()` below and TI-003 §2.
 
 func _require_dispatch(method_name: String) -> bool:
 	var active: bool = game_manager != null and game_manager.is_dispatching()
@@ -192,7 +192,13 @@ func maybe_watcher_encounter(reason: String) -> String:
 ## Curtis's people lose interest slowly. A day with no criminal activity extends
 ## the quiet streak; from the second consecutive quiet day on, awareness bleeds
 ## one point a day — but never below the floor of a phase already reached.
-func _on_day_crossed() -> void:
+## Quiet-streak recovery and the phase refresh, called by name from
+## `DayLifecycle.ROLLOVER_ORDER` rather than off the `day_crossed` signal.
+##
+## Runs last in that sequence, after Exposure has delivered whatever the night
+## carried — so a phase refreshed this morning is refreshed against the awareness
+## the morning actually produced.
+func rollover() -> void:
 	if gs.game_over:
 		return
 	var ended_day: int = gs.day - 1

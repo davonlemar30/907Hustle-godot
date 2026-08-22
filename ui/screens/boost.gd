@@ -12,6 +12,7 @@ func _build_body() -> void:
 		return
 
 	body.add_child(_status_card(sys))
+	body.add_child(_attention_card("boost"))
 
 	if gs.boost_merchandise > 0:
 		body.add_child(section("SITTING ON MERCHANDISE"))
@@ -25,6 +26,26 @@ func _build_body() -> void:
 	body.add_child(section("ROOMS NEARBY"))
 	for t in targets:
 		body.add_child(_target_row(sys, t))
+
+## Local Attention, TI-003 §19 and PX-003 §7.
+##
+## Placed directly under the status card and above the target list, so the player
+## reads how known they are here BEFORE they read what is worth taking. The band
+## is the whole message: the raw Pressure score, the difficulty penalty it
+## carries and the quiet-day counter all stay underneath, and the target rows
+## below already show the final odds with the penalty inside them.
+func _attention_card(family: String) -> Control:
+	var band: String = attention_band(family)
+	var tone: Color = attention_tone(band)
+	var c := card()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	v.add_child(label("LOCAL ATTENTION: %s" % band, "CardTitle", 13, tone))
+	var copy := str(ATTENTION_COPY.get(band, ""))
+	if not copy.is_empty():
+		v.add_child(label(copy, "Muted", 11, MUTED, true))
+	c.add_child(v)
+	return c
 
 func _status_card(sys: Object) -> Control:
 	var c := card()

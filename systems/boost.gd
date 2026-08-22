@@ -109,7 +109,24 @@ func chance_for(target: Dictionary) -> float:
 	var skill: float = float(attributes.compat("intelligence") + attributes.compat(
 		"charisma" if tier == 3 else "combat")) / 2.0
 	var window_bonus: float = 0.20 if tier == 2 and int(target["window"]) == gs.time_slots_today else 0.0
-	return clampf(base + (skill - 2.0) * 0.10 + window_bonus, 0.10, 0.95)
+	# TI-003 §8: "Source systems subtract the family penalty before their
+	# existing final clamp." Inside the clamp, not after it — a WATCHED district
+	# should be able to push a marginal lift down to the floor, not below it.
+	#
+	# The penalty is 0.00 in a QUIET district, which every fresh run is, so this
+	# term is invisible until the player has actually made a routine of it here.
+	return clampf(base + (skill - 2.0) * 0.10 + window_bonus - _pressure_penalty(),
+		0.10, 0.95)
+
+## How much harder this district has become for Boost work specifically.
+##
+## Read at chance time rather than cached, because a lift and the Pressure it
+## generates land in the same dispatch: the NEXT lift is the one that pays.
+func _pressure_penalty() -> float:
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine == null:
+		return 0.0
+	return engine.difficulty_penalty(gs.current_district_id, "boost")
 
 func blocker(target_id: String) -> String:
 	if gs.game_over:
@@ -157,6 +174,12 @@ func _run(target_id: String) -> Dictionary:
 		# heat canon does — on the surface a player uses earliest and most.
 		# FS-003.1 froze that with an assertion naming it; this is the fix.
 		_apply_heat(0.5 if tier == 1 else (1.0 if tier == 2 else 2.0))
+		# FS-003 §6: a clean initial Boost success adds +0.5 Boost pressure. A
+		# FAILED lift adds nothing here — it waits for the Caught encounter's
+		# resolved tier, which is what makes a blown lift cost more local memory
+		# than a clean one rather than double-charging for the same attempt.
+		_add_district_pressure(gs.current_district_id, "boost",
+			_rules().PRESSURE_BOOST_SUCCESS, "")
 		if tier == 3:
 			# Tier 3 comes out as merchandise, not cash. Slide fences it.
 			gs.boost_merchandise += take
@@ -241,6 +264,13 @@ func _open_caught(target: Dictionary, tier: int, contested: int,
 
 	var shown: Dictionary = {}
 	var inputs: Dictionary = {}
+	# The arrest warnings, snapshotted with everything else the decision shows.
+	# They read the SAME pre-encounter Heat the gate itself will read, so the
+	# warning cannot promise one thing and the gate deliver another.
+	var risks: Dictionary = {}
+	for choice_key in rules.CAUGHT_CHOICES:
+		risks[str(choice_key)] = rules.caught_arrest_risk(str(choice_key), tier,
+			float(gs.heat))
 	for choice_id in rules.CAUGHT_CHOICES:
 		if rules.is_deterministic(str(choice_id)):
 			continue
@@ -279,6 +309,7 @@ func _open_caught(target: Dictionary, tier: int, contested: int,
 			"deterministic_choices": rules.CAUGHT_DETERMINISTIC.duplicate(),
 			"resolver_inputs": inputs,
 			"shown_probabilities": shown,
+			"arrest_risks": risks,
 		},
 	})
 
@@ -365,7 +396,7 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	#    instead of starting from zero on every existing save.
 	var pressure: float = rules.pressure_gain(choice_id, tier_name)
 	if pressure > 0.0 and engine.record_receipt(cause_id, "boost_caught:pressure"):
-		_add_district_pressure(str(chain.get("district_id", "")), "boost", pressure)
+		_add_district_pressure(str(chain.get("district_id", "")), "boost", pressure, cause_id)
 		result["pressure"] = pressure
 
 	# 7. The consequence's own observation, once. Reuses the resolver's authored
@@ -387,43 +418,43 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	decision["result"] = result
 	chain["decision"] = decision
 
-	# 10. Booking when arrested, Result when not. Booking EXECUTION is FS-003.8;
-	#     what this slice does is hand the chain over at the right stage with the
-	#     facts that slice needs already on it.
+	# 10. The result, always. An arrest ATTACHES a booking quote to the chain and
+	#     stops there — the chain waits at `result` until the player presses
+	#     Continue, which is what carries them into Booking (see the engine's
+	#     `_continue`). Advancing straight to `booking` here would render a bail
+	#     quote over a result the player never got to read, which PX-003 §5 shows
+	#     as the wrong shape: the arrested result is a screen with a BOOKING
+	#     action under it, not a screen that is skipped.
+	#
+	#     The quote itself is ArrestSystem's: Boost decides WHETHER, never what
+	#     it costs.
 	engine.advance_stage(engine.STAGE_RESULT)
 	if arrested:
-		chain["booking"] = {
-			"pending": true,
-			"severity": "boost_t1" if boost_tier <= 1 else "boost_t2",
-			"source_family": "boost",
-			"source_target_id": str(source.get("target_id", "")),
-			"cause_id": cause_id,
-		}
-		engine.advance_stage(engine.STAGE_BOOKING)
+		var arrest: Object = gm.system("arrest") if gm != null else null
+		if arrest != null:
+			arrest.attach_booking(chain, {
+				"family": "boost",
+				"tier": boost_tier,
+				"target_id": str(source.get("target_id", "")),
+				"cause_id": cause_id,
+			})
 
 	gs.log_activity(_caught_line(source, choice_id, tier_name, result), _caught_tone(tier_name))
 	return {"ok": true, "tier": tier_name, "arrested": arrested}
 
-## Write a District Pressure gain into the ledger .4 made room for.
+## Write a District Pressure gain, through the owner.
 ##
-## Kept here rather than on the engine because FS-003.9 owns the Pressure SYSTEM
-## — bands, bleed, recovery, difficulty penalties — and will move this. What it
-## must not have to do is reconstruct the history that happened before it landed.
-func _add_district_pressure(district_id: String, family: String, amount: float) -> void:
-	if district_id.is_empty():
+## FS-003.7 kept the ledger write here because the Pressure SYSTEM did not exist
+## yet; FS-003.9 built it on the engine (TI-003 §8: Pressure is cross-source
+## memory, so no single source can own it). This is now a two-line forward so
+## Boost's call sites read the same as they did, and so the bleed those gains
+## schedule is the engine's business rather than Boost's.
+func _add_district_pressure(district_id: String, family: String, amount: float,
+		cause_id: String = "") -> void:
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine == null or district_id.is_empty():
 		return
-	if not gs.district_pressure.has(district_id):
-		gs.district_pressure[district_id] = {}
-	var by_family: Dictionary = gs.district_pressure[district_id]
-	if not by_family.has(family):
-		by_family[family] = {"score": 0.0, "last_gain_day": -1, "quiet_days": 0,
-			"market_gain_day": -1, "market_gain_today": 0.0}
-	var row: Dictionary = by_family[family]
-	# Clamped to TI-003 §8's 0-9 scale. The bands read it, and a score above 9
-	# has no band.
-	row["score"] = clampf(float(row.get("score", 0.0)) + amount, 0.0, 9.0)
-	row["last_gain_day"] = int(gs.day)
-	row["quiet_days"] = 0
+	engine.add_pressure(district_id, family, amount, cause_id)
 
 func _caught_line(source: Dictionary, choice_id: String, tier_name: String,
 		result: Dictionary) -> String:

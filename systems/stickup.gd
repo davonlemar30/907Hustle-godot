@@ -80,6 +80,10 @@ const CURTIS_BY_TIER := {
 	"catastrophic": {"awareness": 3, "criminal": true},
 }
 
+## The authored arrest gate lives in the shared rules module, not here. Stick
+## decides nothing about what an arrest costs — see systems/arrest.gd.
+const RULES := preload("res://data/consequence_rules.gd")
+
 var gs: Node
 var rng: Node
 var time_system: RefCounted
@@ -168,14 +172,34 @@ func chance_for(target: Dictionary) -> float:
 	var c: float = base \
 		+ (float(attributes.compat("combat")) - 2.0) * 0.08 \
 		- float(target["resistance"]) * gs.DISTRICT_DIFF_STEP \
-		- gs.heat * 0.012
+		- gs.heat * 0.012 \
+		- _pressure_penalty()
 	return clampf(c, 0.15, 0.90)
+
+## TI-003 §8's local difficulty penalty for the Stick family, subtracted before
+## the existing clamp. Zero in a QUIET district, which is every fresh run.
+##
+## `resistance` and this are not the same thing and must not be confused: the
+## target's resistance is how hard THAT mark is, permanently. Pressure is how
+## much attention YOU have brought to this district, and it decays.
+func _pressure_penalty() -> float:
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine == null:
+		return 0.0
+	return engine.difficulty_penalty(gs.current_district_id, "stick")
 
 func _run(target_id: String) -> Dictionary:
 	var blocked := blocker(target_id)
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked}
 	var t: Dictionary = gs.stick_target_by_id(target_id)
+
+	# TI-003 §14: the arrest gate reads "pre-source Heat" — the Heat the player
+	# was ALREADY carrying when they walked up, snapshotted here before this
+	# robbery generates any of its own. Reading the live meter after resolution
+	# would let a loud job decide its own arrest, which is regression-shaped: the
+	# tiers that generate the most Heat are exactly the tiers being gated.
+	var pre_source_heat: float = float(gs.heat)
 
 	# Canon keys this roll on seed:stickup:day:slot:targetId, and the resolver
 	# joins seed and context exactly as canon's template string does.
@@ -261,9 +285,127 @@ func _run(target_id: String) -> Dictionary:
 	resolver.broadcast_outcome("robbery", tier, gs.current_district_id,
 		result["take"] if success else null)
 
+	var engine_for_pressure: Object = gm.system("consequence") if gm != null else null
+
+	# FS-003 §6: "Stick uses the resolved outcome table above" — the same tiered
+	# gains a Caught encounter uses, under the `stick` family. A clean take is
+	# +0.5 because nobody watched you struggle; a catastrophe is +2.0 because
+	# everybody did.
+	#
+	# Written before the Cause is allocated, and deliberately with no cause_id:
+	# the source robbery's Pressure is not a consequence effect and carries no
+	# receipt, because a robbery resolves once inside one dispatch and cannot be
+	# replayed. The bleed it schedules is keyed on the target and the day.
+	var rules_pressure: RefCounted = RULES.new()
+	var pressure_gain: float = float(rules_pressure.PRESSURE_BY_TIER.get(tier, 0.0))
+	if pressure_gain > 0.0 and engine_for_pressure != null:
+		engine_for_pressure.add_pressure(gs.current_district_id, "stick", pressure_gain,
+			"stickup:%s:%d:%d" % [target_id, gs.day, gs.time_slots_today])
+		result["pressure"] = pressure_gain
+
+	# TI-003 §4: "Every qualifying risky source action gets one stable Cause ID."
+	# Allocated for EVERY attempt, not only the ones that end badly, because two
+	# later consumers need it and neither can know at this point whether it will
+	# be wanted: the arrest gate below, and FS-003.10's retaliation scheduler,
+	# which keys its schedule roll on the Cause. Allocation is a counter bump and
+	# writes no history row, so an attempt nothing answers costs one integer.
+	var cause_id: String = ""
+	var engine: Object = engine_for_pressure
+	if engine != null:
+		cause_id = engine.allocate_cause_id()
+	result["cause_id"] = cause_id
+	result["pre_source_heat"] = pre_source_heat
+
+	# TI-003 §15: the delayed answer, rolled once against the Cause.
+	#
+	# Scheduled BEFORE the arrest gate below rather than instead of it. An arrest
+	# suppresses the row at booking commit (§13 step 7), which means a save taken
+	# between the robbery and the booking decision carries a row that is about to
+	# be cleared — correct, because the arrest has not happened yet. Skipping the
+	# schedule on an arrest instead would make the queue depend on a decision the
+	# player has not made.
+	var retaliation: Object = gm.system("retaliation") if gm != null else null
+	if retaliation != null and not cause_id.is_empty():
+		var queued: Dictionary = retaliation.schedule(target_id, tier,
+			cause_id, gs.current_district_id)
+		result["retaliation_queued"] = not queued.is_empty()
+
+	# TI-003 §14's gate. A blown job books when the player was already carrying
+	# more Heat than the tier tolerates; a catastrophe books at every tier.
+	var rules: RefCounted = RULES.new()
+	var arrested: bool = rules.stick_arrests(int(t["tier"]), tier, pre_source_heat)
+	result["arrested"] = arrested
+	if arrested and engine != null and not engine.has_active():
+		var opened: Dictionary = _open_booking(t, tier, cause_id, pre_source_heat, result)
+		if bool(opened.get("ok", false)):
+			# TI-003 §14: "Arrest enters Booking under the same Cause and keeps
+			# source time unsettled until Booking commits it." So no
+			# `advance_time` here — the robbery's own slot is settled by the
+			# booking commit, exactly once, alongside the time being held.
+			return result
+
 	# A robbery is a slot, the same as any other district action.
 	time_system.handle("advance_time", {})
 	return result
+
+# --- the arrest adapter (TI-003 §14) ---------------------------------------
+
+## Open the booking chain for a robbery that ended in cuffs.
+##
+## The chain opens directly at `result` rather than at `decision`. There was no
+## decision: the robbery already resolved through this system's own tier roll,
+## and the player answers for it rather than choosing how it went. Opening at
+## `decision` with an empty choice list and immediately walking past it would
+## put a stage in the save that nothing ever rendered.
+func _open_booking(target: Dictionary, tier_name: String, cause_id: String,
+		pre_source_heat: float, source_result: Dictionary) -> Dictionary:
+	var engine: Object = gm.system("consequence")
+	var arrest: Object = gm.system("arrest")
+	if engine == null or arrest == null:
+		return {"ok": false, "reason": "Nothing to answer to."}
+	var tier: int = int(target["tier"])
+	var opened: Dictionary = engine.open_chain(engine.KIND_STICK_BOOKING, {
+		"cause_id": cause_id,
+		"initial_stage": engine.STAGE_RESULT,
+		"district_id": gs.current_district_id,
+		"return_route": "STICKUP",
+		"source": {
+			"family": "stick",
+			"action_id": "stickup",
+			"target_id": str(target["id"]),
+			"target_name": str(target["name"]),
+			"target_tier": tier,
+			"source_day": int(gs.day),
+			"source_slot": int(gs.time_slots_today),
+			"source_rng_key": "stickup:%d:%d:%s" % [gs.day, gs.time_slots_today, str(target["id"])],
+			"pre_encounter_heat": pre_source_heat,
+			"contested_take": 0,
+		},
+		"decision": {
+			"definition_id": "stick_booking",
+			# No responses. The robbery is over; what follows is procedure.
+			"allowed_choices": [],
+			"resolved_tier": tier_name,
+			"result": {
+				"choice_id": "",
+				"tier": tier_name,
+				"cash": int(source_result.get("take", 0)),
+				"health": -int(source_result.get("damage", 0)),
+				"heat": float(source_result.get("heat", 0.0)),
+				"arrested": true,
+				"target_name": str(target["name"]),
+			},
+		},
+	})
+	if not bool(opened.get("ok", false)):
+		return opened
+	arrest.attach_booking(gs.active_consequence, {
+		"family": "stick",
+		"tier": tier,
+		"target_id": str(target["id"]),
+		"cause_id": cause_id,
+	})
+	return {"ok": true}
 
 func _on_day_crossed() -> void:
 	gs.stick_daily_count = 0

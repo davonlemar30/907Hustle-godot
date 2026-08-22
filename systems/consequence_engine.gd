@@ -244,11 +244,22 @@ func open_chain(kind: String, spec: Dictionary) -> Dictionary:
 	var cause_id := str(spec.get("cause_id", ""))
 	if cause_id.is_empty():
 		cause_id = allocate_cause_id()
+	# A chain normally opens on the decision it is asking the player to make.
+	# Not every chain has one: a Stick arrest opens on the RESULT of a robbery
+	# that already resolved through the source system, and there was never a
+	# response to choose. `initial_stage` lets a source say so rather than
+	# opening a decision with no choices and walking straight past it.
+	#
+	# Validated against the same table every later move is: an unknown stage is
+	# refused here rather than becoming a chain nothing can advance.
+	var initial_stage := str(spec.get("initial_stage", STAGE_DECISION))
+	if not STAGE_TRANSITIONS.has(initial_stage):
+		return {"ok": false, "reason": "Unknown consequence stage '%s'." % initial_stage}
 	var chain: Dictionary = {
 		"consequence_id": allocate_consequence_id(),
 		"cause_id": cause_id,
 		"chain_kind": kind,
-		"stage": STAGE_DECISION,
+		"stage": initial_stage,
 		"created_day": int(gs.day),
 		"created_slot": int(gs.time_slots_today),
 		"district_id": str(spec.get("district_id", gs.current_district_id)),
@@ -277,6 +288,11 @@ func _decision_block(authored: Dictionary) -> Dictionary:
 		"resolver_inputs": authored.get("resolver_inputs", {}),
 		"shown_probabilities": authored.get("shown_probabilities", {}),
 		"deterministic_choices": authored.get("deterministic_choices", []),
+		# choice_id -> arrest-risk code, snapshotted with the odds when the
+		# decision opened. Persisted for the same reason the odds are: a reload
+		# must reproduce the warning the player decided against, not re-derive
+		# one against state that has since moved.
+		"arrest_risks": authored.get("arrest_risks", {}),
 		"resolved_tier": str(authored.get("resolved_tier", "")),
 		"result": authored.get("result", {}),
 	}
@@ -307,13 +323,21 @@ func clear_chain() -> void:
 ##
 ## TI-003 §26: "One source action pays its normal time cost once after its
 ## blocking consequence reaches terminal handoff", and regression #12 is that
-## time settling twice around Booking. This flag is how "once" is enforced across
-## a reload, so it is read here rather than recomputed.
+## time settling twice around Booking. The settled flag is how "once" is enforced
+## across a reload, so it is read here rather than recomputed.
+##
+## A chain carrying ZERO source slots owes nothing, and says so. That is not a
+## hypothetical: a delayed retaliation is opened days after the robbery that
+## caused it, and that robbery paid its slot at the time. Answering "owed"
+## because a boolean has not been flipped would make the projection tell the
+## player they are about to lose time they are not.
 func source_time_owed() -> bool:
 	if not has_active():
 		return false
 	var time_block: Dictionary = gs.active_consequence.get("time", {})
-	return not bool(time_block.get("source_time_settled", false))
+	if bool(time_block.get("source_time_settled", false)):
+		return false
+	return int(time_block.get("source_slots_remaining", 0)) > 0
 
 ## Mark the source slot paid. Returns false if it was already settled, which is
 ## the same idempotency contract as a receipt and for the same reason.
@@ -421,6 +445,41 @@ func can_surface_delayed(today: int) -> bool:
 func mark_delayed_surfaced(today: int) -> void:
 	gs.last_blocking_delayed_day = today
 
+## Surface the oldest eligible delayed consequence, if anything may.
+##
+## The four gates of TI-003 §15 are all here, in one place, because "may this
+## surface" is a question about the QUEUE and belongs to the queue's owner. The
+## retaliation system builds the encounter; it never decides whether it is
+## allowed to.
+##
+##   1. nothing is already blocking (regression #27: a retaliation surfacing
+##      during Caught or Booking)
+##   2. today's one delayed slot is unspent (regression #28)
+##   3. a row is due, unexpired, and in THIS district (regression #29: a
+##      retaliation following the player across town)
+##   4. oldest first, deterministically (regression #32)
+##
+## Returns the queue_id that surfaced, or "". Called from the day-start
+## lifecycle and after travel — the two moments the answer can change.
+func try_surface_delayed(today: int, district_id: String) -> String:
+	if not can_surface_delayed(today):
+		return ""
+	var eligible: Array = eligible_queued(today, district_id)
+	if eligible.is_empty():
+		return ""
+	var row: Dictionary = eligible[0]
+	var owner: Object = gm.system("retaliation") if gm != null else null
+	if owner == null or not owner.has_method("open_encounter"):
+		return ""
+	var opened: Dictionary = owner.open_encounter(row)
+	if not bool(opened.get("ok", false)):
+		return ""
+	row["status"] = "surfaced"
+	# Claimed only once the chain is genuinely open. Claiming before would spend
+	# the day's allowance on an encounter that failed to open.
+	mark_delayed_surfaced(today)
+	return str(row.get("queue_id", ""))
+
 # --- dispatch validation ----------------------------------------------------
 
 ## TI-003 §12: "Revalidate active identity, stage, allowed choice, and absence of
@@ -498,11 +557,32 @@ func _continue(payload: Dictionary) -> Dictionary:
 	if not stage in [STAGE_RESULT, STAGE_RELEASE]:
 		return {"ok": false, "reason": "This is not finished."}
 
+	# A result that ends in an arrest is not a handoff — it is the doorway to
+	# Booking, and Continue walks through it.
+	#
+	# The chain deliberately WAITS at `result` rather than jumping to `booking`
+	# the moment the arrest gate fires. PX-003 §5 shows the arrested result with
+	# a BOOKING action under it ("THE FIGHT ENDS IN CUFFS"), and TI-003 §18
+	# requires the result stage to show "exact changes to Cash, goods, Health,
+	# Heat, bans, and arrest state". A chain that advanced itself would render
+	# the bail quote over a result the player never got to read.
+	#
+	# Nothing settles here: the source slot stays owed, because §13 step 8 makes
+	# settling it part of the booking commit.
+	if stage == STAGE_RESULT and _booking_pending():
+		var moved: Dictionary = advance_stage(STAGE_BOOKING)
+		if not bool(moved.get("ok", false)):
+			return moved
+		return {"ok": true, "stage": STAGE_BOOKING, "slots_settled": 0}
+
 	var owed: int = 0
 	if source_time_owed():
 		var time_block: Dictionary = gs.active_consequence.get("time", {})
 		owed = int(time_block.get("source_slots_remaining", 0))
-		settle_source_time()
+	# Stamped even when nothing was owed, so the chain's own record reads
+	# "settled" rather than "never asked". A zero-slot chain has to be closed the
+	# same way a one-slot chain is.
+	settle_source_time()
 
 	clear_chain()
 
@@ -538,6 +618,11 @@ func active_summary() -> Dictionary:
 		"definition_id": str((chain.get("decision", {}) as Dictionary).get("definition_id", "")),
 		"source_family": str(source.get("family", "")),
 		"source_target_id": str(source.get("target_id", "")),
+		# The two the scene actually shows a player: the place or the person.
+		# `target_id` is a stable identifier and reads like one; these are the
+		# words the source system already had for the same thing.
+		"source_target_name": str(source.get("target_name", "")),
+		"source_opponent": str(source.get("opponent", "")),
 		"source_target_tier": int(source.get("target_tier", 0)),
 		"contested_take": int(source.get("contested_take", 0)),
 		"pre_encounter_heat": float(source.get("pre_encounter_heat", 0.0)),
@@ -556,6 +641,7 @@ func choice_summaries() -> Array:
 	var committed := str(decision.get("committed_choice", ""))
 	var deterministic: Array = decision.get("deterministic_choices", [])
 	var shown: Dictionary = decision.get("shown_probabilities", {})
+	var risks: Dictionary = decision.get("arrest_risks", {})
 	var rows: Array = []
 	for entry in (decision.get("allowed_choices", []) as Array):
 		var choice_id := str(entry)
@@ -571,16 +657,37 @@ func choice_summaries() -> Array:
 			"committed": not committed.is_empty() and choice_id == committed,
 			# Any commit disables every button, not only the one pressed.
 			"disabled": not committed.is_empty(),
+			# PX-003 §19 point 8: a known booking gate is surfaced BEFORE the
+			# player commits. The code says which kind; the copy lives in the
+			# scene, and neither reveals the threshold.
+			"arrest_risk": str(risks.get(choice_id, "")),
 		})
 	return rows
 
+## Whether the active chain is holding a booking the player has not answered yet.
+func _booking_pending() -> bool:
+	if not has_active():
+		return false
+	var booking: Dictionary = gs.active_consequence.get("booking", {})
+	return bool(booking.get("pending", false))
+
 ## The booking quote, before the player commits to paying it.
+##
+## The stored block is the source of truth for everything frozen at arrest time —
+## quote, priors, severity, relief. The three payment lanes and their release
+## points are DERIVED, and ArrestSystem owns that derivation because it owns the
+## severity table the slot math reads. This asks it and falls back to the raw
+## block, so a build with no ArrestSystem registered still renders a quote
+## instead of crashing.
 func booking_summary() -> Dictionary:
 	if not has_active():
 		return {}
 	var booking: Dictionary = gs.active_consequence.get("booking", {})
 	if booking.is_empty():
 		return {}
+	var arrest: Object = gm.system("arrest") if gm != null else null
+	if arrest != null and arrest.has_method("booking_projection"):
+		return arrest.booking_projection(gs.active_consequence)
 	return booking.duplicate(true)
 
 ## What actually happened, for the result and release stages.
@@ -593,6 +700,262 @@ func result_summary() -> Dictionary:
 		"resolved_tier": str(decision.get("resolved_tier", "")),
 		"result": (decision.get("result", {}) as Dictionary).duplicate(true),
 	}
+
+# --- District Pressure (TI-003 §8) -----------------------------------------
+#
+# The engine owns Pressure because Pressure is CROSS-SOURCE memory. A Boost, a
+# Stick and a Market sale all write into the same district ledger under
+# different families, and the score a Boost reads back may have been raised by a
+# robbery two days ago. No single source system can own a number every other
+# source system writes to.
+#
+# Stored per district, per family, in `gs.district_pressure`. Separate storage
+# from `gs.heat` on purpose: TI-003 regression #16 is the two sharing it, and
+# they answer different questions — Heat is how urgently police want you today,
+# Pressure is whether this block has started recognising the routine. Pressure
+# never converts into Heat.
+
+const RULES := preload("res://data/consequence_rules.gd")
+
+func _rules() -> RefCounted:
+	return RULES.new()
+
+## The ledger row for one district/family, created empty on first touch.
+##
+## `quiet_days` counts CONSECUTIVE days with no gain and is what the recovery
+## rule reads. `market_gain_day` / `market_gain_today` are the daily cap's
+## memory, and are only touched by Market.
+func pressure_row(district_id: String, family: String) -> Dictionary:
+	if not gs.district_pressure.has(district_id):
+		gs.district_pressure[district_id] = {}
+	var by_family: Dictionary = gs.district_pressure[district_id]
+	if not by_family.has(family):
+		by_family[family] = {
+			"score": 0.0, "last_gain_day": -1, "quiet_days": 0,
+			"market_gain_day": -1, "market_gain_today": 0.0,
+		}
+	return by_family[family]
+
+## Current Pressure, without creating a row. A district nobody has worked reads
+## 0.0 rather than allocating a ledger entry every time a screen renders.
+func pressure_score(district_id: String, family: String) -> float:
+	var by_family: Variant = gs.district_pressure.get(district_id)
+	if not (by_family is Dictionary):
+		return 0.0
+	var row: Variant = (by_family as Dictionary).get(family)
+	if not (row is Dictionary):
+		return 0.0
+	return float((row as Dictionary).get("score", 0.0))
+
+## QUIET / KNOWN / WATCHED / HOT. The only Pressure fact the player ever sees
+## (TI-003 §19); the raw score stays underneath.
+func pressure_band(district_id: String, family: String) -> String:
+	return _rules().pressure_band(pressure_score(district_id, family))
+
+## Percentage points off a source action's success chance, BEFORE its clamp.
+## Boost and Stick subtract this; Market has no criminal success roll to apply
+## it to yet, so it accrues and displays Pressure without consuming a penalty.
+func difficulty_penalty(district_id: String, family: String) -> float:
+	return _rules().pressure_penalty(pressure_score(district_id, family))
+
+## Every family's band in one district, for the Boost and Stick status cards.
+##
+## `loudest` is the worst band present, so a surface that wants one line rather
+## than three has one without picking for itself.
+func local_attention_summary(district_id: String) -> Dictionary:
+	var rules: RefCounted = _rules()
+	var families: Dictionary = {}
+	var loudest_family := ""
+	var loudest_score: float = -1.0
+	for family_key in rules.PRESSURE_FAMILIES:
+		var family := str(family_key)
+		var score: float = pressure_score(district_id, family)
+		families[family] = {
+			"band": rules.pressure_band(score),
+			"penalty": rules.pressure_penalty(score),
+			"steps": rules.pressure_steps(score),
+		}
+		if score > loudest_score:
+			loudest_score = score
+			loudest_family = family
+	return {
+		"district_id": district_id,
+		"families": families,
+		"loudest_family": loudest_family,
+		"loudest_band": rules.pressure_band(maxf(0.0, loudest_score)),
+	}
+
+## Add Pressure to a district/family, and schedule its bleed.
+##
+## `cause_id` is the dedupe identity for the bleed rows this schedules. A Cause
+## that adds Pressure once can only ever schedule one bleed per destination, so
+## a reload cannot double-apply it (TI-003 §8: "Cause + destination identities
+## prevent duplicate bleed after reload").
+##
+## The exactly-once guard on the GAIN itself is the caller's receipt — this
+## function is not idempotent and must not be, because Market calls it several
+## times a day on purpose.
+func add_pressure(district_id: String, family: String, amount: float,
+		cause_id: String = "") -> float:
+	if district_id.is_empty() or family.is_empty() or amount <= 0.0:
+		return 0.0
+	var rules: RefCounted = _rules()
+	var row: Dictionary = pressure_row(district_id, family)
+	var before: float = float(row.get("score", 0.0))
+	row["score"] = clampf(before + amount, rules.PRESSURE_MIN, rules.PRESSURE_MAX)
+	row["last_gain_day"] = int(gs.day)
+	# FS-003 §6: "A new direct or bleed gain resets that family's quiet count."
+	row["quiet_days"] = 0
+	_schedule_bleed(district_id, family, amount, cause_id)
+	return float(row["score"]) - before
+
+## Market's metered gain, TI-003 §8: +0.25 per criminal sale, capped at +1.0 per
+## district per family per day.
+##
+## The cap is stored on the row rather than counted in memory because it has to
+## survive a reload — regression #19 is "Market exceeds its +1/day Pressure cap",
+## and a counter that resets on load is exactly how that happens.
+func add_market_pressure(district_id: String) -> float:
+	var rules: RefCounted = _rules()
+	var row: Dictionary = pressure_row(district_id, rules.FAMILY_MARKET)
+	var today: int = int(gs.day)
+	if int(row.get("market_gain_day", -1)) != today:
+		row["market_gain_day"] = today
+		row["market_gain_today"] = 0.0
+	var used: float = float(row.get("market_gain_today", 0.0))
+	var room: float = rules.PRESSURE_MARKET_DAILY_CAP - used
+	if room <= 0.0:
+		return 0.0
+	var amount: float = minf(rules.PRESSURE_MARKET_SALE, room)
+	# A market sale has no Cause of its own, so the bleed identity is the
+	# district and the day. That is enough: the same district can only schedule
+	# one market bleed per day, which is what dedupe has to guarantee.
+	var applied: float = add_pressure(district_id, rules.FAMILY_MARKET, amount,
+		"market:%s:%d" % [district_id, today])
+	row["market_gain_today"] = used + amount
+	return applied
+
+## Queue 50% of a NEW gain into each adjacent district for tomorrow.
+##
+## Never the stored score. FS-003 §6 is explicit: "Bleed uses the new gain from
+## the cause. The entire stored score never copies outward again." Bleeding the
+## score would compound — Spenard's 4 would put 2 into Downtown, whose 2 would
+## put 1 back into Spenard the day after, forever.
+func _schedule_bleed(district_id: String, family: String, amount: float,
+		cause_id: String) -> void:
+	var rules: RefCounted = _rules()
+	var bled: float = amount * rules.PRESSURE_BLEED_FRACTION
+	if bled <= 0.0:
+		return
+	var due: int = int(gs.day) + 1
+	for neighbour_key in rules.adjacent_districts(district_id):
+		var neighbour := str(neighbour_key)
+		var bleed_id := "%s|%s|%s|%d" % [cause_id, neighbour, family, int(gs.day)]
+		var duplicate := false
+		for existing in gs.pressure_bleed_pending:
+			if str((existing as Dictionary).get("bleed_id", "")) == bleed_id:
+				duplicate = true
+				break
+		if duplicate:
+			continue
+		gs.pressure_bleed_pending.append({
+			"bleed_id": bleed_id,
+			"cause_id": cause_id,
+			"source_district_id": district_id,
+			"district_id": neighbour,
+			"family": family,
+			"amount": bled,
+			"due_day": due,
+		})
+
+## Apply every bleed row that has come due. Runs post-increment, so `today` is
+## the new day and a row scheduled yesterday lands now — never on the day the
+## gain happened (TI-003 regression #17).
+##
+## A bled gain does NOT schedule a bleed of its own: it is applied to the row
+## directly rather than through `add_pressure`, which is what stops the ping-pong
+## described on `_schedule_bleed`. It DOES reset the destination's quiet count,
+## because FS-003 §6 names a bled gain alongside a direct one.
+func apply_pressure_bleed(today: int) -> int:
+	var rules: RefCounted = _rules()
+	var applied: int = 0
+	var still_pending: Array = []
+	for entry in gs.pressure_bleed_pending:
+		var pending: Dictionary = entry
+		if today < int(pending.get("due_day", 0x7FFFFFFF)):
+			still_pending.append(pending)
+			continue
+		var row: Dictionary = pressure_row(str(pending.get("district_id", "")),
+			str(pending.get("family", "")))
+		row["score"] = clampf(float(row.get("score", 0.0))
+			+ float(pending.get("amount", 0.0)),
+			rules.PRESSURE_MIN, rules.PRESSURE_MAX)
+		row["last_gain_day"] = today
+		row["quiet_days"] = 0
+		applied += 1
+	gs.pressure_bleed_pending = still_pending
+	return applied
+
+## FS-003 §6's recovery: the first full quiet day holds, the second and every one
+## after takes a point off.
+##
+## Runs post-increment on day `today`, so the day that just ended is `today - 1`.
+## A row whose last gain was on or after that day was not quiet, and its counter
+## resets. Bleed runs BEFORE this (TI-003 §9), so a bleed landing this morning
+## has already stamped `last_gain_day = today` and correctly reads as not quiet.
+func apply_pressure_recovery(today: int) -> int:
+	var rules: RefCounted = _rules()
+	var recovered: int = 0
+	for district_key in gs.district_pressure.keys():
+		var by_family: Dictionary = gs.district_pressure[district_key]
+		for family_key in by_family.keys():
+			var row: Dictionary = by_family[family_key]
+			if int(row.get("last_gain_day", -1)) >= today - 1:
+				row["quiet_days"] = 0
+				continue
+			var quiet: int = int(row.get("quiet_days", 0)) + 1
+			row["quiet_days"] = quiet
+			if quiet <= rules.PRESSURE_QUIET_GRACE_DAYS:
+				continue
+			var before: float = float(row.get("score", 0.0))
+			if before <= rules.PRESSURE_MIN:
+				continue
+			row["score"] = maxf(rules.PRESSURE_MIN, before - rules.PRESSURE_QUIET_RECOVERY)
+			recovered += 1
+	return recovered
+
+# --- Financial Pressure rollover (TI-003 §17) ------------------------------
+
+## Decay first. `max(0, financial_pressure - 1)`, every day, unconditionally.
+func decay_financial_pressure() -> int:
+	var rules: RefCounted = _rules()
+	var before: int = int(gs.financial_pressure)
+	gs.financial_pressure = maxi(0, before - rules.FINANCIAL_PRESSURE_DECAY)
+	return before - int(gs.financial_pressure)
+
+## Then fold, on what REMAINS after the decay.
+##
+## The ordering is on TI-003's regression list twice — #25 is folding before the
+## decay, #26 is Exposure seeing morning Heat before the fold — so both are
+## enforced by the lifecycle's declared phase order rather than by this function
+## knowing when it runs.
+##
+## Goes through `HeatSystem.apply_direct`, which means it reaches the meter
+## unscaled but still passes through the one owner: Deshawn does not damp it
+## (this is not heat a crime generated), and nothing else can write Heat.
+func fold_financial_pressure() -> float:
+	var rules: RefCounted = _rules()
+	if int(gs.financial_pressure) < rules.FINANCIAL_PRESSURE_FOLD_AT:
+		return 0.0
+	var heat: Object = gm.system("heat") if gm != null else null
+	if heat == null:
+		return 0.0
+	var applied: float = heat.apply_direct(rules.FINANCIAL_PRESSURE_FOLD_HEAT,
+		{"source_id": "financial_pressure"})
+	if applied > 0.0:
+		gs.log_activity("The paper around a recent formal payment started drawing "
+			+ "the wrong attention. Heat +%.1f." % applied, Color(0.882, 0.651, 0.227))
+	return applied
 
 ## Read-only view of the queue, for tests and later slices. Duplicated so a
 ## caller cannot reorder the real one by sorting what it was handed.

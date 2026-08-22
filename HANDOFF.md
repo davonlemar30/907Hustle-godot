@@ -6064,6 +6064,131 @@ tree than the screen actually had.
 
 ---
 
+## Batch 16: the door to work  (added 2026-08-22)
+
+**The Jobs screen was unreachable on a fresh run, and the instrument could not
+see it because the instrument was not playing the game.**
+
+Schema unchanged — v15 in, v15 out.
+
+### The defect
+
+`menu.jobs` gates on `job_contacts`. `job_contacts` rose in exactly one way:
+recruiting Deshawn or Pherris. Deshawn costs **$100 against a starting $100** and
+then draws $50 a day, with $150 of rent landing on day 7. Pherris costs $180.
+
+So the hint under the padlock — "Meet someone who hires" — was asking the player
+to spend every dollar they had, take on a wage they could not pay, and then find
+rent, in order to reach the surface the design pass calls the authored on-ramp.
+
+And the run **starts knowing five places that hire**. `jobs_discovered` opens
+with `wash_go, spenard_chevron, rebel_convenience, northern_value, day_labor`,
+and `apply_job` dispatches perfectly well when called directly — verified. The
+state said "you know about these jobs"; the door said "you don't know anyone who
+hires". Those contradict, and one of them had to give.
+
+Worse, batch 10 built a **second path to work** — walking the block with LOOK
+FOR WORK until somebody mentions the freight yard — and the gate never learned
+about it. Measured before the fix: wander finds `ship_creek`, `jobs_discovered`
+goes to 6, `job_contacts` stays 0, screen stays locked. **The player was told
+about a job and not allowed through the door to apply for it.**
+
+### The fix
+
+A job you found YOURSELF counts as a way in. `_reconcile_progression_latches()`
+now also counts the entries of `WANDER_EVENTS.DISCOVERY_JOBS` present in
+`jobs_discovered`.
+
+Not the five you start with — those are what everybody on the block knows, they
+are true at reset, and counting them would open the gate before the run began
+and make it no gate at all. The two in the discovery pool have to be turned up,
+and turning one up is the same achievement as knowing somebody who hires: **you
+now have a way in that you did not have this morning.**
+
+No schema change. `job_contacts` was already persisted and the latch re-derives,
+so an existing save that has already found the freight yard opens the door on its
+next dispatch — the same argument the v9 → v10 arm made about its own latches.
+
+The hint became "Find work on the block, or meet someone who hires", which names
+the free path first and points at a button already on the Home screen.
+
+### Why nothing caught it
+
+**Every economy profile reaches its surfaces by dispatching, and a dispatch does
+not pass a surface gate.** Gates live on the screen and on the route. So the
+table has been measuring what the SYSTEMS can do rather than what the game hands
+the player — which is how it came to report `worker_wanders` at 287% and call it
+the strongest clean path in the build, for a path a real run could not take.
+
+`newcomer` is the first profile in this file that plays the game: nothing seeded,
+home turf only, every gate closed at reset, and a `gated` flag that makes each
+leg of the loop ask the access layer before it acts.
+
+Measured with the fix and without it — the same profile, the same seeds:
+
+| | net worth | % | shifts | peak heat | arrests |
+| --- | --- | --- | --- | --- | --- |
+| without the fix | $4,069 | 262% | **0 ($0)** | 15.0 | 2 |
+| with the fix | $7,114 | 458% | shift pay $125 | 14.1 | 1 |
+
+**Zero shifts in thirty days.** The gate did not slow the legal path down, it
+removed it — and the profile compensated with 97 flips and enough crime to sit
+at the Heat ceiling. A gate that turns the honest path off and leaves crime as
+the only way to make rent is not pacing, it is a different game.
+
+### The baseline DECISION, answered with a number
+
+The standing question was whether `legal_worker` is a fair 100% anchor: it never
+leaves Wash & Go, and `ECON_JOB` is not even the best of the five shifts a run
+starts knowing about (`spenard_chevron` pays [48, 60] against [40, 60]). HANDOFF
+carried a caveat warning that re-baselining "moves every number in this file".
+
+`best_job_worker` is the same ladder with `best_job` on. It reads **111%**.
+
+Eleven points, not a multiple — inside the spread these profiles already show.
+**Recommendation: keep `legal_worker` at 100% and quote the 11% instead of the
+caveat.** The anchor is fine; the caveat was the thing that was wrong.
+
+### Verification
+
+| Gate | Before | After |
+| --- | --- | --- |
+| Parity | 12,441 / 0 | **12,467 / 0** (floor 12,431 → **12,457**) |
+| Save validation | 96 / 0 | 96 / 0 |
+| Screen smoke | 24/24 | 24/24 |
+| Glyph coverage | ok | ok |
+
+### Sabotage log — 2 run, 2 caught
+
+| Sabotage | Caught by |
+| --- | --- |
+| drop the `DISCOVERY_JOBS` arm (restore the defect) | "a job you found by walking opens the door", "and the route opens with it", "and it is re-derived rather than remembered", **and "newcomer actually worked a shift"** |
+| count the five STARTING jobs toward `job_contacts` | 5 failures, including the v9 migration checks "a v9 run keeps the contact it recruited" (got 6, want 1) and "an untravelled v9 run has met nobody" (got 5, want 0) |
+
+The first sabotage is worth noting: **the regression guard that fires is the
+economy profile**, not a unit check. `newcomer actually worked a shift` is the
+assertion that would have caught this the day it shipped, and it only exists
+because a profile finally plays the game.
+
+One check was written wrong on the first pass and corrected: it asserted that
+`apply_job` HIRES, when applying is an interview and `_apply` returns `ok` with
+an empty `hired` when it goes the other way. The claim that matters is that the
+dispatch is *accepted* — the action was never gated, only the door was — which
+is what makes "unreachable" the right word rather than "unavailable".
+
+### Open, for whoever picks this up
+
+- **The other five discovery axes.** Unchanged from batch 14's note.
+- **Boost at 7% of the day job.** Unchanged. `boost_finder` is the instrument.
+- **`newcomer` only covers the surfaces with `gated` wiring.** Travel is governed
+  by `districts_unlocked` rather than by a `can.call`, and the venues, crew and
+  turf legs have no profile at all. A gate added to one of those will not be
+  measured until a leg exists for it.
+- **25 stale remote branches**, every one merged. The header row claiming
+  "`main` only" was never true.
+
+---
+
 ## Where the build stands (end of the 2026-08-22 session)
 
 One place to orient before reading anything else below.
@@ -6071,15 +6196,15 @@ One place to orient before reading anything else below.
 | | |
 | --- | --- |
 | Build version | `0.1.0` (`autoload/version.gd`) |
-| Save schema | **v15**, migration ladder walks v1 → v15 (unchanged by batch 15) |
-| Parity | **12,441 checks, 0 failures**, floor `MIN_CHECKS := 12431` |
+| Save schema | **v15**, migration ladder walks v1 → v15 (unchanged by batches 15-16) |
+| Parity | **12,467 checks, 0 failures**, floor `MIN_CHECKS := 12457` |
 | Save validation | 96 checks, 0 failures — **a CI gate as of batch 12** |
 | Screen smoke | 24/24 screens instantiate **with their scripts attached** — a CI gate as of batch 12, script-attachment added in batch 15 |
 | Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` |
 | Screens | 24 |
 | Systems | 29 registered in `GameManager` |
 | Discovery axes | **2** — `jobs_discovered` (WORK walks) and `boost_targets_discovered` (DEAL walks, batch 14) |
-| Branches | `main` only; every batch branch merged and deleted |
+| Branches | **25 stale remote branches**, every one merged. This row used to read "`main` only; every batch branch merged and deleted" and that was never true — nothing has ever deleted one. Deleting them is a UI click per branch; the git proxy in the build environment refuses `push --delete`. |
 
 **The economy, measured** (30 days × 4 seeds, `_check_economy_profiles`). Every
 percentage is against `legal_worker`:
@@ -6087,20 +6212,26 @@ percentage is against `legal_worker`:
 | profile | net worth | % | note |
 | --- | --- | --- | --- |
 | hustler | $11,372 | 732% | trade + job; the ceiling |
+| newcomer | $7,114 | 458% | batch 16 — **the only profile that plays the GAME rather than the systems.** Nothing seeded, every gate closed at reset, and it may only use a surface the ladder has opened |
 | flipper | $5,566 | 358% | 907List |
 | worker_wanders | $4,457 | 287% | **the strongest clean path** — zero Heat, zero arrests |
-| legal_worker | $1,553 | 100% | the baseline, and see the caveat below |
+| legal_worker | $1,553 | 100% | the baseline — see below, it holds |
+| best_job_worker | $1,728 | 111% | batch 16 — the same ladder taking the best starter shift. The gap IS the answer to the baseline question |
 | arbitrage | $1,288 | 83% | |
 | boost | $201 | 13% | handed all twelve targets on day 1; 3.5 bans a run, and it ends with **nothing left workable** |
 | boost_finder | $113 | 7% | batch 14 — earns its board and moves when a block is finished. 9.0 targets clocked, **7.5 bans absorbed, and still 1.5 rooms open on the last day** |
 | wanderer | $36 | 2% | walking with no job — correctly a trap |
 | trader / stickup | ~$30 | 2% | |
 
-**Read the baseline caveat before quoting any of those.** `legal_worker` never
-leaves Wash & Go, which is now a player ignoring a free mechanic — and
+**The baseline caveat, now measured rather than feared (batch 16).** The worry
+was that `legal_worker` is a naive anchor: it never leaves Wash & Go, and
 `ECON_JOB` is not even the best starter shift (`spenard_chevron` pays [48, 60]
-against [40, 60]). Re-baselining moves every number in this file and is a design
-call, not a hardening one.
+against [40, 60]). `best_job_worker` is the same ladder with `best_job` on, and
+it reads **111%**. So the anchor is off by eleven points, not by a multiple —
+re-baselining would move every number in this file by about a tenth, which is
+inside the spread these profiles already have. **Recommendation: keep
+`legal_worker` at 100% and quote this 11% instead of the caveat.** That resolves
+the standing DECISION with a number.
 
 **Filed for design, not taken** (item 3 was taken in batch 14 and is kept below
 with what actually happened, because the shape of the finding is still the useful
@@ -6164,6 +6295,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 13 | `codex/batch-13-wander-intents` | Wander becomes a choice — three intents · per-day effort falloff · READ, the intent that tells you what the build hides | 11,780 → 11,887 | Merged, PR #67. **Save v13 → v14.** |
 | 14 | `claude/batch-14-visibility-discovery-trbd0v` | The visibility pass — the Hustle ladder · the snapshot LOCKED → HIDDEN · the wander toast · POST ELI and LAY LOW re-homed · **Boost's discovery axis** | 11,887 → 12,249 | **Save v14 → v15.** |
 | 15 | `claude/batch-14-visibility-discovery-trbd0v` | The doors and the news — the orphaned Crew row · route/button parity · the clear that did not clear · **the announcer** · the opening | 12,249 → 12,441 | Schema unchanged. Three defects predating batch 14. |
+| 16 | `claude/batch-14-visibility-discovery-trbd0v` | The door to work — **Jobs was unreachable on a fresh run** · a job you find yourself counts · `newcomer`, the first profile that plays the game · the baseline DECISION answered at 111% | 12,441 → 12,467 | Schema unchanged. |
 
 **Two verification defects found in batch 6b, both in the harness rather than
 the game, both now fixed:**

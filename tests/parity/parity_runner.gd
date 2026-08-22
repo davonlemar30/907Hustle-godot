@@ -150,6 +150,7 @@ func _ready() -> void:
 		_check_batch13(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch14(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch15(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch16(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -14819,6 +14820,15 @@ const ECON_JOB := "wash_go"
 const ECON_PROFILES: Array[Dictionary] = [
 	{"name": "legal_worker", "job": true, "trade": false, "flip": false,
 		"seed": "econ-legal"},
+	# The baseline's own control (batch 16), for the standing DECISION about
+	# whether 100% is a fair anchor. `legal_worker` below never leaves Wash & Go
+	# because `ECON_JOB` is a const — and Wash & Go is not even the best of the
+	# five shifts a run starts knowing about (`spenard_chevron` pays [48, 60]
+	# against [40, 60]). This is the same ladder with `best_job`, so the gap
+	# between the two rows IS the answer: a large one means every percentage in
+	# the docs is quoted against a player ignoring free money.
+	{"name": "best_job_worker", "job": true, "trade": false, "flip": false,
+		"best_job": true, "seed": "econ-job-best"},
 	{"name": "hustler", "job": true, "trade": true, "flip": false,
 		"seed": "econ-hustler"},
 	{"name": "arbitrage", "job": false, "trade": true, "flip": false,
@@ -14884,6 +14894,23 @@ const ECON_PROFILES: Array[Dictionary] = [
 	{"name": "boost_finder", "job": false, "trade": false, "flip": false,
 		"lift": true, "wander": true, "roam": true, "find_targets": true,
 		"seed": "econ-boost-find"},
+	# The player (batch 16). Nothing seeded, nothing bypassed: it starts on home
+	# turf with every gate closed and may only use a surface the ladder has
+	# actually opened.
+	#
+	# It exists because every row above it reaches its surfaces by dispatching,
+	# and a dispatch does not pass a surface gate — so this table has been
+	# reporting what the SYSTEMS can do rather than what the GAME hands the
+	# player. `worker_wanders` reads 287% of the day job and is called the
+	# strongest clean path in the build; until this batch a real run could not
+	# take it without spending its entire $100 on Deshawn to unlock the Jobs
+	# screen. Nothing measured that, because nothing was playing the game.
+	#
+	# It wants everything, and the ladder decides what it gets and when.
+	{"name": "newcomer", "job": true, "trade": true, "flip": true,
+		"rob": true, "lift": true, "wander": true, "roam": true,
+		"best_job": true, "gated": true, "find_targets": true,
+		"seed": "econ-newcomer"},
 ]
 
 const ECON_DAYS := 30
@@ -14909,7 +14936,11 @@ func _econ_ready(gs: Node, profile: Dictionary) -> void:
 	# The whole city, for the same reason the consequence profiles get it: this
 	# measures the economy over 30 days, not how long a player takes to earn a
 	# bus route.
-	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+	#
+	# A GATED profile is the exception and the whole point of it: it starts with
+	# home turf only, because what it measures IS how long a player takes.
+	if not bool(profile.get("gated", false)):
+		gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
 	# Boost's targets, on the same argument and with one deliberate exception.
 	#
 	# `boost` is the batch-3 profile and its number is quoted against every
@@ -14921,7 +14952,8 @@ func _econ_ready(gs: Node, profile: Dictionary) -> void:
 	# `boost_finder` in ECON_PROFILES. It starts with nothing clocked and has to
 	# walk for every room it works, which is the only honest reading of what the
 	# discovery axis costs.
-	if not bool(profile.get("find_targets", false)):
+	if not bool(profile.get("find_targets", false)) \
+			and not bool(profile.get("gated", false)):
 		_clock_every_boost_target(gs)
 	# A profile may bring crew. Written onto the record rather than recruited,
 	# for the reason the batch-6b checks do it: what is being measured is what
@@ -15011,6 +15043,21 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	var local_only: bool = bool(profile.get("local_only", false))
 	var wants_wander: bool = bool(profile.get("wander", false))
 	var wants_roam: bool = bool(profile.get("roam", false))
+	# Batch 16. A profile that plays only what the ladder has actually opened.
+	#
+	# Every other profile in this table reaches its surfaces by DISPATCHING —
+	# `market_buy`, `boost`, `apply_job` — and a dispatch does not go through a
+	# surface gate. Gates live on the screen and on the route, so the harness has
+	# been measuring capabilities the UI does not yet hand the player. That is
+	# how it came to report `worker_wanders` at 287% of the day job, the best
+	# clean path in the game, for a path a real run could not take without
+	# spending its whole $100 on Deshawn first.
+	var gated: bool = bool(profile.get("gated", false))
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	# Explicitly `true` when ungated, so every call site below reads the same
+	# whether or not the profile is respecting the ladder.
+	var can := func(surface_id: String) -> bool:
+		return true if not gated or access == null else bool(access.is_unlocked(surface_id))
 	var best_job: bool = bool(profile.get("best_job", false))
 
 	var metrics: Dictionary = {
@@ -15085,7 +15132,7 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 
 		# --- the legal leg, first on the ladder for the profiles that have it ---
 		var jobs_system: Object = gm.system("jobs")
-		if wants_job and str(gs.active_job_id).is_empty():
+		if wants_job and can.call("menu.jobs") and str(gs.active_job_id).is_empty():
 			# Apply, and keep applying. `_apply` returns `ok: true` with an
 			# EMPTY `hired` when the interview goes the other way — the
 			# interview happened, it just did not land — so a profile that
@@ -15114,7 +15161,8 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		# A failed upgrade spends the slot, mirroring the initial apply above and
 		# for the same reason: the interview key is `day:slot:job_interview:job`,
 		# so re-applying in the same slot re-reads the same answer forever.
-		if wants_job and best_job and not str(gs.active_job_id).is_empty():
+		if wants_job and can.call("menu.jobs") and best_job \
+				and not str(gs.active_job_id).is_empty():
 			var better := _econ_job_for(gs, true)
 			if better != str(gs.active_job_id):
 				metrics["applications"] = int(metrics.get("applications", 0)) + 1
@@ -15153,17 +15201,20 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 				continue
 
 		# --- the flip leg ---
-		if wants_flip and _econ_try_flip(gs, gm, metrics):
+		if wants_flip and can.call("hustle.list") and _econ_try_flip(gs, gm, metrics):
 			continue
 
 		# --- the criminal legs ---
-		if wants_rob and _econ_try_crime(gs, gm, metrics, "stickup"):
+		if wants_rob and can.call("hustle.stickup") \
+				and _econ_try_crime(gs, gm, metrics, "stickup"):
 			continue
-		if wants_lift and _econ_try_crime(gs, gm, metrics, "boost"):
+		if wants_lift and can.call("hustle.boost") \
+				and _econ_try_crime(gs, gm, metrics, "boost"):
 			continue
 
 		# --- the trading leg ---
-		if wants_trade and _econ_try_trade(gs, gm, metrics, local_only):
+		if wants_trade and can.call("hustle.market") \
+				and _econ_try_trade(gs, gm, metrics, local_only):
 			continue
 
 		# --- the roaming leg (batch 14) ---
@@ -15673,6 +15724,16 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 		# instrument-failure guard every row above makes about its own premise.
 		if name == "boost_finder":
 			_expect_true("boost_finder actually clocked targets", float(row["clocked"]) > 0.0)
+		# The batch-16 regression guard, and the one that would have caught the
+		# defect at the time. `newcomer` plays only what the ladder has opened,
+		# so if the door to work ever closes again this reads 0 shifts — which
+		# is exactly what it read before the fix, for thirty days.
+		if name == "newcomer":
+			_expect_true("newcomer actually worked a shift", float(row["shifts"]) > 0.0)
+			_expect_true("and it got there by walking, not by going broke",
+				float(row["wanders"]) > 0.0)
+			_expect_true("a gated profile only uses what the ladder opened",
+				float(row["days_played"]) > 1.0)
 
 	# The save goes back exactly as it was found, including having been absent.
 	if previous_save.is_empty():
@@ -17346,6 +17407,126 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 			access.is_unlocked(str(surface_id)))
 	gs.reset_to_new_game()
 
+
+# === batch 16 — the door to work ============================================
+#
+# The Jobs screen was UNREACHABLE on a fresh run, and the instrument could not
+# see it because the instrument was not playing the game.
+#
+# `menu.jobs` gates on `job_contacts`, and `job_contacts` rose in exactly one
+# way: recruiting Deshawn or Pherris. Deshawn costs $100 against a starting $100
+# and then draws $50 a day, with $150 of rent landing on day 7. So "Meet someone
+# who hires" was a hint asking the player to go broke in order to read it.
+#
+# Meanwhile the run STARTS knowing five places that hire, `apply_job` dispatches
+# perfectly well when called, and batch 10 built a second path to work — walking
+# the block until somebody mentions the freight yard. The gate never learned
+# about it, so a player could be told about a job and still not be allowed
+# through the door to apply for it.
+#
+# **Nothing caught it because every economy profile dispatches actions
+# directly**, and a dispatch does not pass a surface gate. The table has been
+# reporting what the systems can do rather than what the game hands the player —
+# which is how it came to call `worker_wanders` at 287% the strongest clean path
+# in the build while a real run could not take it.
+#
+# The cost, measured on the `newcomer` profile with and without the fix:
+#
+#   without   $4,069 (262%)   shifts 0 ($0)     peak heat 15.0, 2 arrests
+#   with      $7,114 (458%)   shift pay $125    peak heat 14.1, 1 arrest
+#
+# Zero shifts in thirty days. The gate did not slow the legal path down, it
+# removed it and left crime as the only way to make rent.
+#
+# SABOTAGE: drop the DISCOVERY_JOBS arm from `_reconcile_progression_latches`
+#           ==> "a job you found by walking opens the door" fails, and
+#               "newcomer actually worked a shift" fails with it.
+# SABOTAGE: count the five STARTING jobs toward `job_contacts`
+#           ==> "the jobs everybody knows about do not open it" fails.
+# SABOTAGE: drop the `gated` guard off the econ legal leg
+#           ==> "a gated profile only uses what the ladder opened" fails.
+
+func _check_batch16(gs: Node, gm: Node) -> void:
+	_check_door_to_work(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+## Two ways in to work, and neither of them is "already have one".
+##
+## The check that matters most is the NEGATIVE one: the five jobs a run starts
+## knowing about must NOT open the gate. Counting them would open it at reset
+## and make it no gate at all — which is the failure mode opposite to the one
+## this batch fixed, and just as wrong.
+func _check_door_to_work(gs: Node, gm: Node) -> void:
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	var nav: Node = get_node("/root/ScreenManager")
+	if access == null:
+		_fail("batch16", "no SurfaceVisibility autoload")
+		return
+
+	# 1. A FRESH RUN knows five places that hire and cannot reach any of them.
+	#    That contradiction is the defect, stated as a check.
+	_fresh_gate_run(gs)
+	_expect_true("a fresh run already knows about jobs", gs.jobs_discovered.size() >= 5)
+	_expect_true("the jobs everybody knows about do not open it",
+		not access.is_unlocked(access.MENU_JOBS))
+	_expect_str("and the route is refused with them", nav.resolved_route(nav.JOBS), "")
+	# The hint has to name something the player can actually go and do. It used
+	# to read "Meet someone who hires", whose only enabler cost 100% of the
+	# starting cash.
+	var hint: String = access.hint_for(access.MENU_JOBS)
+	_expect_true("the hint names the free path first",
+		hint.to_lower().contains("find work"))
+
+	# 2. THE ACTION was never gated — only the door. Proving that is what makes
+	#    "unreachable" the right word rather than "unavailable".
+	# The dispatch is ACCEPTED, which is the whole claim. Not that it hires —
+	# applying is an interview and `_apply` returns ok with an empty `hired`
+	# when it goes the other way — but that nothing refused the attempt. The
+	# action was never gated; only the door was, which is what makes
+	# "unreachable" the right word rather than "unavailable".
+	_expect_true("applying for work was always possible when asked directly",
+		gm.dispatch("apply_job", {"job_id": "wash_go"}))
+	var refused: Dictionary = (gm.system("jobs") as RefCounted).handle(
+		"apply_job", {"job_id": "wash_go"})
+	_expect_true("and the jobs system never mentions a locked screen",
+		not str(refused.get("reason", "")).to_lower().contains("lock"))
+
+	# 3. WALKING opens it. Swept, because the discovery roll is a probability;
+	#    what is asserted is that finding a job is sufficient.
+	_fresh_gate_run(gs)
+	var found := false
+	for day in range(1, 60):
+		gs.day = day
+		if not gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_WORK}):
+			continue
+		if gs.jobs_discovered.size() > 5:
+			found = true
+			break
+	_expect_true("a walk can turn up work", found)
+	if found:
+		_expect_true("a job you found by walking opens the door",
+			access.is_unlocked(access.MENU_JOBS))
+		_expect_str("and the route opens with it",
+			nav.resolved_route(nav.JOBS), nav.JOBS)
+		# Derived, not stored: scramble the latch and it comes back.
+		gs.job_contacts = 0
+		gs.reconcile_persistent_invariants()
+		_expect_true("and it is re-derived rather than remembered",
+			access.is_unlocked(access.MENU_JOBS))
+
+	# 4. THE ORIGINAL PATH still works, and independently. Recruiting a contact
+	#    opens the door on a run that has never been out looking.
+	_fresh_gate_run(gs)
+	gs.cash = 500
+	_expect_true("a run that never walked has not found work",
+		not access.is_unlocked(access.MENU_JOBS))
+	_expect_true("recruiting the fixer goes through",
+		gm.dispatch("recruit_crew", {"crew_id": "deshawn"}))
+	_expect_true("and meeting somebody who hires still opens the door",
+		access.is_unlocked(access.MENU_JOBS))
+	gs.reset_to_new_game()
+
 func _expect_int(label: String, got: int, want: int) -> void:
 	_checks += 1
 	if got != want:
@@ -17554,11 +17735,23 @@ func _fail(label: String, detail: String) -> void:
 ## only thing keeping the phone dismiss check green — see the note at
 ## `_check_phone_dismiss_target`.
 ##
+## Batch 16 takes it to 12457. Most of it is the door-to-work section, and the
+## rest arrived because the economy table grew two rows — `best_job_worker`, to
+## answer the standing baseline DECISION with a number instead of a caveat, and
+## `newcomer`, which is the first profile in this file that plays the GAME
+## rather than the systems.
+##
+## That distinction is the batch. Every other row reaches its surfaces by
+## dispatching, and a dispatch does not pass a surface gate — so this table has
+## always measured what the systems can do. It called `worker_wanders` the
+## strongest clean path in the build at 287% while a real run could not take it
+## without spending its whole $100 to unlock the Jobs screen first.
+##
 ## Ten of margin, the same margin every floor since FS-003.13 has left, because
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 12431
+const MIN_CHECKS := 12457
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

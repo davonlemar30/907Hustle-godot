@@ -588,20 +588,48 @@ func _reconcile_progression_latches() -> void:
 	if corners >= 2 and not "airport_industrial" in districts_unlocked:
 		districts_unlocked.append("airport_industrial")
 
-	# A job contact is somebody recruited whose ROLE is putting people together.
-	# Deshawn is the fixer/recruiter and Pherris is the connector; Eli runs
-	# bundles and Tone stands at a door, and neither of them knows anybody
-	# hiring. Counted rather than latched to a bool so a second contact can
-	# raise a later gate without another field.
+	# A way IN to work. Two of them, and batch 16 added the second because the
+	# first was not reachable on the run that needs it.
+	#
+	# The original rule was "somebody recruited whose ROLE is putting people
+	# together" — Deshawn the fixer/recruiter and Pherris the connector; Eli
+	# runs bundles and Tone stands at a door, and neither knows anybody hiring.
+	# That is a good rule and it was the ONLY one, which made the Jobs screen
+	# unreachable on a fresh run: Deshawn costs $100 against a starting $100 and
+	# then draws $50 a day, with $150 of rent landing on day 7. "Meet someone
+	# who hires" was a hint asking the player to go broke to read it.
+	#
+	# Meanwhile the run STARTS knowing five places that hire, `apply_job`
+	# dispatches perfectly well when called, and batch 10 built a whole second
+	# path to work — walking the block with LOOK FOR WORK until somebody
+	# mentions the freight yard. The gate never learned about it, so a player
+	# could be told about a job and still not be allowed through the door to
+	# apply for it.
+	#
+	# So a job you FOUND YOURSELF counts. Not the five you start knowing about —
+	# those are what everybody on the block knows and they are true on day one,
+	# so counting them would open the gate at reset and make it no gate at all.
+	# The two in `DISCOVERY_JOBS` are the ones that have to be turned up, and
+	# turning one up is the same achievement as knowing somebody who hires:
+	# you now have a way in that you did not have this morning.
 	var met: int = 0
 	for contact_id in JOB_CONTACT_CREW_IDS:
 		if is_recruited(str(contact_id)):
+			met += 1
+	for job_id in WANDER_EVENTS.DISCOVERY_JOBS:
+		if str(job_id) in jobs_discovered:
 			met += 1
 	job_contacts = maxi(job_contacts, met)
 
 ## Crew whose canon role is connecting people to work (see the character pages:
 ## Deshawn "Fixer / Recruiter", Pherris "Connector").
 const JOB_CONTACT_CREW_IDS: Array[String] = ["deshawn", "pherris"]
+
+## The wander discovery pool, for the second way in. Preloaded rather than
+## retyped: the list of jobs that must be FOUND is authored in one place, and a
+## second copy here would open the gate on a job the walk cannot produce the day
+## somebody edits that table.
+const WANDER_EVENTS := preload("res://data/wander_events.gd")
 
 var game_over: bool = false
 var game_over_reason: String = ""

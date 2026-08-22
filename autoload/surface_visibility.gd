@@ -139,7 +139,7 @@ const GATES := {
 	MENU_JOBS: {
 		"mode": MODE_LOCKED,
 		"requirements": [{"type": "job_contacts_min", "min": 1}],
-		"hint": "Meet someone who hires",
+		"hint": "Find work on the block, or meet someone who hires",
 		"announce": "Somebody will vouch for you now. There is work on the board.",
 	},
 	STREET_DOWNTOWN: {

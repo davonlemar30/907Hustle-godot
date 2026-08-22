@@ -1520,17 +1520,17 @@ func _check_stickup_rng_isolation(gs: Node, gm: Node, resolver: RefCounted) -> v
 const LIST_PROBE_SEED := "907hustle"
 ## Fixed boards for the fresh-run seed at tier 1, day by day.
 const LIST_GOLDEN_BOARDS := {
-	1: ["winter_coat", "shop_vac"],
-	2: ["dresser", "space_heater"],
-	3: ["winter_coat", "shop_vac"],
-	4: ["shop_vac", "camp_stove"],
-	5: ["dresser", "shop_vac"],
+	1: ["space_heater", "winter_coat"],
+	2: ["winter_coat", "dresser"],
+	3: ["camp_stove", "shop_vac"],
+	4: ["cracked_tv", "space_heater"],
+	5: ["dresser", "sagging_couch"],
 }
-## Day 12 once `used_tv` has been taken. Not day 12 minus that id: the filter
+## Day 6 once `used_tv` has been taken. Not day 6 minus that id: the filter
 ## runs on the POOL, so the board is regenerated from a smaller set and its
 ## remaining composition moves. That is canon's `listingSlate` and this literal
 ## is what pins it.
-const LIST_GOLDEN_AFTER_TAKE := ["dresser", "space_heater"]
+const LIST_GOLDEN_AFTER_TAKE := ["shop_vac", "space_heater"]
 
 func _check_907list_ownership() -> void:
 	var gs := get_node("/root/GameState")
@@ -1550,9 +1550,9 @@ func _check_907list_ownership() -> void:
 func _reset_list_probe(gs: Node) -> void:
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
-	# Day 12 is the first pinned probe day whose new keyed shuffle includes
+	# Day 6 is the first pinned probe day whose new keyed shuffle includes
 	# `used_tv`, so the consumption test can exercise a real offered listing.
-	gs.day = 12
+	gs.day = 6
 	gs.time_slots_today = 0
 	gs.cash = 5000
 	gs.current_district_id = "north_star_lot"

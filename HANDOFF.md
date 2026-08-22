@@ -119,9 +119,10 @@ record of the required change.
 
 ### 907List keyed-shuffle update
 
-The existing 907List shuffle was tightened to the requested keyed Fisher–Yates
-shape: each swap uses `seeded_int_range(seed, "%d:%s" % [index, key], 0,
-index)`, with the varying index at the FRONT of the FNV-1a key. This changes
+The existing 907List shuffle was tightened to the requested forward keyed
+Fisher–Yates shape: each swap uses `seeded_int_range(seed, "%d:%s" % [index,
+key], index, pool.size() - 1)`, with the varying index at the FRONT of the
+FNV-1a key. This changes
 future board composition for existing saves, but not save schema or persisted
 state; boards are regenerated from seed + day. Golden boards and the
 post-`used_tv` board were regenerated accordingly.

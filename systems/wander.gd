@@ -188,7 +188,23 @@ func _wander() -> Dictionary:
 	# a caller named "wander" since the day it was written.
 	var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
 	if curtis != null:
-		curtis.maybe_watcher_encounter("wander")
+		report["watcher"] = str(curtis.maybe_watcher_encounter("wander"))
+
+	# A retaliation that is due and waiting for the player to BE somewhere finds
+	# them on a wander, the same as it does on travel.
+	#
+	# Travel and day-start were the only two callers, which made walking the
+	# block the one way to move around the neighbourhood that nobody waiting for
+	# you could take advantage of. The presence gate is the engine's; this only
+	# gives it the same chance to fire that a bus ride already had. If it opens
+	# a chain, the walk is over — the blocking encounter IS the outcome, and
+	# drawing a card on top of it would be two things happening at once.
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine != null:
+		engine.try_surface_delayed(int(gs.day), str(gs.current_district_id))
+		if bool(engine.has_active()):
+			time_system.handle("advance_time", {})
+			return {"ok": true, "kind": "surfaced", "card_id": ""}
 
 	# The ramped roll. Day and slot lead the key, per the v0.1.0 seeded-key
 	# audit: they are what moves between two wanders, and the district mostly is
@@ -204,10 +220,21 @@ func _wander() -> Dictionary:
 		int(gs.wander_count), str(gs.current_district_id)]
 	var open: Array = undiscovered()
 	if not open.is_empty() and rng.seeded_random(gs.run_seed, key) < discovery_chance():
-		report = _discover(str(open[0]))
+		# WHICH one is seeded too. Taking `open[0]` made the order of a constant
+		# array into the order of the game: every run in the port's history
+		# would have found the warehouse before the freight yard.
+		var pick: int = rng.seeded_int_range(gs.run_seed, key + ":find",
+			0, open.size() - 1)
+		report = _discover(str(open[pick]))
 	else:
 		if not open.is_empty():
-			gs.wander_misses = int(gs.wander_misses) + 1
+			# Capped where the ramp itself stops mattering. Past the ceiling the
+			# extra misses buy nothing, and letting the counter run free put the
+			# live path and the load-time validator into disagreement — a save
+			# at five misses came back clamped, with a repair reported against a
+			# run that had done nothing wrong.
+			gs.wander_misses = mini(int(gs.wander_misses) + 1,
+				int(EVENTS.miss_ceiling()))
 		report = _draw_card(key)
 
 	# The slot, last, so everything above resolved against the day it happened
@@ -377,6 +404,16 @@ func _attribute_for(shape: String) -> String:
 	return mapped if not mapped.is_empty() else "combat"
 
 # --- the chain's source adapter ----------------------------------------------
+
+## The button, and the line under it. Asked by the consequence engine through
+## its adapter-copy seam; an empty return falls back to what the engine would
+## have said, which is how a choice this file has no opinion about still reads.
+func choice_label(choice_id: String) -> String:
+	return str(EVENTS.CHOICE_LABELS.get(choice_id, ""))
+
+func choice_copy(choice_id: String) -> String:
+	return str(EVENTS.CHOICE_COPY.get(choice_id, ""))
+
 
 ## What the choice does. The engine calls exactly this one method on a source
 ## adapter, which is the whole cost of a fourth chain kind.

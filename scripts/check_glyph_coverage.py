@@ -28,7 +28,12 @@ from fontTools.ttLib import TTFont
 
 ROOT = Path(__file__).resolve().parent.parent
 FONT_DIR = ROOT / "assets" / "fonts"
-SCAN_DIRS = ("ui", "autoload", "systems")
+# `data/` joined the list when Wander put authored player-facing prose there.
+# Every card line, every breadcrumb and every choice description lives in
+# `data/wander_events.gd`, and this job exists to stop a glyph the web build's
+# fonts cannot draw reaching a player. Scanning three of the four directories
+# that hold copy is the kind of gap that only shows up as a tofu box.
+SCAN_DIRS = ("ui", "autoload", "systems", "data")
 SCAN_EXTS = (".tscn", ".gd", ".tres")
 
 

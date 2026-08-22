@@ -84,6 +84,17 @@ const DISCOVERY_BASE := 0.30
 const DISCOVERY_PER_MISS := 0.10
 const DISCOVERY_CAP := 0.70
 
+## How many misses it takes to reach the cap, derived rather than written down
+## so the two can never disagree.
+##
+## The live path and the save validator BOTH need this number and shipped with
+## only the validator holding it: `wander_misses` climbed without bound in play
+## while the validator clamped it on load, so an honest save at five misses
+## silently changed value and reported a repair it had not earned. One owner
+## now, read by both.
+static func miss_ceiling() -> int:
+	return int(ceil((DISCOVERY_CAP - DISCOVERY_BASE) / DISCOVERY_PER_MISS))
+
 ## What a wander can put on your map, in the order it is offered.
 ##
 ## Jobs first and deliberately: `juan_warehouse` and `ship_creek` have been in
@@ -210,15 +221,29 @@ const CARDS: Array[Dictionary] = [
 	},
 ]
 
-## Player-facing copy for the encounter choices. Kept beside the cards rather
-## than in the screen, for the reason the crew adapters keep their own voice:
-## the words belong with the thing that says them.
-const CHOICE_COPY := {
+## Player-facing copy for the encounter choices, in the two shapes the screen
+## needs: the button, and the line under it.
+##
+## Both are reached through the engine's adapter seam. Before that seam existed
+## Wander shipped with FOUR of its five choices rendering an EMPTY description
+## and the fifth inheriting Boost's — `talk` read "Hand it back and try to keep
+## this from turning physical", which is nothing you can do to a cruiser. The
+## engine's own table is Boost's vocabulary (fight / run / talk / yield) and was
+## never going to cover a different chain's.
+const CHOICE_LABELS := {
 	"stand": "STAND THERE",
 	"walk": "KEEP MOVING",
 	"hand_over": "GIVE IT UP",
 	"talk": "TALK TO THEM",
 	"keep_walking": "DO NOT STOP",
+}
+
+const CHOICE_COPY := {
+	"stand": "Make them decide how much they want it. Costs blood if they do.",
+	"walk": "Keep the bag and keep going. It works until it does not.",
+	"hand_over": "Hand it over and walk away whole. You lose what you are carrying.",
+	"talk": "Answer what they ask and nothing else. Charisma, not speed.",
+	"keep_walking": "Do not stop and do not run. Either one is an answer.",
 }
 
 func card_by_id(card_id: String) -> Dictionary:

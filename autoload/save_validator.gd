@@ -4,14 +4,15 @@ extends RefCounted
 ## no tree, and a repair table belongs with the data it describes.
 const GAME_STATE := preload("res://autoload/game_state.gd")
 ## The wander ramp's authored numbers, for the clamp that keeps a corrupt save
-## from pinning the discovery roll at its cap.
-const GAME_STATE_EVENTS := preload("res://data/wander_events.gd")
+## from pinning the discovery roll at its cap. The only preload from `data/` in
+## this directory, and it is here because the clamp has to agree with the ramp.
+const WANDER_EVENTS := preload("res://data/wander_events.gd")
 ## Nested save-shape repair for load-time payloads.
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
 ## repaired payload back to disk. The save schema is v13. Older saves are
-## migrated before this validator runs, so every arm below reads a v10 shape.
+## migrated before this validator runs, so every arm below reads a v13 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -588,8 +589,9 @@ func _validate_heat_day(state: Dictionary, repairs: Array[String]) -> void:
 ## costs an honest save nothing — past that point the extra misses were already
 ## doing nothing — and takes the exploit away.
 func _validate_wander(state: Dictionary, repairs: Array[String]) -> void:
-	var ceiling: int = int(ceil((GAME_STATE_EVENTS.DISCOVERY_CAP
-		- GAME_STATE_EVENTS.DISCOVERY_BASE) / GAME_STATE_EVENTS.DISCOVERY_PER_MISS))
+	# The same number the live path caps at — one owner, so the two cannot
+	# disagree and repair an honest save.
+	var ceiling: int = int(WANDER_EVENTS.miss_ceiling())
 	for field in ["wander_misses", "wander_count"]:
 		if not state.has(field):
 			continue

@@ -5871,12 +5871,12 @@ not un-ban you, and the blocker still refuses it in the order it always did.
   discovery ramp, the pool's tier filter, and the `CAUGHT_EFFECTS talk/messy` ban
   anomaly that has been pinned since FS-003. `boost_finder` is the instrument for
   any of them.
-- **Five `.uid` files are missing from the repo** (`data/wander_events.gd`,
-  `systems/venues.gd`, `systems/wander.gd`, `ui/screens/night_owl.gd`,
-  `ui/screens/spenard_gym.gd`). Godot regenerates them on import, but a
-  regenerated UID is not the committed one, so `uid://` references can differ
-  between machines. Left out of this PR as unrelated churn; worth a one-line
-  commit of its own.
+- ~~**Five `.uid` files are missing from the repo**~~ **Fixed, in its own
+  commit.** `data/wander_events.gd`, `systems/venues.gd`, `systems/wander.gd`,
+  `ui/screens/night_owl.gd` and `ui/screens/spenard_gym.gd` had no committed
+  UID. Godot regenerates one on import, but a regenerated UID is not the
+  committed one, so `uid://` references could differ between machines. All 197
+  non-addon, non-test scripts now carry one.
 
 ---
 
@@ -6059,8 +6059,8 @@ tree than the screen actually had.
   Hustle and Street bind into authored .tscn nodes rather than rebuilding a
   Body, so they were never affected — but any future screen that rebuilds should
   inherit from `surface_base` rather than reimplement the loop.
-- **Five `.uid` files are still missing from the repo** (see batch 14's note).
-  Worth a one-line commit of its own.
+- ~~**Five `.uid` files are still missing**~~ **Taken**, in its own commit at the
+  end of this batch — see batch 14's note for what they were and why it mattered.
 
 ---
 

@@ -25,6 +25,8 @@ ScreenManager="*res://autoload/screen_manager.gd"
 Exposure="*res://autoload/exposure.gd"
 Curtis="*res://autoload/curtis.gd"
 SaveSystem="*res://autoload/save_system.gd"
+Version="*res://autoload/version.gd"
+SurfaceVisibility="*res://autoload/surface_visibility.gd"
 
 [display]
 

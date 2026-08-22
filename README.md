@@ -10,6 +10,26 @@ to `main`. Roughly a 13MB first load, cached after.
 
 > Living build notes with the full detail live in [`HANDOFF.md`](HANDOFF.md).
 
+## Version
+
+**Current: `0.1.0`** — shown bottom-right on the title screen, and stamped into
+the deployed page's `<title>` by the web-export workflow.
+
+`MAJOR.MINOR.PATCH`, and each part means one thing here:
+
+| Part | Increments when |
+| --- | --- |
+| **MAJOR** | Save compatibility breaks, or the shape of a run changes. `0` until the game is feature-complete. |
+| **MINOR** | A feature milestone ships — new surfaces, new systems, a playtest pass. |
+| **PATCH** | Bug fixes and tuning against an unchanged feature set. |
+
+The number is declared in exactly one place, `autoload/version.gd`, and read
+from there by everything that displays it. Nothing else contains a version
+literal: the title screen reads `Version.display()`, the export workflow greps
+the constant out of the file, and the parity suite asserts both the value and
+its shape. A version written down twice is a version that disagrees with itself
+the first time somebody bumps one copy.
+
 ## Status
 
 A playable run with real pressure. You start with a name and $100, and the clock
@@ -28,6 +48,16 @@ hustle in the same district often enough and the odds there get worse, until you
 change districts, change hustles, or slow down. And the people you rob can send
 somebody after you two days later, in the part of town you did it in — though the
 block starts talking about them first, if you are standing where they are.
+
+A new run shows only what it has earned. The Market snapshot, Turf & Crew, the Crew
+panel, Jobs and the two districts past Spenard all start locked — greyed, with one
+line saying what opens them — and Tonight's Operation, the text card and the activity
+feed are not on the screen at all until there is something in them. The gates are
+authored in one table (`autoload/surface_visibility.gd`), evaluated by the shared
+requirements engine, and enforced on the ROUTE as well as the button, so there is one
+answer to "may the player go here" no matter who asked. Nothing about an unlock is
+stored: every verdict is derived from the run's own facts, which is why unlocks
+survive a save without a migration.
 
 Existing ported formulas retain oracle-backed parity where that remains the approved
 Godot decision. Newer approved Godot/ClickUp decisions take precedence over historical
@@ -149,6 +179,8 @@ autoload/
   exposure.gd         # observation ledgers, NPC lenses, channels, disposition bands
   curtis.gd           # rival awareness phases, watchers, quiet-streak decay
   save_system.gd      # versioned autosave on every state change; title save preview
+  version.gd          # the build version, declared once and read everywhere
+  surface_visibility.gd # the access layer: which surfaces are earned, and which exist
 
 systems/              # the ONLY writers of GameState
   economy.gd          # buy / sell + canon market walk (per-area, nightly)
@@ -174,6 +206,8 @@ systems/              # the ONLY writers of GameState
   retaliation.gd      # the delayed answer: schedule, ambient warnings, street crew
   list_adapter.gd     # Pherris running the board: what she buys, and why she stops
   requirements.gd     # pure eligibility evaluator — structured blockers, no state
+                      # (the ONE gate language: progression gates author records
+                      #  for it, they do not bring their own condition engine)
   territory.gd        # corners, soldiers, passive income
 
 ui/screens/*.tscn|.gd # one scene per screen; screen_base.gd holds shared chrome
@@ -307,7 +341,7 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (10,781 checks after FS-003.13 and FS-001.10, floor enforced at 10,770); fixtures grow with each system |
+| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (11,110 checks at v0.1.0, floor enforced at 11,000); fixtures grow with each system |
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
 | 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
 | 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
@@ -332,6 +366,7 @@ regardless of how small the source file is.
 | FS-003.11. Consequence UX | ✅ qualitative odds, arrest warnings, exact deltas, return routes, Local Attention on Boost/Stickup/Market; parity → 10044 checks |
 | FS-003.12. Integration gate | ✅ TI-003 §23 scenarios, save migration matrix, 30-day market non-drift, seeded long-run simulations; parity → 10211 checks |
 | FS-003.13. Balance pass | ✅ Pressure recovery, arrest gates + cooldown, Financial Pressure activation, PX-003 §8 ambient signals, save v9; parity → 10611 checks |
+| **v0.1.0. Playtest polish** | ✅ build versioning, the surface-visibility access layer (progression gates + feature flags), the seeded-key composition audit, the HOT escape lever, the Phone tap-target fix and the canonical location rename, save v10; parity → 11,110 checks, floor at 11,000 |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

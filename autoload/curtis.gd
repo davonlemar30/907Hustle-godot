@@ -167,7 +167,10 @@ func maybe_watcher_encounter(reason: String) -> String:
 		return ""
 	if gs.curtis_last_watcher_day == gs.day:
 		return ""
-	var roll: float = rng.seeded_unit_10k(gs.run_seed, "curtis:watcher:%d:%d" % [gs.day, gs.time_slots_today])
+	# v0.1.0 seeded-key audit: day and slot lead the key. Appended, the two
+	# counters moved this roll by ~1% across a whole day, so the watcher either
+	# never appeared or appeared in every slot.
+	var roll: float = rng.seeded_unit_10k(gs.run_seed, "%d:%d:curtis:watcher" % [gs.day, gs.time_slots_today])
 	if roll >= watcher_chance():
 		return ""
 

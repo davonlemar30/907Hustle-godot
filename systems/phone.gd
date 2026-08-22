@@ -40,7 +40,7 @@ const SLOTS := ["MORNING", "AFTERNOON", "EVENING", "NIGHT"]
 const AREA_PROSE_NAMES := {
 	"north_star_lot": "Spenard",
 	"downtown": "Downtown",
-	"airport_industrial": "Industrial Service Roads",
+	"airport_industrial": "Ship Creek",
 }
 
 ## The six lines PHONE_INTEL builds per area per slot (game-core.js:1171-1178).

@@ -178,8 +178,11 @@ func _message_card(message: Dictionary) -> Control:
 	head.add_child(label(_phone().stamp(message), "Mono", 10, MUTED))
 	# Canon's dismiss glyph is U+00D7, which every theme font carries (checked
 	# against the cmaps, not against how it looks in the editor).
-	var dismiss := button("×", false, _on_dismiss.bind(str(message.get("id", ""))), 28)
-	dismiss.custom_minimum_size = Vector2(34, 28)
+	#
+	# 44x44, the same tap-target floor every other screen is held to. It was
+	# 34x28 until v0.1.0 -- a glyph sized to the glyph rather than to a thumb.
+	var dismiss := button("×", false, _on_dismiss.bind(str(message.get("id", ""))), 44)
+	dismiss.custom_minimum_size = Vector2(44, 44)
 	head.add_child(dismiss)
 
 	v.add_child(label(str(message.get("text", "")), "Muted", 12, CREAM, true))

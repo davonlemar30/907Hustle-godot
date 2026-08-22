@@ -3,8 +3,8 @@ extends RefCounted
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v9. v8 saves are migrated
-## before this validator runs.
+## repaired payload back to disk. The save schema is v10. Older saves are
+## migrated before this validator runs, so every arm below reads a v10 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -22,6 +22,9 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_district_pressure(state, repairs)
 	_validate_arrest_record(state, repairs)
 	_validate_consequence_flags(state, repairs)
+	_validate_districts_unlocked(state, repairs)
+	_validate_job_contacts(state, repairs)
+	_validate_pressure_clean_credits(state, repairs)
 	return {"state": state, "repairs": repairs}
 
 func _repair(repairs: Array[String], path: String, reason: String) -> void:
@@ -375,6 +378,78 @@ func _validate_district_pressure(state: Dictionary, repairs: Array[String]) -> v
 			_int(row, "quiet_days", 0, path + ".quiet_days", repairs)
 			_int(row, "market_gain_day", -1, path + ".market_gain_day", repairs)
 			_float(row, "market_gain_today", 0.0, path + ".market_gain_today", repairs)
+
+# --- v10: the surface-visibility facts and the HOT lever's ledger -----------
+
+## The district discovery latch. Every entry must be a non-empty String, and
+## home turf must be in it — a run that has lost `north_star_lot` cannot travel
+## home, which is worse than any malformed row this validator normally sees.
+func _validate_districts_unlocked(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("districts_unlocked"):
+		return
+	if not state["districts_unlocked"] is Array:
+		state["districts_unlocked"] = ["north_star_lot"]
+		_repair(repairs, "districts_unlocked", "wrong type; defaulted")
+		return
+	var known: Array = state["districts_unlocked"]
+	var cleaned: Array = []
+	for index in range(known.size()):
+		var entry: Variant = known[index]
+		if not entry is String or str(entry).is_empty():
+			_repair(repairs, "districts_unlocked[%d]" % index, "not a district id; dropped")
+			continue
+		if str(entry) in cleaned:
+			_repair(repairs, "districts_unlocked[%d]" % index, "duplicate; dropped")
+			continue
+		cleaned.append(str(entry))
+	if not "north_star_lot" in cleaned:
+		cleaned.push_front("north_star_lot")
+		_repair(repairs, "districts_unlocked", "home turf missing; restored")
+	state["districts_unlocked"] = cleaned
+
+## The job-contact count. Never negative: the gate reads `>= 1`, and a negative
+## would be indistinguishable from zero right up until somebody writes a gate
+## that reads `!= 0`.
+func _validate_job_contacts(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("job_contacts"):
+		return
+	if not (state["job_contacts"] is int or state["job_contacts"] is float):
+		state["job_contacts"] = 0
+		_repair(repairs, "job_contacts", "wrong type; defaulted")
+		return
+	var contacts: int = int(state["job_contacts"])
+	if contacts < 0:
+		contacts = 0
+		_repair(repairs, "job_contacts", "negative; defaulted")
+	state["job_contacts"] = contacts
+
+## The day's banked clean recovery: district -> family -> float, same shape as
+## `district_pressure` one level shallower. A negative credit would ADD pressure
+## on settlement, which is the opposite of what the ledger is for.
+func _validate_pressure_clean_credits(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("pressure_clean_credits"):
+		return
+	if not state["pressure_clean_credits"] is Dictionary:
+		state["pressure_clean_credits"] = {}
+		_repair(repairs, "pressure_clean_credits", "wrong type; defaulted")
+		return
+	var credits: Dictionary = state["pressure_clean_credits"]
+	for district_id in credits.keys():
+		var district_path := "pressure_clean_credits.%s" % str(district_id)
+		if not credits[district_id] is Dictionary:
+			credits[district_id] = {}
+			_repair(repairs, district_path, "wrong type; defaulted")
+		var families: Dictionary = credits[district_id]
+		for family in families.keys():
+			var path := district_path + "." + str(family)
+			if not (families[family] is int or families[family] is float):
+				families[family] = 0.0
+				_repair(repairs, path, "wrong type; defaulted")
+			elif float(families[family]) < 0.0:
+				families[family] = 0.0
+				_repair(repairs, path, "negative credit; defaulted")
+			else:
+				families[family] = float(families[family])
 
 func _validate_arrest_record(state: Dictionary, repairs: Array[String]) -> void:
 	if not state.has("arrest_record"):

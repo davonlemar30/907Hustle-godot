@@ -52,8 +52,26 @@ func _on_turf() -> void:
 func _on_people() -> void:
 	nav.go_to(nav.PEOPLE)
 
+## Home is where the most surfaces are gated, so the gates run FIRST and every
+## bind below them is free to fill a surface without asking whether it is there:
+## filling a hidden node is harmless, and filling a locked one is what makes the
+## lock legible — a greyed-out card with real numbers under it says "this is
+## coming", where a greyed-out card of placeholder text says nothing.
+const ACCESS := preload("res://autoload/surface_visibility.gd")
+
 func _bind_content() -> void:
+	_bind_gates()
 	_bind_all()
+
+func _bind_gates() -> void:
+	# LOCKED: earned surfaces. They stay in the layout, dimmed, with a hint.
+	gate_surface(ACCESS.HOME_MARKET_SNAPSHOT, "Shell/Scroll/Pad/Content/Columns/Market")
+	gate_surface(ACCESS.HOME_TURF_CREW, "Shell/Scroll/Pad/Content/Columns/Turf")
+	# HIDDEN: nothing to show. The card leaves the layout and the ones below it
+	# close the gap.
+	gate_surface(ACCESS.HOME_TONIGHTS_OPERATION, "Shell/Scroll/Pad/Content/OpCard")
+	gate_surface(ACCESS.HOME_TEXT_MESSAGES, "Shell/Scroll/Pad/Content/People")
+	gate_surface(ACCESS.HOME_ACTIVITY_FEED, "Shell/Scroll/Pad/Content/Activity")
 
 func _bind_all() -> void:
 	_bind_operation()
@@ -62,30 +80,36 @@ func _bind_all() -> void:
 	_bind_activity()
 	_bind_people()
 
-## Employment and the rent clock outrank the scripted operation copy: they are
-## the things with a deadline attached.
+## The card's copy, chosen from the reason the access layer already decided.
+##
+## The ORDER changed in v0.1.0 and the reason is worth stating: this function
+## used to both decide whether the card had content and pick the words for it.
+## Deciding is now `SurfaceVisibility.operation_card_reason()`, because the same
+## verdict has to drive whether the card is in the layout at all — a screen that
+## keeps its own copy of the condition is a screen that can hide a card while
+## still writing text into it.
+##
+## Delegation now outranks rent rather than sitting under it, which is what
+## moving the decision made explicit: the access layer answers "operation" first
+## because an operation that is OUT is the card's actual subject, and the rent
+## clock is still carried by the HUD's DUE IN N DAYS either way.
 func _operation_override() -> Dictionary:
-	var ob: Object = _gm.system("obligations") if _gm else null
-	if ob != null and gs.cash < gs.WEEKLY_RENT:
-		var days: int = int(ob.days_until_rent())
-		if days <= 2:
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	match str(access.operation_card_reason()) if access != null else "":
+		"operation":
+			return _delegation_override()
+		"rent":
+			var ob: Object = _gm.system("obligations") if _gm else null
+			var days: int = int(ob.days_until_rent()) if ob != null else 0
 			var when := "today" if days <= 0 else ("tomorrow" if days == 1 else "in %d days" % days)
 			return {"title": "RENT %s" % when.to_upper(),
-					"body": "Yalonda wants $%d %s and you have $%d. Find the difference." % [gs.WEEKLY_RENT, when, gs.cash]}
-	if not gs.active_job_id.is_empty():
-		var job: Dictionary = gs.active_job()
-		var sys: Object = _gm.system("jobs") if _gm else null
-		var blocker: String = str(sys.shift_blocker()) if sys != null else ""
-		if blocker.is_empty():
-			return {"title": "SHIFT: %s" % str(job["name"]).to_upper(),
-					"body": "They're expecting you this %s. Clean money, and it keeps the room." % gs.time_slot.capitalize()}
-	# FS-001.9. Below rent and below the shift, and that ordering is the whole
-	# rule: both of those have a deadline attached and this does not. It sits
-	# above the scripted `active_operation` copy, which is UI scaffold nothing
-	# writes — so delegation only ever displaces a placeholder, never a fact.
-	var delegated: Dictionary = _delegation_override()
-	if not delegated.is_empty():
-		return delegated
+					"body": "Yalonda wants $%d %s and you have $%d. Find the difference."
+						% [gs.WEEKLY_RENT, when, gs.cash]}
+		"shift":
+			var job: Dictionary = gs.active_job()
+			return {"title": "SHIFT: %s" % str(job.get("name", "")).to_upper(),
+					"body": "They're expecting you this %s. Clean money, and it keeps the room."
+						% gs.time_slot.capitalize()}
 	return {}
 
 ## Pherris's card, read whole from `operation_summary()`.
@@ -132,20 +156,20 @@ func _last_night_body(last: Dictionary) -> String:
 	return "She moved %d for $%d gross. %s $%d on the day." \
 		% [sold, gross, "Cleared" if profit >= 0 else "Down", absi(profit)]
 
+## The card, when there is a card. `_bind_gates` has already decided that; an
+## empty override here means the node is hidden and this is writing into nothing.
+##
+## `gs.active_operation`'s scripted copy is no longer rendered. It was UI
+## scaffold nothing ever wrote — a fixed line about Curtis probing Minnesota
+## Off-Ramp that was false in every run it appeared in — and the surface gate is
+## what finally lets it go: the card is either carrying a fact or it is not
+## there. The three action buttons keep their authored labels from the scene.
 func _bind_operation() -> void:
-	var op: Dictionary = gs.active_operation
 	var over: Dictionary = _operation_override()
-	if not over.is_empty():
-		_set_text("Shell/Scroll/Pad/Content/OpCard/V/Head/Title", str(over["title"]))
-		_set_text("Shell/Scroll/Pad/Content/OpCard/V/Body", str(over["body"]))
+	if over.is_empty():
 		return
-	_set_text("Shell/Scroll/Pad/Content/OpCard/V/Body", op.get("body", ""))
-	var actions: Array = op.get("actions", [])
-	var btns := ["Move", "Post", "Lay"]
-	for i in range(min(btns.size(), actions.size())):
-		var b := get_node_or_null("Shell/Scroll/Pad/Content/OpCard/V/Actions/" + btns[i]) as Button
-		if b:
-			b.text = str(actions[i])
+	_set_text("Shell/Scroll/Pad/Content/OpCard/V/Head/Title", str(over["title"]))
+	_set_text("Shell/Scroll/Pad/Content/OpCard/V/Body", str(over["body"]))
 
 func _bind_snapshot() -> void:
 	var rows := ["R0", "R1", "R2"]

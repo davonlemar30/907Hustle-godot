@@ -952,6 +952,79 @@ func apply_pressure_recovery(today: int) -> int:
 			recovered += 1
 	return recovered
 
+# --- Gain-side recovery: the HOT escape lever (v0.1.0) ---------------------
+#
+# `apply_pressure_recovery` above only ever fires on a day with no gain on it,
+# which means an aggressive player has no counterplay at all: every day they
+# work is a day that cannot recover, so HOT becomes the resting state and the
+# only exit is to stop playing. This is the other half — a CLEAN outcome pays
+# pressure back at settlement.
+#
+# Credits are BANKED as actions resolve and DRAINED at POST_SETTLE rather than
+# applied on the spot, for two reasons. The day's gains all land first, so a
+# clean day nets out exactly once instead of racing the bleed; and the drain is
+# one declared lifecycle step that a trace can assert, rather than a subtraction
+# scattered across three source systems.
+
+## Take Pressure OFF a district/family. The inverse of `add_pressure`, and
+## deliberately not a negative call into it: a recovery must not stamp
+## `last_gain_day`, must not reset `quiet_days`, and must not schedule a bleed.
+## Paying pressure back is not a gain, and a day you worked is not a quiet day.
+func recover_pressure(district_id: String, family: String, amount: float) -> float:
+	if district_id.is_empty() or family.is_empty() or amount <= 0.0:
+		return 0.0
+	var by_family: Variant = gs.district_pressure.get(district_id)
+	if not (by_family is Dictionary):
+		return 0.0
+	var row: Variant = (by_family as Dictionary).get(family)
+	if not (row is Dictionary):
+		return 0.0
+	var before: float = float((row as Dictionary).get("score", 0.0))
+	if before <= _rules().PRESSURE_MIN:
+		return 0.0
+	(row as Dictionary)["score"] = maxf(_rules().PRESSURE_MIN, before - amount)
+	return before - float((row as Dictionary)["score"])
+
+## Bank what one resolved outcome has earned back. Returns the credited amount,
+## which is 0.0 for every tier but `clean` — see `PRESSURE_RECOVERY_BY_TIER`.
+##
+## Called by the source systems at the same point they call `add_pressure`, so
+## the gain and the credit are decided from the same resolved tier and cannot
+## drift apart.
+func credit_clean_outcome(district_id: String, family: String,
+		tier_name: String) -> float:
+	if district_id.is_empty() or family.is_empty():
+		return 0.0
+	var amount: float = _rules().clean_recovery(tier_name)
+	if amount <= 0.0:
+		return 0.0
+	if not gs.pressure_clean_credits.has(district_id):
+		gs.pressure_clean_credits[district_id] = {}
+	var by_family: Dictionary = gs.pressure_clean_credits[district_id]
+	by_family[family] = float(by_family.get(family, 0.0)) + amount
+	return amount
+
+## Pay every banked credit and empty the ledger. Runs at POST_SETTLE, after the
+## day's gains and before the clock moves.
+##
+## Returns the number of rows it moved, for the same reason `apply_pressure_bleed`
+## does: the ordering tests want a count, and nothing in the game reads it.
+func apply_clean_recovery(_ended_day: int) -> int:
+	var recovered: int = 0
+	for district_key in gs.pressure_clean_credits.keys():
+		var by_family: Variant = gs.pressure_clean_credits[district_key]
+		if not (by_family is Dictionary):
+			continue
+		for family_key in (by_family as Dictionary).keys():
+			var amount: float = float((by_family as Dictionary)[family_key])
+			if recover_pressure(str(district_key), str(family_key), amount) > 0.0:
+				recovered += 1
+	# Cleared whether or not anything moved. A credit that found a district
+	# already at the floor is spent, not owed — carrying it forward would let a
+	# quiet week bank recovery against a future crime spree.
+	gs.pressure_clean_credits = {}
+	return recovered
+
 # --- Financial Pressure rollover (TI-003 §17) ------------------------------
 
 ## Decay first. `max(0, financial_pressure - 1)`, every day, unconditionally.

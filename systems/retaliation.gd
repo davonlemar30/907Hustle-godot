@@ -175,8 +175,11 @@ func push_ambient_warnings(today: int) -> int:
 	var lines: Array = rules.RETALIATION_AMBIENT_LINES
 	# Seeded on (row, day), never on a counter: a reload has to reproduce the
 	# same line, and `randi()` is banned outright in this build anyway.
+	# v0.1.0 seeded-key audit: the day leads the key. With it appended, the same
+	# queued row drew the same one or two lines every night it warned -- the
+	# ambient signal read as a stuck string rather than a city talking.
 	var roll: float = rng.seeded_random(gs.run_seed,
-		"retaliation:ambient:%s:%d" % [str(row.get("queue_id", "")), today])
+		"%d:retaliation:ambient:%s" % [today, str(row.get("queue_id", ""))])
 	var index: int = clampi(int(roll * float(lines.size())), 0, lines.size() - 1)
 	gs.log_activity(str(lines[index]), AMBER)
 	row["last_warned_day"] = today

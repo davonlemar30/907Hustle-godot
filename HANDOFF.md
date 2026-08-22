@@ -4617,6 +4617,351 @@ Shark went first because they hook cleanly into infrastructure that already
 exists — Heat and the day clock. 907List and Boost need an item/inventory model
 and a fencing loop, which is its own shape of work.
 
+## v0.1.0 — Playtest Polish  (added 2026-08-22)
+
+Branch `claude/v0.1.0-playtest-polish-b4nlnx`, from `main` at `c135fee` (PR #51
+and PR #50 both merged). Six tasks: build versioning, the surface-visibility
+access layer, the seeded-key composition audit, the HOT escape lever, the Phone
+tap-target fix, and the canonical location rename.
+
+**Parity: 11,110 checks, 0 failures** (from 10,781). Floor raised 10,770 → 11,100,
+set from the MERGED suite with ten of margin: 10,781 (base) + 329 (v0.1.0).
+**Save schema: v9 → v10.** 21/21 screens render headless at 375×812.
+Glyph coverage passes. The nested save-shape suite is **82 checks** (from 47) —
+`save_validator.gd` gained three v10 arms, one per new field.
+
+`main` moved under this branch mid-build (PR #49 nested save-shape validation,
+PR #52 the floor-and-doc sync) and was merged in. Three conflicts, all
+resolved by TAKING BOTH: the schema constant is v10 *and* preloads the new
+validator; the floor keeps PR #52's derivation discipline and extends its
+arithmetic; the README roadmap keeps v0.1.0's row.
+
+### Save schema v10
+
+Three additive fields. Two are persisted discovery latches, one is a within-day
+ledger.
+
+| Field | Type | New-run default | v9 → v10 arm |
+| --- | --- | --- | --- |
+| `districts_unlocked` | `Array` of district IDs | `["north_star_lot"]` | **Derived**, not defaulted: `held_blocks.size() >= 1` adds `downtown`, `>= 2` adds `airport_industrial` |
+| `job_contacts` | `int` | `0` | **Derived**: one per recruited-and-active contact in `["deshawn", "pherris"]` |
+| `pressure_clean_credits` | `Dictionary` | `{}` | Defaulted empty — it is a within-day ledger that drains every night, so empty IS a v9 run's history |
+
+The first two arms derive rather than default because a v9 run has a real past.
+A v9 save may hold six corners and have Deshawn on the crew; defaulting
+`districts_unlocked` would take Downtown away from somebody who has been trading
+there for a fortnight, and defaulting `job_contacts` would re-lock Jobs on a run
+that has been working them. `SaveSystem.load_run()` also calls
+`reconcile_persistent_invariants()`, so the arm is redundant-by-design — it only
+stops the surfaces reading locked for the one frame before the next dispatch.
+That redundancy is why the parity check asks `_migrate()` **directly** rather
+than through a load: a load-level assertion cannot tell a working arm from a
+missing one (proved — sabotage S11 initially passed against a load-level check).
+
+Field IDs use the canonical district IDs (`north_star_lot`, `downtown`,
+`airport_industrial`) rather than the build brief's shorthand
+("spenard"/"downtown"/"industrial"). Those IDs are what `districts`, the market
+keys, `district_pressure` and the save already use; a second vocabulary of
+friendly names would be one rename away from gating nothing at all.
+
+### The v10 fields, and the validator that had to learn them
+
+PR #49 landed a load-time nested-shape validator (`autoload/save_validator.gd`)
+while this branch was open. It "preserves unknown keys", so the three v10 fields
+would have passed through it untouched and unchecked — which is exactly the gap
+the validator exists to close. Three arms added, one per field, each guarding a
+different failure:
+
+- **`districts_unlocked`** — non-string rows dropped, duplicates dropped, and
+  `north_star_lot` restored if a save somehow lost it. A run that cannot travel
+  home is worse than any malformed row this validator normally sees.
+- **`job_contacts`** — clamped at zero. A negative reads identically to zero
+  right up until somebody writes a gate that tests `!= 0`.
+- **`pressure_clean_credits`** — same district → family shape as
+  `district_pressure`, one level shallower, with negatives clamped: a negative
+  credit would ADD Pressure at settlement, the exact opposite of the lever.
+
+Absent is not malformed — a v9 save reaches the validator with none of the three
+and must come out with none of them, so `_apply()` supplies GameState's defaults.
+Asserted.
+
+### The surface visibility system
+
+`autoload/surface_visibility.gd`. Architecture is the ClickUp Lightweight Design
+Pass (Progression Gate Architecture), which is explicit that this must NOT be a
+second eligibility engine:
+
+```
+GameState / owning systems
+  -> progression facts adapter   SurfaceVisibility.facts()
+  -> requirements evaluator      systems/requirements.gd   (unchanged engine)
+  -> access registry             SurfaceVisibility.GATES
+  -> UI + ScreenManager          is_unlocked() / is_visible() / verdict()
+```
+
+`requirements.gd` gained six fact-reading requirement types (`crew_count_min`,
+`district_discovered`, `list_flips_min`, `job_contacts_min`,
+`collection_non_empty`, `fact_true`) and no new evaluation logic. Unknown types
+still fail closed.
+
+**The gate table** (authored in one `const GATES`, never scattered across screens):
+
+| Surface ID | Mode | Condition | Hint |
+| --- | --- | --- | --- |
+| `home.market_snapshot` | LOCKED | `list_flips >= 1` | "Complete your first flip to unlock" |
+| `home.turf_crew` | LOCKED | `crew_count >= 1` | "Recruit your first crew member" |
+| `menu.crew` | LOCKED | `crew_count >= 1` | "Recruit your first crew member" |
+| `menu.jobs` | LOCKED | `job_contacts >= 1` | "Meet someone who hires" |
+| `street.downtown` | LOCKED | `"downtown" in districts_unlocked` | "Hold a corner before the city opens up" |
+| `street.ship_creek` | LOCKED | `"airport_industrial" in districts_unlocked` | "Hold two corners before the port is worth the trip" |
+| `home.tonights_operation` | HIDDEN | `operation_card_live` | — |
+| `home.text_messages` | HIDDEN | `phone_messages > 0` | — |
+| `home.activity_feed` | HIDDEN | `activity_log > 0` | — |
+
+**LOCKED** renders at 40% opacity (theme constant `Locked/opacity_pct`) with a
+lock row underneath: `assets/icons/ui/icon-lock.svg` plus one line in the
+`LockHint` variation (Barlow Condensed 11pt, 60% white). A tap on a locked
+surface does nothing — `screen_base._on_tap_gui_input` returns early on the
+`surface_locked` meta rather than disconnecting handlers, because the connection
+is made once in `_ready()` while the gate re-evaluates on every refresh.
+
+**Why an icon and not the 🔒 glyph.** The brief offered U+1F512. No theme font
+carries it, so it would render in the editor (macOS lends a system font) and as
+tofu in the browser — and `scripts/check_glyph_coverage.py` is a CI gate that
+would have failed the build. Same lesson the meter dots and the trend arrow
+already learned. Glyph coverage passes.
+
+**Route protection.** `ScreenManager.resolved_route()` consults the same verdict
+and returns `""` for a refused destination; `go_to()` then does nothing, silently
+— the lock and its hint have already said why. `travel` is gated at the ACTION
+too, so a dispatch from anywhere gets the same answer as the Street card.
+
+**Two deviations from the brief, both stated:**
+
+1. **`home.tonights_operation`'s condition is wider than
+   `crew_operation_state.active_today`.** That card is not only the delegation
+   readout — it is also the only place on Home that carries a DEADLINE (rent
+   inside two days, or a workable shift). Hiding it on a fresh run is right: what
+   stood there was authored scaffold about a probe on Minnesota Off-Ramp that
+   nothing in the run ever wrote. Hiding it on the morning rent is due would have
+   removed the warning that decides whether the run ends. So the condition is
+   "does this card have something real to say", owned by
+   `SurfaceVisibility.operation_card_reason()`, and `home.gd` reads the reason
+   back to choose copy rather than re-deriving it.
+
+2. **`gs.active_operation`'s scripted copy is no longer rendered at all.** It was
+   UI scaffold nothing wrote. The gate is what finally let it go: the card either
+   carries a fact or it is not there.
+
+**FOLLOW-UP (open).** Home's `MOVE PRODUCT` button — the build's only bare
+`advance_time` control in the UI — lives on the now-hidden operation card, so a
+fresh run must pass time through Street travel, a Hustle action, or More →
+Recovery → Lay Low (free, always available, verified) until the card earns its
+way back. Re-homing that control is a navigation change and was out of scope
+("New screens or navigation changes"). Filed for the next UX pass.
+
+**Unlock triggers were authored, not found.** The brief says Downtown and
+Industrial "unlock via existing travel/territory events". No such event exists —
+travel was unconditional. Rather than invent progression content, the latches
+read the fact the gate table's own rationale names ("Territory not yet
+expanded"): `held_blocks.size()`. `job_contacts` counts recruited crew whose
+canon role is connecting people to work — Deshawn ("Fixer / Recruiter") and
+Pherris ("Connector") — which gives Jobs a distinct, later unlock than Crew
+(Eli and Tone open Crew but not Jobs). Both are one-way latches: abandoning a
+corner does not take back the knowledge that Downtown exists.
+
+### Seeded key composition audit
+
+FNV-1a's final rounds barely move the high bits, and `seeded_random` reads the
+hash as `hash / 2^32`. A small counter appended to the TAIL of a key therefore
+moves the roll by about `delta / 256`. Measured: eight consecutive counters at
+the tail span **2.7%** of the value band; the same eight at the front span
+**82.0%**.
+
+Every `seeded_random` / `seeded_int_range` / `seeded_unit_10k` / `seeded_shuffle`
+call site was swept. Rule applied: **rewrite where a varying integer is the FINAL
+component of the key.** Six rewrites:
+
+| File | Before | After |
+| --- | --- | --- |
+| `systems/nine07list.gd:227` | `"907list:value:%s:%d" % [item_id, bought_day]` | `"%d:907list:value:%s" % [bought_day, item_id]` |
+| `systems/nine07list.gd:157` | `"907list:%d:%d" % [day, tier]` | `"%d:%d:907list" % [day, tier]` |
+| `autoload/curtis.gd:173` | `"curtis:watcher:%d:%d" % [day, slot]` | `"%d:%d:curtis:watcher" % [day, slot]` |
+| `systems/retaliation.gd:182` | `"retaliation:ambient:%s:%d" % [queue_id, today]` | `"%d:retaliation:ambient:%s" % [today, queue_id]` |
+| `systems/jobs.gd:108` | `"job_interview:%s:%d:%d" % [job_id, day, slot]` | `"%d:%d:job_interview:%s" % [day, slot, job_id]` |
+| `systems/shark.gd:238` | `"shark:%d:%d" % [loan_id, due_day]` | `"%d:%d:shark" % [loan_id, due_day]` |
+
+**Deliberately NOT rewritten**, with reasons:
+
+- `"stickup:%d:%d:%s"` and `"boost:%d:%d:%s"` — the tail is a varying STRING
+  (target id), not a counter, and the day varies mid-key with plenty of rounds
+  after it. `stickup:` is additionally **oracle-locked**: the
+  `stickup_keys` fixture in `outcome_fixtures.json` pins the exact context
+  strings the web build produces.
+- `key + ":take"` / `key + ":injury"` / `"...:boost_caught:%s:injury"` — fixed
+  tail suffix; the varying part is already mid-key.
+- `"meetup:%d:%d:%s"`, `"job_shift_day%d_slot%d_%s"` — tail is a varying string.
+- `"retaliation:schedule:%s:%s" % [cause_id, actor_id]` — actor ids are distinct
+  multi-character words, not a small counter, and `cause:%08d` varies at index 21
+  with seven rounds after it.
+- `seeded_shuffle` — already correct; it prefixes the swap index. Confirmed.
+
+The hash itself (`string_hash`) is untouched. Only key composition at call sites
+moved. The rewrites re-rolled the 907List golden boards, the probe day (6 → 2)
+and one cumulative-cash probe (day 12 → 11, because day 12's re-rolled tier-3
+slate offers only one non-`rough` listing). All re-pinned as literals.
+
+**Visible bug this fixed:** the retaliation ambient line was picked with the day
+at the tail, so the same queued row drew the same one or two lines every night it
+warned. Measured over eight nights: tail form picked lines `[1,1,1,1,1,0,0,0]`;
+front form picks `[1,1,4,4,5,1,3,4]`.
+
+**Permanent check.** `_check_seeded_key_independence` pins the eight leading-counter
+rolls as exact floats, asserts their spread ≥ 0.60, AND asserts the trailing form
+still clusters at exactly 0.02734440681524575 — so the failure mode is a standing
+fixture rather than a memory. It also SOURCE-SCANS `autoload/` and `systems/` for
+any seeded key whose format string ends in `%d`, because no amount of sampling
+proves the absence of a call site nobody thought to sample.
+
+### HOT escape lever
+
+`data/consequence_rules.gd`:
+
+```gdscript
+const PRESSURE_CLEAN_RECOVERY := 0.5
+const PRESSURE_MESSY_RECOVERY := 0.0
+const PRESSURE_FAILURE_RECOVERY := 0.0
+const PRESSURE_CATASTROPHIC_RECOVERY := 0.0
+```
+
+Clean outcomes bank a credit as the action resolves; `POST_SETTLE` pays it.
+`day_lifecycle.gd` gained a declared `POST_SETTLE_ORDER` (mirroring
+`ROLLOVER_ORDER` / `DAY_START_ORDER`) with one entry, `pressure_clean_recovery`,
+and the lifecycle trace asserts its position. Credits are banked rather than
+applied on the spot so the day's gains all land first, and they are STATE
+(`pressure_clean_credits`) rather than a local because the autosave fires once
+per dispatch — a player who lifts cleanly at noon and closes the tab must still
+be holding that credit when the run reopens.
+
+`recover_pressure()` is deliberately not a negative `add_pressure()`: it must not
+stamp `last_gain_day`, must not reset `quiet_days`, and must not schedule a
+bleed. Paying pressure back is not a gain, and a day you worked is not a quiet
+day.
+
+**Simulation sweep** (five profiles, 29–30 days, seeded; `worst_family_hot_days`):
+
+| Constant | aggressive | yields | cautious | odds | travelling |
+| --- | --- | --- | --- | --- | --- |
+| **0.0** (sabotage / baseline) | **19** | 19 | 0 | 16 | 11 |
+| 0.4 | 9 | 8 | 0 | 8 | 10 |
+| **0.5 (shipped)** | **9** | 8 | 0 | 8 | 10 |
+| 0.6 | 10 | 7 | 0 | 8 | 8 |
+
+Target was ≤14 for the aggressive profile. 0.5 lands at 9. The lever is flat
+between 0.4 and 0.6 on that metric (0.6 is actually *worse* at 10), so the tuning
+instruction to dial toward 14 has no purchase — and 0.5 is the value the design
+argues for independently: it is the exact wash against both
+`PRESSURE_BOOST_SUCCESS` (0.5) and `PRESSURE_BY_TIER["clean"]` (0.5). A clean
+source action nets ZERO rather than becoming a discount. 0.4 would make a clean
+lift a net +0.1 gain and 0.6 a net −0.1 discount, both arbitrary.
+
+Note the 0.0 row reproduces the pre-lever 19 **exactly**, which also proves the
+seeded-key audit did not move this number — the lever alone accounts for the
+whole change.
+
+**Market has no clean-outcome wiring, and that is honest.** The mechanism is
+family-agnostic and parity-proven for `market`, but no market-family source
+action in this build resolves an outcome tier: `economy.gd` adds +0.25 per
+criminal sale with no success roll at all, and the 907List `market_meetup` tier
+adds no market pressure (a flip is legitimate commerce — no Heat, no Pressure),
+so crediting it would be a one-sided discount. When a tiered market action lands
+it calls `credit_clean_outcome(district, "market", tier)` and needs no new
+machinery.
+
+### Canonical location names
+
+The location registry (ClickUp Master Doc → Locations) names the third district
+**Ship Creek** — its page opens "District: Ship Creek (formerly Industrial
+Service Roads)". The index page hedges it as "future/renaming guidance until the
+repo carries that district name"; this build is what makes the repo carry it.
+Corroborated by the repo itself, which already shipped `"Ship Creek Freight"` as
+a job and `"Ship Creek Yards, Dock Seven"` as a boost target in that district.
+
+| Before | After | Where |
+| --- | --- | --- |
+| `INDUSTRIAL` / `SERVICE ROADS` | `SHIP CREEK` / `PORT CORRIDOR` | `districts[2]` name/role |
+| "Industrial Service Roads" | "Ship Creek" | `phone.gd` `AREA_PROSE_NAMES` |
+| "+$11 Industrial" / "SELL INDUSTRIAL +$11" / "NEEDS INDUSTRIAL TURF" | Ship Creek forms | product route/hint |
+| "North Star Garage" | "Home" | Spenard venue (registry lists Night Owl / **Home** / Spenard Gym / The Nile) |
+| "Night Owl Mini-Mart" | "Night Owl" | Spenard venue AND `boost_targets` |
+
+The district **ID** `airport_industrial` is unchanged — it is persisted in saves,
+keys the market and the pressure ledger, and is pinned by oracle fixtures.
+
+**Oracle divergence, stated once.** `rng_fixtures.json`'s `phone.intel` is
+generated from the web build's exported `PHONE_INTEL` and carries the oracle's
+own "Industrial Service Roads". The parity runner applies a rename map
+(`ORACLE_PROSE_RENAMES`) at COMPARE TIME rather than editing the fixture, because
+`gen_fixtures.mjs` would put the oracle spelling straight back on the next
+regeneration and a divergence that silently reverts is worse than none. Every
+other word in the pool stays oracle-locked byte for byte.
+
+Also fixed in the same pass: `market.gd` now binds the three district tab labels
+from `gs.districts` and highlights the current one. They were baked into the
+`.tscn` and never bound, so the strip always read SPENARD in accent wherever the
+player actually was — a standing rule-4 hole.
+
+### Sabotage log
+
+Every new assertion was proven red before it was believed. Twelve faults injected,
+each reverted after.
+
+| # | Injected fault | Caught by | Result |
+| --- | --- | --- | --- |
+| S1 | `VERSION := "0.1"` | "the version is three numbered parts" +2 more | ✅ 3 failures |
+| S2 | `home.market_snapshot` min → 0 | "a fresh run locks home.market_snapshot" +15 | ✅ 16 failures |
+| S3 | access guard removed from `resolved_route` | "a locked route is refused" | ✅ 2 failures |
+| S4 | key probe switched to the tail form | "leading-counter roll N" + the spread floor | ✅ 9 failures |
+| S5 | `curtis.gd` key reverted to tail-varying | the source scan | ✅ 2 failures, names file + line |
+| S6 | `PRESSURE_CLEAN_RECOVERY := 0.0` | "a clean outcome is worth 0.5 back" +3 | ✅ 4 failures |
+| S7 | `PRESSURE_MESSY_RECOVERY := 0.5` | "a messy outcome pays nothing back" +3 | ✅ 4 failures |
+| S8 | `POST_SETTLE_ORDER` emptied | the lifecycle trace +3 | ✅ 4 failures |
+| S9 | Phone dismiss back to 34×28 | the 44pt sweep + the widest-case check | ✅ 3 failures |
+| S10 | "Industrial Service Roads" restored in `phone.gd` | the prose sweep + intel comparison | ✅ 25 failures |
+| S11 | v10 arm defaults instead of deriving | `_migrate()` asked directly | ✅ 2 failures — **see note** |
+| S12 | `districts_unlocked` dropped from `PERSIST_FIELDS` | "survives save and load" +2 | ✅ 3 failures |
+
+**S11 is the one that mattered.** It PASSED on the first attempt — the check
+asserted the migration through `load_run()`, and `load_run()` reconciles the
+latches afterwards, so a broken arm was invisible. The check was rewritten to ask
+`_migrate()` directly, plus a one-corner threshold case, and S11 then failed
+correctly. A sabotage that passes is the sabotage doing its job.
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| Parity suite | PASS — 11,110 checks, 0 failures (floor 11,100) |
+| Nested save-shape suite | PASS — 82 checks, 0 failures (from 47) |
+| 21 screens render at 375×812 headless | 21/21 |
+| Glyph coverage | ok — every shipped character is in all 5 theme fonts |
+| `git diff --check` | clean |
+| v9 payload migrates to v10 and loads | ✅ arm tested in isolation + through a load |
+| Fresh run: only Spenard, nothing unearned | ✅ asserted against the rendered Home |
+| Each progression trigger unlocks its surface | ✅ 9 gates × threshold + isolation |
+| Seeded key independence ≥60% of the band | 82.0% (floor 60%) |
+| Aggressive profile ≤14 HOT days | 9 (was 19) |
+| Phone dismiss 44×44 at the widest content | ✅ no control declares past 375pt |
+| No placeholder location names | ✅ swept across districts, venues, targets, products, phone prose, and the rendered Street screen |
+| Version "0.1.0" on the title screen | ✅ read from the singleton |
+| Naming enforcement grep | clean (Rook / Kip Sallis / Mara / Samira / Mini Mart) |
+| RNG audit (`randf`/`randi` outside RngManager) | clean |
+
+`refs_validate_project` is an editor-only tool from the `godot_ai` MCP addon and
+is not reachable headless. The equivalent coverage here is `--headless --import`
+(reports broken references) plus the smoke harness loading and binding all 21
+scenes — both clean.
+
 ## Working notes / gotchas
 - **Build loop:** `session_activate` → edit scene/theme → `scene_open(force_reload)`
   → `project_run(mode=current)` → `editor_screenshot(source=game)` to verify.

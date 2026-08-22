@@ -38,17 +38,20 @@ extends "res://ui/screens/surface_base.gd"
 ##      to lease. Gating on nothing and calling it locked would be a lie, so the
 ##      row is simply open. Canon's hint reads "Lease North Star Garage to
 ##      unlock Operations." — put it back with the gate.
-##   4. **Crew always shows.** Canon reveals the row once any crew member is
-##      introduced OR recruited; "introduced" is not tracked here. Gating on
-##      recruited alone would hide the entry precisely when the player has no
-##      crew and most needs to find the screen, so it shows with a 0/2 status.
+##   4. **Crew shows LOCKED before the first hire.** Canon reveals the row once
+##      any crew member is introduced OR recruited, and "introduced" is not
+##      tracked here. v0.1.0 splits the difference the way the progression-gate
+##      pass asks: the row is always present, so the player can see the screen
+##      exists, and it is locked with "Recruit your first crew member" until it
+##      would say anything. Hiding it outright is the option both canon and the
+##      design pass reject — an empty crew panel teaches nothing, but a missing
+##      one teaches less.
 ##
-## Canon's MenuRow also has a `disabled` state, which renders the row greyed
-## with the feature's hint in place of its description. It is NOT ported,
-## because no row in this build has a gate it can fail — every destination here
-## exists and is always reachable. Adding it back when the first gated row
-## arrives is four lines; shipping an untested branch with no caller is worse
-## than shipping neither.
+## Canon's MenuRow also has a `disabled` state, rendering the row greyed with
+## the feature's hint under it. v0.1.0 is when the first gated row arrived, and
+## it is NOT reimplemented here: `screen_base.apply_surface_gate()` renders that
+## state for every gated surface in the build, and Crew opting into it is one
+## call rather than a second greying rule that only More knows about.
 ##
 ## What is deliberately NOT here: a People row. Canon's More does not have one,
 ## People is already reachable from Street and from the Phone's Contacts
@@ -68,7 +71,9 @@ func _build_body() -> void:
 		"Territory, soldiers, and the corners you hold.",
 		nav.TURF))
 
-	body.add_child(_menu_row(
+	# The Crew row carries the same gate as the Crew route and as Street's
+	# People row, from the same registry entry — three doors, one verdict.
+	apply_surface_gate(ACCESS.MENU_CREW, _menu_row(
 		"Crew",
 		"%d/%d active" % [gs.recruited_crew().size(), gs.crew_capacity()],
 		"Wages, loyalty, tiers, and who answers when it gets loud.",
@@ -130,13 +135,20 @@ func _identity_label() -> String:
 	var attrs: Object = _gm.system("attributes")
 	return "New Face" if attrs == null else str(attrs.street_identity())
 
+const ACCESS := preload("res://autoload/surface_visibility.gd")
+
 ## Canon's MenuRow: title and description on the left, status and a chevron on
 ## the right.
 func _menu_row(title: String, status: String, description: String, route: String) -> Control:
 	var c := card()
+	# A column inside the card, so a gated row has somewhere to put its lock
+	# hint that is under the row rather than beside the chevron.
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	c.add_child(v)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)
-	c.add_child(h)
+	v.add_child(h)
 
 	var left := VBoxContainer.new()
 	left.add_theme_constant_override("separation", 2)

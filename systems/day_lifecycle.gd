@@ -14,7 +14,7 @@ extends RefCounted
 ##
 ##   1. PRE_SETTLE  — `day_ending(ended_day)`, clock still reads the old day
 ##   2. SETTLE      — crew · territory · shark · jobs · obligations, in that order
-##   3. POST_SETTLE — hooks
+##   3. POST_SETTLE — `POST_SETTLE_ORDER`, then hooks
 ##   4. INCREMENT   — day += 1, slot back to MORNING
 ##   5. ROLLOVER    — TI-003 §9's post-increment lifecycle, in `ROLLOVER_ORDER`
 ##   6. MARKET      — economy.evolve(), then `day_crossed` for legacy listeners
@@ -96,6 +96,24 @@ const ROLLOVER_ORDER: Array[String] = [
 	"financial_fold",
 	"exposure",
 	"curtis",
+]
+
+## v0.1.0's POST_SETTLE work, declared for the same reason the two lists below
+## and above it are: a step whose position nobody wrote down is a step nobody
+## can test.
+##
+## One entry so far. `pressure_clean_recovery` pays back the Pressure the day's
+## CLEAN outcomes earned, and it belongs HERE rather than in `ROLLOVER_ORDER`
+## because it settles the day that just happened: every gain from those same
+## actions has already landed, and the clock has not moved, so the recovery
+## nets against the day it was earned on rather than against tomorrow.
+##
+## It must also stay ABOVE `ROLLOVER:pressure_recovery`, which is the quiet-day
+## rule. The two are independent — one reads the day's outcomes, the other reads
+## `last_gain_day` — and a day with a clean outcome on it is a day with a GAIN
+## on it, so the quiet rule correctly declines to fire on top of this.
+const POST_SETTLE_ORDER: Array[String] = [
+	"pressure_clean_recovery",
 ]
 
 ## TI-003 §9 step 6's day-start lifecycle. Expiry before activation, and the
@@ -209,6 +227,9 @@ func run_night_transition(ended_day: int) -> void:
 
 	# 3. POST_SETTLE — everything owed has been settled; the day has not moved.
 	_mark(POST_SETTLE)
+	for step in POST_SETTLE_ORDER:
+		_mark("%s:%s" % [POST_SETTLE, step])
+		_run_post_settle_step(step, ended_day)
 	for hook in post_settle_hooks:
 		if hook.is_valid():
 			hook.call(ended_day)
@@ -244,6 +265,15 @@ func run_night_transition(ended_day: int) -> void:
 	for hook in day_start_hooks:
 		if hook.is_valid():
 			hook.call(gs.day)
+
+## One POST_SETTLE step, by name. Same `match`-not-Dictionary shape and same
+## null-guarding as `_run_rollover_step`, and for the same reasons.
+func _run_post_settle_step(step: String, ended_day: int) -> void:
+	match step:
+		"pressure_clean_recovery":
+			var engine: Object = gm.system("consequence") if gm != null else null
+			if engine != null:
+				engine.apply_clean_recovery(ended_day)
 
 ## One rollover step, by name.
 ##

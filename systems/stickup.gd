@@ -303,6 +303,16 @@ func _run(target_id: String) -> Dictionary:
 			"stickup:%s:%d:%d" % [target_id, gs.day, gs.time_slots_today])
 		result["pressure"] = pressure_gain
 
+	# v0.1.0's HOT escape lever, read off the SAME resolved tier as the gain
+	# above so the two can never disagree about what just happened. Only `clean`
+	# credits anything; the table decides, not this call site. Banked now, paid
+	# at POST_SETTLE.
+	if engine_for_pressure != null:
+		var recovered: float = engine_for_pressure.credit_clean_outcome(
+			gs.current_district_id, "stick", tier)
+		if recovered > 0.0:
+			result["pressure_recovery"] = recovered
+
 	# TI-003 §4: "Every qualifying risky source action gets one stable Cause ID."
 	# Allocated for EVERY attempt, not only the ones that end badly, because two
 	# later consumers need it and neither can know at this point whether it will

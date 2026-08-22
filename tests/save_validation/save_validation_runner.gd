@@ -20,6 +20,7 @@ func _ready() -> void:
 	_test_district_pressure()
 	_test_arrest_record()
 	_test_v9_fields()
+	_test_v10_fields()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -180,6 +181,70 @@ func _test_v9_fields() -> void:
 	var wrong_flags := _state("consequence_flags", "not-a-dictionary")
 	var wrong_flags_fixed: Dictionary = _fixed(wrong_flags)
 	_check("wrong-type consequence flags default to dictionary", wrong_flags_fixed["consequence_flags"] is Dictionary)
+
+## v10: the surface-visibility facts and the HOT lever's within-day ledger.
+##
+## The three of them fail in different directions, which is why they get three
+## arms rather than one. A malformed `districts_unlocked` can strand the player
+## outside their own home turf; a negative `job_contacts` reads as zero right up
+## until somebody writes a gate that tests `!= 0`; and a negative clean credit
+## would ADD Pressure at settlement, which is the exact opposite of the lever.
+func _test_v10_fields() -> void:
+	# A valid payload is a no-op, byte-shape identical.
+	var valid := _state("districts_unlocked", ["north_star_lot", "downtown"])
+	valid["job_contacts"] = 2
+	valid["pressure_clean_credits"] = {"north_star_lot": {"boost": 0.5}}
+	var valid_result := _result(valid)
+	var valid_fixed: Dictionary = valid_result["state"]
+	_check("valid v10 districts survive", valid_fixed["districts_unlocked"] == ["north_star_lot", "downtown"])
+	_check("valid v10 job contacts survive", int(valid_fixed["job_contacts"]) == 2)
+	_check("valid v10 credits survive", is_equal_approx(float((valid_fixed["pressure_clean_credits"] as Dictionary)["north_star_lot"]["boost"]), 0.5))
+	_check("valid v10 shape is a validation no-op", (valid_result["repairs"] as Array).is_empty())
+	_check("valid v10 payload remains byte-shape equivalent", valid_fixed == valid)
+
+	# Wrong types at the top of each field.
+	var wrong := _state("districts_unlocked", "spenard")
+	wrong["job_contacts"] = "two"
+	wrong["pressure_clean_credits"] = ["not", "a", "dict"]
+	var wrong_fixed: Dictionary = _fixed(wrong)
+	_check("wrong-type districts default to home turf", wrong_fixed["districts_unlocked"] == ["north_star_lot"])
+	_check("wrong-type job contacts default to none", int(wrong_fixed["job_contacts"]) == 0)
+	_check("wrong-type credits default to empty", wrong_fixed["pressure_clean_credits"] is Dictionary and (wrong_fixed["pressure_clean_credits"] as Dictionary).is_empty())
+
+	# Rows inside the district list: non-strings dropped, duplicates dropped,
+	# and home turf restored if the save somehow lost it.
+	var rows := _state("districts_unlocked", ["downtown", 7, "downtown", "", null, "airport_industrial"])
+	var rows_fixed: Dictionary = _fixed(rows)
+	_check("non-string district rows drop", not 7 in (rows_fixed["districts_unlocked"] as Array))
+	_check("empty district rows drop", not "" in (rows_fixed["districts_unlocked"] as Array))
+	_check("duplicate district rows drop", (rows_fixed["districts_unlocked"] as Array).count("downtown") == 1)
+	_check("home turf is restored when missing", (rows_fixed["districts_unlocked"] as Array)[0] == "north_star_lot")
+	_check("real districts survive the sweep", "airport_industrial" in (rows_fixed["districts_unlocked"] as Array))
+
+	# Negatives, on both fields that can hold one.
+	var negative := _state("job_contacts", -3)
+	negative["pressure_clean_credits"] = {"downtown": {"stick": -2.0}}
+	var negative_fixed: Dictionary = _fixed(negative)
+	_check("negative job contacts default to none", int(negative_fixed["job_contacts"]) == 0)
+	_check("a negative credit cannot add pressure", is_equal_approx(float((negative_fixed["pressure_clean_credits"] as Dictionary)["downtown"]["stick"]), 0.0))
+
+	# A malformed family map under a real district.
+	var nested := _state("pressure_clean_credits", {"downtown": "not-a-family-map"})
+	var nested_fixed: Dictionary = _fixed(nested)
+	_check("malformed credit family map defaults", (nested_fixed["pressure_clean_credits"] as Dictionary)["downtown"] is Dictionary)
+	var wrong_credit := _state("pressure_clean_credits", {"downtown": {"boost": "half"}})
+	var wrong_credit_fixed: Dictionary = _fixed(wrong_credit)
+	_check("wrong-type credit defaults to nothing owed", is_equal_approx(float((wrong_credit_fixed["pressure_clean_credits"] as Dictionary)["downtown"]["boost"]), 0.0))
+
+	# Absent is not malformed: a v9 save reaches this validator with none of the
+	# three, and must come out with none of them so _apply() supplies defaults.
+	var absent := _state("day", 4)
+	var absent_result := _result(absent)
+	var absent_fixed: Dictionary = absent_result["state"]
+	_check("absent v10 districts stay absent", not absent_fixed.has("districts_unlocked"))
+	_check("absent v10 job contacts stay absent", not absent_fixed.has("job_contacts"))
+	_check("absent v10 credits stay absent", not absent_fixed.has("pressure_clean_credits"))
+	_check("absent v10 fields need no repair", (absent_result["repairs"] as Array).is_empty())
 
 func _test_load_pipeline() -> void:
 	var save_system: Node = get_node("/root/SaveSystem")

@@ -51,11 +51,19 @@ func _wire_nav() -> void:
 
 ## Re-render the entire screen from GameState.
 func refresh() -> void:
-	# One place catches the end of the run. Every game screen extends this, so
-	# whichever one is open when the third warning lands is the one that leaves.
-	if gs.game_over and nav != null and scene_file_path != nav.GAME_OVER:
-		nav.go_to(nav.GAME_OVER)
-		return
+	# One place catches the end of the run, and one place catches a consequence
+	# opening under whatever screen the player happened to be on. Every game
+	# screen extends this, so whichever one is open when it lands is the one
+	# that leaves.
+	#
+	# Priority is ScreenManager's (`blocking_route`), not repeated here: game
+	# over outranks a consequence, and a screen that is already the blocking
+	# destination must not route to itself.
+	if nav != null:
+		var blocking: String = nav.blocking_route()
+		if not blocking.is_empty() and scene_file_path != blocking:
+			nav.go_to(blocking)
+			return
 	_fill_chrome()
 	_bind_content()
 

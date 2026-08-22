@@ -544,6 +544,597 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.7: the first thing that answers back  (added 2026-08-21)
+
+A failed Boost no longer ends in a toast. It opens a Caught encounter, holds the
+take in dispute, and waits. **Parity 8785 → 9100 checks, 0 failures. No schema
+change** — .4 already persists everything this writes.
+
+### Three deliberate removals from the source path
+
+TI-003 §11: *"The failed branch removes its current immediate terminal
+Heat/log/time behavior because Caught now owns those consequence effects."*
+
+- **No immediate +1.0 Heat.** Regression #3 is a failed Boost keeping its old
+  Heat and then adding Caught's on top.
+- **No empty-handed toast.**
+- **No `advance_time`.** The slot stays owed until Continue — a blown lift must
+  not cost the player time before they have answered for it.
+
+FS-003.1's freeze caught all three the moment they changed, which is exactly
+what it was built for. Those assertions are updated rather than deleted, each
+saying what it now protects and why it moved.
+
+### The frozen Boost pattern moved, and the reason is worth reading
+
+`BOOST_FROZEN_PATTERN` is re-pinned — two bits, `spenard_fuel` on days 4 and 6,
+both following a `night_owl` miss.
+
+Nothing about the roll changed. The key is `boost:<day>:<slot>:<target>`, and
+before this slice a failed lift settled its slot immediately, so the next target
+in the same day rolled at slot+1. Now the slot stays owed, so it rolls at the
+**same slot** and therefore against a different key.
+
+The derived check (`resolves binary`, which reads the live key) passed
+throughout. What moved is *when the clock advances*, which is the point of the
+slice — and which is separately asserted by "a failed lift costs no slot yet".
+
+### `data/consequence_rules.gd`
+
+TI-003 §3's static module. Every value from FS-003 §5 or TI-003 §8, no state, no
+RNG, no judgement calls made while coding. A balance change is an edit there and
+nowhere else.
+
+**Two shorthand forms FS-003 uses are resolved in one place.** The document
+writes Fight/Failure as "Tier 1 +2, Tier 2 +3, Tier 3 +4" and Run/Failure as
+"Tier +1" — the same rule, enumerated once and patterned once. `raw_heat()`
+resolves both, and a sabotage breaking the pattern form produces 13 failures.
+
+**One interpretation is stated rather than buried.** Fight/Clean takes "the lower
+half of the tier's successful-fight injury band". Halved at the midpoint rounded
+DOWN, both ends inclusive — tier 1's 4-9 becomes 4-6. Rounding up would make
+"the lower half" of 4-9 reach 7, which is more than half of it. The alternatives
+differ by one point of damage and the choice is on the record.
+
+**One ambiguity resolved in TI-003's favour.** FS-003 §5 says a ban lasts "the
+current Boost ban duration used by the source system" — there was no ban system
+to inherit a duration from. TI-003 §5 rules bans "persistent by target ID", which
+is later, more specific, and implementable. Bans are permanent.
+
+### Two layers of test, neither deriving from the other
+
+**The authored rows** are checked as data, against FS-003 §5 transcribed a
+*second* time into the parity runner. Two transcriptions of one document, typed
+from the source rather than from each other — a slip in either is a failure
+rather than a shared mistake. That layer catches a heat value off by one, which
+no integration test would find because it would apply the wrong number correctly.
+
+**The applied effects** are checked through `gm.dispatch`, on chains opened by
+real failed lifts. That layer catches the right table read into the wrong field.
+
+### The bug that made 39 encounters identical
+
+The first draft reset the run before every sweep attempt. The consequence roll is
+keyed on `consequence:<cause_id>:boost_caught:<choice>:outcome`, and
+`reset_to_new_game()` resets `next_cause_sequence` — so **39 consecutive chains
+all got `cause:00000001` and all resolved the same way.** The sweep read as "Run
+never keeps the take".
+
+The sequence is carried across sweeps now, which is also the truthful model: in
+play the counter only goes up. And a new check pins the property directly —
+cause ids are unique and sequential within a run, **and distinct causes resolve
+to more than one tier.**
+
+That last assertion is the one that matters. Cause-id uniqueness is load-bearing
+for outcome VARIETY: if allocation ever stopped advancing, every encounter in a
+run would resolve identically and nothing about the resolver or the effect tables
+would look wrong. It is why TI-003 §4 makes allocation sequential and persisted.
+
+### Three sabotages passed, and all three were real coverage gaps
+
+- **`arrest-gate-reads-live-heat`.** Swapping the pre-encounter snapshot for the
+  live meter changed nothing, because every case the sweep reached arrested
+  unconditionally. Now driven at the exact boundary: pre-encounter Heat 6.0
+  (which does not arrest, the rule is strictly greater) while Run/Failure adds +2
+  raw, so the live meter reads 8.0 by the time the gate runs. If the adapter
+  passed `gs.heat`, it flips. **2 failures.**
+- **`contested-take-rerolled-on-key`.** Moving the take key from `:take` to
+  `:contested` passed, because "in band" is true for any key. Now asserted as the
+  exact keyed value. **3 failures.**
+- **`odds-use-compat-not-raw`.** TI-003 regression #9. Passed because the sweep
+  ran at combat 1, where raw 1 and `compat(1) = 2` are *both* below the advantage
+  threshold and project identically. Now measured at **combat 2 specifically** —
+  raw 2 is below advantage, `compat(2) = 3` is at it, and the odds differ.
+  **3 failures.**
+
+Sixth build running. Still never once has a first-attempt sabotage pass meant the
+code was fine.
+
+### And the parse-error-as-hang trap, twice in one session
+
+A GDScript parse error means `_ready` never runs, so `quit()` is never called and
+the headless process sits forever — indistinguishable from an infinite loop. It
+cost time in FS-003.5 (`:=` off an untyped return) and again here (a probe
+counter declared against `var _checks: int = 0` when the source reads
+`var _checks := 0`, so the edit silently did not apply).
+
+**Read the first ten lines of the log before hunting for a loop.**
+
+### Verification
+
+- Parity **9100 / 0**, deterministic across three consecutive runs.
+  `MIN_CHECKS` 8785 → 9100.
+- **27 sabotages**, all red after the three above were corrected.
+- Glyph coverage passes; **21/21** screens headless with zero script errors.
+- Dispatch-guard warnings still **2**; zero parse errors.
+- Market RNG non-drift asserted around chain opening and all four responses.
+
+## FS-003.6: the odds the player is deciding on  (added 2026-08-21)
+
+`success_probability()` and `tier_probabilities()` on the outcome resolver.
+Pure, exact, zero RNG. **Parity 8267 → 8785 checks, 0 failures. No schema
+change.**
+
+### Derived, not sampled
+
+The obvious implementation runs the resolver a thousand times and counts. That
+consumes no stream, but it is slow on a hot path and — worse — **approximate on
+a screen that shows an exact percentage.**
+
+So the pipeline is inverted analytically. Every step has a closed form:
+
+1. `build_outcome_pool` splits `chance` across the shape's tier weights;
+2. at level ≥ 6 the catastrophic entries leave and the rest renormalise, which
+   *raises* the odds — the weight that fed the worst tier is redistributed;
+3. below level 3 the answer is the success share of that pool;
+4. at level ≥ 3 two independent keyed picks are taken and the better wins, so
+   the action fails only when **both** picks land on a losing tier:
+
+```
+P(success | advantage) = 1 - (1 - p)²
+```
+
+Two identities fall out and are pinned as literals, because a sampled matrix can
+only ever be approximate:
+
+- **Below both thresholds, the projection IS the base chance.** Every shape's
+  `success` half sums to 1.0 and its `failure` half sums to 1.0, so splitting a
+  chance across them cannot change how often you win — only what winning looks
+  like.
+- **With advantage at 0.5, exactly 0.75.**
+
+### Proved against the resolver actually running
+
+A check that recomputed the shape table and compared would be the implementation
+written twice; it would agree with a broken projection as readily as a correct
+one.
+
+So `_measured_success_rate` calls **`resolve_action` over 4000 distinct keys per
+cell** and counts how often the tier came back a success. Nothing about that
+measurement knows the shape table exists. The matrix covers 4 action types × 3
+chances × 6 attributes, spanning both thresholds and the ceiling.
+
+### The finding: FNV-1a is biased by its LAST characters
+
+The first run produced **four failures that were the harness, not the code.**
+
+`seeded_random` is canon's `stringHash(key) / 2^32` — an FNV-1a whose
+multiplication propagates low bits upward. A character near the **end** of the
+key barely moves the **high** bits, and the high bits are exactly what dividing
+by 2³² reads.
+
+Measured directly, 4000 keys, same indices:
+
+| index position | mean | P(< 0.25) |
+| --- | --- | --- |
+| tail — `confrontation:250:0:<i>` | **0.531** | **0.188** |
+| front — `<i>:confrontation:250:0` | 0.502 | 0.252 |
+
+True values are 0.5 and 0.25. **Sweeping a keyed roll with a trailing counter
+does not sample a uniform distribution at all.**
+
+This is canon's hash, bias and all — `game-core.js` uses the same `stringHash`,
+so it is not a defect to correct here and correcting it would diverge from the
+oracle. It is a **trap to avoid in every future check**: any sweep that varies
+the tail of a key is measuring a skewed distribution, and will produce false
+failures or, far worse, false passes.
+
+`_check_projection_harness_is_uniform()` now measures the sweep's own key family
+before any projection assertion runs. A failure there says *"the sweep is
+broken"* — a much more useful message than fifty mismatched probabilities. It is
+sabotage-proven by moving the index back onto the tail: 6 failures.
+
+**Worth carrying to the real game:** keys shaped `family:<int>:<small int>` are
+the biased shape. `shark:%d:%d` (loan id, due day) is one. Canon has the same
+behaviour so nothing is diverging, but it is filed rather than unnoticed.
+
+### Three sabotages passed, and one of them stays passing
+
+- **`immunity-drops-guard`** — removing canon's "only drop catastrophic when
+  something survives" fallback changed nothing, because no authored shape is
+  all-catastrophic. Now exercised on a **synthetic pool** through
+  `_immunity_filtered` directly, the same way FS-003.4's migration arm is
+  exercised at its own boundary rather than through a path that hides it.
+  Sabotage now: 2 failures.
+- **`projection-draws-rng`** — the sabotage multiplied by
+  `1.0 if randf() >= 0.0 else 0.5`, which is identity. Replaced with a call
+  counter that perturbs the answer (132 failures) and a version that genuinely
+  moves `rng_state` (1 failure).
+- **`bonus-not-clamped` — still passes, and that is correct.** Both thresholds
+  are one-sided, so an unclamped effective level of 17 lands in the same band as
+  a clamped 12, and −5 in the same band as 0. The clamp stays for symmetry with
+  `resolve_action`, which needs it. The checks that used to claim "the clamp
+  works" now claim what they actually prove — that the projection is **flat**
+  past the ceiling and below the floor, and **monotonic** in effective level
+  across −3..15. A check should not claim more than it can fail on.
+
+### Verification
+
+- Parity **8785 / 0**, `MIN_CHECKS` 8267 → 8785.
+- **14 sabotages**, 13 red; the fourteenth documented above as correctly inert.
+- Glyph coverage passes; 21/21 screens headless, zero script errors.
+- Projection asserted to draw nothing from the market stream **and** to be
+  referentially transparent — a helper drawing from a keyed hash would leave
+  `rng_state` alone while still returning a different answer each call.
+
+## FS-003.5: something to hold the moment open  (added 2026-08-21)
+
+`systems/consequence_engine.gd` and `ui/screens/consequence.tscn`. When a risky
+action goes wrong, something has to hold the situation open across a save, a
+reload, and a player who put the phone down mid-decision. **Parity 8036 → 8267
+checks, 0 failures. No schema change** — .4 already persists everything this
+writes.
+
+### Orchestration, not content
+
+The engine can open a chain, carry it through four stages, refuse a bad
+transition, keep an exactly-once ledger, arbitrate a queue, and hand the UI a
+projection. It knows nothing about what being caught costs, what bail runs, how
+Pressure accrues, or who retaliates. Those are .7, .8, .9 and .10.
+
+Everything is written to be **filled in rather than replaced**: `open_chain`
+takes an authored shape, the stage machine is a declared table, and the
+projections read whatever the chain carries. A later slice adds a chain kind and
+authored effects without touching this file's control flow.
+
+### Receipts, not flags
+
+TI-003 §4 wants the effect and its receipt in the same dispatch. The failure that
+prevents is ordinary: apply Caught's heat, autosave, player reloads before
+pressing Continue — without a receipt the chain reopens at the same stage and
+applies that heat again.
+
+`record_receipt` **returns false when the key is already claimed**, so the call
+site reads:
+
+```gdscript
+if engine.record_receipt(cause_id, "boost_caught:heat"):
+    heat.apply_gain(...)
+```
+
+Written that way round deliberately. `if not has_receipt(): apply(); record()` is
+three lines that can be reordered wrongly; this is one that cannot.
+
+### Committed buttons stay committed after a reload
+
+TI-003 §18's sharpest requirement, and the reason `disabled` comes from
+`choice_summaries()` rather than from a `_pressed` handler. **A flag set on click
+lives in the scene, and the scene dies on reload.** The commit lives in the chain,
+and the chain is in the save.
+
+The check asserts it the way the button does — through the projection, after an
+actual save/load round trip.
+
+### The route guard is one function, not twenty
+
+TI-003 §18's priority is game over → active consequence → ordinary screen.
+`ScreenManager.resolved_route()` is pure and applies it, and `go_to()` runs
+everything through it. That matters because *"ordinary navigation cannot bypass
+it"* has to hold for navigation nobody has written yet.
+
+The check walks **every ordinary route from ScreenManager's own constants**
+rather than a list kept in the test — a screen added without a route guard is
+exactly the gap this catches, and a hand-maintained list would not see it.
+
+`go_to_game()` is the boot and CONTINUE RUN path, so a save loaded mid-chain
+lands on the consequence rather than on Home and correcting — §18 requires that
+to happen without an ordinary screen being exposed for an interactive frame.
+
+### Two sabotages passed. Both were the check's fault.
+
+**The stage guard was never being measured.** The test advanced past `decision`
+and asserted a commit was refused — but a choice had already been committed on
+that chain, so the committed-choice *receipt* refused it whether or not the stage
+was ever checked. Deleting the stage guard outright went green.
+
+Measured now on a chain with **no prior commit**, plus assertions that the
+refusal recorded no receipt and committed nothing. Same sabotage: 3 failures.
+
+**Nothing proved the copying projections were copies.** `choice_summaries` builds
+its rows fresh, so aliasing is not reachable there and the check could not fail.
+The realistic edit is dropping `.duplicate(true)` from `booking_summary`,
+`result_summary` or `queue_snapshot` — where a screen could then write into
+persisted state without a dispatch and without anything saving it. Three checks
+added, three sabotages, all red.
+
+**Fifth build running.** A first-attempt sabotage pass has still never once meant
+the code was fine.
+
+### A parse error reads as a hang
+
+Worth writing down because it cost real time: a GDScript **parse** error in the
+runner means `_ready` never runs, which means `get_tree().quit()` is never
+called, and the headless process sits there forever. It looks exactly like an
+infinite loop in a new check.
+
+The cause was `:=` inferring off an untyped `RefCounted` return. Three
+declarations needed explicit `: String`.
+
+**If a parity run hangs, read the first ten lines of the log before hunting for
+a loop.**
+
+### The scene
+
+Generated from `hustle.tscn` through `scripts/make_surface_screen.py`, then the
+`NavBar` subtree and the floating HOME button stripped — TI-003 §18 keeps the
+TopBar and six-stat HUD and omits bottom navigation, because there is nowhere
+else to be until this resolves.
+
+Four stages in **one** scene. Separate scenes would duplicate the chrome four
+times and would make the stage a navigation fact, when stage is a state fact that
+has to survive a reload.
+
+A deterministic response shows **CERTAIN**, not 0% — showing a Yield that always
+resolves as zero percent would read as impossible when it means the opposite.
+
+### The container needed an import pass
+
+A brand-new `.tscn` will not load until Godot has imported it, and this repo's
+`.gd.uid` companions are tracked (176 of them). `--headless --import` generates
+both. It also produced the asset import cache, which **cleared all 22
+long-standing `Parse Error: referenced non-existent resource` lines** from the
+run — those were an artifact of a fresh clone, not a repo problem.
+
+Three `.uid` files from FS-003.3 and .4 are committed here because Godot had not
+imported when those landed.
+
+### Verification
+
+- Parity **8267 / 0**, `MIN_CHECKS` 8036 → 8267.
+- **27 sabotages**, all red after the two above were corrected.
+- Glyph coverage passes.
+- **21/21** screens instantiate and bind headless with zero script errors — the
+  consequence scene included.
+- Dispatch-guard warnings still **2**.
+- Engine RNG non-drift asserted, with `consequence_continue`'s time advance
+  measured separately so the claim stays the narrow true one.
+
+## FS-003.4: the engine gets somewhere to live  (added 2026-08-21)
+
+Save schema **v7 → v8**. Everything TI-003 §5 declares now persists, and a v7
+save migrates into it deterministically. **Parity 7889 → 8036 checks, 0
+failures.** Nothing writes the new state yet — FS-003.5 is the engine that does.
+
+### The arm has one transform, and only one
+
+Thirteen fields are added and twelve of them simply default in. That is not
+laziness: a v7 save **cannot** contain an unfinished consequence, a prior arrest,
+a Boost ban or a Pressure score, because none of those systems existed while it
+was being played. Empty is the true history, not a fallback — the same argument
+the v3 → v4 attributes arm makes. TI-003 §20 says it too: *"A pre-TI-003 Godot
+save contains no unfinished consequence, so migration creates no inferred active
+chain."*
+
+The wallet is the exception, and it is the v6 → v7 `source: "player"` case again:
+**stamp what is knowable while it is still knowable.** A v7 save records one
+aggregate `cash` and nothing about where it came from. Every day it stays
+un-migrated is a day that number could be split by a rule nobody wrote down.
+
+TI-003 §20/§26 rules the whole aggregate **clean**, deliberately diverging from
+canon (game-core.js:2060, which rules dirty). The arm follows TI-003.
+
+### A sabotage that passed, and the dead code it found
+
+Deleting the arm's wallet transform outright — replacing both lines with `pass`
+— left the suite **green at 8036 / 0**.
+
+The reason: `_apply` fills the absent bucket fields from GameState's defaults,
+and the load-time classifier then sees no carried provenance and applies TI-003's
+rule anyway. Two independent paths, same answer, so neither is individually
+observable. Defence in depth that had quietly made the arm untestable.
+
+The fix is to test the arm where it actually lives: `_migrate()` is called
+directly and its **returned payload** inspected, before a byte reaches
+GameState. Nine checks now sit on that boundary, and the same sabotage produces
+4 failures.
+
+**Carry forward:** two mechanisms that agree are two mechanisms neither of which
+is tested. If a sabotage on one passes, look for the other one first.
+
+### Two more sabotages passed because the sabotages were no-ops
+
+Both are the `make_stream(cursor).state` mistake in a new costume:
+
+- **"Pressure score coerced to int"** added an unused variable, which changes
+  nothing. The real fault is rounding floats *inside* persisted Dictionaries —
+  the shape a "normalise save data" change actually takes. Rewritten that way it
+  produces 5 failures, and it matters because Pressure **bands** are keyed on
+  the fractional score: a 6.5 WATCHED rounds into a different band.
+- **"Objects in save"** added a `NodePath` field to GameState that was not in
+  `PERSIST_FIELDS`, so it never reached the payload. Adding it to the manifest is
+  the real regression (TI-003 #38) and produces 1 failure.
+
+Third build running where a first-attempt sabotage pass meant a bad sabotage
+rather than good code. Never once has it meant the code was fine.
+
+### The round-trips
+
+TI-003 §20's twelve required shapes are each staged, saved, **scrambled**, and
+reloaded. The scramble is what stops a "restored" assertion from passing on state
+the test never removed — `_roundtrip()` wipes every consequence field to a
+sentinel before the reload.
+
+The queue is an **Array**, and its restored order is asserted as a whole id
+sequence rather than one element: TI-003 regression #32 is "queue order depends
+on Dictionary iteration order", so ordering has to be a property of the storage.
+
+Two shapes are asserted that the brief did not ask for and that later slices
+would have been hurt by:
+
+- **The empty case.** Round-tripping only populated shapes misses a default that
+  fails to serialise — and every save before FS-003.7 is the empty one.
+- **A v8 reload does not launder.** A mixed wallet reloads with its dirty money
+  still dirty. This is exactly what breaks if the load-time classifier runs
+  unconditionally rather than only where provenance is absent, and that sabotage
+  produces 5 failures.
+
+Boost bans are checked against **both** halves of regression #11 — reload *and*
+day-cross, the latter through a real `advance_time` dispatch.
+
+### Verification
+
+- Parity **8036 / 0**, `MIN_CHECKS` 7889 → 8036. Thirteen of those came free:
+  the round-trip section walks `PERSIST_FIELDS` by name.
+- **15 sabotages**, all red after the three above were corrected.
+- Glyph coverage passes; 20/20 screens headless with zero script errors.
+- Save payload asserted to contain no `Object(` and no `NodePath(` — checked
+  against the serialised text, not the live Dictionary, because a payload that
+  writes a handle and reads back as something else would never show in memory.
+
+## FS-003.3: cash and heat get owners  (added 2026-08-21)
+
+Twenty-one lines across eleven systems wrote `gs.cash`. Five wrote `gs.heat`,
+and two of those five were the same function copied into two files. Both fields
+are now owned. **Parity 7726 → 7889 checks, 0 failures. No schema change.**
+
+### The audit that started this was wrong, and the correction is the point
+
+The brief counted **20** direct cash writers across 10 systems. The real number
+at `72128b2` is **21 across 11** — `systems/list_adapter.gd:207` was missing from
+the list, which is Pherris spending the player's money on a delegated 907List
+pickup. It is exactly the kind of writer an audit misses: it does not live in
+the system that owns the surface, it lives in the adapter that drives it.
+
+That one line is the argument for the automated audit in this slice. A count in
+a document is right on the day it is written; a check that fails the build is
+right every day after.
+
+### What each source's money now is
+
+TI-003 §6 classifies income, and canon backs every row of it. The two
+`addCleanCash` call sites in the entire web build are `WORK_JOB`
+(game-core.js:7311) and `recordMarketFlip` (3160) — legal wages and a resale on
+a public board. Everything else is dirty.
+
+| source | bucket | why |
+| --- | --- | --- |
+| job shift | **clean** | canon `addCleanCash` |
+| 907List flip | **clean** | canon `addCleanCash` |
+| stickup take | dirty | canon `addDirtyCash` |
+| boost take / fence payout | dirty | canon `addDirtyCash` |
+| market sale | dirty | TI-003 "Market criminal sales" |
+| territory corner income | dirty | TI-003, once its payout caller migrated |
+| shark note returned / enforced | dirty | canon `addDirtyCash` (6569, 7997) |
+
+Spends carry a policy rather than a bucket. Rent and the phone bill are
+`HIGH_VISIBILITY_CLEAN_FIRST` because TI-003 §6 names them; the clinic is too,
+because §6 delegates "formal Recovery spending" to Recovery to declare and a
+clinic bills you. First aid and the No-Questions Doctor are routine — the second
+one is *named* for not generating a record, which is what dirty money is for.
+
+### Deshawn applies once, and it is grep-checkable
+
+The real risk in this migration: if `HeatSystem` scales by the crew multiplier
+and a migrated caller still scales by it too, Deshawn double-counts and nothing
+obviously breaks — 10 raw heat becomes 6.4 instead of 8.0.
+
+So every caller had its own lookup **deleted** rather than left alone. Both
+`_apply_heat` copies are gone, and `shark.gd` and `territory.gd` no longer fetch
+a multiplier at all. `systems/heat.gd` is now the only file in the codebase that
+calls `crew.heat_multiplier()` to apply it, and a parity check asserts the caller
+list is exactly `{crew.gd, heat.gd, ui/screens/crew.gd}` — the owner, the one
+consumer, and the screen that displays it as a number.
+
+The numeric coverage runs ranks 1, 2, 3, **4 and 7**. Above rank 3 the curve
+holds rank 3's 0.40 rather than falling back to neutral, which is a bug crew.gd
+already fixed once: a promotion must not silently remove the reduction he earned.
+
+### Relief bypasses the gain pipeline
+
+`apply_relief` does not call `_gain_multiplier()` — not "multiplies by 1.0", does
+not call it. If relief went through Deshawn, having him on the crew would make
+Lay Low work *less well*, which inverts his whole purpose. TI-003 lists this at
+regression #15 and the check measures the identical relief with him present and
+absent.
+
+### The district table ships as data and is deliberately not wired
+
+TI-003 §7 authors a district × family heat multiplier table. It is in
+`systems/heat.gd`, complete, and covered by nine pinned checks — and
+`apply_gain` does not consult it. Wiring it would change what every stickup and
+boost costs, which is a balance change to a shipped formula inside a refactor
+whose acceptance criterion is that current source outcomes are preserved. The
+multipliers also only mean anything beside District Pressure (§8), which is
+FS-003.9. `_district_scaling_enabled` is the one line that slice flips, and a
+check asserts it is still inert today.
+
+### A bug in FS-003.2's tests: six checks that never ran
+
+`post_settle_hooks` is declared `Array[Callable]`. FS-003.2's own tests
+registered hooks by assigning an untyped array literal — `lifecycle.post_settle_hooks = [probe]`
+— which does not convert, raises at runtime, and **aborts the enclosing check
+function**. The suite reported 7726 checks and 0 failures while six of its checks
+had never once executed, including every assertion that a hook runs at all.
+
+This slice depends on those hooks, so the trap is closed rather than worked
+around: registration is `add_post_settle_hook()` / `add_day_start_hook()` /
+`clear_hooks()`, the typing stays, and no caller has to know why the literal form
+fails. The recovered checks are why the floor rises by 163 while the section
+adds 157.
+
+This is `MIN_CHECKS` doing precisely the job it was added for — the floor moving
+up by *more* than the checks added is the tell.
+
+### The reload window, named rather than discovered later
+
+The buckets are **not persisted this slice** — that is FS-003.4, with the schema
+bump and the migration arm. So a save/load round trip reclassifies the whole
+balance as clean, which in provenance terms is a laundromat.
+
+It ships that way because nothing reads provenance to make a decision yet:
+Financial Pressure accumulates but is not consumed until FS-003.9, and no system
+asks which bucket a dollar came from. Unobservable in play, closed by the next
+slice, and written down here rather than found later.
+
+### The migration rule diverges from canon, deliberately
+
+Canon classifies its own pre-split saves as **dirty** (game-core.js:2060-2066):
+*"nothing in pre-v1.0 gameplay ever laundered anything, so this is the
+narratively honest default."*
+
+TI-003 §20 and §26 rule the opposite for this port: *"Old Godot saves enter with
+prior aggregate Cash classified Clean."* TI-003 is the approved implementation
+contract and wins, so `WalletSystem.classify_legacy_total()` sets clean and
+zeroes dirty. Both readings are in that function's docstring, in one place, so
+the divergence is a decision on the record rather than an accident.
+
+### Verification
+
+- Parity **7889 / 0**, `MIN_CHECKS` 7726 → 7889.
+- **28 sabotages, all red**, every one reverted — writer audits, policy matrices,
+  Deshawn double-application, relief through the multipliers, clamp reporting,
+  reconcile direction, legacy classification, per-source provenance, RNG drift,
+  and the hook-registration fix itself.
+- Glyph coverage passes.
+- All **20 screens** instantiate and bind headless with **zero** script errors
+  (`tests/smoke/screen_smoke.tscn`, added here because this checklist item
+  previously needed the editor MCP and could not be run headless).
+- Dispatch-guard warnings unchanged at **2**. (The brief expected 4; the
+  ownership test exercises Exposure's two mutators only. Curtis's three are
+  guarded but untested — filed, not fixed here.)
+- `rng_state` non-drift asserted around both owners, and the market walk asserted
+  to still move it so the check cannot pass on a field that never changes.
+
 ## FS-003.2: the night gets an order  (added 2026-08-21)
 
 Two things: the Boost heat divergence FS-003.1 froze is corrected, and night

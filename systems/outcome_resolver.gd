@@ -350,6 +350,159 @@ func resolve_action(action_type: String, chance: float, attribute_value: int,
 		return {"tier": "failure", "value": int(OUTCOME_VALUES["failure"])}
 	return {"tier": str(outcome["tier"]), "value": int(outcome["value"])}
 
+# --- the pure projection (TI-003 §2, FS-003.6) -----------------------------
+#
+# The consequence UI has to show the player the odds they are deciding on, and
+# those odds must be the SAME rules resolution uses — not a second formula that
+# drifts. TI-003 §2 asks for one helper that "computes the final displayed
+# success probability from the same pool and advantage rules used by resolution
+# and consumes zero RNG."
+#
+# ## Why this is derived rather than sampled
+#
+# The obvious implementation runs the resolver a thousand times and counts. That
+# would consume no RNG stream, but it would be slow on a hot path, and — worse —
+# it would be approximate on a screen that shows an exact percentage.
+#
+# So the pipeline is inverted analytically. Every step of `resolve_action` has a
+# closed form:
+#
+#   1. `build_outcome_pool` splits `chance` across the shape's tier weights;
+#   2. at level >= 6 the catastrophic entries leave the pool and the rest
+#      renormalise — which RAISES the odds, because the weight that fed the
+#      worst tier is redistributed;
+#   3. below level 3 the answer is the success share of that pool;
+#   4. at level >= 3 two independent keyed picks are taken and the better tier
+#      wins, so the action fails only when BOTH picks land on a losing tier:
+#
+#          P(success | advantage) = 1 - (1 - p)^2
+#
+# The two picks are independent because they hash different contexts (`ctx` and
+# `ctx + ":adv"`). That is the same assumption resolution itself relies on.
+#
+# ## What proves it
+#
+# Not the arithmetic above — that is the code re-explained, and a test that
+# checked it against itself would prove nothing. The parity suite measures the
+# REAL `resolve_action` over thousands of distinct keys and compares the observed
+# success rate to this projection. If the pipeline changes and this does not,
+# that comparison is what fails.
+
+## The final success probability for an action, with zero RNG consumed.
+##
+## `raw_attribute` is the RAW stored attribute, not the compatibility offset —
+## the same value `resolve_action` takes, and for the same reason (see header).
+## `bonus` is clamped alongside it exactly as `resolve_action` clamps it, so a
+## projection and the roll it describes always read the same effective level.
+##
+## Returns 0.0 for an unknown action type, which is what `resolve_action` does
+## with one: an empty pool resolves to a plain failure.
+func success_probability(action_type: String, base_chance: float,
+		raw_attribute: int, bonus: int = 0) -> float:
+	var pool: Array = build_outcome_pool(action_type, base_chance)
+	if pool.is_empty():
+		return 0.0
+	var level: int = clampi(raw_attribute + bonus, ATTRIBUTE_MIN, ATTRIBUTE_MAX)
+	var single: float = _single_pick_success(pool, level)
+	if level < ADVANTAGE_THRESHOLD:
+		return single
+	# Advantage keeps the better of two independent picks, so it fails only when
+	# both fail. Written as the complement rather than as
+	# `2p - p²` because this is the form that says why.
+	return 1.0 - (1.0 - single) * (1.0 - single)
+
+## The chance that ONE keyed pick lands on a success tier, after the immunity
+## filter. Everything advantage does is built on top of this number.
+func _single_pick_success(outcome_pool: Array, level: int) -> float:
+	var pool: Array = _immunity_filtered(outcome_pool, level)
+	var total: float = 0.0
+	var success_weight: float = 0.0
+	var success_entries: int = 0
+	for entry in pool:
+		var w: float = float(entry.get("weight", 0.0))
+		if not is_finite(w):
+			w = 0.0
+		w = maxf(0.0, w)
+		total += w
+		if is_success_tier(str(entry.get("tier", ""))):
+			success_weight += w
+			success_entries += 1
+	if total <= 0.0:
+		# `seeded_pick`'s zero-total fallback picks an entry by index rather than
+		# by weight, so every entry is equally likely. Unreachable for any real
+		# shape at any finite chance — every shape has a non-zero half at every
+		# chance — but ported because the projection must describe the resolver
+		# that exists, not the one that is usually taken.
+		return float(success_entries) / float(pool.size())
+	return success_weight / total
+
+## Canon's immunity filter, applied to a pool rather than during a roll.
+##
+## Note the guard, which is canon's: catastrophic is only dropped when something
+## survives. A pool that is nothing but catastrophic entries stays intact rather
+## than resolving to nothing — and the projection has to agree, or it would
+## report 0.0 where the resolver still returns a tier.
+func _immunity_filtered(outcome_pool: Array, level: int) -> Array:
+	if level < CATASTROPHE_IMMUNITY_THRESHOLD:
+		return outcome_pool
+	var survivors: Array = []
+	for entry in outcome_pool:
+		if str(entry.get("tier", "")) != "catastrophic":
+			survivors.append(entry)
+	return survivors if not survivors.is_empty() else outcome_pool
+
+## The full tier distribution, not just the success half.
+##
+## The decision screen shows one number, but a result screen that wants to say
+## "this was always the likely ending" needs the rest — and a caller computing it
+## from `success_probability` would have to re-derive the advantage maths, which
+## is the duplication this whole section exists to prevent.
+##
+## Returns `{clean, messy, failure, catastrophic}`, summing to 1.0.
+func tier_probabilities(action_type: String, base_chance: float,
+		raw_attribute: int, bonus: int = 0) -> Dictionary:
+	var out := {"clean": 0.0, "messy": 0.0, "failure": 0.0, "catastrophic": 0.0}
+	var pool: Array = build_outcome_pool(action_type, base_chance)
+	if pool.is_empty():
+		# What `resolve_action` returns for an unknown action type.
+		out["failure"] = 1.0
+		return out
+	var level: int = clampi(raw_attribute + bonus, ATTRIBUTE_MIN, ATTRIBUTE_MAX)
+	var filtered: Array = _immunity_filtered(pool, level)
+
+	var total: float = 0.0
+	for entry in filtered:
+		total += maxf(0.0, float(entry.get("weight", 0.0)))
+
+	# Per-tier share of a single pick.
+	var single := {"clean": 0.0, "messy": 0.0, "failure": 0.0, "catastrophic": 0.0}
+	for entry in filtered:
+		var tier := str(entry.get("tier", ""))
+		if not single.has(tier):
+			continue
+		if total <= 0.0:
+			single[tier] = float(single[tier]) + 1.0 / float(filtered.size())
+		else:
+			single[tier] = float(single[tier]) + maxf(0.0, float(entry.get("weight", 0.0))) / total
+	if level < ADVANTAGE_THRESHOLD:
+		for tier in single.keys():
+			out[tier] = single[tier]
+		return out
+
+	# With advantage the result is max(a, b) by tier VALUE, so a tier wins when
+	# both picks are at or below it and at least one is exactly it:
+	#
+	#     P(max == t) = P(<= t)^2 - P(< t)^2
+	#
+	# Walked worst-to-best so the cumulative is built in ordinal order.
+	var ascending: Array = ["catastrophic", "failure", "messy", "clean"]
+	var below: float = 0.0
+	for tier in ascending:
+		var at_or_below: float = below + float(single[tier])
+		out[tier] = at_or_below * at_or_below - below * below
+		below = at_or_below
+	return out
+
 ## Canon isSuccessTier. Clean and messy both took the money; what separates them
 ## is who saw it.
 func is_success_tier(tier: String) -> bool:

@@ -35,8 +35,23 @@ func _ready() -> void:
 	var requirements = preload("res://systems/requirements.gd").new()
 	register_system("requirements", requirements)
 
+	# Wallet and Heat are the shared mutation owners (TI-003 §§6-7), so they are
+	# constructed before every system that moves money or generates heat —
+	# which is most of them. Neither handles an action; both are reached through
+	# `system()` at call time.
+	var wallet = preload("res://systems/wallet.gd").new()
+	wallet.setup(_gs)
+	register_system("wallet", wallet)
+
+	# Heat takes the manager rather than Crew directly: it reads Deshawn's
+	# multiplier through `system("crew")` at call time, and crew is constructed
+	# well below this line.
+	var heat = preload("res://systems/heat.gd").new()
+	heat.setup(_gs, self)
+	register_system("heat", heat)
+
 	var economy = preload("res://systems/economy.gd").new()
-	economy.setup(_gs, rng)
+	economy.setup(_gs, rng, self)
 	register_system("economy", economy)
 
 	# Phone is constructed before time because every slot advance asks it
@@ -57,11 +72,11 @@ func _ready() -> void:
 	register_system("time", time)
 
 	var recovery = preload("res://systems/recovery.gd").new()
-	recovery.setup(_gs, time)
+	recovery.setup(_gs, time, self)
 	register_system("recovery", recovery)
 
 	var travel = preload("res://systems/travel.gd").new()
-	travel.setup(_gs, time)
+	travel.setup(_gs, time, self)
 	register_system("travel", travel)
 
 	# Jobs and obligations both hang off day_crossed, which time_system emits.
@@ -70,7 +85,7 @@ func _ready() -> void:
 	register_system("jobs", jobs)
 
 	var obligations = preload("res://systems/obligations.gd").new()
-	obligations.setup(_gs, phone)
+	obligations.setup(_gs, phone, self)
 	register_system("obligations", obligations)
 
 	var stickup = preload("res://systems/stickup.gd").new()
@@ -93,7 +108,7 @@ func _ready() -> void:
 	# order only decides dispatch routing, not construction — the surfaces look
 	# it up through system() at call time.
 	var crew = preload("res://systems/crew.gd").new()
-	crew.setup(_gs)
+	crew.setup(_gs, self)
 	register_system("crew", crew)
 
 	# Crew Operations sits between crew and territory: it reads crew records and
@@ -113,6 +128,19 @@ func _ready() -> void:
 	var territory = preload("res://systems/territory.gd").new()
 	territory.setup(_gs, self)
 	register_system("territory", territory)
+
+	# The consequence layer, last: it reaches its source adapters through a
+	# runtime registry, so every system it can drive has to exist first.
+	#
+	# Registration happens on every boot INCLUDING after a load, which is what
+	# lets a chain reloaded from a save find its source again — the save carries
+	# `action_id`, a String, and this is what turns it back into a system.
+	# Nothing here is ever serialised (TI-003 §1, §26).
+	var consequence_engine = preload("res://systems/consequence_engine.gd").new()
+	consequence_engine.setup(_gs, self)
+	consequence_engine.register_source_adapter("boost", boost)
+	consequence_engine.register_source_adapter("stickup", stickup)
+	register_system("consequence", consequence_engine)
 
 func register_system(sys_name: String, instance: Object) -> void:
 	_systems.append({"name": sys_name, "node": instance})

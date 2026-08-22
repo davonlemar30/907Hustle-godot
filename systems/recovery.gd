@@ -51,12 +51,22 @@ extends RefCounted
 const GREEN := Color(0.451, 0.722, 0.404)
 const BLUE := Color(0.373, 0.663, 0.847)
 
+## The shared owners. Treatments spend; Lay Low relieves.
+func _wallet() -> Object:
+	return gm.system("wallet")
+
+func _heat() -> Object:
+	return gm.system("heat")
+
 ## Canon's three treatments. `reveal_at` is the health at or below which canon
 ## surfaces the card; first aid has no gate.
 const FIRST_AID := {"id": "first_aid", "name": "First aid", "amount": 18, "cost": 55,
 	"copy": "Immediate care", "reveal_at": 100, "costs_time": false}
+## `formal` is Recovery's own declaration for TI-003 §6's high-visibility spend
+## policy. Only the clinic carries it: a clinic bills, and a bill is a record.
 const CLINIC := {"id": "clinic", "name": "Clinic visit", "amount": 40, "cost": 135,
-	"copy": "Larger treatment for a serious injury", "reveal_at": 82, "costs_time": true}
+	"copy": "Larger treatment for a serious injury", "reveal_at": 82,
+	"costs_time": true, "formal": true}
 const DOCTOR := {"id": "doctor", "name": "No-Questions Doctor", "amount": 75, "cost": 290,
 	"copy": "Private care unlocked through trust", "reveal_at": 55, "costs_time": true}
 
@@ -76,10 +86,14 @@ const DOCTOR_BAND := "trusted"
 
 var gs: Node
 var time_system: RefCounted
+## Reached for the wallet and the heat system: treatments spend, Lay Low
+## relieves.
+var gm: Node
 
-func setup(game_state: Node, time: RefCounted) -> void:
+func setup(game_state: Node, time: RefCounted, manager: Node) -> void:
 	gs = game_state
 	time_system = time
+	gm = manager
 
 func _exposure() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
@@ -181,7 +195,14 @@ func _treat(treatment: Dictionary) -> Dictionary:
 	var cost: int = treatment_cost(int(treatment["cost"]))
 	var amount: int = int(treatment["amount"])
 	var before: int = gs.health
-	gs.cash -= cost
+	# TI-003 §6 lists "formal Recovery spending explicitly declared by Recovery"
+	# as high-visibility, and leaves the declaring to Recovery. The clinic is the
+	# one treatment that generates a record somebody could read back; first aid
+	# is supplies, and the No-Questions Doctor is named for not asking. So the
+	# clinic pays clean-first and the other two are routine.
+	var policy: String = _wallet().HIGH_VISIBILITY_CLEAN_FIRST if bool(treatment.get("formal", false)) \
+		else _wallet().ROUTINE_DIRTY_FIRST
+	_wallet().spend(cost, policy, {"source_id": "recovery_%s" % str(treatment["id"])})
 	gs.health = clampi(gs.health + amount, 0, gs.health_max)
 	var restored: int = gs.health - before
 	if bool(treatment["costs_time"]):
@@ -208,9 +229,12 @@ func _heal(treatment_id: String) -> Dictionary:
 func _lay_low() -> Dictionary:
 	if gs.game_over:
 		return {"ok": false, "reason": "The run is over."}
-	var before: float = gs.heat
-	gs.heat = clampf(gs.heat - float(LAY_LOW_HEAT), 0.0, float(gs.heat_max))
-	var dropped: float = before - gs.heat
+	# Relief, not a negative gain. TI-003 §7: relief bypasses the district and
+	# Deshawn multipliers — having Deshawn on the crew must not make going quiet
+	# work less well, which is what routing this through the gain pipeline would
+	# do. `apply_relief` returns a signed delta; the copy wants the magnitude.
+	var dropped: float = -_heat().apply_relief(float(LAY_LOW_HEAT),
+		{"source_id": "lay_low"})
 	var exposure: Node = _exposure()
 	if exposure != null:
 		exposure.record_observation("curtis",

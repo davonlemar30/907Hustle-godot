@@ -225,6 +225,13 @@ regardless of how small the source file is.
 | FS-001.6. Crew operations | ✅ day-ending lifecycle + delegation substrate, save v7; parity → 7211 checks |
 | FS-001.7. Run the Board | ✅ Pherris buys and settles on her own day; parity → 7308 checks |
 | FS-001.8. Player experience | ✅ the delegation slice is playable from the existing screens; parity → 7400 checks |
+| FS-003.1. Consequence freeze | ✅ consequence-adjacent behavior pinned as regression fixtures; parity → 7665 checks |
+| FS-003.2. DayLifecycle seam | ✅ night settlement is a declared sequence, not signal-connection order; parity → 7726 checks |
+| FS-003.3. Wallet + Heat owners | ✅ every runtime Cash/Heat write routes through one owner, with automated writer audits; parity → 7889 checks |
+| FS-003.4. Consequence state | ✅ TI-003 §5 state persisted, save v8, v7 aggregate Cash migrates to Clean; parity → 8036 checks |
+| FS-003.5. ConsequenceEngine core | ✅ one blocking chain with receipts, stage machine, queue arbitration and a blocking scene navigation cannot bypass; parity → 8267 checks |
+| FS-003.6. Odds projection | ✅ pure `success_probability` / `tier_probabilities`, proved against the resolver over 4000 keys per cell; parity → 8785 checks |
+| FS-003.7. Failed Boost → Caught | ✅ first end-to-end encounter: contested take, Fight/Run/Talk/Yield, bans, arrest handoff, source time settles once; parity → 9100 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

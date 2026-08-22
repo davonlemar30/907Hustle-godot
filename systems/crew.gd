@@ -30,11 +30,13 @@ const RED := Color(0.827, 0.161, 0.125)
 const AMBER := Color(0.882, 0.651, 0.227)
 
 var gs: Node
+## Reached for the wallet. Recruiting and paying wages both spend.
+var gm: Node
 
-func setup(game_state: Node) -> void:
+func setup(game_state: Node, manager: Node) -> void:
 	gs = game_state
+	gm = manager
 	# Driven by DayLifecycle in declared order. See systems/day_lifecycle.gd.
-
 
 ## The exposure layer, or null before it exists. Every system reaches it the
 ## same way so the null-check lives in one shape rather than five.
@@ -86,7 +88,9 @@ func _recruit(id: String) -> Dictionary:
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked}
 	var person: Dictionary = gs.crew_member_by_id(id)
-	gs.cash -= int(person["cost"])
+	var wallet: Object = gm.system("wallet")
+	wallet.spend(int(person["cost"]), wallet.ROUTINE_DIRTY_FIRST,
+		{"source_id": "crew_recruit_%s" % id})
 	gs.crew_records[id] = {
 		"recruited": true,
 		"status": "active",
@@ -142,7 +146,9 @@ func _pay(id: String) -> Dictionary:
 		return {"ok": false, "reason": blocked}
 	var rec: Dictionary = gs.crew_records[id]
 	var amount: int = int(rec["wage_due"])
-	gs.cash -= amount
+	var wallet: Object = gm.system("wallet")
+	wallet.spend(amount, wallet.ROUTINE_DIRTY_FIRST,
+		{"source_id": "crew_wage_%s" % id})
 	rec["wage_due"] = 0
 	rec["wage_missed_since"] = -1
 	rec["loyalty"] = clampi(int(rec["loyalty"]) + 1, gs.CREW_LOYALTY_MIN, gs.CREW_LOYALTY_MAX)

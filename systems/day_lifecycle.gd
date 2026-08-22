@@ -80,6 +80,28 @@ var trace: Array[String] = []
 ## growing array on a hot path is not something to ship on by default.
 var tracing := false
 
+## Register through these, never by assigning an array literal.
+##
+## FS-003.2 shipped these two as bare typed properties and its own tests
+## assigned `lifecycle.post_settle_hooks = [probe]` to them. An untyped `Array`
+## literal does not convert to `Array[Callable]`, so every one of those
+## assignments raised at runtime and aborted the enclosing check — silently,
+## because an aborted check is a check that never counted rather than one that
+## failed. The suite went green having never once proven a hook runs.
+##
+## The typing is right and stays. The trap was the assignment, so registration
+## is a method now: `append` on a typed array accepts a Callable, and no caller
+## has to know why the literal form does not.
+func add_post_settle_hook(hook: Callable) -> void:
+	post_settle_hooks.append(hook)
+
+func add_day_start_hook(hook: Callable) -> void:
+	day_start_hooks.append(hook)
+
+func clear_hooks() -> void:
+	post_settle_hooks.clear()
+	day_start_hooks.clear()
+
 func setup(game_state: Node, manager: Node, economy_system: RefCounted) -> void:
 	gs = game_state
 	gm = manager

@@ -29,10 +29,14 @@ const PHONE_PERIOD_DAYS := 7
 
 var gs: Node
 var phone: RefCounted
+## Reached for the wallet. Rent and the phone bill are the two spends
+## TI-003 §6 names as high-visibility, so both go through it.
+var gm: Node
 
-func setup(game_state: Node, phone_system: RefCounted) -> void:
+func setup(game_state: Node, phone_system: RefCounted, manager: Node) -> void:
 	gs = game_state
 	phone = phone_system
+	gm = manager
 	# Driven by DayLifecycle in declared order. See systems/day_lifecycle.gd.
 
 func can_handle(action: String) -> bool:
@@ -51,7 +55,12 @@ func _pay_rent() -> Dictionary:
 		return {"ok": false, "reason": "The run is over."}
 	if gs.cash < gs.WEEKLY_RENT:
 		return {"ok": false, "reason": "Need $%d for rent." % gs.WEEKLY_RENT}
-	gs.cash -= gs.WEEKLY_RENT
+	# TI-003 §6 names rent as high-visibility: it is paid to somebody who keeps
+	# records, so clean money goes first and dirty money above $400 is what
+	# Financial Pressure measures.
+	var wallet: Object = gm.system("wallet")
+	wallet.spend(gs.WEEKLY_RENT, wallet.HIGH_VISIBILITY_CLEAN_FIRST,
+		{"source_id": "rent"})
 	# Paying rolls the due day forward a full period, which is what makes the
 	# nightly check go quiet.
 	gs.rent_due_day = _current_rent_due() + RENT_PERIOD_DAYS
@@ -93,7 +102,11 @@ func _pay_phone(payload: Dictionary) -> Dictionary:
 		return {"ok": false, "reason": "Due Day %d." % gs.phone_due_day}
 	if gs.cash < gs.PHONE_BILL:
 		return {"ok": false, "reason": "Need $%d for the phone bill." % gs.PHONE_BILL}
-	gs.cash -= gs.PHONE_BILL
+	# High-visibility for the same reason as rent (TI-003 §6): a billed account
+	# in your name is a record.
+	var wallet: Object = gm.system("wallet")
+	wallet.spend(gs.PHONE_BILL, wallet.HIGH_VISIBILITY_CLEAN_FIRST,
+		{"source_id": "phone_bill"})
 	gs.phone_due_day = gs.day + PHONE_PERIOD_DAYS
 	gs.phone_days_past_due = 0
 	if not gs.phone_active:

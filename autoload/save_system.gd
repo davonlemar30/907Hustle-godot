@@ -81,7 +81,23 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## Crew Operations lifecycle. Both additive. The arm also stamps an explicit
 ## `source` on every held 907List item, so "who bought this" is never ambiguous
 ## once delegated buying lands — see the v6 → v7 arm.
-const SAVE_VERSION := 7
+##
+## v8 (FS-003.4): the Consequence-Encounter Engine's persisted state, TI-003 §5
+## — money provenance, Financial Pressure, Cause/consequence sequences, the
+## active chain, receipt history, the delayed queue, the arrest record, Boost
+## bans, and District Pressure with its bleed queue.
+##
+## Every consequence field is additive and defaults empty, and empty is the
+## honest history rather than a fallback: a v7 save cannot contain an unfinished
+## consequence because the system did not exist, so the arm creates no inferred
+## chain (TI-003 §20).
+##
+## The one TRANSFORM is the wallet. `cash` alone cannot say where it came from,
+## and the split has to answer that for money already in a save. TI-003 §20/§26
+## rules the whole aggregate CLEAN, which is a deliberate divergence from canon's
+## own pre-split migration — see `WalletSystem.classify_legacy_total()`, which is
+## the single place that rule lives and is what this arm calls.
+const SAVE_VERSION := 8
 
 ## Every mutable GameState field, captured and applied by name. products.price
 ## is the one mutable value living inside a canon table; it rides separately as
@@ -129,6 +145,15 @@ const PERSIST_FIELDS: Array[String] = [
 	"curtis_recent_watcher_lines", "curtis_phase_messages_sent",
 	# Feed
 	"activity_log",
+	# Money provenance + Financial Pressure (v8, TI-003 §§5-6)
+	"dirty_cash", "clean_cash", "financial_pressure",
+	# Consequence-Encounter Engine (v8, TI-003 §5). Stable IDs and state facts
+	# only — runtime source adapters are re-registered on boot and never here.
+	"next_cause_sequence", "next_consequence_sequence",
+	"active_consequence", "consequence_history", "consequence_queue",
+	"last_blocking_delayed_day",
+	"arrest_record", "boost_store_bans",
+	"district_pressure", "pressure_bleed_pending",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -344,6 +369,42 @@ func _migrate(payload: Dictionary) -> Dictionary:
 					for entry in (carried as Array):
 						if entry is Dictionary and not (entry as Dictionary).has("source"):
 							(entry as Dictionary)["source"] = "player"
+			7:
+				# v7 → v8: the Consequence-Encounter Engine's state, TI-003 §5.
+				#
+				# Everything except the wallet is additive and defaults empty.
+				# Empty is not a fallback here — it is the only true answer. A
+				# v7 save cannot hold an unfinished consequence, a prior arrest,
+				# a Boost ban or a Pressure score, because none of those systems
+				# existed while it was being played. TI-003 §20 says the same:
+				# "A pre-TI-003 Godot save contains no unfinished consequence,
+				# so migration creates no inferred active chain."
+				#
+				# The WALLET is the one transform, and it is the v6 → v7
+				# `source: "player"` case again: stamp what is knowable while it
+				# is still knowable. A v7 save records one aggregate `cash` and
+				# nothing about where it came from. Every day it stays
+				# un-migrated is a day that number could be split by a rule
+				# nobody wrote down, so the rule is written down here, once.
+				#
+				# TI-003 §20 step 2-3 and §26 rule the whole aggregate CLEAN:
+				# "Old Godot saves enter with prior aggregate Cash classified
+				# Clean." That is a DELIBERATE DIVERGENCE from canon, which
+				# classifies its own pre-split saves dirty (game-core.js:2060) on
+				# the grounds that nothing in pre-split play ever laundered
+				# anything. Both readings are argued in
+				# `WalletSystem.classify_legacy_total()`; TI-003 is the approved
+				# implementation contract for this port and wins.
+				#
+				# Done arithmetically rather than by calling the wallet, because
+				# migration runs on a plain Dictionary before any of it reaches
+				# GameState and before a system instance is in play. The rule is
+				# identical and `_check_v8_migration` asserts the two agree.
+				var carried_cash: Variant = state.get("cash", 0)
+				var aggregate: int = int(carried_cash) \
+					if (carried_cash is int or carried_cash is float) else 0
+				state["clean_cash"] = maxi(0, aggregate)
+				state["dirty_cash"] = 0
 			_:
 				return {}
 		version += 1
@@ -375,6 +436,44 @@ func _apply(state: Dictionary) -> void:
 		var id := str(prod.id)
 		if prices.has(id):
 			prod.price = clampi(int(prices[id]), int(prod.min), int(prod.max))
+	_classify_loaded_wallet(state)
+
+## Guarantee `cash == dirty_cash + clean_cash` on everything that loads.
+##
+## From v8 the buckets are persisted and the migration arm has already split any
+## older aggregate, so the normal path here does nothing at all. It stays for the
+## case the arm cannot cover: a v8 payload whose bucket fields are absent or
+## malformed, which `_apply` fills from GameState's defaults rather than from
+## this save. Those defaults belong to a different balance, so without this the
+## invariant would load broken.
+##
+## Reconcile rather than reclassify: a save that carries real buckets keeps them,
+## and only the drift is folded. That is canon's rule (dirty-first) and it is the
+## right one here — a v8 save with buckets that do not sum has been edited or
+## truncated, and its provenance is no longer trustworthy enough to call clean.
+func _classify_loaded_wallet(state: Dictionary) -> void:
+	var gm: Node = get_node_or_null("/root/GameManager")
+	var wallet: Object = gm.system("wallet") if gm != null else null
+	var carried := state.has("dirty_cash") and state.has("clean_cash")
+	if wallet == null:
+		# No manager (a load driven before systems exist). Fold by hand so the
+		# invariant still holds; the arithmetic is the wallet's, inlined.
+		var drift: int = int(gs.cash) - (int(gs.dirty_cash) + int(gs.clean_cash))
+		if drift > 0:
+			gs.dirty_cash = int(gs.dirty_cash) + drift
+		elif drift < 0:
+			var deficit: int = -drift
+			var from_dirty: int = mini(int(gs.dirty_cash), deficit)
+			gs.dirty_cash = int(gs.dirty_cash) - from_dirty
+			gs.clean_cash = maxi(0, int(gs.clean_cash) - (deficit - from_dirty))
+		return
+	if not carried:
+		# Not reachable from a migrated payload — the v7 arm writes both fields —
+		# but a hand-edited or truncated v8 save can land here, and TI-003 §20's
+		# rule is the right answer for a total with no provenance at all.
+		wallet.classify_legacy_total()
+		return
+	wallet.reconcile()
 
 func _deep(value: Variant) -> Variant:
 	if value is Dictionary:

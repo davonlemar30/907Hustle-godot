@@ -19,6 +19,7 @@ func _ready() -> void:
 	_test_consequence_state()
 	_test_district_pressure()
 	_test_arrest_record()
+	_test_v9_fields()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -130,6 +131,55 @@ func _test_arrest_record() -> void:
 	_check("arrest day default", int(record.get("last_arrest_day", 0)) == -1)
 	_check("invalid charge drops", (record["charges"] as Array).size() == 1)
 	_check("charge unknown key survives", ((record["charges"] as Array)[0] as Dictionary).get("unknown", false))
+
+func _test_v9_fields() -> void:
+	var valid := _state("arrest_record", {
+		"priors": 1, "last_arrest_day": 8, "charges": [], "cooldown_until_day": 12,
+	})
+	valid["consequence_flags"] = {
+		"retaliation_first_expiry_seen": true,
+		"retaliation_last_ambient_day": 14,
+		"future_flag": "preserve",
+	}
+	var valid_result := _result(valid)
+	var valid_fixed: Dictionary = valid_result["state"]
+	var valid_record: Dictionary = valid_fixed["arrest_record"]
+	var valid_flags: Dictionary = valid_fixed["consequence_flags"]
+	_check("valid v9 cooldown remains unchanged", int(valid_record["cooldown_until_day"]) == 12)
+	_check("valid v9 retaliation expiry flag remains unchanged", valid_flags["retaliation_first_expiry_seen"] is bool and valid_flags["retaliation_first_expiry_seen"] == true)
+	_check("valid v9 ambient day remains unchanged", int(valid_flags["retaliation_last_ambient_day"]) == 14)
+	_check("valid v9 unknown flag survives", valid_flags.get("future_flag", "") == "preserve")
+	_check("valid v9 shape is a validation no-op", (valid_result["repairs"] as Array).is_empty())
+	_check("valid v9 payload remains byte-shape equivalent", valid_fixed == valid)
+
+	var wrong_type := _state("arrest_record", {
+		"cooldown_until_day": "tomorrow", "charges": [],
+	})
+	wrong_type["consequence_flags"] = {
+		"retaliation_first_expiry_seen": "yes",
+		"retaliation_last_ambient_day": "never",
+	}
+	var wrong_fixed: Dictionary = _fixed(wrong_type)
+	_check("wrong-type cooldown defaults inactive", int((wrong_fixed["arrest_record"] as Dictionary)["cooldown_until_day"]) == -1)
+	_check("wrong-type expiry flag defaults false", (wrong_fixed["consequence_flags"] as Dictionary)["retaliation_first_expiry_seen"] is bool and not (wrong_fixed["consequence_flags"] as Dictionary)["retaliation_first_expiry_seen"])
+	_check("wrong-type ambient day defaults inactive", int((wrong_fixed["consequence_flags"] as Dictionary)["retaliation_last_ambient_day"]) == -1)
+
+	var out_of_range := _state("arrest_record", {
+		"cooldown_until_day": -2, "charges": [],
+	})
+	out_of_range["consequence_flags"] = {"retaliation_last_ambient_day": -2}
+	var range_fixed: Dictionary = _fixed(out_of_range)
+	_check("out-of-range cooldown defaults inactive", int((range_fixed["arrest_record"] as Dictionary)["cooldown_until_day"]) == -1)
+	_check("out-of-range ambient day defaults inactive", int((range_fixed["consequence_flags"] as Dictionary)["retaliation_last_ambient_day"]) == -1)
+
+	var v8_missing := _state("arrest_record", {"priors": 0, "last_arrest_day": -1, "charges": []})
+	var missing_result := _result(v8_missing)
+	_check("v8 missing consequence flags does not crash", missing_result["state"] is Dictionary)
+	_check("v8 missing consequence flags remains absent for migration defaults", not (missing_result["state"] as Dictionary).has("consequence_flags"))
+
+	var wrong_flags := _state("consequence_flags", "not-a-dictionary")
+	var wrong_flags_fixed: Dictionary = _fixed(wrong_flags)
+	_check("wrong-type consequence flags default to dictionary", wrong_flags_fixed["consequence_flags"] is Dictionary)
 
 func _test_load_pipeline() -> void:
 	var save_system: Node = get_node("/root/SaveSystem")

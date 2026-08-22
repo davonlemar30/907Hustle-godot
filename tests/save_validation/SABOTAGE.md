@@ -13,3 +13,11 @@ the suite fail, then was reverted before the final verification run.
 
 The unmodified suite then returned `save_validation: PASS — 47 checks, 0
 failures`.
+
+The v9 extension adds these adversarial cases:
+
+| Validator targeted | Temporary mutation | Result |
+| --- | --- | --- |
+| `arrest_record.cooldown_until_day` | Removed the wrong-type fallback to `-1` | Red: `wrong-type cooldown defaults inactive` |
+| `consequence_flags.retaliation_first_expiry_seen` | Removed the bool type repair | Red: `wrong-type expiry flag defaults false` |
+| `consequence_flags.retaliation_last_ambient_day` | Removed the lower-bound repair | Red: `out-of-range ambient day defaults inactive` |

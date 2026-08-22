@@ -155,8 +155,28 @@ checks / 0 failures**. The existing parity runner's direct diagnostic probe is
 left unchanged because `tests/parity/parity_runner.gd` is owned by Claude for
 the concurrent build; the new load-time suite is the repair assertion.
 
-The validator does not bump schema v8 and does not modify the save path. Its
-repair warnings identify each changed path in the runtime log.
+The validator runs after migration and before apply; it does not write repaired
+payloads back or change the schema. The v9 additions are validated in place:
+`arrest_record.cooldown_until_day` is an integer deadline (minimum `-1`, where
+`-1` means no active cooldown), and `consequence_flags` validates the boolean
+`retaliation_first_expiry_seen` and integer `retaliation_last_ambient_day`
+(minimum `-1`) when those optional keys are present. Unknown consequence flags
+survive. A v8 record may omit the cooldown key and a v8 payload may omit
+`consequence_flags`; migration/GameState defaults handle those absences without
+materializing keys that would change legacy round-trip shape. FS-003.13 added no
+new keys inside `active_consequence` or `consequence_queue`.
+
+The extended standalone suite passes **61 checks / 0 failures**. Its three new
+v9 guards were sabotage-proven: changing the cooldown fallback, removing the
+retaliation flag type repair, or removing the ambient-day lower bound made the
+suite fail. The merged main baseline after PR #50 and PR #51 is **10,781 checks
+/ 0 failures**; the rebased save-validation branch matches it. Glyph coverage
+passes across all five theme fonts, and `git diff --check` is clean.
+
+Repair warnings identify each changed path in the runtime log. The exact
+`godot --headless --script tests/parity/parity_runner.gd` form still does not
+exit in this project; the passing parity result above came from the equivalent
+headless parity scene.
 **DONE — Home screen** (`ui/screens/home.tscn`), verified via run + screenshot:
 TopBar (DAY/EVENING, two-tone 907HUSTLE brand, SPENARD/AK, CASH), 6-stat HUD
 with icons, real Spenard street photo (`assets/img/assest1home.png`), red

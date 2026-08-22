@@ -1,5 +1,5 @@
 {
-  "schema": 8,
+  "schema": 9,
   "purpose": "Load-only nested-save-shape fixtures. SaveSystem repairs known malformed inner shapes to safe defaults, preserves unknown keys, and never writes the repaired payload back.",
   "cases": [
     {

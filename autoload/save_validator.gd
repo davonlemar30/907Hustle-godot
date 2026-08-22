@@ -3,7 +3,8 @@ extends RefCounted
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema remains v8.
+## repaired payload back to disk. The save schema is v9. v8 saves are migrated
+## before this validator runs.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -20,6 +21,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_consequence_queue(state, repairs)
 	_validate_district_pressure(state, repairs)
 	_validate_arrest_record(state, repairs)
+	_validate_consequence_flags(state, repairs)
 	return {"state": state, "repairs": repairs}
 
 func _repair(repairs: Array[String], path: String, reason: String) -> void:
@@ -378,12 +380,20 @@ func _validate_arrest_record(state: Dictionary, repairs: Array[String]) -> void:
 	if not state.has("arrest_record"):
 		return
 	if not state["arrest_record"] is Dictionary:
-		state["arrest_record"] = {"priors": 0, "last_arrest_day": -1, "charges": []}
+		state["arrest_record"] = {"priors": 0, "last_arrest_day": -1, "charges": [],
+			"cooldown_until_day": -1}
 		_repair(repairs, "arrest_record", "wrong type; defaulted")
 		return
 	var record: Dictionary = state["arrest_record"]
 	_int(record, "priors", 0, "arrest_record.priors", repairs)
 	_int(record, "last_arrest_day", -1, "arrest_record.last_arrest_day", repairs)
+	# This key is additive in v9. Leave it absent on a v8 record so legacy
+	# round-trips stay byte-identical; _apply() supplies the GameState default.
+	if record.has("cooldown_until_day"):
+		_int(record, "cooldown_until_day", -1, "arrest_record.cooldown_until_day", repairs)
+		if int(record["cooldown_until_day"]) < -1:
+			record["cooldown_until_day"] = -1
+			_repair(repairs, "arrest_record.cooldown_until_day", "out of range; defaulted")
 	var charges := _array(record, "charges", [], "arrest_record.charges", repairs)
 	var clean: Array = []
 	for index in charges.size():
@@ -392,3 +402,24 @@ func _validate_arrest_record(state: Dictionary, repairs: Array[String]) -> void:
 		else:
 			_repair(repairs, "arrest_record.charges[%d]" % index, "invalid charge dropped")
 	record["charges"] = clean
+
+func _validate_consequence_flags(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("consequence_flags"):
+		return
+	if not state["consequence_flags"] is Dictionary:
+		state["consequence_flags"] = {}
+		_repair(repairs, "consequence_flags", "wrong type; defaulted")
+		return
+	var flags: Dictionary = state["consequence_flags"]
+	# An empty dictionary is the canonical v8 -> v9 migrated shape. Known keys
+	# are optional so valid empty/forward-compatible dictionaries remain intact.
+	if flags.has("retaliation_first_expiry_seen"):
+		_bool(flags, "retaliation_first_expiry_seen", false,
+			"consequence_flags.retaliation_first_expiry_seen", repairs)
+	if flags.has("retaliation_last_ambient_day"):
+		_int(flags, "retaliation_last_ambient_day", -1,
+			"consequence_flags.retaliation_last_ambient_day", repairs)
+		if int(flags["retaliation_last_ambient_day"]) < -1:
+			flags["retaliation_last_ambient_day"] = -1
+			_repair(repairs, "consequence_flags.retaliation_last_ambient_day",
+				"out of range; defaulted")

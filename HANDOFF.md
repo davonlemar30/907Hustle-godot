@@ -5450,6 +5450,89 @@ instrument that can tell whether a change to those numbers helped.**
 | L-S2 | `STICK_TIER2_REP` → 99 | ✅ 3 failures |
 | L-S3 | field-crew gate dropped from tier 3 | ✅ 1 failure — "tier 3 wants a crew that can be put somewhere: got 3, want 2" |
 
+## Batch 5 — The Route, Made Visible  (added 2026-08-22)
+
+Branch `codex/batch-5-route-visible`, from `main` at `e7b697e`.
+
+**Parity: 11,311 checks, 0 failures** (from 11,273). Floor 11,263 → 11,301.
+Save schema unchanged at v10.
+
+### The problem, in one sentence
+
+Batch 3 measured the cross-district courier route as the only strategy in the
+game that clears the day job — and **there was no surface anywhere that could
+see it**. `economy.sell_unit_price(district_id, product_id)` had always been able
+to price a remote district; nothing had ever asked it to. The economy instrument
+had to read `gs.markets` directly to play the route, which is the tell: a
+strategy only a test can find is not a strategy the player has.
+
+### The authored line was worse than nothing
+
+The Market screen's hint row rendered `p.hint` — a string in the product table:
+
+```gdscript
+{"id": "weed", ..., "hint": "SELL SHIP CREEK  +$11", "trend": "up", ...}
+```
+
+`economy.evolve()` walks every price every night. That line was true on the day
+somebody wrote it and a standing false claim every night after. Seven of the
+eight products carried one.
+
+### What shipped
+
+**One substrate, two surfaces, one gate.**
+
+`economy.best_route(product_id)` is the substrate: the best district to take a
+product to from where the player stands, what it pays, and which way that corner
+is moving. Three things about it matter:
+
+- It reports what a sale THERE would **actually pay** — `sell_unit_price`, not
+  the board price — so a corner you have burned is discounted *before* the trip
+  rather than being a surprise on arrival.
+- It only considers districts in `districts_unlocked`. Word reaches you about
+  places you know about.
+- `price_trend()` reads `markets[district].history`, which `walk_evolve_area` has
+  been keeping (canon's last eight prices) since the market walk was ported and
+  **nothing had ever read**.
+
+**Surface 1 — the Market row.** The hint line is live. Three states: a route, no
+route ("NOBODY PAYING OVER THE ODDS"), or no line ("NO WORD — LINE IS DEAD").
+Locked products keep their authored line, because "NEEDS SHIP CREEK TURF" is a
+fact about the world rather than a price claim.
+
+**Surface 2 — Word Around Town.** The Phone section already existed, already went
+quiet offline, and already spoke about districts in prose. It now leads with what
+product is going for elsewhere, capped at three routes so it stays a rumour
+rather than a spreadsheet, then the ambient lines underneath.
+
+**The gate is the phone bill.** Both surfaces go dark when the line does. This is
+the honest fiction — you find out what Downtown pays because somebody tells you —
+and it is the first mechanical thing the $75/week has ever bought. Losing service
+used to mean a quieter inbox; it now means the city goes dark and you trade on
+what is in front of you.
+
+### Sabotage log
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| R-S1 | `best_route` ignores `districts_unlocked` | ✅ 1 failure — "got 5, want 0" |
+| R-S2 | the Market hint reads `p.hint` again | ✅ 3 failures — the authored strings reappear in the render |
+| R-S3 | `market_intel` ignores `phone_active` | ✅ 1 failure |
+| R-S4 | `best_route` quotes the board price instead of what a sale pays | ✅ 2 failures |
+
+R-S2 is the one worth noting: the check does not assert what the line *says*, it
+asserts that **none of the seven authored hint strings appear in the rendered
+screen at all**. That is the only way to prove a live read replaced a static one
+— asserting the new text would pass just as happily with the old code still
+there beside it.
+
+### Not changed
+
+The economy instrument's numbers are unmoved (`arbitrage` 90%, `hustler` 932%),
+and they should be: the harness always read `gs.markets` directly, so making the
+route visible changes what a *player* can see, not what a simulation could
+already do. That is the entire point of the build.
+
 ## Overnight Build Log — 2026-08-22
 
 Autonomous loop. Each entry: branch, tasks, parity, outcome.
@@ -5461,6 +5544,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 2 | `codex/batch-2-docs-and-glyphs` | B2 settlement contract · B1, B3, C1, C2, C3 verified | 11,147 → 11,177 | Merged, PR #55. No production behaviour changed. |
 | 3 | `codex/batch-3-trading-risk` | The economy instrument · the trading path's risk term (sell Heat · corner pricing · the carry) | 11,177 → 11,248 | Merged, PR #56. Pure courier route 384% → 90% of the day job. |
 | 4 | `codex/batch-4-crime-progression` | The Stickup ladder (`stick_tier` had no writer) · criminal surfaces measured against the job | 11,248 → 11,273 | Merged, PR #57. Four dead targets reachable; stickup at 2% filed for balance. |
+| 5 | `codex/batch-5-route-visible` | The route made visible — live Market route line · Word Around Town prices · both gated on the phone bill | 11,273 → 11,311 | Merged, PR #58. Seven authored route strings retired. |
 
 **Findings carried forward:**
 

@@ -445,10 +445,27 @@ func _build_intel(offline: bool) -> void:
 	if offline:
 		body.add_child(note("Word comes back when service does."))
 		return
+	# Prices first, ambient second. The routes are the part somebody would
+	# actually ring you about; the rest is texture, and texture goes under.
+	var routes: Array = _phone().market_intel()
+	if not routes.is_empty():
+		body.add_child(section("WHAT IT IS GOING FOR"))
+		for entry in routes:
+			var route: Dictionary = entry
+			var row := card()
+			var v := VBoxContainer.new()
+			v.add_theme_constant_override("separation", 3)
+			row.add_child(v)
+			v.add_child(label(_phone().market_intel_line(route), "Muted", 12, CREAM, true))
+			v.add_child(label("%s  ·  +$%d A UNIT"
+				% [str(route["name"]).to_upper(), int(route["edge"])], "Mono", 10, GREEN))
+			body.add_child(row)
 	var lines: Array = _phone().intel()
-	if lines.is_empty():
+	if lines.is_empty() and routes.is_empty():
 		body.add_child(note("Nothing on the wire yet."))
 		return
+	if not lines.is_empty() and not routes.is_empty():
+		body.add_child(section("AROUND HERE"))
 	for line in lines:
 		var c := card()
 		c.add_child(label(str(line), "Muted", 12, BLUE, true))

@@ -88,6 +88,37 @@ func _fill_context() -> void:
 	_set_pips(base + "/Police/P", int(district.get("police", 0)), POLICE_MAX, POLICE_TINT)
 	_set_pips(base + "/Rival/P", int(district.get("rival", 0)), RIVAL_MAX, RIVAL_TINT)
 
+## What this product's row says about where to take it.
+##
+## Three states, and which one you get is the phone bill's business:
+##
+##   NO SERVICE   you know what this corner pays and nothing else. Word about
+##                another part of town reaches you by phone or not at all, and
+##                a dead line is a dead line. This is the first thing in the
+##                build that the $75 actually buys.
+##   A ROUTE      somewhere you know about pays more than it costs here.
+##   NO ROUTE     the line works and nobody is paying over the odds today.
+##
+## Locked product rows keep their authored line: `meth` has no market yet and
+## "NEEDS SHIP CREEK TURF" is a fact about the world rather than a price claim.
+func _live_hint(product_id: String, product: Dictionary) -> Dictionary:
+	var muted := Color(0.608, 0.608, 0.608)
+	if bool(product.get("locked", false)):
+		return {"text": str(product.get("hint", "")), "color": product.get("hint_color", muted),
+			"arrow": false}
+	if not bool(gs.phone_active):
+		return {"text": "NO WORD — LINE IS DEAD", "color": muted, "arrow": false}
+	var economy: Object = _gm.system("economy") if _gm else null
+	var route: Dictionary = economy.best_route(product_id) if economy != null else {}
+	if route.is_empty():
+		return {"text": "NOBODY PAYING OVER THE ODDS", "color": muted, "arrow": false}
+	var green := Color(0.451, 0.722, 0.404)
+	return {
+		"text": "SELL %s  +$%d" % [str(route["name"]), int(route["edge"])],
+		"color": green,
+		"arrow": str(route.get("trend", "flat")) == "up",
+	}
+
 func _connect_buttons() -> void:
 	for i in range(gs.products.size()):
 		var pid: String = gs.products[i].id
@@ -135,14 +166,21 @@ func _fill_products() -> void:
 		# U+2197 baked into the string, which no theme font carries — it only
 		# ever drew because the editor borrows a macOS system font, and the web
 		# export has none to borrow. It is a TextureRect now.
+		#
+		# The TEXT is live as of v0.2.0. It used to be `p.hint`, an authored
+		# string — "SELL SHIP CREEK  +$11" — baked into the product table and
+		# true only on the day somebody wrote it. Prices walk every night, so
+		# that line was a claim about a route the game had usually stopped
+		# honouring. It reads the real board now.
+		var hint: Dictionary = _live_hint(str(p.id), p)
 		var t := get_node_or_null(base + "/H/Mid/Hint/T") as Label
 		if t:
-			t.text = p.hint
-			t.add_theme_color_override("font_color", p.hint_color)
+			t.text = str(hint["text"])
+			t.add_theme_color_override("font_color", hint["color"])
 		var trend := get_node_or_null(base + "/H/Mid/Hint/Ico") as TextureRect
 		if trend:
-			trend.visible = p.get("trend", "flat") == "up"
-			trend.self_modulate = p.hint_color
+			trend.visible = bool(hint["arrow"])
+			trend.self_modulate = hint["color"]
 
 		var pr := get_node_or_null(base + "/H/Right/P") as Label
 		if pr:

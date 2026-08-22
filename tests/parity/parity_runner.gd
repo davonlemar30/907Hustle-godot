@@ -128,6 +128,7 @@ func _ready() -> void:
 		_check_arrest_booking()
 		_check_pressure_lifecycle()
 		_check_retaliation()
+		_check_consequence_presentation()
 		_check_save_roundtrip()
 	_finish()
 
@@ -3354,7 +3355,10 @@ func _check_screen_reads(gs: Node, gm: Node) -> void:
 		screen.refresh()
 	var text: Array[String] = []
 	_collect_labels(screen, text)
-	screen.queue_free()
+	# Freed rather than queued: this instance stays connected to
+	# `state_changed` until it is genuinely gone, and the runner never yields a
+	# frame for a queued free to happen in. See `_free_screen`.
+	_free_screen(screen)
 
 	var joined := "\n".join(text)
 	_expect_true("people screen renders something", not text.is_empty())
@@ -10150,6 +10154,436 @@ func _check_retaliation_rng_non_drift(gs: Node, gm: Node, engine: RefCounted,
 		gs.active_consequence = {}
 	gs.reset_to_new_game()
 
+
+# =============================================================================
+# FS-003.11 — consequence UX, Local Attention, and the hidden-information audit
+# =============================================================================
+#
+# Presentation is usually the layer a suite stops at, on the grounds that it is
+# only rendering. It is not only rendering here: TI-003 §19 and PX-003 §11 make
+# a list of values that must NOT reach the player, and a screen is exactly where
+# one of them leaks. So the scenes are built for real, against a real chain, and
+# what they produced is read back.
+
+func _check_consequence_presentation() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var engine: RefCounted = gm.system("consequence") as RefCounted
+	if engine == null:
+		_fail("presentation", "consequence engine not registered")
+		return
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	_check_odds_bands(rules)
+	_check_arrest_risk_codes(rules)
+	_check_arrest_risk_projection(gs, gm, engine)
+	_check_consequence_scene(gs, gm, engine)
+	_check_attention_surfaces(gs, gm, engine)
+	_check_blocking_scene_structure()
+	gs.reset_to_new_game()
+
+# --- odds, as words ---------------------------------------------------------
+
+## FS-003.11: "Use qualitative labels derived from exact probability. Do NOT show
+## raw percentages."
+##
+## The bands are authored, so they are transcribed here rather than read back —
+## and both sides of every boundary are checked, because a band table is exactly
+## the shape of thing that ships with a `>` where it wanted `>=`.
+func _check_odds_bands(rules: RefCounted) -> void:
+	var cases := [
+		[1.00, "STRONG CHANCE", 4], [0.90, "STRONG CHANCE", 4], [0.75, "STRONG CHANCE", 4],
+		[0.7499, "FAIR CHANCE", 3], [0.60, "FAIR CHANCE", 3], [0.55, "FAIR CHANCE", 3],
+		[0.5499, "RISKY", 2], [0.40, "RISKY", 2], [0.35, "RISKY", 2],
+		[0.3499, "BAD ODDS", 1], [0.20, "BAD ODDS", 1], [0.15, "BAD ODDS", 1],
+		[0.1499, "DESPERATE", 0], [0.05, "DESPERATE", 0], [0.00, "DESPERATE", 0],
+	]
+	for row in cases:
+		var c: Array = row
+		_expect_str("%.4f reads as %s" % [float(c[0]), str(c[1])],
+			rules.odds_label(float(c[0])), str(c[1]))
+		_expect_int("%.4f ranks %d" % [float(c[0]), int(c[2])],
+			rules.odds_rank(float(c[0])), int(c[2]))
+	# Every label is a word, never a number. A band that ever formatted a
+	# percentage would fail here rather than in a screenshot.
+	for row in rules.ODDS_BANDS:
+		var label_text := str((row as Dictionary)["label"])
+		_expect_true("the band %s carries no percent sign" % label_text,
+			not label_text.contains("%"))
+		_expect_true("the band %s carries no digits" % label_text,
+			not _has_digit(label_text))
+	_expect_str("a deterministic response reads as certain", rules.ODDS_CERTAIN, "CERTAIN")
+
+func _has_digit(text: String) -> bool:
+	for i in range(text.length()):
+		if text[i] >= "0" and text[i] <= "9":
+			return true
+	return false
+
+# --- arrest warnings --------------------------------------------------------
+
+## PX-003 §19 point 8: "Known arrest conditions are surfaced before commitment."
+## §11 keeps the threshold itself hidden — the player is told THAT this can book
+## them, never at what number.
+##
+## The codes are derived from the authored effect table rather than restated, so
+## this checks the derivation at every combination that changes the answer.
+func _check_arrest_risk_codes(rules: RefCounted) -> void:
+	# Yield never carries a warning at any tier or Heat.
+	for tier in [1, 2, 3]:
+		for heat in [0.0, 7.0, 15.0]:
+			_expect_str("yield carries no arrest warning at tier %d heat %.1f" % [tier, heat],
+				rules.caught_arrest_risk("yield", tier, heat), "")
+
+	# Fight books on any loss, at every tier and every Heat: its failure row is
+	# unconditional.
+	for tier in [1, 2, 3]:
+		_expect_str("fight warns on loss at tier %d" % tier,
+			rules.caught_arrest_risk("fight", tier, 0.0), "on_loss")
+
+	# Talk books only on a catastrophe.
+	for tier in [1, 2, 3]:
+		_expect_str("talk warns only about the worst outcome at tier %d" % tier,
+			rules.caught_arrest_risk("talk", tier, 0.0), "worst_only")
+
+	# Run is the conditional one, and the player is told WHICH condition made it
+	# true — "this target" is something they chose and can choose differently;
+	# "your Heat" is something they carry.
+	_expect_str("run at tier 1 with low heat warns about the worst outcome only",
+		rules.caught_arrest_risk("run", 1, 0.0), "worst_only")
+	_expect_str("run at tier 1 at the heat threshold still warns only about the worst",
+		rules.caught_arrest_risk("run", 1, 6.0), "worst_only")
+	_expect_str("run at tier 1 above the heat threshold warns about heat",
+		rules.caught_arrest_risk("run", 1, 6.1), "heat")
+	_expect_str("run at tier 2 above the heat threshold warns about heat",
+		rules.caught_arrest_risk("run", 2, 9.0), "heat")
+	_expect_str("run at tier 3 warns about the target even at zero heat",
+		rules.caught_arrest_risk("run", 3, 0.0), "target")
+	_expect_str("run at tier 3 still blames the target when heat is also high",
+		rules.caught_arrest_risk("run", 3, 12.0), "target")
+
+## The codes reach the projection the screen reads, snapshotted with the odds.
+func _check_arrest_risk_projection(gs: Node, gm: Node, engine: RefCounted) -> void:
+	if not _open_failed_lift(gs, gm, "night_owl", 1):
+		_fail("arrest risk projection", "no failed lift found")
+		return
+	var rows: Array = engine.choice_summaries()
+	_expect_true("every response carries an arrest-risk field", rows.size() == 4)
+	for entry in rows:
+		var row: Dictionary = entry
+		_expect_true("%s carries an arrest-risk field" % str(row["choice_id"]),
+			row.has("arrest_risk"))
+	_expect_str("fight's warning reaches the projection",
+		str((_choice_row(rows, "fight") as Dictionary)["arrest_risk"]), "on_loss")
+	_expect_str("yield's projection carries no warning",
+		str((_choice_row(rows, "yield") as Dictionary)["arrest_risk"]), "")
+
+	# It survives a reload, because it was persisted with the odds rather than
+	# re-derived against state that has since moved.
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+	saves.save_run()
+	gs.active_consequence = {}
+	_expect_true("the warned chain reloads", saves.load_run())
+	_expect_str("the arrest warning survives a reload",
+		str((_choice_row(engine.choice_summaries(), "fight") as Dictionary)["arrest_risk"]),
+		"on_loss")
+	if not previous_save.is_empty():
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+	gs.active_consequence = {}
+
+# --- the scene, built for real ---------------------------------------------
+
+## Instantiate a screen against the live state and hand back its node tree.
+##
+## `_ready()` runs synchronously on `add_child`, and so does the `refresh()` at
+## the end of it, so the tree is fully built by the time this returns — no frame
+## await, which the runner has no way to do.
+##
+## Safe because neither route-away path fires: the consequence scene IS the
+## blocking destination, and every other screen here is built with no chain open.
+func _instantiate_screen(path: String) -> Node:
+	var packed: PackedScene = load(path)
+	if packed == null:
+		return null
+	var instance: Node = packed.instantiate()
+	add_child(instance)
+	return instance
+
+## Take a screen back out of the tree and free it IMMEDIATELY.
+##
+## `queue_free()` is the reflex and is wrong here. The runner does its whole job
+## inside one `_ready()` and never yields a frame, so a queued node is never
+## actually freed — and every screen stays connected to `GameState.state_changed`
+## while it waits. Twenty leaked screens later, every dispatch in every SECTION
+## BELOW re-renders all of them, and the suite goes from ninety seconds to never
+## finishing. `free()` disconnects on the spot, which is what this needs.
+func _free_screen(screen: Node) -> void:
+	if screen == null:
+		return
+	if screen.get_parent() == self:
+		remove_child(screen)
+	screen.free()
+
+func _collect_buttons(node: Node, out: Array) -> void:
+	var pressable := node as Button
+	if pressable != null:
+		out.append(pressable)
+	for child in node.get_children():
+		_collect_buttons(child, out)
+
+## The hidden-information audit, run against what the scene actually rendered.
+##
+## Every stage is built and every Label it produced is read back. Three things
+## must never appear: a percent sign (raw probability), a Pressure score, and a
+## Heat threshold. The first is checkable directly — no legitimate string on this
+## screen contains `%` — and it is the one a well-meaning edit reintroduces,
+## because showing the number is easier than choosing a word for it.
+func _check_consequence_scene(gs: Node, gm: Node, engine: RefCounted) -> void:
+	# --- decision ---
+	if not _open_failed_lift(gs, gm, "night_owl", 1):
+		_fail("consequence scene", "no failed lift found")
+		return
+	var screen: Node = _instantiate_screen("res://ui/screens/consequence.tscn")
+	if screen == null:
+		_fail("consequence scene", "could not instantiate")
+		return
+	var labels: Array[String] = []
+	_collect_labels(screen, labels)
+	var joined: String = "\n".join(labels)
+	_expect_true("the decision stage renders something", labels.size() > 6)
+	_expect_true("the decision stage shows the consequence kicker", "CONSEQUENCE" in labels)
+	_expect_true("the decision stage names the situation", "CAUGHT" in labels)
+	_expect_true("the decision stage offers the four responses",
+		"FIGHT" in labels and "RUN" in labels and "TALK" in labels and "YIELD" in labels)
+	# The audit.
+	_expect_true("no rendered label shows a raw percentage", not joined.contains("%"))
+	_expect_true("the odds render as a band", joined.contains("CHANCE")
+		or joined.contains("RISKY") or joined.contains("BAD ODDS")
+		or joined.contains("DESPERATE"))
+	_expect_true("yield is labelled certain rather than zero", joined.contains("CERTAIN"))
+	# PX-003 §16: every action is at least the 44px minimum.
+	var buttons: Array = []
+	_collect_buttons(screen, buttons)
+	_expect_true("the decision stage renders response buttons", buttons.size() >= 4)
+	for entry in buttons:
+		var control: Button = entry
+		_expect_true("a decision button is at least 44px tall (%s)" % control.text,
+			control.custom_minimum_size.y >= 44.0)
+	# Nothing is committed yet, so nothing is disabled.
+	var disabled_before: int = 0
+	for entry in buttons:
+		if (entry as Button).disabled:
+			disabled_before += 1
+	_expect_int("no response is disabled before a commit", disabled_before, 0)
+	_free_screen(screen)
+
+	# --- committed: every lane inert, the chosen one labelled ---
+	_expect_true("the decision commits",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"}))
+	screen = _instantiate_screen("res://ui/screens/consequence.tscn")
+	labels.clear()
+	_collect_labels(screen, labels)
+	joined = "\n".join(labels)
+	_expect_true("the result stage names what happened",
+		joined.contains("YOU GAVE IT BACK"))
+	_expect_true("the result stage still shows no percentage", not joined.contains("%"))
+	# PX-003 §16: "Result deltas use color AND a +/- prefix (not color alone)."
+	# Yield returns the take, so the only delta is the store ban.
+	_expect_true("the result stage names the access it cost",
+		joined.contains("BLOCKED"))
+	# One terminal control, and it is the approved one. A result stage with two
+	# ways out, or none, is the dead end this slice exists to remove.
+	var result_actions: Array = []
+	_collect_buttons(screen, result_actions)
+	_expect_int("the result stage offers exactly one way on", result_actions.size(), 1)
+	_expect_str("and it is CONTINUE when nothing arrested you",
+		str((result_actions[0] as Button).text) if not result_actions.is_empty() else "",
+		"CONTINUE")
+	_free_screen(screen)
+	gs.active_consequence = {}
+
+	# --- a committed DECISION renders as locked, and survives a reload ---
+	#
+	# Driven through a response that leaves the chain at `decision`-committed is
+	# impossible (resolution advances the stage), so this measures the projection
+	# the scene reads instead: after a commit every row is disabled and exactly
+	# one is committed.
+	if _open_failed_lift(gs, gm, "night_owl", 1):
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"})
+		var committed: int = 0
+		var disabled: int = 0
+		for entry in engine.choice_summaries():
+			var row: Dictionary = entry
+			if bool(row["committed"]):
+				committed += 1
+			if bool(row["disabled"]):
+				disabled += 1
+		_expect_int("exactly one response reads as committed", committed, 1)
+		_expect_int("every response reads as disabled", disabled, 4)
+		gs.active_consequence = {}
+
+	# --- booking and release ---
+	if _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		screen = _instantiate_screen("res://ui/screens/consequence.tscn")
+		labels = []
+		_collect_labels(screen, labels)
+		joined = "\n".join(labels)
+		_expect_true("the booking stage names itself", joined.contains("BOOKING"))
+		_expect_true("the booking stage shows the bail quote", joined.contains("Bail"))
+		_expect_true("the booking stage offers a way out",
+			joined.contains("SERVE IT") or joined.contains("POST FULL BAIL"))
+		_expect_true("the booking stage projects a release point", joined.contains("Out DAY"))
+		_expect_true("the booking stage shows no percentage", not joined.contains("%"))
+		var booking_buttons: Array = []
+		_collect_buttons(screen, booking_buttons)
+		for entry in booking_buttons:
+			_expect_true("a booking button is at least 44px tall",
+				(entry as Button).custom_minimum_size.y >= 44.0)
+		_free_screen(screen)
+
+		_expect_true("the booking commits",
+			gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+		screen = _instantiate_screen("res://ui/screens/consequence.tscn")
+		labels = []
+		_collect_labels(screen, labels)
+		joined = "\n".join(labels)
+		_expect_true("the release stage says you are out", joined.contains("YOU'RE OUT"))
+		_expect_true("the release stage shows the time it cost", joined.contains("Time gone"))
+		# The way out is a BUTTON, not a label — so it is read off the buttons.
+		# An earlier version of this check looked in the label text and passed
+		# vacuously on every other stage, where the card titles happen to repeat
+		# the action name. The release stage has no such title, which is what
+		# exposed it.
+		var release_actions: Array = []
+		_collect_buttons(screen, release_actions)
+		var action_texts: Array = []
+		for entry in release_actions:
+			action_texts.append(str((entry as Button).text))
+		_expect_true("the release stage offers exactly one way back",
+			action_texts.size() == 1)
+		_expect_true("and it is the approved return route",
+			"BACK TO THE STREET" in action_texts)
+		_expect_true("the way back is at least 44px tall",
+			release_actions.is_empty()
+				or (release_actions[0] as Button).custom_minimum_size.y >= 44.0)
+		_expect_true("the release stage shows no percentage", not joined.contains("%"))
+		_free_screen(screen)
+		gs.active_consequence = {}
+	else:
+		_fail("consequence scene", "no arrested lift found")
+
+	# --- retaliation, whose situation copy is its own ---
+	if _open_retaliation(gs, gm, engine, 1000, 500, "cause:00000995"):
+		screen = _instantiate_screen("res://ui/screens/consequence.tscn")
+		labels = []
+		_collect_labels(screen, labels)
+		joined = "\n".join(labels)
+		_expect_true("the retaliation names the situation",
+			joined.contains("THEY WERE WAITING"))
+		_expect_true("it offers fight, run and yield",
+			"FIGHT" in labels and "RUN" in labels and "YIELD" in labels)
+		_expect_true("and offers no talk lane", not ("TALK" in labels))
+		_expect_true("the retaliation stage shows no percentage", not joined.contains("%"))
+		_free_screen(screen)
+		gs.active_consequence = {}
+	gs.reset_to_new_game()
+
+## Boost, Stickup and Market all read the same four bands, and none of them may
+## render the score behind one.
+func _check_attention_surfaces(gs: Node, gm: Node, engine: RefCounted) -> void:
+	var probes := [
+		["res://ui/screens/boost.tscn", "boost"],
+		["res://ui/screens/stickup.tscn", "stick"],
+	]
+	for probe in probes:
+		var path := str((probe as Array)[0])
+		var family := str((probe as Array)[1])
+		for band_case in [[0.0, "QUIET"], [4.0, "KNOWN"], [7.0, "WATCHED"], [9.0, "HOT"]]:
+			gs.reset_to_new_game()
+			gs.current_district_id = "north_star_lot"
+			gs.stick_tier = 3
+			gs.boost_tier = 3
+			var score: float = float((band_case as Array)[0])
+			var band := str((band_case as Array)[1])
+			if score > 0.0:
+				engine.add_pressure("north_star_lot", family, score,
+					"cause:attn:%s:%d" % [family, int(score)])
+			var screen: Node = _instantiate_screen(path)
+			if screen == null:
+				_fail("attention surface", "could not instantiate %s" % path)
+				continue
+			var labels: Array[String] = []
+			_collect_labels(screen, labels)
+			var joined: String = "\n".join(labels)
+			_expect_true("%s shows LOCAL ATTENTION: %s" % [path, band],
+				joined.contains("LOCAL ATTENTION: %s" % band))
+			# TI-003 §19 and PX-003 §11: the raw score never reaches the player.
+			# 4.0 and 7.0 and 9.0 would all print as "4.0"-shaped strings, and
+			# none of them may appear beside the band.
+			_expect_true("%s at %s hides the raw pressure score" % [path, band],
+				not joined.contains("%.1f" % score) or is_zero_approx(score))
+			_free_screen(screen)
+
+	# The Market context strip reads the Market band rather than a static preview.
+	gs.reset_to_new_game()
+	gs.current_district_id = "downtown"
+	engine.add_pressure("downtown", "market", 7.0, "cause:attn:market")
+	var market: Node = _instantiate_screen("res://ui/screens/market.tscn")
+	if market != null:
+		var market_labels: Array[String] = []
+		_collect_labels(market, market_labels)
+		_expect_true("the market strip carries the market band",
+			"WATCHED" in market_labels)
+		_expect_true("and drops the old static RISK label",
+			not ("RISK" in market_labels))
+		# The blurb follows the district rather than staying on Spenard's.
+		_expect_true("the market blurb follows the selected district",
+			"\n".join(market_labels).contains(
+				str(gs.district_by_id("downtown").get("blurb", ""))))
+		_free_screen(market)
+	gs.reset_to_new_game()
+
+## TI-003 §18: the blocking scene "omits bottom navigation".
+##
+## Structural, read off the scene file: a scene that grew a nav cell would pass
+## every behavioural check in this suite right up until a player tapped it.
+func _check_blocking_scene_structure() -> void:
+	var file := FileAccess.open("res://ui/screens/consequence.tscn", FileAccess.READ)
+	if file == null:
+		_fail("blocking scene", "could not read consequence.tscn")
+		return
+	var text: String = file.get_as_text()
+	file.close()
+	_expect_true("the blocking scene has no NavBar", not text.contains("NavBar"))
+	_expect_true("the blocking scene has no home button",
+		not text.contains("HomeBtn") and not text.contains("HomeFab"))
+	# And the route guard still sends every ordinary destination to it while a
+	# chain is open — the structural half of "navigation cannot bypass it".
+	var gs := get_node("/root/GameState")
+	var nav := get_node("/root/ScreenManager")
+	gs.reset_to_new_game()
+	gs.active_consequence = {"stage": "decision", "chain_kind": "boost_caught"}
+	for route in [nav.HOME, nav.STREET, nav.MARKET, nav.HUSTLE, nav.BOOST, nav.PHONE]:
+		_expect_str("navigation to %s is intercepted" % str(route),
+			nav.resolved_route(str(route)), nav.CONSEQUENCE)
+	_expect_str("the consequence route reaches itself",
+		nav.resolved_route(nav.CONSEQUENCE), nav.CONSEQUENCE)
+	# Game Over still outranks it, so a run can end mid-chain.
+	gs.game_over = true
+	_expect_str("game over outranks an open consequence",
+		nav.resolved_route(nav.HOME), nav.GAME_OVER)
+	gs.game_over = false
+	gs.active_consequence = {}
+	gs.reset_to_new_game()
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -10228,7 +10662,12 @@ func _fail(label: String, detail: String) -> void:
 ## FS-003.10 raises it to 9905. The retaliation section sweeps for tiers the same
 ## way the Caught section does, so its contribution is deterministic but not
 ## re-derivable by counting assertions.
-const MIN_CHECKS := 9905
+##
+## FS-003.11 raises it to 10044. This is the first section that BUILDS SCREENS —
+## the consequence scene at each stage, Boost, Stickup and Market at each
+## Pressure band — and reads back what they rendered. Most of its contribution is
+## the hidden-information audit, which is a claim only a built screen can settle.
+const MIN_CHECKS := 10044
 
 func _finish() -> void:
 	if _failures.is_empty():

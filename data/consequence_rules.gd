@@ -653,3 +653,94 @@ func retaliation_cash_loss(choice_id: String, tier_name: String, dirty_balance: 
 	if cap > 0:
 		wanted = mini(wanted, cap)
 	return clampi(wanted, 0, dirty_balance)
+
+# --- Player-facing presentation (TI-003 §19, PX-003 §§4-7) -----------------
+#
+# The numbers underneath stay underneath. What the player reads is a situation.
+#
+# This section is authored data like everything else in this file: the bands a
+# probability is described with, and the risk categories a response carries, are
+# design decisions rather than rendering details, and a screen that invented its
+# own would be a second design document nobody reviewed.
+
+## Qualitative odds bands, read highest-first.
+##
+## FS-003.11's brief: "Use qualitative labels derived from exact probability. Do
+## NOT show raw percentages. The numbers exist underneath; the player reads
+## situations."
+##
+## The bands are deliberately uneven. The gap between 70% and 60% changes what a
+## player does; the gap between 20% and 10% does not — both are "this is going to
+## hurt", and splitting them finely would imply a precision the player cannot
+## act on. So the top of the range is described more finely than the bottom.
+const ODDS_BANDS: Array[Dictionary] = [
+	{"min": 0.75, "label": "STRONG CHANCE", "rank": 4},
+	{"min": 0.55, "label": "FAIR CHANCE", "rank": 3},
+	{"min": 0.35, "label": "RISKY", "rank": 2},
+	{"min": 0.15, "label": "BAD ODDS", "rank": 1},
+	{"min": 0.00, "label": "DESPERATE", "rank": 0},
+]
+
+## What a deterministic response reads as. Not an odds band: showing Yield as 0%
+## would say "impossible" when it means the opposite.
+const ODDS_CERTAIN := "CERTAIN"
+
+## Arrest-risk categories a response can carry, as codes rather than copy.
+##
+## PX-003 §19 point 8: "Known arrest conditions are surfaced before commitment. A
+## player should not discover a deterministic Heat/Tier booking gate only after
+## choosing Run." And §11 keeps the exact threshold hidden — the player is told
+## THAT this can book them, never at what number.
+const ARREST_RISK_NONE := ""
+## Any bad outcome ends in cuffs.
+const ARREST_RISK_ON_LOSS := "on_loss"
+## Only the worst outcome does.
+const ARREST_RISK_WORST_ONLY := "worst_only"
+## A failed escape books because of the Heat already on the meter.
+const ARREST_RISK_HEAT := "heat"
+## A failed escape books because of what this target is.
+const ARREST_RISK_TARGET := "target"
+
+# --- presentation lookups --------------------------------------------------
+
+func odds_label(probability: float) -> String:
+	for row in ODDS_BANDS:
+		if probability >= float((row as Dictionary)["min"]):
+			return str((row as Dictionary)["label"])
+	return str((ODDS_BANDS[ODDS_BANDS.size() - 1] as Dictionary)["label"])
+
+## 0 (worst) to 4 (best), for a screen that wants to colour the label without
+## re-deriving the bands or looking at the raw probability itself.
+func odds_rank(probability: float) -> int:
+	for row in ODDS_BANDS:
+		if probability >= float((row as Dictionary)["min"]):
+			return int((row as Dictionary)["rank"])
+	return 0
+
+## Which arrest warning a Caught response carries, given the situation it is
+## being offered in.
+##
+## Derived from the authored effect table rather than restated, so a balance edit
+## to `CAUGHT_EFFECTS` moves the warning with it. A warning that had to be kept
+## in sync by hand would eventually tell the player the wrong thing, which is
+## worse than telling them nothing.
+func caught_arrest_risk(choice_id: String, boost_tier: int,
+		pre_encounter_heat: float) -> String:
+	if is_deterministic(choice_id):
+		return ARREST_RISK_NONE
+	var arresting: Array = []
+	for tier_name in ["clean", "messy", "failure", "catastrophic"]:
+		if arrests(choice_id, str(tier_name), boost_tier, pre_encounter_heat):
+			arresting.append(str(tier_name))
+	if arresting.is_empty():
+		return ARREST_RISK_NONE
+	if not "failure" in arresting:
+		return ARREST_RISK_WORST_ONLY
+	if choice_id == "run":
+		# Run/Failure is the one conditional row, and the player deserves to know
+		# WHICH condition made it true — "this target" is something they chose
+		# and can choose differently; "your Heat" is something they carry.
+		if clampi(boost_tier, 1, 3) >= RUN_FAILURE_ARREST_TIER:
+			return ARREST_RISK_TARGET
+		return ARREST_RISK_HEAT
+	return ARREST_RISK_ON_LOSS

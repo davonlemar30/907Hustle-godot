@@ -264,6 +264,13 @@ func _open_caught(target: Dictionary, tier: int, contested: int,
 
 	var shown: Dictionary = {}
 	var inputs: Dictionary = {}
+	# The arrest warnings, snapshotted with everything else the decision shows.
+	# They read the SAME pre-encounter Heat the gate itself will read, so the
+	# warning cannot promise one thing and the gate deliver another.
+	var risks: Dictionary = {}
+	for choice_key in rules.CAUGHT_CHOICES:
+		risks[str(choice_key)] = rules.caught_arrest_risk(str(choice_key), tier,
+			float(gs.heat))
 	for choice_id in rules.CAUGHT_CHOICES:
 		if rules.is_deterministic(str(choice_id)):
 			continue
@@ -302,6 +309,7 @@ func _open_caught(target: Dictionary, tier: int, contested: int,
 			"deterministic_choices": rules.CAUGHT_DETERMINISTIC.duplicate(),
 			"resolver_inputs": inputs,
 			"shown_probabilities": shown,
+			"arrest_risks": risks,
 		},
 	})
 

@@ -288,6 +288,11 @@ func _decision_block(authored: Dictionary) -> Dictionary:
 		"resolver_inputs": authored.get("resolver_inputs", {}),
 		"shown_probabilities": authored.get("shown_probabilities", {}),
 		"deterministic_choices": authored.get("deterministic_choices", []),
+		# choice_id -> arrest-risk code, snapshotted with the odds when the
+		# decision opened. Persisted for the same reason the odds are: a reload
+		# must reproduce the warning the player decided against, not re-derive
+		# one against state that has since moved.
+		"arrest_risks": authored.get("arrest_risks", {}),
 		"resolved_tier": str(authored.get("resolved_tier", "")),
 		"result": authored.get("result", {}),
 	}
@@ -613,6 +618,11 @@ func active_summary() -> Dictionary:
 		"definition_id": str((chain.get("decision", {}) as Dictionary).get("definition_id", "")),
 		"source_family": str(source.get("family", "")),
 		"source_target_id": str(source.get("target_id", "")),
+		# The two the scene actually shows a player: the place or the person.
+		# `target_id` is a stable identifier and reads like one; these are the
+		# words the source system already had for the same thing.
+		"source_target_name": str(source.get("target_name", "")),
+		"source_opponent": str(source.get("opponent", "")),
 		"source_target_tier": int(source.get("target_tier", 0)),
 		"contested_take": int(source.get("contested_take", 0)),
 		"pre_encounter_heat": float(source.get("pre_encounter_heat", 0.0)),
@@ -631,6 +641,7 @@ func choice_summaries() -> Array:
 	var committed := str(decision.get("committed_choice", ""))
 	var deterministic: Array = decision.get("deterministic_choices", [])
 	var shown: Dictionary = decision.get("shown_probabilities", {})
+	var risks: Dictionary = decision.get("arrest_risks", {})
 	var rows: Array = []
 	for entry in (decision.get("allowed_choices", []) as Array):
 		var choice_id := str(entry)
@@ -646,6 +657,10 @@ func choice_summaries() -> Array:
 			"committed": not committed.is_empty() and choice_id == committed,
 			# Any commit disables every button, not only the one pressed.
 			"disabled": not committed.is_empty(),
+			# PX-003 §19 point 8: a known booking gate is surfaced BEFORE the
+			# player commits. The code says which kind; the copy lives in the
+			# scene, and neither reveals the threshold.
+			"arrest_risk": str(risks.get(choice_id, "")),
 		})
 	return rows
 

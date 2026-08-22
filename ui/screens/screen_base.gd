@@ -13,6 +13,46 @@ extends Control
 ## Unlit meter dot. Shared so every screen's meters read the same.
 const PIP_DIM := Color(1, 1, 1, 0.12)
 
+## Local Attention, TI-003 §19 and PX-003 §7.
+##
+## The colours live here rather than on any one surface because Boost, Stickup
+## and Market all show the same four bands and they have to agree — a district
+## reading WATCHED in amber on one screen and orange on another would read as
+## two different facts.
+##
+## All four are legible on the near-black background the shell uses, and none of
+## them is the only carrier of meaning: the band NAME is always shown beside the
+## colour (PX-003 §16, "redundant labels alongside color").
+const ATTENTION_TONES := {
+	"QUIET": Color(0.608, 0.608, 0.608),
+	"KNOWN": Color(0.882, 0.651, 0.227),
+	"WATCHED": Color(1.0, 0.541, 0.192),
+	"HOT": Color(0.827, 0.161, 0.125),
+}
+
+## PX-003 §7's situation copy per band. QUIET has none on purpose: "No persistent
+## warning card is needed" — a line that fires when nothing is wrong teaches the
+## player to stop reading it.
+const ATTENTION_COPY := {
+	"KNOWN": "People around here are starting to recognize this routine.",
+	"WATCHED": "Too many similar moves in this district have people paying attention. The odds here are getting worse.",
+	"HOT": "This routine is burned in this part of town. Working the same hustle here carries the district's heaviest local penalty.",
+}
+
+func attention_tone(band: String) -> Color:
+	return ATTENTION_TONES.get(band, ATTENTION_TONES["QUIET"])
+
+## The band for one criminal family where the player is standing, or "QUIET" when
+## the engine is not available. Never the score — TI-003 §19 keeps that hidden.
+func attention_band(family: String) -> String:
+	var manager: Node = get_node_or_null("/root/GameManager")
+	if manager == null:
+		return "QUIET"
+	var engine: Object = manager.system("consequence")
+	if engine == null:
+		return "QUIET"
+	return str(engine.pressure_band(gs.current_district_id, family))
+
 @onready var gs: Node = get_node("/root/GameState")
 # Autoloads are reached by path, not by the compile-time global: the editor does
 # not have a freshly-registered singleton until it reloads.

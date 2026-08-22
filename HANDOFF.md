@@ -544,6 +544,154 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.11: numbers underneath, situations on top  (added 2026-08-22)
+
+The consequence layer becomes a player experience. The engine could already
+hold a chain across a reload; what it could not do was explain itself.
+
+**Parity: 9,905 → 10,044 checks, 0 failures.**
+
+### The suite builds screens now
+
+This is the first section that instantiates real scenes against real state and
+reads back what they rendered. It matters because TI-003 §19 and PX-003 §11 are
+a list of values that must NOT reach the player, and a screen is exactly where
+one of them leaks. A rule enforced only in a system is a rule the presentation
+layer has never been asked about.
+
+The audit is blunt on purpose: **no Label on the consequence screen may contain
+a `%` character.** Nothing legitimate on that screen does, and a percent sign is
+precisely what a well-meaning edit reintroduces — showing the number is easier
+than choosing a word for it.
+
+Two mechanical things had to be right before any of that worked, and both are
+worth writing down:
+
+**`queue_free()` is wrong in this harness.** The runner does its whole job inside
+one `_ready()` and never yields a frame, so a queued node is never actually
+freed — and every instantiated screen stays connected to
+`GameState.state_changed` while it waits. Twenty leaked screens later, every
+dispatch in every section *below* re-renders all of them. The suite went from
+ninety seconds to not finishing at all. `free()` disconnects on the spot.
+`_free_screen()` is that, and the pre-existing `people.tscn` instantiation was
+leaking the same way and now goes through it too.
+
+**A screen that is not the current scene must not change scenes.** The
+consequence screen routes away when its chain clears, which is the fix for a real
+dead end (see below) and a catastrophe inside a harness that instantiates it
+alongside twenty others. `_is_live()` — `get_tree().current_scene == self` — is
+the guard.
+
+### The dead end this slice removes
+
+Before it, pressing CONTINUE cleared the chain and left the player on the
+consequence screen rendering "The moment has passed." — with no bottom
+navigation, because that is the whole point of the scene. `screen_base.refresh()`
+routes TO a blocking screen and has never had a reason to route away from one.
+
+`consequence.gd` now overrides `refresh()` and leaves for the chain's own
+`return_route`, so a blown Boost puts the player back on Boost rather than
+generically at Home. Losing your place is a small cost the game had no reason to
+charge.
+
+The scene also lost its `HomeFab` — a red circular HOME control, wired to
+nothing, sitting on a screen the player cannot leave. It looked like the way out
+and was not one.
+
+### Odds became words, which is a divergence from PX-003
+
+FS-003.11's brief: *"Use qualitative labels derived from exact probability. Do
+NOT show raw percentages. The numbers exist underneath; the player reads
+situations."* Verification checklist item 9 repeats it, and the acceptance
+criteria repeat it again.
+
+**PX-003 §4 and §19 point 6 say the opposite**, sketching `[chance]%` on the
+response cards and arguing from the existing Boost and Stickup surfaces, which
+do show percentages.
+
+Implemented per the build brief — qualitative bands — and recorded here and in
+the design log rather than silently chosen. Three reasons it is the better
+reading even setting authority aside: the brief is the later and more specific
+instruction; PX-003's own §11 already keeps "raw probability percentages" on the
+hidden list, so the document is not internally consistent; and the odds shown on
+a consequence card are a projection through advantage and catastrophe immunity,
+which is a genuinely different kind of number from the flat chance a Boost target
+displays. Precision the player cannot act on is not information, it is noise
+with a decimal point.
+
+The bands are uneven, deliberately. The gap between 70% and 60% changes what a
+player does; the gap between 20% and 10% does not — both are "this is going to
+hurt". So the top of the range is described more finely than the bottom.
+
+### Arrest warnings are derived, never restated
+
+PX-003 §19 point 8: a player must not discover a booking gate after choosing Run.
+So each response carries a risk CODE, snapshotted with its odds when the decision
+opens, and the scene turns codes into copy.
+
+`caught_arrest_risk()` derives the code from the authored effect table rather
+than duplicating it, so a balance edit to `CAUGHT_EFFECTS` moves the warning with
+it. A warning kept in sync by hand would eventually tell the player the wrong
+thing, which is worse than telling them nothing.
+
+Run gets two different warnings because its failure row is the one conditional
+one, and the player deserves to know **which** condition made it true: "this
+target" is something they chose and can choose differently, "your Heat" is
+something they carry. Both are surfaced without the threshold — `HIGH HEAT: A
+FAILED RUN CAN BOOK YOU`, never `above 6`.
+
+### The Market strip was never bound at all
+
+Binding Local Attention onto the Market context strip turned up a hole in
+non-negotiable rule 4 ("no hardcoded game values in .tscn files"): the blurb and
+all three pip meters were editor previews baked into the scene, so they showed
+**Spenard's** numbers wherever the player actually was. Nothing bound them.
+
+They bind now. The first meter reads the Market family's Pressure band rather
+than the district's static risk — FS-003.11 asks for exactly that swap, and
+Pressure is the one of the three the player's own behaviour moves. Four dots
+carrying a 0-to-3 band cannot leak a 0-to-9 score, which is part of why pips are
+the right control for it.
+
+### Sabotage results
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| 1 | Odds render as `62%` again | **caught** — 3 failures |
+| 2 | Arrest risk dropped from the projection | **caught** — 2 failures |
+| 3 | Run/failure blames Heat when the target is the cause | **caught** — 2 failures |
+| 4 | A HOME button added to the blocking scene | **caught** — 5 failures |
+| 5 | KNOWN odds band swallows RISKY | **caught** — 4 failures |
+
+Sabotage 2 is worth a note on process rather than on the code: the first attempt
+targeted the wrong file, the anchor did not match, and the run came back green.
+A green run after a sabotage that never applied looks identical to a sabotage
+that was not caught. The injector now asserts its anchor exists and fails loudly,
+which is why the second attempt found the two failures it should have.
+
+### Art and audio the consequence screen does not have
+
+Required by PX-003 but not blocking, using placeholder tints and labels today:
+
+| Asset | Where | What is used instead |
+| --- | --- | --- |
+| Consequence background plate | Blocking scene backdrop | `bg-street.webp`, shared with Hustle |
+| Per-tier opponent portraits (Clerk, Store Security, Armed Guard) | Decision stage | Text only |
+| Retaliation actor art | Retaliation decision stage | The actor's label |
+| Booking / procedural iconography | Booking and release stages | Theme `Kicker` text |
+| Impact audio for a committed choice | On commit | Silent |
+| Band icons for QUIET/KNOWN/WATCHED/HOT | Boost, Stickup, Market | Coloured text label |
+
+None of them is load-bearing: PX-003 §16 requires colour to travel with text and
+it does, so every one of these is additive rather than a gap in comprehension.
+
+### What FS-003.12 inherits
+
+A suite that can build a screen and read it back, which is what a hidden-
+information audit needs. And an interaction surface where every action is 46px
+and every terminal stage has exactly one control — both now asserted rather than
+inspected.
+
 ## FS-003.10: the one consequence that waits  (added 2026-08-22)
 
 `systems/retaliation.gd`. Everything else in the consequence layer happens inside

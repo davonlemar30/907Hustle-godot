@@ -138,6 +138,7 @@ func _ready() -> void:
 		_check_batch2()
 		_check_trading_risk(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_stick_ladder(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_route_visibility(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -15495,6 +15496,166 @@ func _check_stick_ladder(gs: Node, gm: Node) -> void:
 	gs.reset_to_new_game()
 
 
+# =============================================================================
+# The route, made visible
+# =============================================================================
+#
+# SABOTAGE: `best_route` ignores `districts_unlocked` ==> "word only reaches you
+#           about places you know" fails.
+# SABOTAGE: the Market hint reads `p.hint` again ==> "the route line is live"
+#           fails, because the authored string is not the live one.
+# SABOTAGE: `market_intel` ignores `phone_active` ==> "a dead line carries no
+#           prices" fails.
+# SABOTAGE: `best_route` reports the board price ==> "a burned corner is
+#           discounted from here" fails.
+
+func _check_route_visibility(gs: Node, gm: Node) -> void:
+	var economy: RefCounted = gm.system("economy") as RefCounted
+	var phone: RefCounted = gm.system("phone") as RefCounted
+	var engine: RefCounted = gm.system("consequence") as RefCounted
+
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 4
+	gs.current_district_id = "north_star_lot"
+	gs.phone_active = true
+	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+
+	# There is a route somewhere, or this whole check is measuring nothing.
+	var routes: Array = economy.known_routes()
+	_expect_true("the city has a route worth taking", not routes.is_empty())
+	if routes.is_empty():
+		return
+	# Best edge first, and every reported edge is real.
+	var previous: int = 0x7FFFFFFF
+	for entry in routes:
+		var route: Dictionary = entry
+		_expect_true("a reported route pays more than it costs", int(route["edge"]) > 0)
+		_expect_true("routes are ordered by what they pay", int(route["edge"]) <= previous)
+		previous = int(route["edge"])
+		_expect_true("a route names somewhere else",
+			str(route["district_id"]) != str(gs.current_district_id))
+		_expect_int("the edge is the arithmetic it claims",
+			int(route["pays"]) - int(route["cost"]), int(route["edge"]))
+
+	# --- word only reaches you about places you know ---
+	var everywhere: int = economy.known_routes().size()
+	gs.districts_unlocked = ["north_star_lot"]
+	_expect_int("word only reaches you about places you know",
+		(economy.known_routes() as Array).size(), 0)
+	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+	_expect_int("and comes back when the city does",
+		(economy.known_routes() as Array).size(), everywhere)
+
+	# --- what a route says it PAYS is what a sale there would pay ---
+	# A burned corner is discounted from here, before the trip, rather than
+	# being a surprise on arrival.
+	var product_id: String = str((routes[0] as Dictionary)["product_id"])
+	var target: String = str((routes[0] as Dictionary)["district_id"])
+	var quiet_pays: int = int((economy.best_route(product_id) as Dictionary).get("pays", 0))
+	engine.add_pressure(target, "market", 9.0, "parity:route")
+	var burned: Dictionary = economy.best_route(product_id)
+	if not burned.is_empty() and str(burned["district_id"]) == target:
+		_expect_true("a burned corner is discounted from here (%d < %d)"
+			% [int(burned["pays"]), quiet_pays], int(burned["pays"]) < quiet_pays)
+	# Whatever district the route names, the number it quotes is what a sale
+	# THERE would actually pay. Asked of the district the route names rather
+	# than of `target`: burning the corner can correctly move the best route
+	# somewhere else, and comparing across two districts proves nothing.
+	var quoted: Dictionary = economy.best_route(product_id)
+	if not quoted.is_empty():
+		_expect_int("the quoted price is what a sale there would actually pay",
+			int(quoted["pays"]),
+			int(economy.sell_unit_price(str(quoted["district_id"]), product_id)))
+
+	# --- the phone is what carries it ---
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 4
+	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+	gs.phone_active = true
+	_expect_true("a live line carries prices", not (phone.market_intel() as Array).is_empty())
+	_expect_true("and no more of them than the section can hold",
+		(phone.market_intel() as Array).size() <= int(phone.INTEL_ROUTE_LIMIT))
+	gs.phone_active = false
+	_expect_true("a dead line carries no prices", (phone.market_intel() as Array).is_empty())
+	gs.phone_active = true
+
+	# A line reads like something somebody would say, and carries the numbers
+	# the decision needs.
+	var line: String = str(phone.market_intel_line((phone.market_intel() as Array)[0]))
+	_expect_true("the line names a price", line.contains("$"))
+	_expect_true("the line names a place",
+		line.contains("Spenard") or line.contains("Downtown") or line.contains("Ship Creek"))
+
+	# --- the Market screen row is LIVE, not the authored string ---
+	#
+	# `p.hint` carried authored route text — "SELL SHIP CREEK  +$11" — baked
+	# into the product table and true only on the day it was written. Prices
+	# walk nightly, so it was a standing claim the game had usually stopped
+	# honouring.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 4
+	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+	gs.phone_active = true
+	var screen: Node = _instantiate_screen("res://ui/screens/market.tscn")
+	if screen == null:
+		_fail("route visibility", "the market screen would not instantiate")
+		return
+	(screen as Control).size = FS001_VIEWPORT
+	screen.refresh()
+	var rendered: Array[String] = []
+	_collect_labels(screen, rendered)
+	var text: String = "\n".join(rendered)
+	var authored_lies: int = 0
+	for product in gs.products:
+		var row: Dictionary = product
+		if bool(row.get("locked", false)):
+			continue
+		if text.contains(str(row["hint"])):
+			authored_lies += 1
+	_expect_int("the route line is live, not the authored string", authored_lies, 0)
+	_expect_true("a locked product keeps its authored line, which is not a price",
+		text.contains("NEEDS SHIP CREEK TURF"))
+	_free_screen(screen)
+
+	# And with the line dead the screen says so rather than showing a route it
+	# has no way of knowing about.
+	gs.phone_active = false
+	var dark: Node = _instantiate_screen("res://ui/screens/market.tscn")
+	if dark == null:
+		_fail("route visibility", "the market screen would not instantiate offline")
+		return
+	(dark as Control).size = FS001_VIEWPORT
+	dark.refresh()
+	var dark_labels: Array[String] = []
+	_collect_labels(dark, dark_labels)
+	var dark_text: String = "\n".join(dark_labels)
+	_expect_true("a dead line shows no route at all", dark_text.contains("LINE IS DEAD"))
+	_expect_true("and names no other district's price",
+		not dark_text.contains("SELL DOWNTOWN") and not dark_text.contains("SELL SHIP CREEK  +"))
+	_free_screen(dark)
+
+	# --- the trend read, off history nothing had ever read ---
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	var market: Dictionary = gs.markets.get("downtown", {})
+	if not market.is_empty():
+		(market["history"] as Dictionary)["weed"] = [20, 30]
+		_expect_str("a climbing corner reads up", economy.price_trend("downtown", "weed"), "up")
+		(market["history"] as Dictionary)["weed"] = [30, 20]
+		_expect_str("a sliding corner reads down", economy.price_trend("downtown", "weed"), "down")
+		(market["history"] as Dictionary)["weed"] = [25, 25]
+		_expect_str("a steady corner reads flat", economy.price_trend("downtown", "weed"), "flat")
+		(market["history"] as Dictionary)["weed"] = [25]
+		_expect_str("one price is not a trend", economy.price_trend("downtown", "weed"), "flat")
+	_expect_str("an unwalked district has no trend",
+		economy.price_trend("nowhere", "weed"), "flat")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -15658,11 +15819,18 @@ func _fail(label: String, detail: String) -> void:
 ## is precisely what the simulation harness had been doing to reach the upper
 ## targets. 11248 + 25 = 11273, measured.
 ##
+## Batch 5 raises it to 11301. Its 38 checks cover the route being VISIBLE, and
+## most are about a CLAIM rather than a calculation: the Market row's hint used
+## to be an authored string baked into the product table, true on the day
+## somebody wrote it and stale every night after. The checks assert those
+## authored strings are no longer rendered at all, which is the only way to
+## prove a live read replaced a static one. 11273 + 38 = 11311, measured.
+##
 ## Ten of margin, the same margin every floor since FS-003.13 has left, because
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11263
+const MIN_CHECKS := 11301
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

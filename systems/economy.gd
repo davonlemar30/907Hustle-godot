@@ -160,6 +160,87 @@ func market_price_penalty(district_id: String) -> float:
 	return clampf(rules.pressure_penalty(score) * rules.MARKET_PRESSURE_PRICE_SCALE,
 		0.0, 0.9)
 
+# --- where the route is (v0.2.0) --------------------------------------------
+
+## The best place to take `product_id` from where the player is standing, or an
+## empty Dictionary when nowhere pays better.
+##
+## This is the one profitable strategy in the game and until now there was NO
+## SURFACE ANYWHERE that could see it. `sell_unit_price` could always price a
+## remote district; nothing ever asked it to. The economy instrument had to read
+## `gs.markets` directly to play the route, which is the tell — a strategy only
+## a test can find is not a strategy the player has.
+##
+## `known_only` is what makes this honest rather than omniscient. Word reaches
+## you about places you know about, and `districts_unlocked` is that list.
+##
+## Reports what a sale THERE would actually pay, not the board price, so the
+## Market Pressure penalty on a corner you have burned is visible from here
+## instead of being a surprise on arrival.
+func best_route(product_id: String, known_only: bool = true) -> Dictionary:
+	var here: String = str(gs.current_district_id)
+	var here_market: Dictionary = gs.markets.get(here, {})
+	if here_market.is_empty():
+		return {}
+	var cost: int = int((here_market.get("prices", {}) as Dictionary).get(product_id, 0))
+	if cost <= 0:
+		return {}
+	var best: Dictionary = {}
+	var best_edge: int = 0
+	for district in gs.districts:
+		var row: Dictionary = district
+		var there: String = str(row["id"])
+		if there == here:
+			continue
+		if known_only and not there in gs.districts_unlocked:
+			continue
+		if (gs.markets.get(there, {}) as Dictionary).is_empty():
+			continue
+		var pays: int = sell_unit_price(there, product_id)
+		var edge: int = pays - cost
+		if edge > best_edge:
+			best_edge = edge
+			best = {"district_id": there, "name": str(row["name"]), "pays": pays,
+				"cost": cost, "edge": edge, "trend": price_trend(there, product_id)}
+	return best
+
+## "up", "down" or "flat", from the district's own price history.
+##
+## `walk_evolve_area` keeps canon's last eight prices per product and nothing has
+## ever read them. Two are enough to say which way a corner is moving, which is
+## the difference between a number and a reason to hurry.
+func price_trend(district_id: String, product_id: String) -> String:
+	var history: Variant = (gs.markets.get(district_id, {}) as Dictionary).get("history", {})
+	if not (history is Dictionary):
+		return "flat"
+	var series: Variant = (history as Dictionary).get(product_id)
+	if not (series is Array) or (series as Array).size() < 2:
+		return "flat"
+	var rows: Array = series
+	var last: int = int(rows[rows.size() - 1])
+	var previous: int = int(rows[rows.size() - 2])
+	if last > previous:
+		return "up"
+	if last < previous:
+		return "down"
+	return "flat"
+
+## Every route worth taking right now, best edge first. What the Phone reports.
+func known_routes() -> Array:
+	var out: Array = []
+	for product in gs.products:
+		var product_id := str((product as Dictionary)["id"])
+		if bool((product as Dictionary).get("locked", false)):
+			continue
+		var route: Dictionary = best_route(product_id)
+		if route.is_empty():
+			continue
+		route["product_id"] = product_id
+		route["product_name"] = str((product as Dictionary)["name"])
+		out.append(route)
+	out.sort_custom(func(a, b): return int(a["edge"]) > int(b["edge"]))
+	return out
+
 # --- the carry (v0.2.0, Leg 4) ----------------------------------------------
 
 ## A trip taken holding, resolved.

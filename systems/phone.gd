@@ -43,6 +43,10 @@ const AREA_PROSE_NAMES := {
 	"airport_industrial": "Ship Creek",
 }
 
+## How many routes Word Around Town carries. Enough to see a choice, few enough
+## that the section stays a rumour rather than a spreadsheet.
+const INTEL_ROUTE_LIMIT := 3
+
 ## The six lines PHONE_INTEL builds per area per slot (game-core.js:1171-1178).
 ## Only the first varies by part of day; canon still stores all four slots.
 const INTEL_TEMPLATES := [
@@ -168,6 +172,53 @@ func restore_if_ready(previous_absolute: int) -> bool:
 
 ## Canon phoneIntel: the pool for where the player is standing and what part of
 ## day it is, falling back to Spenard so an unknown area never renders empty.
+## What people are saying product is going for, somewhere other than here.
+##
+## The build's one profitable strategy is buying in one district and selling in
+## another, and until v0.2.0 there was no surface anywhere that could see a
+## price in a district the player was not standing in. The economy instrument
+## had to read `gs.markets` directly to play the route.
+##
+## It lives on the PHONE, and behind the service check, because that is the
+## honest fiction and because it gives the phone bill its first mechanical
+## purchase. Losing the line has meant a quieter inbox and nothing else; now it
+## means the city goes dark and you trade on what is in front of you.
+##
+## Only districts the run has actually discovered — `districts_unlocked`. Word
+## does not reach you about places you have not heard of.
+func market_intel() -> Array:
+	if not gs.phone_active or gs.game_over:
+		return []
+	var manager: Node = Engine.get_main_loop().root.get_node_or_null("/root/GameManager")
+	if manager == null:
+		return []
+	var economy: Object = manager.system("economy")
+	if economy == null:
+		return []
+	var routes: Array = economy.known_routes()
+	var out: Array = []
+	for entry in routes:
+		if out.size() >= INTEL_ROUTE_LIMIT:
+			break
+		out.append(entry)
+	return out
+
+## One route as a line somebody would actually say.
+func market_intel_line(route: Dictionary) -> String:
+	var moving: String = ""
+	match str(route.get("trend", "flat")):
+		"up":
+			moving = " and climbing"
+		"down":
+			moving = ", though it is sliding"
+	return "%s is going for $%d in %s%s. That is $%d over what it costs here." % [
+		str(route.get("product_name", "")).capitalize(),
+		int(route.get("pays", 0)),
+		str(route.get("name", "")).capitalize(),
+		moving,
+		int(route.get("edge", 0)),
+	]
+
 func intel() -> Array:
 	var area: String = str(gs.current_district_id)
 	if not AREA_PROSE_NAMES.has(area):

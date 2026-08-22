@@ -544,6 +544,162 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.9: the city starts recognising the routine  (added 2026-08-22)
+
+Two systems that share a slice because they share a rollover. District Pressure
+is local memory of a criminal pattern; Financial Pressure is what happens when
+street money moves through a formal bill. Neither is a number the player ever
+sees, which is exactly why both needed testing at the level of what they do.
+
+**Parity: 9,440 → 9,637 checks, 0 failures.**
+
+### Pressure lives on the engine, not on the sources
+
+TI-003 §8 puts it there and the reason is structural rather than tidy: a Boost, a
+Stick and a Market sale all write into the same district ledger under different
+families, and the score a lift reads back may have been raised by a robbery two
+days ago. No single source system can own a number every other source writes to.
+So `boost.gd`'s FS-003.7 ledger write is now a two-line forward to
+`engine.add_pressure()`, and the bleed those gains schedule is the engine's
+business.
+
+### Three rules that are easy to state and easy to get subtly wrong
+
+**Bleed carries the new gain, never the stored score.** FS-003 §6: "Bleed uses
+the new gain from the cause. The entire stored score never copies outward
+again." Bleeding the score compounds — Spenard's 4 puts 2 into Downtown, whose 2
+puts 1 back into Spenard the day after, forever. So a bled gain is applied to the
+destination row directly rather than through `add_pressure()`, which is what
+stops it scheduling a bleed of its own. It still resets the destination's quiet
+count, because §6 names a bled gain alongside a direct one.
+
+**The first full quiet day holds.** Regression #18 is "First quiet day decays
+Pressure early", an off-by-one nobody would ever notice in play — the score just
+falls a day sooner than designed, permanently. The recovery test walks the ramp
+night by night rather than sampling the end: gain on day 9, hold on 10, hold on
+11 (day 10 was the first quiet day), −1 on 12, −1 every day after, floor at 0.
+
+**The market cap's memory is persisted.** Regression #19 is "Market exceeds its
++1/day Pressure cap". A counter held in memory is exactly how that happens, so
+`market_gain_day` / `market_gain_today` live on the ledger row. Four sales in a
+district reach the cap, the fifth is free, and tomorrow starts over.
+
+### The lifecycle grew a ROLLOVER phase, and Exposure and Curtis moved into it
+
+TI-003 §9's post-increment sequence is now a declared list:
+
+    ROLLOVER_ORDER = [
+        pressure_bleed, pressure_recovery,
+        financial_decay, financial_fold,
+        exposure, curtis,
+    ]
+
+Two of those six positions are regressions in their own right. #25 is the
+Financial Pressure fold running before the decay; #26 is Exposure propagating
+morning Heat before the fold. Both produce plausible numbers, neither crashes,
+and both are one moved line away at all times.
+
+`Exposure` and `Curtis` used to hang off the `day_crossed` signal — which put
+them at whatever position their `connect()` call happened to occupy, the exact
+problem `day_lifecycle.gd` exists to remove, surviving in the two places it
+mattered most. TI-003 §2 asks for explicit rollover methods and they now have
+them. Their scoring math is untouched; only who calls them changed.
+
+The #26 test is worth describing because it took a second attempt to make it
+capable of failing. Exposure broadcasts past 10.0 on the `neighborhood` channel
+and past 8.0 on `household`. Starting the morning at Heat 9.6 with Financial
+Pressure 7, the fold's +1 carries the meter to 10.6 — a neighborhood broadcast.
+Run Exposure first and it sees 9.6 and broadcasts to the household instead: a
+different set of people find out, one day late, forever. Nothing about the final
+state differs. Only who heard.
+
+### District Heat scaling went live, and it moved shipped numbers
+
+FS-003.3 authored TI-003 §7's district × family multiplier table, tested it as a
+pure function, and deliberately did not consult it — applying it inside a
+refactor whose acceptance criterion was "current source outcomes preserve
+inherited totals" would have been a balance change smuggled into a no-op. This
+is the slice it belongs to, and `_district_scaling_enabled` is now `true`.
+
+Every criminal Heat gain is scaled by where it happened and what kind of crime it
+was. The numbers that moved, named here rather than left for whoever next reads a
+changed assertion:
+
+| What | Was | Now | Why |
+| --- | --- | --- | --- |
+| Boost tier 1 success in Spenard | 0.5 | **0.45** | Spenard Boost ×0.9 |
+| Boost tier 2 / 3 in Spenard | 1.0 / 2.0 | **0.9 / 1.8** | ×0.9 |
+| Stickup clean, Spenard tier 1 | 1.0 | **1.3** | Spenard Stick ×1.3 |
+| Stickup messy | 2.0 | **2.6** | ×1.3 |
+| Stickup catastrophic | 3.0 | **3.9** | ×1.3 |
+| Caught Fight/clean in Spenard | 1.0 | **0.9** | ×0.9 |
+
+Relief and direct changes still bypass it, which grew a second half worth
+asserting: laying low in Spenard must not be scaled by 1.3 either, or going quiet
+would work differently depending on where you slept. The Financial Pressure fold
+is +1 in every district for the same reason.
+
+Every Deshawn check moved to a district the table does not name. "Applies once"
+asserted against a figure two multipliers produced is a claim about neither of
+them — if the product is wrong, either could be the cause.
+
+### A ruling the build brief and TI-003 disagree on
+
+The brief's Task 2 says *"Deshawn interaction: Heat fold goes through HeatSystem
+(Deshawn applies)"*. TI-003 §7 routes the fold through `apply_direct`, and
+`apply_direct` — shipped in FS-003.3 — bypasses the gain multipliers entirely.
+
+**Ruled in favour of TI-003 and the shipped behaviour: the fold is +1 flat.**
+Non-negotiable rule 8 makes TI-003 the authority for these systems, §7 lists
+Deshawn under the *criminal gain pipeline* and names `apply_direct` separately
+for the fold, and the fiction agrees — Financial Pressure Heat is not heat a
+crime generated, it is the paper trail catching up, and Deshawn has nothing to
+damp. The acceptance criterion that IS satisfied either way is the one that
+matters architecturally: the fold routes through HeatSystem rather than writing
+`gs.heat`, so the writer audit still holds. Asserted across all three districts
+with Deshawn at rank 3.
+
+### A band table the build brief states differently from the spec
+
+The brief summarises the bands as QUIET (0–1.9), KNOWN (2–4.9), WATCHED (5–7.9),
+HOT (8+). TI-003 §8 and FS-003 §6 both give QUIET 0–2.99, KNOWN 3–5.99, WATCHED
+6–8.99, HOT at exactly 9, with penalties of 0.00 / 0.08 / 0.16 / 0.24.
+
+**Implemented per TI-003/FS-003**, which non-negotiable rule 8 makes the
+authority. The two specs agree with each other; the brief's summary is the
+outlier. Worth flagging because it changes when a district starts biting: under
+the brief's numbers a single messy Boost (+1.0) would put a fresh district a
+fifth of the way to WATCHED, and under the approved numbers it does not reach
+KNOWN until the third incident.
+
+### Sabotage results
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| 1 | KNOWN band starts at 2.0 | **caught** — 3 failures |
+| 2 | `PRESSURE_QUIET_GRACE_DAYS` 1 → 0 | **caught** — 6 failures |
+| 3 | Exposure moved before the fold | **caught** — trace + the #26 behavioural check |
+| 4 | Fold moved before the decay | **caught** — trace + "five does not fold" |
+| 5 | Bleed carries the full gain | **caught** — 3 failures |
+| 6 | Market daily cap 1.0 → 10.0 | **caught** — 2 failures |
+| 7 | Bleed due on the source day | **caught** — 2 failures |
+| 8 | Boost stops subtracting the penalty | **caught** — 3 failures |
+| 9 | Recovery counts the gain day as quiet | **caught** — 10 failures |
+
+Sabotage 6 was initially caught for the wrong reason: several Market assertions
+compared against `rules.PRESSURE_MARKET_DAILY_CAP` rather than against the
+authored `1.0`, so raising the constant moved both sides of the comparison. Every
+Pressure assertion now carries FS-003 §6's literal instead of the module's own
+answer to the same question. Same class of mistake as FS-003.8's provenance hole:
+a check that agrees with the code rather than with the design document.
+
+### What FS-003.10 inherits
+
+A declared ROLLOVER phase with a DAY_START after it, which is where retaliation
+expiry and activation belong (TI-003 §9 step 6). `add_pressure` with a
+`cause_id`, which retaliation resolution will use for its own Pressure rows.
+And `local_attention_summary()`, which FS-003.11 renders.
+
 ## FS-003.8: what it costs when they actually have you  (added 2026-08-22)
 
 `systems/arrest.gd`. Boost could already decide that a Caught result ended in

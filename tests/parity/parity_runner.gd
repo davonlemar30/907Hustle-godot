@@ -126,6 +126,7 @@ func _ready() -> void:
 		_check_outcome_projection()
 		_check_boost_caught()
 		_check_arrest_booking()
+		_check_pressure_lifecycle()
 		_check_save_roundtrip()
 	_finish()
 
@@ -1187,9 +1188,9 @@ const STICKUP_PROBE_COMBAT := 1
 ## What each tier is contracted to do to a heat-2, take-[30,50] target.
 ## `heat` is the absolute amount `_apply_heat` should land with no crew.
 const STICKUP_EXPECTED := {
-	"clean": {"paid": true, "heat": 1.0, "injury": [0, 0], "awareness": 1},
-	"messy": {"paid": true, "heat": 2.0, "injury": [5, 10], "awareness": 2},
-	"failure": {"paid": false, "heat": 1.0, "injury": [0, 0], "awareness": 1},
+	"clean": {"paid": true, "heat": 1.3, "injury": [0, 0], "awareness": 1},
+	"messy": {"paid": true, "heat": 2.6, "injury": [5, 10], "awareness": 2},
+	"failure": {"paid": false, "heat": 1.3, "injury": [0, 0], "awareness": 1},
 	# Three, and the reason it is three is the whole point of FS-001.2's Curtis
 	# filter. The catastrophic footprint DOES carry a `network` row — but the row
 	# is `heat_exposure`, and heat_exposure does not clear Curtis's network
@@ -1200,8 +1201,19 @@ const STICKUP_EXPECTED := {
 	# ported yet. That was the port over-crediting Curtis on every catastrophic
 	# robbery, and this is the correction. Verified against the oracle:
 	# `clearsCurtisFilter({type: "heat_exposure"})` is false.
-	"catastrophic": {"paid": false, "heat": 3.0, "injury": [15, 25], "awareness": 3},
+	"catastrophic": {"paid": false, "heat": 3.9, "injury": [15, 25], "awareness": 3},
 }
+
+## Spenard's Stick multiplier, TI-003 §7. Every `heat` figure above is the raw
+## amount ALREADY multiplied by it — FS-003.9 turned district scaling on, and the
+## probe target is in Spenard, so a robbery there is 1.3x what the target's own
+## table says.
+##
+## Written into the expectations rather than applied at compare time on purpose:
+## the numbers a test asserts should be the numbers a player would see, and
+## re-deriving them from the same constant the code reads would make the check
+## agree with itself instead of with the design document.
+const STICKUP_PROBE_DISTRICT_MULTIPLIER := 1.3
 
 func _check_stickup_tiers() -> void:
 	var gs := get_node("/root/GameState")
@@ -3753,10 +3765,18 @@ func _check_heat_write_path(gs: Node, gm: Node) -> void:
 		"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
 		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {},
 	}
+	# `_frozen_ready` stands the player in Spenard, and FS-003.9 turned district
+	# scaling on — so a robbery here is 1.3x before Deshawn touches it. The
+	# expectations carry BOTH multipliers rather than pretending one of them is
+	# absent, because both are real and dropping either from the arithmetic
+	# would let the missing one drift unnoticed.
+	const SPENARD_STICK := 1.3
 	_expect_float("deshawn multiplier at rank 1", crew.heat_multiplier(), 0.80)
 	var applied: float = stickup._apply_heat(2.0)
-	_expect_float("heat applies the multiplier fractionally", applied, 1.6)
-	_expect_float("heat lands fractionally on state", gs.heat, 1.6)
+	_expect_float("heat applies the multiplier fractionally",
+		snappedf(applied, 0.0001), snappedf(2.0 * SPENARD_STICK * 0.80, 0.0001))
+	_expect_float("heat lands fractionally on state",
+		snappedf(gs.heat, 0.0001), snappedf(2.0 * SPENARD_STICK * 0.80, 0.0001))
 	_expect_true("heat is a float on state", gs.heat is float)
 
 	# The multiplier is read fresh. A cached one would keep paying the old rate
@@ -3764,10 +3784,13 @@ func _check_heat_write_path(gs: Node, gm: Node) -> void:
 	gs.crew_records["deshawn"]["tier"] = 3
 	_expect_float("multiplier re-read after promotion", crew.heat_multiplier(), 0.40)
 	gs.heat = 0.0
-	_expect_float("heat uses the new multiplier", stickup._apply_heat(2.0), 0.8)
+	_expect_float("heat uses the new multiplier",
+		snappedf(stickup._apply_heat(2.0), 0.0001),
+		snappedf(2.0 * SPENARD_STICK * 0.40, 0.0001))
 	gs.crew_records.erase("deshawn")
 	gs.heat = 0.0
-	_expect_float("heat is unmodified with him gone", stickup._apply_heat(2.0), 2.0)
+	_expect_float("heat is unmodified with him gone",
+		snappedf(stickup._apply_heat(2.0), 0.0001), snappedf(2.0 * SPENARD_STICK, 0.0001))
 
 	# Clamped at both ends of the 0-15 scale.
 	_frozen_ready(gs)
@@ -3804,7 +3827,13 @@ func _check_heat_write_path(gs: Node, gm: Node) -> void:
 			continue
 		if gs.cash > cash_mark and success_day < 0:
 			success_day = day
-			_expect_float("boost tier 1 SUCCESS heat matches canon's 0.5", gs.heat, 0.5)
+			# Canon's raw 0.5, times Spenard's 0.9 Boost multiplier (TI-003 §7,
+			# live from FS-003.9). The RAW value is still the thing being
+			# frozen — the fractional 0.5 an int-typed helper once truncated to
+			# nothing — and it is still visible here, multiplied rather than
+			# replaced.
+			_expect_float("boost tier 1 SUCCESS heat matches canon's 0.5 x Spenard 0.9",
+				snappedf(gs.heat, 0.0001), snappedf(0.5 * 0.9, 0.0001))
 		elif gs.cash == cash_mark and miss_day < 0:
 			miss_day = day
 			# WAS 1.0, and FS-003.7 removes it deliberately. TI-003 §11: "The
@@ -3829,14 +3858,19 @@ func _check_heat_write_path(gs: Node, gm: Node) -> void:
 	for entry in [[1, 0.5], [2, 1.0], [3, 2.0]]:
 		_frozen_ready(gs)
 		gs.heat = 0.0
-		_expect_float("boost tier %d heat is canon's %.1f" % [int(entry[0]), float(entry[1])],
-			boost._apply_heat(float(entry[1])), float(entry[1]))
+		_expect_float("boost tier %d heat is canon's %.1f x Spenard 0.9"
+			% [int(entry[0]), float(entry[1])],
+			snappedf(boost._apply_heat(float(entry[1])), 0.0001),
+			snappedf(float(entry[1]) * 0.9, 0.0001))
 	# And the signature is genuinely float now — an int parameter would have
 	# truncated canon's 0.5 to nothing, which is what forced the divergence.
+	# Doubly so with the district multiplier live: 0.5 x 0.9 is 0.45, which an
+	# int anywhere in the chain would flatten to 0.
 	_frozen_ready(gs)
 	gs.heat = 0.0
 	boost._apply_heat(0.5)
-	_expect_float("boost heat accepts a fractional amount", gs.heat, 0.5)
+	_expect_float("boost heat accepts a fractional amount",
+		snappedf(gs.heat, 0.0001), snappedf(0.45, 0.0001))
 
 ## Cash discipline: a refused action must leave the wallet exactly as it was.
 ##
@@ -3960,6 +3994,14 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	"SETTLE:crew", "SETTLE:territory", "SETTLE:shark", "SETTLE:jobs", "SETTLE:obligations",
 	"POST_SETTLE",
 	"INCREMENT",
+	# FS-003.9's post-increment lifecycle, TI-003 §9. Two of these six positions
+	# are regressions in their own right: #25 is the Financial Pressure fold
+	# running before the decay, #26 is Exposure propagating morning Heat before
+	# the fold. Both produce plausible numbers and neither crashes, which is
+	# exactly why the order is asserted as a literal.
+	"ROLLOVER:pressure_bleed", "ROLLOVER:pressure_recovery",
+	"ROLLOVER:financial_decay", "ROLLOVER:financial_fold",
+	"ROLLOVER:exposure", "ROLLOVER:curtis",
 	"MARKET:evolve", "MARKET:day_crossed",
 	"DAY_START",
 ]
@@ -4312,7 +4354,7 @@ func _check_wallet_and_heat() -> void:
 	_check_wallet_legacy_classification(gs, wallet)
 	_check_heat_api(gs, gm, heat)
 	_check_heat_district_table(heat)
-	_check_heat_district_scaling_inert(gs, heat)
+	_check_heat_district_scaling(gs, heat)
 	_check_source_provenance(gs, gm)
 	_check_owner_rng_non_drift(gs, gm, wallet, heat)
 	gs.reset_to_new_game()
@@ -4722,17 +4764,27 @@ func _deshawn_at(gs: Node, tier: int) -> void:
 	}
 
 ## TI-003 §7's three entry points, and the rule that separates them.
+## A district the multiplier table does not name, so its lookup returns the
+## neutral 1.0.
+##
+## FS-003.9 turned district scaling on, and every check below that is about
+## DESHAWN has to be measured somewhere the district multiplier is not also
+## moving the number — otherwise "applies once" is being asserted against a
+## figure two multipliers produced, and either one could be wrong. The district
+## table gets its own coverage in `_check_heat_district_scaling`.
+const HEAT_NEUTRAL_DISTRICT := "nowhere_in_particular"
+
 func _check_heat_api(gs: Node, gm: Node, heat: RefCounted) -> void:
-	# --- gain, with nobody on the crew ---
+	# --- gain, with nobody on the crew and no district weighting ---
 	_wallet_ready(gs, 0, 100)
-	var applied: float = heat.apply_gain(2.0, heat.FAMILY_STICK, "north_star_lot", {})
+	var applied: float = heat.apply_gain(2.0, heat.FAMILY_STICK, HEAT_NEUTRAL_DISTRICT, {})
 	_expect_float("an unscaled gain applies its raw amount", applied, 2.0)
 	_expect_float("an unscaled gain lands on the meter", float(gs.heat), 2.0)
 
 	# Heat is fractional and stays that way. Rounding it is a shipped bug this
 	# port has already had once — see systems/heat.gd.
 	_wallet_ready(gs, 0, 100)
-	heat.apply_gain(0.5, heat.FAMILY_BOOST, "north_star_lot", {})
+	heat.apply_gain(0.5, heat.FAMILY_BOOST, HEAT_NEUTRAL_DISTRICT, {})
 	_expect_float("a fractional gain stays fractional", float(gs.heat), 0.5)
 
 	# A non-positive gain is a caller reaching for relief by the wrong name.
@@ -4754,7 +4806,7 @@ func _check_heat_api(gs: Node, gm: Node, heat: RefCounted) -> void:
 		var mult: float = float(DESHAWN_RANK_MULTIPLIERS[tier])
 		var once: float = 10.0 * mult
 		var twice: float = 10.0 * mult * mult
-		applied = heat.apply_gain(10.0, heat.FAMILY_STICK, "north_star_lot", {})
+		applied = heat.apply_gain(10.0, heat.FAMILY_STICK, HEAT_NEUTRAL_DISTRICT, {})
 		_expect_float("Deshawn rank %d applies once (%.2f, not %.2f)"
 			% [tier, once, twice], applied, once)
 		_expect_float("Deshawn rank %d lands once on the meter" % tier,
@@ -4767,7 +4819,7 @@ func _check_heat_api(gs: Node, gm: Node, heat: RefCounted) -> void:
 	for tier in [4, 7]:
 		_wallet_ready(gs, 0, 100)
 		_deshawn_at(gs, tier)
-		applied = heat.apply_gain(10.0, heat.FAMILY_STICK, "north_star_lot", {})
+		applied = heat.apply_gain(10.0, heat.FAMILY_STICK, HEAT_NEUTRAL_DISTRICT, {})
 		_expect_float("Deshawn above the curve holds rank 3's reduction (rank %d)"
 			% tier, applied, 4.0)
 
@@ -4778,7 +4830,7 @@ func _check_heat_api(gs: Node, gm: Node, heat: RefCounted) -> void:
 		"loyalty": gs.CREW_LOYALTY_START, "wage_due": 0, "wage_missed_since": -1,
 	}
 	_expect_float("a departed Deshawn damps nothing",
-		heat.apply_gain(10.0, heat.FAMILY_STICK, "north_star_lot", {}), 10.0)
+		heat.apply_gain(10.0, heat.FAMILY_STICK, HEAT_NEUTRAL_DISTRICT, {}), 10.0)
 
 	# --- relief bypasses the gain multipliers. TI-003 regression #15. ---
 	#
@@ -4844,9 +4896,9 @@ func _check_heat_api(gs: Node, gm: Node, heat: RefCounted) -> void:
 
 ## TI-003 §7's authored district x family table, pinned as data.
 ##
-## `apply_gain` does NOT consult it this slice — see systems/heat.gd for why —
-## so this covers the values and the neutral fallback, and then proves the
-## wiring really is inert. FS-003.9 flips it on and inverts the last two checks.
+## This covers the values and the neutral fallback as a pure lookup;
+## `_check_heat_district_scaling` covers the wiring that consults it, which
+## FS-003.9 turned on.
 func _check_heat_district_table(heat: RefCounted) -> void:
 	var rows := [
 		["north_star_lot", heat.FAMILY_MARKET, 0.8],
@@ -4875,15 +4927,72 @@ func _check_heat_district_table(heat: RefCounted) -> void:
 ## The table is authored but not wired, so the same raw gain costs the same in
 ## every district this slice. Spenard/stick is 1.3 — the largest divergence in
 ## the table — so if the wiring were live this would read 2.6 rather than 2.0.
-func _check_heat_district_scaling_inert(gs: Node, heat: RefCounted) -> void:
-	var seen: Array = []
+## FS-003.9 turned district scaling ON. The check that used to prove it was
+## inert now proves the opposite, over the whole table.
+##
+## Every district x family cell, driven through `apply_gain` with the expected
+## product computed from the transcribed table rather than from
+## `district_multiplier()` — calling the function under test to build its own
+## expectation would pass whatever it returned.
+const HEAT_DISTRICT_TABLE := {
+	"north_star_lot": {"market": 0.8, "boost": 0.9, "stick": 1.3},
+	"downtown": {"market": 1.2, "boost": 1.1, "stick": 1.0},
+	"airport_industrial": {"market": 1.1, "boost": 1.2, "stick": 1.2},
+}
+
+func _check_heat_district_scaling(gs: Node, heat: RefCounted) -> void:
+	for district_key in HEAT_DISTRICT_TABLE.keys():
+		var district := str(district_key)
+		var row: Dictionary = HEAT_DISTRICT_TABLE[district]
+		for family_key in row.keys():
+			var family := str(family_key)
+			_wallet_ready(gs, 0, 100)
+			gs.current_district_id = district
+			var applied: float = heat.apply_gain(2.0, family, district, {})
+			_expect_float("%s/%s scales its gain" % [district, family],
+				snappedf(applied, 0.0001), snappedf(2.0 * float(row[family]), 0.0001))
+			_expect_float("%s/%s lands scaled on the meter" % [district, family],
+				snappedf(float(gs.heat), 0.0001), snappedf(2.0 * float(row[family]), 0.0001))
+
+	# A family the table does not name scales by 1.0 — that is what keeps shark
+	# enforcement and territory's nightly corner heat exactly as they were.
+	_wallet_ready(gs, 0, 100)
+	_expect_float("an unnamed family is not scaled",
+		heat.apply_gain(2.0, "shark_enforcement", "north_star_lot", {}), 2.0)
+	# And so does a district the table does not name.
+	_wallet_ready(gs, 0, 100)
+	_expect_float("an unnamed district is not scaled",
+		heat.apply_gain(2.0, heat.FAMILY_STICK, HEAT_NEUTRAL_DISTRICT, {}), 2.0)
+
+	# The two multipliers compose, in the order TI-003 §7 declares:
+	#   raw x district/family x Deshawn.
+	# Multiplication commutes, so the ORDER is not observable — what is, is that
+	# both are applied and neither is applied twice.
+	_wallet_ready(gs, 0, 100)
+	_deshawn_at(gs, 1)
+	var deshawn: float = float(DESHAWN_RANK_MULTIPLIERS[1])
+	_expect_float("district and Deshawn both apply, once each",
+		snappedf(heat.apply_gain(10.0, heat.FAMILY_STICK, "north_star_lot", {}), 0.0001),
+		snappedf(10.0 * 1.3 * deshawn, 0.0001))
+
+	# Relief still bypasses BOTH. Regression #15 grew a second half when the
+	# district table went live: relief in Spenard must not be scaled by 1.3
+	# either, or laying low would work differently depending on where you slept.
 	for district in ["north_star_lot", "downtown", "airport_industrial"]:
 		_wallet_ready(gs, 0, 100)
 		gs.current_district_id = district
-		heat.apply_gain(2.0, heat.FAMILY_STICK, district, {})
-		seen.append(float(gs.heat))
-	_expect_str("district scaling is not wired this slice", str(seen),
-		str([2.0, 2.0, 2.0]))
+		gs.heat = 10.0
+		_expect_float("relief in %s bypasses the district multiplier" % district,
+			heat.apply_relief(2.0, {}), -2.0)
+		_expect_float("relief in %s lands unscaled" % district, float(gs.heat), 8.0)
+	# And so does a direct change — the Financial Pressure fold is the caller
+	# that matters, and a fold worth +1 must be +1 in every district.
+	for district in ["north_star_lot", "downtown", "airport_industrial"]:
+		_wallet_ready(gs, 0, 100)
+		gs.current_district_id = district
+		gs.heat = 5.0
+		_expect_float("a direct change in %s is unscaled" % district,
+			heat.apply_direct(1.0, {}), 1.0)
 
 # --- provenance through the real dispatch path ------------------------------
 
@@ -7331,11 +7440,13 @@ func _check_caught_effects_applied(gs: Node, gm: Node, engine: RefCounted,
 		seen_tiers[tier_name] = int(seen_tiers.get(tier_name, 0)) + 1
 
 		# Heat: the authored raw amount, scaled by the one owner. Nobody is on
-		# the crew in a frozen run, so the applied delta equals the raw value —
-		# and that equality is the check, since a caller applying its own
-		# multiplier would break it.
+		# the crew in a frozen run, so the only multiplier in play is Spenard's
+		# 0.9 for the Boost family (TI-003 §7, live from FS-003.9) — and the
+		# check is that the meter carries the raw value times exactly that, since
+		# a caller applying its own multiplier would break the equality.
 		_expect_float("fight/%s applies its authored heat" % tier_name,
-			float(gs.heat), rules.raw_heat("fight", tier_name, 1))
+			snappedf(float(gs.heat), 0.0001),
+			snappedf(rules.raw_heat("fight", tier_name, 1) * 0.9, 0.0001))
 
 		# Injury: inside the authored band, or exactly zero when the row has none.
 		var band: Array = rules.injury_band("fight", tier_name, 1)
@@ -7453,7 +7564,8 @@ func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
 		# The encounter's own Heat has already landed, and it pushed the live
 		# meter past the threshold — which is exactly the trap.
 		_expect_float("run/failure at tier 1 added its authored heat",
-			float(gs.heat), 6.0 + rules.raw_heat("run", "failure", 1))
+			snappedf(float(gs.heat), 0.0001),
+			snappedf(6.0 + rules.raw_heat("run", "failure", 1) * 0.9, 0.0001))
 		_expect_true("the live meter is now above the arrest threshold",
 			float(gs.heat) > rules.RUN_FAILURE_ARREST_HEAT)
 		# And the gate still says no, because it read the snapshot.
@@ -8276,20 +8388,27 @@ func _check_booking_serve_time(gs: Node, gm: Node, engine: RefCounted,
 ## bail payment" the slice owes.
 func _check_booking_provenance(gs: Node, gm: Node, engine: RefCounted,
 		rules: RefCounted) -> void:
-	if not _open_boost_booking(gs, gm, engine, 3, "warehouse_club", 4, 1200):
+	# Two priors on a tier 3 lift: a $500 quote and two processing slots, so the
+	# whole booking fits inside one day from MORNING. That matters — the day
+	# rollover DECAYS Financial Pressure by 1, and a booking that crossed a
+	# midnight would silently eat the pressure the payment had just created.
+	if not _open_boost_booking(gs, gm, engine, 3, "warehouse_club", 2, 1200):
 		_fail("booking provenance", "no arrested tier 3 lift found")
 		return
 	var booking: Dictionary = engine.booking_summary()
 	var quote: int = int(booking["bail_quote"])
-	_expect_int("a tier 3 lift at four priors quotes the boost tier 2 severity",
-		quote, rules.bail_quote("boost_t2", 4))
+	_expect_int("a tier 3 lift books under the boost tier 2 severity",
+		quote, rules.bail_quote("boost_t2", 2))
+	_expect_int("the quote is $500 at two priors", quote, 500)
 	# A mixed wallet with more in it than the bill — see the docstring.
 	gs.cash = 1200
 	gs.clean_cash = 400
 	gs.dirty_cash = 800
 	gs.financial_pressure = 0
+	var day_before: int = int(gs.day)
 	_expect_true("the mixed-wallet booking commits",
 		gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+	_expect_int("the booking stayed inside one day", int(gs.day), day_before)
 	var receipt: Dictionary = engine.booking_summary()
 	_expect_int("bail drains every clean dollar first", int(receipt["clean_used"]), 400)
 	_expect_int("bail reaches dirty money only for the deficit",
@@ -8299,33 +8418,40 @@ func _check_booking_provenance(gs: Node, gm: Node, engine: RefCounted,
 		int(gs.dirty_cash), 800 - (quote - 400))
 	_expect_true("the wallet still balances",
 		int(gs.cash) == int(gs.clean_cash) + int(gs.dirty_cash))
-	# TI-003 §6: round((dirty_used - 400) * 0.01), and the receipt carries it so
-	# PX-003 §9's "that payment was loud" line has something to fire on.
-	var want_pressure: int = int(round(float(maxi(0, (quote - 400) - 400)) * 0.01))
-	_expect_int("the bail payment reports its financial pressure",
-		int(receipt["financial_pressure_gain"]), want_pressure)
-	_expect_int("the financial pressure landed on the run",
-		int(gs.financial_pressure), want_pressure)
-	_expect_true("this bail was loud enough to register at all", want_pressure > 0)
+	# TI-003 §6: round((dirty_used - 400) * 0.01). Clean-first uses $100 of
+	# dirty money here, which is under the $400 free band, so this payment is
+	# QUIET. Dirty-first would use $500 and register — so the pressure figure is
+	# the second signal that the policy is right, alongside the buckets.
+	_expect_int("a clean-first bail stays under the dirty threshold",
+		int(receipt["financial_pressure_gain"]), 0)
+	_expect_int("and creates no financial pressure", int(gs.financial_pressure), 0)
 	gs.active_consequence = {}
 
-	# The other side of the same rule: a bail paid entirely in clean money is
-	# silent, however large. Regression #24 in spirit — pressure is about
-	# provenance, not size.
-	if _open_boost_booking(gs, gm, engine, 3, "warehouse_club", 4, 2000):
+	# The loud version of the same payment: nothing clean in the wallet, so the
+	# whole $500 comes off the street and the paper trail registers. This is the
+	# "Financial Pressure transaction feedback on bail payment" the slice owes,
+	# and it is what PX-003 §9's "that payment was loud" line fires on.
+	if _open_boost_booking(gs, gm, engine, 3, "warehouse_club", 2, 2000):
 		gs.cash = 2000
-		gs.clean_cash = 2000
-		gs.dirty_cash = 0
+		gs.clean_cash = 0
+		gs.dirty_cash = 2000
 		gs.financial_pressure = 0
-		_expect_true("the clean-money booking commits",
+		var loud_day: int = int(gs.day)
+		_expect_true("the all-dirty booking commits",
 			gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
-		_expect_int("bail paid in clean money creates no financial pressure",
-			int(gs.financial_pressure), 0)
-		_expect_int("and reports none",
-			int((engine.booking_summary() as Dictionary)["financial_pressure_gain"]), 0)
+		_expect_int("the loud booking stayed inside one day", int(gs.day), loud_day)
+		var loud: Dictionary = engine.booking_summary()
+		_expect_int("a bail paid entirely in street money uses no clean",
+			int(loud["clean_used"]), 0)
+		var want_pressure: int = int(round(float(maxi(0, quote - 400)) * 0.01))
+		_expect_true("this bail was loud enough to register at all", want_pressure > 0)
+		_expect_int("the bail payment reports its financial pressure",
+			int(loud["financial_pressure_gain"]), want_pressure)
+		_expect_int("the financial pressure landed on the run",
+			int(gs.financial_pressure), want_pressure)
 		gs.active_consequence = {}
 	else:
-		_fail("booking provenance", "no arrested tier 3 lift found for the clean case")
+		_fail("booking provenance", "no arrested tier 3 lift found for the loud case")
 
 ## TI-003 §13 steps 6-7: the arrest files one observation and clears the
 ## retaliation the same Cause would otherwise have produced.
@@ -8652,6 +8778,680 @@ func _check_booking_rng_non_drift(gs: Node, gm: Node, engine: RefCounted) -> voi
 	_expect_int("a second attach does not re-price the arrest",
 		int((chain["booking"] as Dictionary)["bail_quote"]), first_quote)
 
+
+# =============================================================================
+# FS-003.9 — District Pressure and Financial Pressure lifecycle
+# =============================================================================
+#
+# Two systems that share a slice because they share a rollover. District
+# Pressure is local memory of a criminal routine; Financial Pressure is what
+# happens when street money moves through a formal bill. Neither is visible to
+# the player as a number, which is exactly why both need testing at the level of
+# what they DO rather than what they display.
+
+func _check_pressure_lifecycle() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var engine: RefCounted = gm.system("consequence") as RefCounted
+	if engine == null:
+		_fail("pressure", "consequence engine not registered")
+		return
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	_check_pressure_bands(rules)
+	_check_pressure_storage(gs, engine)
+	_check_pressure_source_penalties(gs, gm, engine, rules)
+	_check_pressure_market_cap(gs, gm, engine, rules)
+	_check_pressure_bleed(gs, gm, engine, rules)
+	_check_pressure_recovery(gs, gm, engine, rules)
+	_check_pressure_source_gains(gs, gm, engine, rules)
+	_check_local_attention(gs, engine)
+	_check_financial_pressure_rollover(gs, gm, engine, rules)
+	_check_pressure_rng_non_drift(gs, gm, engine)
+	gs.reset_to_new_game()
+
+# --- the bands --------------------------------------------------------------
+
+## FS-003 §6's scale, transcribed independently:
+##
+##   0 to 2.99  Quiet    0 difficulty steps
+##   3 to 5.99  Known   +1 step
+##   6 to 8.99  Watched +2 steps
+##   9          Hot     +3 steps
+##
+## One difficulty step is 8 percentage points; the maximum dynamic local penalty
+## is 24. `HOT` needs the full 9 — FS-003 writes that row as `9` exactly, not as
+## `8+`, and the boundary below it is what a careless `>=8` would break.
+func _check_pressure_bands(rules: RefCounted) -> void:
+	var cases := [
+		[0.0, "QUIET", 0.00, 0], [1.5, "QUIET", 0.00, 0], [2.99, "QUIET", 0.00, 0],
+		[3.0, "KNOWN", 0.08, 1], [4.5, "KNOWN", 0.08, 1], [5.99, "KNOWN", 0.08, 1],
+		[6.0, "WATCHED", 0.16, 2], [7.5, "WATCHED", 0.16, 2], [8.99, "WATCHED", 0.16, 2],
+		[9.0, "HOT", 0.24, 3],
+	]
+	for row in cases:
+		var c: Array = row
+		_expect_str("pressure %.2f reads %s" % [float(c[0]), str(c[1])],
+			rules.pressure_band(float(c[0])), str(c[1]))
+		_expect_float("pressure %.2f costs %.2f" % [float(c[0]), float(c[2])],
+			rules.pressure_penalty(float(c[0])), float(c[2]))
+		_expect_int("pressure %.2f is %d difficulty steps" % [float(c[0]), int(c[3])],
+			rules.pressure_steps(float(c[0])), int(c[3]))
+	# One step is 8 points, and three of them is the authored ceiling.
+	_expect_float("one difficulty step is eight points", rules.pressure_penalty(3.0), 0.08)
+	_expect_float("the maximum local penalty is twenty-four points",
+		rules.pressure_penalty(rules.PRESSURE_MAX), 0.24)
+	# The scale itself.
+	_expect_float("pressure caps at nine", rules.PRESSURE_MAX, 9.0)
+	_expect_float("pressure floors at zero", rules.PRESSURE_MIN, 0.0)
+	# FS-003 §6's adjacency: Downtown and Industrial have no direct edge.
+	_expect_str("spenard borders both", str(rules.adjacent_districts("north_star_lot")),
+		str(["downtown", "airport_industrial"]))
+	_expect_str("downtown borders only spenard",
+		str(rules.adjacent_districts("downtown")), str(["north_star_lot"]))
+	_expect_str("industrial borders only spenard",
+		str(rules.adjacent_districts("airport_industrial")), str(["north_star_lot"]))
+	_expect_int("an unknown district borders nothing",
+		(rules.adjacent_districts("juneau") as Array).size(), 0)
+
+## TI-003 regression #16: "District Pressure and Global Heat share storage."
+##
+## They answer different questions and live in different fields. This is the
+## structural version of that claim: move one, and the other does not follow.
+func _check_pressure_storage(gs: Node, engine: RefCounted) -> void:
+	gs.reset_to_new_game()
+	gs.heat = 4.0
+	engine.add_pressure("north_star_lot", "boost", 2.0, "cause:test:storage")
+	_expect_float("pressure landed", engine.pressure_score("north_star_lot", "boost"), 2.0)
+	_expect_float("heat did not move with it", float(gs.heat), 4.0)
+	gs.heat = 11.0
+	_expect_float("pressure did not move with heat",
+		engine.pressure_score("north_star_lot", "boost"), 2.0)
+	# Per district AND per family. A robbery in Spenard does not make lifting
+	# harder there, and it does not make robbery harder downtown.
+	_expect_float("another family in the same district is untouched",
+		engine.pressure_score("north_star_lot", "stick"), 0.0)
+	_expect_float("the same family in another district is untouched",
+		engine.pressure_score("downtown", "boost"), 0.0)
+	# Reading a district nobody has worked must not allocate a ledger row —
+	# every screen render calls this.
+	gs.district_pressure = {}
+	_expect_float("an unworked district reads zero",
+		engine.pressure_score("airport_industrial", "stick"), 0.0)
+	_expect_int("and allocates nothing", gs.district_pressure.size(), 0)
+	# The cap holds against a gain that would overshoot it.
+	engine.add_pressure("downtown", "stick", 20.0, "cause:test:cap")
+	_expect_float("a gain cannot exceed the cap",
+		engine.pressure_score("downtown", "stick"), 9.0)
+	gs.reset_to_new_game()
+
+# --- source difficulty ------------------------------------------------------
+
+## TI-003 §8: "Source systems subtract the family penalty before their existing
+## final clamp." Measured on the real `chance_for`, at every band.
+func _check_pressure_source_penalties(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	var boost: RefCounted = gm.system("boost") as RefCounted
+	var stickup: RefCounted = gm.system("stickup") as RefCounted
+
+	# --- Boost ---
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.time_slots_today = 0
+	var target: Dictionary = gs.boost_target_by_id("night_owl")
+	var quiet_chance: float = boost.chance_for(target)
+	# Literal penalties from FS-003 §6 — 1, 2 and 3 difficulty steps of 8 points
+	# each — rather than the module's own answer to the same question.
+	for row in [[3.0, 0.08], [6.0, 0.16], [9.0, 0.24]]:
+		var score: float = float((row as Array)[0])
+		gs.district_pressure = {}
+		engine.add_pressure("north_star_lot", "boost", score, "cause:pen:%d" % int(score))
+		var want: float = clampf(quiet_chance - float((row as Array)[1]), 0.10, 0.95)
+		_expect_float("boost at pressure %.1f loses its band's points" % score,
+			snappedf(boost.chance_for(target), 0.0001), snappedf(want, 0.0001))
+	# A QUIET district costs nothing, which is why every existing chance
+	# assertion in this suite still holds.
+	gs.district_pressure = {}
+	_expect_float("boost in a quiet district is unchanged",
+		boost.chance_for(target), quiet_chance)
+	# The Stick family's pressure does not make lifting harder.
+	engine.add_pressure("north_star_lot", "stick", 9.0, "cause:pen:crossfamily")
+	_expect_float("stick pressure does not touch boost odds",
+		boost.chance_for(target), quiet_chance)
+
+	# --- Stick ---
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.time_slots_today = 0
+	gs.stick_tier = 3
+	var mark: Dictionary = gs.stick_target_by_id("washgo_regular")
+	var quiet_stick: float = stickup.chance_for(mark)
+	for row in [[3.0, 0.08], [6.0, 0.16], [9.0, 0.24]]:
+		var score: float = float((row as Array)[0])
+		gs.district_pressure = {}
+		engine.add_pressure("north_star_lot", "stick", score, "cause:spen:%d" % int(score))
+		var want_stick: float = clampf(quiet_stick - float((row as Array)[1]), 0.15, 0.90)
+		_expect_float("stick at pressure %.1f loses its band's points" % score,
+			snappedf(stickup.chance_for(mark), 0.0001), snappedf(want_stick, 0.0001))
+	gs.district_pressure = {}
+	_expect_float("stick in a quiet district is unchanged",
+		stickup.chance_for(mark), quiet_stick)
+
+	# The clamp still holds underneath. A HOT district cannot push a Stick below
+	# its 0.15 floor, which is what "before its existing final clamp" means.
+	gs.district_pressure = {}
+	engine.add_pressure("north_star_lot", "stick", 9.0, "cause:spen:floor")
+	gs.heat = 15.0
+	_expect_true("the stick floor survives a hot district at max heat",
+		stickup.chance_for(mark) >= 0.15 - 1e-9)
+	gs.reset_to_new_game()
+
+# --- Market's metered gain --------------------------------------------------
+
+## FS-003 §6: +0.25 per criminal sale, capped at +1.0 per district per day.
+##
+## TI-003 regression #19 is "Market exceeds its +1/day Pressure cap", and the
+## cap has to survive a reload — a counter kept in memory is exactly how that
+## regression happens, so the cap's memory lives on the persisted ledger row.
+func _check_pressure_market_cap(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.inventory = {"weed": 40}
+	# FS-003 §6's numbers as LITERALS. Reading them back out of the module under
+	# test would make this agree with whatever it says rather than with the
+	# design document — a raised cap would then pass by moving both sides.
+	_expect_float("one sale is a quarter point",
+		engine.add_market_pressure("north_star_lot"), 0.25)
+	for _i in range(3):
+		engine.add_market_pressure("north_star_lot")
+	_expect_float("four sales reach the daily cap of one point",
+		engine.pressure_score("north_star_lot", "market"), 1.0)
+	for _i in range(20):
+		engine.add_market_pressure("north_star_lot")
+	_expect_float("the fifth sale and everything after it is free",
+		engine.pressure_score("north_star_lot", "market"), 1.0)
+	# Per district. Working downtown does not spend Spenard's allowance.
+	engine.add_market_pressure("downtown")
+	_expect_float("another district has its own allowance",
+		engine.pressure_score("downtown", "market"), 0.25)
+	# Tomorrow starts over.
+	gs.day = int(gs.day) + 1
+	engine.add_market_pressure("north_star_lot")
+	_expect_float("a new day restores the allowance",
+		engine.pressure_score("north_star_lot", "market"), 1.25)
+
+	# And through the real dispatch path: a SALE accrues, a PURCHASE does not.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.inventory = {"weed": 10}
+	gs.cash = 5000
+	gs.clean_cash = 5000
+	gs.dirty_cash = 0
+	_expect_true("a market sale dispatches",
+		gm.dispatch("market_sell", {"product_id": "weed", "quantity": 1}))
+	_expect_float("a dispatched sale accrues market pressure",
+		engine.pressure_score("north_star_lot", "market"), 0.25)
+	var after_sale: float = engine.pressure_score("north_star_lot", "market")
+	_expect_true("a market buy dispatches",
+		gm.dispatch("market_buy", {"product_id": "weed", "quantity": 1}))
+	_expect_float("buying product accrues nothing",
+		engine.pressure_score("north_star_lot", "market"), after_sale)
+	# One gain per transaction, not per unit — a ten-unit sale is one handoff.
+	_expect_true("a bulk sale dispatches",
+		gm.dispatch("market_sell", {"product_id": "weed", "quantity": 5}))
+	_expect_float("a bulk sale is still one handoff",
+		engine.pressure_score("north_star_lot", "market"), after_sale + 0.25)
+	gs.reset_to_new_game()
+
+# --- bleed ------------------------------------------------------------------
+
+## FS-003 §6: "New local pressure bleeds once to adjacent current districts at
+## 50% of the new gain on the next day-cross."
+##
+## Three separate claims, tested separately: it is 50% of the NEW GAIN (not the
+## stored score), it lands on the NEXT day (regression #17 is "bleed lands on the
+## source day"), and it does not double-apply across a reload.
+func _check_pressure_bleed(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.cash = 5000
+	engine.add_pressure("north_star_lot", "stick", 2.0, "cause:bleed:1")
+
+	# Scheduled, not applied. Regression #17.
+	_expect_int("a gain schedules a bleed per neighbour",
+		gs.pressure_bleed_pending.size(), 2)
+	_expect_float("the bleed has not landed on the source day",
+		engine.pressure_score("downtown", "stick"), 0.0)
+	_expect_float("nor on the other neighbour",
+		engine.pressure_score("airport_industrial", "stick"), 0.0)
+	for entry in gs.pressure_bleed_pending:
+		_expect_float("a scheduled bleed is half the new gain",
+			float((entry as Dictionary)["amount"]), 1.0)
+		_expect_int("a scheduled bleed is due tomorrow",
+			int((entry as Dictionary)["due_day"]), 10)
+
+	# Cross the night. Now it lands.
+	_expect_true("the bleed night dispatches", gm.dispatch("advance_time", {}))
+	_expect_int("the day crossed", int(gs.day), 10)
+	_expect_float("the bleed landed on the neighbour",
+		engine.pressure_score("downtown", "stick"), 1.0)
+	_expect_float("and on the other neighbour",
+		engine.pressure_score("airport_industrial", "stick"), 1.0)
+	_expect_int("the queue is emptied by application",
+		gs.pressure_bleed_pending.size(), 0)
+	# The source keeps its own score — bleeding is not moving.
+	_expect_float("the source district keeps its score",
+		engine.pressure_score("north_star_lot", "stick"), 2.0)
+	# A bled gain does not bleed onward. Downtown's new 1.0 must not schedule
+	# 0.5 back into Spenard, or two districts would trade Pressure forever.
+	_expect_int("a bled gain schedules nothing further",
+		gs.pressure_bleed_pending.size(), 0)
+	# And it counts as a gain for recovery purposes: the neighbour is not having
+	# a quiet day.
+	var neighbour: Dictionary = engine.pressure_row("downtown", "stick")
+	_expect_int("a bled gain resets the neighbour's quiet count",
+		int(neighbour["quiet_days"]), 0)
+	_expect_int("a bled gain stamps the day it landed",
+		int(neighbour["last_gain_day"]), 10)
+
+	# --- dedupe: the same Cause cannot schedule the same destination twice ---
+	gs.reset_to_new_game()
+	gs.day = 9
+	engine.add_pressure("north_star_lot", "boost", 1.0, "cause:bleed:dupe")
+	var scheduled: int = gs.pressure_bleed_pending.size()
+	engine.add_pressure("north_star_lot", "boost", 1.0, "cause:bleed:dupe")
+	_expect_int("the same cause does not schedule the same bleed twice",
+		gs.pressure_bleed_pending.size(), scheduled)
+	# A different Cause on the same day does schedule its own.
+	engine.add_pressure("north_star_lot", "boost", 1.0, "cause:bleed:other")
+	_expect_int("a different cause schedules its own bleed",
+		gs.pressure_bleed_pending.size(), scheduled * 2)
+
+	# --- and across a reload ---
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	engine.add_pressure("north_star_lot", "stick", 2.0, "cause:bleed:reload")
+	saves.save_run()
+	_expect_true("a pending bleed reloads", saves.load_run())
+	_expect_int("the pending bleed survived the reload",
+		gs.pressure_bleed_pending.size(), 2)
+	_expect_true("the reloaded night dispatches", gm.dispatch("advance_time", {}))
+	_expect_float("a reloaded bleed applies exactly once",
+		engine.pressure_score("downtown", "stick"), 1.0)
+	_expect_int("and clears itself", gs.pressure_bleed_pending.size(), 0)
+	if not previous_save.is_empty():
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+	gs.reset_to_new_game()
+
+# --- quiet recovery ---------------------------------------------------------
+
+## FS-003 §6: "First full quiet day: score holds. Second consecutive quiet day
+## and each quiet day after: -1 pressure per day."
+##
+## TI-003 regression #18 is "First quiet day decays Pressure early", which is an
+## off-by-one nobody would notice in play — the score simply falls a day sooner
+## than designed, forever. So the whole ramp is walked day by day rather than
+## sampled at the end.
+func _check_pressure_recovery(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.cash = 5000
+	# Placed directly on the row rather than through `add_pressure`, so no bleed
+	# is scheduled: this check is about recovery, and a bleed landing on a
+	# neighbour would be a second moving part.
+	var row: Dictionary = engine.pressure_row("north_star_lot", "boost")
+	row["score"] = 5.0
+	row["last_gain_day"] = 9
+	row["quiet_days"] = 0
+
+	# Night 9 → day 10. Day 9 was NOT quiet: the gain was on it.
+	_expect_true("night 9 dispatches", gm.dispatch("advance_time", {}))
+	_expect_float("the day after a gain holds",
+		engine.pressure_score("north_star_lot", "boost"), 5.0)
+	_expect_int("and counts no quiet days yet", int(row["quiet_days"]), 0)
+
+	# Night 10 → day 11. Day 10 was the FIRST full quiet day: it holds.
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	_expect_true("night 10 dispatches", gm.dispatch("advance_time", {}))
+	_expect_float("the first full quiet day holds the score",
+		engine.pressure_score("north_star_lot", "boost"), 5.0)
+	_expect_int("the first quiet day is counted", int(row["quiet_days"]), 1)
+
+	# Night 11 → day 12. Day 11 was the second: -1.
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	_expect_true("night 11 dispatches", gm.dispatch("advance_time", {}))
+	_expect_float("the second quiet day takes a point",
+		engine.pressure_score("north_star_lot", "boost"), 4.0)
+	_expect_int("the second quiet day is counted", int(row["quiet_days"]), 2)
+
+	# And every day after.
+	for expected in [3.0, 2.0, 1.0, 0.0]:
+		gs.time_slots_today = 3
+		gs.time_slot = "NIGHT"
+		gm.dispatch("advance_time", {})
+		_expect_float("quiet day %d takes another point" % int(row["quiet_days"]),
+			engine.pressure_score("north_star_lot", "boost"), float(expected))
+	# It floors at zero rather than going negative.
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	_expect_float("recovery floors at zero",
+		engine.pressure_score("north_star_lot", "boost"), 0.0)
+
+	# --- a new gain resets the count, and the ramp starts over ---
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.cash = 5000
+	var reset_row: Dictionary = engine.pressure_row("downtown", "stick")
+	reset_row["score"] = 5.0
+	reset_row["last_gain_day"] = 9
+	reset_row["quiet_days"] = 0
+	for _i in range(2):
+		gs.time_slots_today = 3
+		gs.time_slot = "NIGHT"
+		gm.dispatch("advance_time", {})
+	_expect_int("two nights in, one quiet day is banked", int(reset_row["quiet_days"]), 1)
+	engine.add_pressure("downtown", "stick", 1.0, "cause:recovery:reset")
+	_expect_int("a new gain resets the quiet count", int(reset_row["quiet_days"]), 0)
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	_expect_float("and the score holds again the day after",
+		engine.pressure_score("downtown", "stick"), 6.0)
+	gs.reset_to_new_game()
+
+# --- source gains through the real path -------------------------------------
+
+func _check_pressure_source_gains(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	# A successful lift is +0.5 Boost pressure in the district it happened in.
+	var found_success := false
+	for day in range(1, 40):
+		_frozen_ready(gs)
+		gs.day = day
+		gs.heat = 0.0
+		var cash_mark: int = int(gs.cash)
+		if not gm.dispatch("boost", {"target_id": "night_owl"}):
+			continue
+		if int(gs.cash) <= cash_mark:
+			gs.active_consequence = {}
+			continue
+		found_success = true
+		_expect_float("a clean lift adds half a point of boost pressure",
+			engine.pressure_score("north_star_lot", "boost"), 0.5)
+		_expect_float("and nothing to the stick family",
+			engine.pressure_score("north_star_lot", "stick"), 0.0)
+		break
+	_expect_true("the boost pressure probe found a success", found_success)
+
+	# A FAILED lift adds nothing at the source — the Caught encounter's resolved
+	# tier owns that gain, which is what stops one attempt being charged twice.
+	var found_miss := false
+	for day in range(1, 40):
+		_frozen_ready(gs)
+		gs.day = day
+		gs.heat = 0.0
+		var cash_mark2: int = int(gs.cash)
+		if not gm.dispatch("boost", {"target_id": "night_owl"}):
+			continue
+		if int(gs.cash) > cash_mark2:
+			continue
+		found_miss = true
+		_expect_float("a failed lift adds no pressure of its own",
+			engine.pressure_score("north_star_lot", "boost"), 0.0)
+		_expect_true("it opened the chain that owns the gain",
+			not (gs.active_consequence as Dictionary).is_empty())
+		gs.active_consequence = {}
+		break
+	_expect_true("the boost pressure probe found a miss", found_miss)
+
+	# A robbery adds its resolved tier's value under the Stick family.
+	# FS-003 §6's tiered gains, written out: clean +0.5, messy +1.0, failure
+	# +1.0, catastrophic +2.0.
+	var tier_gains := {"clean": 0.5, "messy": 1.0, "failure": 1.0, "catastrophic": 2.0}
+	for tier_name in ["clean", "messy", "failure", "catastrophic"]:
+		var day: int = _find_stick_day(gs, gm, 1, str(tier_name), 0.0, 0)
+		if day < 0:
+			_fail("stick pressure", "no day produces %s" % str(tier_name))
+			continue
+		_stick_gate_ready(gs, 0.0, 0)
+		gs.day = day
+		_expect_true("stick %s dispatches for pressure" % str(tier_name),
+			gm.dispatch("stickup", {"target_id": "washgo_regular"}))
+		_expect_float("a %s robbery adds its tier's pressure" % str(tier_name),
+			engine.pressure_score("north_star_lot", "stick"),
+			float(tier_gains[tier_name]))
+		_expect_float("and nothing to the boost family",
+			engine.pressure_score("north_star_lot", "boost"), 0.0)
+		gs.active_consequence = {}
+	gs.reset_to_new_game()
+
+# --- what the player is allowed to see --------------------------------------
+
+## TI-003 §19: "UI exposes qualitative District Pressure bands only." The
+## summary is what Boost and Stick render, so it must carry bands and never a
+## score.
+func _check_local_attention(gs: Node, engine: RefCounted) -> void:
+	gs.reset_to_new_game()
+	var quiet: Dictionary = engine.local_attention_summary("north_star_lot")
+	for family in ["market", "boost", "stick"]:
+		_expect_str("an untouched district reads QUIET for %s" % family,
+			str(((quiet["families"] as Dictionary)[family] as Dictionary)["band"]), "QUIET")
+	_expect_str("and its loudest band is QUIET", str(quiet["loudest_band"]), "QUIET")
+
+	engine.add_pressure("north_star_lot", "boost", 6.5, "cause:attn:1")
+	engine.add_pressure("north_star_lot", "stick", 3.5, "cause:attn:2")
+	var loud: Dictionary = engine.local_attention_summary("north_star_lot")
+	_expect_str("boost reads WATCHED",
+		str(((loud["families"] as Dictionary)["boost"] as Dictionary)["band"]), "WATCHED")
+	_expect_str("stick reads KNOWN",
+		str(((loud["families"] as Dictionary)["stick"] as Dictionary)["band"]), "KNOWN")
+	_expect_str("market is still QUIET",
+		str(((loud["families"] as Dictionary)["market"] as Dictionary)["band"]), "QUIET")
+	_expect_str("the loudest family is named", str(loud["loudest_family"]), "boost")
+	_expect_str("and the loudest band with it", str(loud["loudest_band"]), "WATCHED")
+	# The raw score is NOT in the summary. TI-003 §19 and PX-003 §11 both keep
+	# it hidden, and a screen can only render what it is handed.
+	for family in ["market", "boost", "stick"]:
+		var row: Dictionary = (loud["families"] as Dictionary)[family]
+		_expect_true("the %s summary carries no raw score" % family,
+			not row.has("score"))
+	gs.reset_to_new_game()
+
+# --- Financial Pressure -----------------------------------------------------
+
+## TI-003 §17 and regressions #25 and #26, which are both ORDERING bugs:
+##
+##   #25  Financial Pressure folds into Heat before daily decay
+##   #26  Exposure propagates Heat before the Financial Pressure fold
+##
+## Neither crashes and both produce plausible numbers, so both are measured by
+## constructing the one state where the right order and the wrong order differ.
+func _check_financial_pressure_rollover(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	# --- decay, unconditionally ---
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.cash = 5000
+	gs.financial_pressure = 3
+	gs.heat = 0.0
+	_expect_true("the decay night dispatches", gm.dispatch("advance_time", {}))
+	_expect_int("financial pressure decays by one", int(gs.financial_pressure), 2)
+	_expect_float("and folds nothing below the threshold", float(gs.heat), 0.0)
+
+	# It floors at zero rather than going negative.
+	gs.financial_pressure = 0
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	_expect_int("financial pressure floors at zero", int(gs.financial_pressure), 0)
+
+	# --- the boundary, on the side the ordering decides ---
+	#
+	# At 6, decay drops it to 5 and NOTHING folds. Folding first would see 6,
+	# apply the Heat, and only then decay — which is regression #25 exactly, and
+	# is invisible unless the value is sitting on the threshold.
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.cash = 5000
+	gs.financial_pressure = 6
+	gs.heat = 0.0
+	_expect_true("the boundary night dispatches", gm.dispatch("advance_time", {}))
+	_expect_int("six decays to five", int(gs.financial_pressure), 5)
+	_expect_float("and five does not fold", float(gs.heat), 0.0)
+
+	# At 7, decay drops it to 6 and the fold DOES fire.
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.cash = 5000
+	gs.financial_pressure = 7
+	gs.heat = 0.0
+	_expect_true("the fold night dispatches", gm.dispatch("advance_time", {}))
+	_expect_int("seven decays to six", int(gs.financial_pressure), 6)
+	_expect_float("and six folds into exactly one point of heat", float(gs.heat), 1.0)
+
+	# The fold is a DIRECT change, not a criminal gain: Deshawn does not damp it
+	# and no district scales it. TI-003 §7 routes it through `apply_direct`
+	# precisely because it is not heat a crime generated — it is the paper trail
+	# catching up, and it is +1 wherever the player slept.
+	for district in ["north_star_lot", "downtown", "airport_industrial"]:
+		gs.reset_to_new_game()
+		gs.day = 9
+		gs.time_slots_today = 3
+		gs.time_slot = "NIGHT"
+		gs.cash = 5000
+		gs.current_district_id = district
+		gs.crew_records["deshawn"] = {"recruited": true, "status": "active",
+			"tier": 3, "loyalty": 5, "wage_due": 0, "wage_missed_since": -1}
+		gs.financial_pressure = 7
+		gs.heat = 0.0
+		gm.dispatch("advance_time", {})
+		_expect_float("the fold is a flat +1 in %s, with Deshawn on the crew" % district,
+			float(gs.heat), 1.0)
+		gs.crew_records.erase("deshawn")
+
+	# --- regression #26: Exposure must see the FOLDED morning Heat ---
+	#
+	# Exposure broadcasts on the way past 10.0 (`neighborhood`) and 8.0
+	# (`household`). Starting at 9.6, the fold's +1 carries the meter to 10.6,
+	# which is a NEIGHBORHOOD broadcast. If Exposure ran first it would see 9.6
+	# and broadcast on the household channel instead — a different set of people
+	# find out, one day late, forever.
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.cash = 5000
+	gs.financial_pressure = 7
+	gs.heat = 9.6
+	gs.observation_queue = []
+	_expect_true("the ordering night dispatches", gm.dispatch("advance_time", {}))
+	_expect_float("the fold carried the meter past ten",
+		snappedf(float(gs.heat), 0.0001), 10.6)
+	var channels: Array = []
+	for item in gs.observation_queue:
+		var spec: Dictionary = (item as Dictionary)["spec"]
+		if str(spec.get("event", "")) == "carrying_heat":
+			channels.append(str(spec.get("source", "")))
+	_expect_true("exposure broadcast the folded heat, not the pre-fold heat",
+		"neighborhood" in channels)
+	_expect_true("and not on the lower channel the pre-fold value would have hit",
+		not ("household" in channels))
+
+	# --- routine spending creates no Financial Pressure at all ---
+	#
+	# TI-003 regression #24. Buying product is dirty-first by design and must
+	# stay silent however much of it moves.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 5000
+	gs.dirty_cash = 5000
+	gs.clean_cash = 0
+	gs.financial_pressure = 0
+	gs.inventory = {}
+	var bought := false
+	for product in gs.products:
+		if bool((product as Dictionary).get("locked", false)):
+			continue
+		if gm.dispatch("market_buy", {"product_id": str((product as Dictionary)["id"]),
+				"quantity": 1}):
+			bought = true
+			break
+	_expect_true("a routine purchase dispatches", bought)
+	_expect_int("routine spending creates no financial pressure",
+		int(gs.financial_pressure), 0)
+	gs.reset_to_new_game()
+
+## TI-003 §21: Pressure is arithmetic. None of it may touch the seeded stream.
+func _check_pressure_rng_non_drift(gs: Node, gm: Node, engine: RefCounted) -> void:
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.rng_state = 313131
+	var cursor: int = int(gs.rng_state)
+	engine.add_pressure("north_star_lot", "boost", 2.0, "cause:rng:1")
+	engine.add_market_pressure("north_star_lot")
+	var _band: String = engine.pressure_band("north_star_lot", "boost")
+	var _penalty: float = engine.difficulty_penalty("north_star_lot", "boost")
+	var _summary: Dictionary = engine.local_attention_summary("north_star_lot")
+	engine.apply_pressure_bleed(int(gs.day) + 1)
+	engine.apply_pressure_recovery(int(gs.day) + 4)
+	engine.decay_financial_pressure()
+	engine.fold_financial_pressure()
+	_expect_int("the whole pressure system draws nothing from the market stream",
+		int(gs.rng_state), cursor)
+
+	# And end to end: a consequence-heavy day must move the cursor exactly as
+	# many times as a quiet one, because only the nightly evolve may move it.
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.cash = 5000
+	gs.rng_state = 555555
+	gm.dispatch("advance_time", {})
+	var quiet_cursor: int = int(gs.rng_state)
+
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.cash = 5000
+	gs.rng_state = 555555
+	gs.financial_pressure = 9
+	engine.add_pressure("north_star_lot", "boost", 3.0, "cause:rng:2")
+	engine.add_pressure("downtown", "stick", 2.0, "cause:rng:3")
+	engine.add_market_pressure("north_star_lot")
+	gm.dispatch("advance_time", {})
+	_expect_int("a pressure-heavy night walks the market identically",
+		int(gs.rng_state), quiet_cursor)
+	gs.reset_to_new_game()
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -8721,7 +9521,12 @@ func _fail(label: String, detail: String) -> void:
 ## wallet in `_check_booking_provenance` is what catches it now, and the shape of
 ## that mistake — a check that could only ever pass — is the reason every new
 ## check in this build is sabotaged before it is trusted.
-const MIN_CHECKS := 9440
+##
+## FS-003.9 raises it to 9637. A chunk of the growth is not new SURFACE but
+## re-pinned numbers: turning district Heat scaling on moved every existing
+## stickup, boost and Caught Heat assertion, and each one was re-derived from
+## the authored multiplier rather than from whatever the code now returns.
+const MIN_CHECKS := 9637
 
 func _finish() -> void:
 	if _failures.is_empty():

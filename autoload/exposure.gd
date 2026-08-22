@@ -166,7 +166,11 @@ var game_manager: Node
 func _ready() -> void:
 	gs = get_node("/root/GameState")
 	game_manager = get_node("/root/GameManager")
-	gs.day_crossed.connect(_on_day_crossed)
+	# NOT connected to `day_crossed`. TI-003 §2 and §9 put this rollover at a
+	# declared position in DayLifecycle's post-increment sequence — specifically
+	# AFTER the Financial Pressure fold, so the morning's Heat broadcast is
+	# measured against the Heat the fold just applied (regression #26). A signal
+	# connection cannot express "after".
 
 func _require_dispatch(method_name: String) -> bool:
 	var active: bool = game_manager != null and game_manager.is_dispatching()
@@ -384,7 +388,12 @@ func propagate_heat() -> void:
 			})
 			return
 
-func _on_day_crossed() -> void:
+## The day tick, called by name from `DayLifecycle.ROLLOVER_ORDER`.
+##
+## Propagate first, then deliver: a queued observation arriving this morning is
+## news from a previous day, and letting it land before the Heat broadcast would
+## reorder two things the player experiences as one morning.
+func rollover() -> void:
 	if gs.game_over:
 		return
 	propagate_heat()

@@ -393,3 +393,116 @@ func stick_arrests(stick_tier: int, tier_name: String, pre_source_heat: float) -
 		return false
 	var gate: float = float(STICK_FAILURE_ARREST_HEAT.get(clampi(stick_tier, 1, 3), 10.0))
 	return pre_source_heat > gate
+
+# --- District Pressure (TI-003 §8, FS-003 §6) ------------------------------
+#
+# Pressure answers one question: *how recognizable has this criminal pattern
+# become in this part of the city?* It is not Global Heat and it never converts
+# into it. Heat is how urgently police want you today; Pressure is whether the
+# people on this block have started to recognise the routine.
+#
+# Per district, per criminal family, 0 to 9.
+
+const FAMILY_MARKET := "market"
+const FAMILY_BOOST := "boost"
+const FAMILY_STICK := "stick"
+const PRESSURE_FAMILIES: Array[String] = [FAMILY_MARKET, FAMILY_BOOST, FAMILY_STICK]
+
+## FS-003 §6: "Each district/family score ranges from 0 to 9."
+const PRESSURE_MAX := 9.0
+const PRESSURE_MIN := 0.0
+
+const BAND_QUIET := "QUIET"
+const BAND_KNOWN := "KNOWN"
+const BAND_WATCHED := "WATCHED"
+const BAND_HOT := "HOT"
+
+## TI-003 §8's band mapping, with FS-003 §6's difficulty steps already resolved
+## into percentage points: "One difficulty step is 8 percentage points off the
+## source action's success chance before its existing clamp. Maximum dynamic
+## local penalty: 24 percentage points."
+##
+## Read HIGHEST FIRST by `pressure_band`, so the `HOT` row's `min` of 9.0 is
+## reached only at the cap — FS-003 writes that row as `9` exactly, not `8+`.
+const PRESSURE_BANDS: Array[Dictionary] = [
+	{"min": 9.0, "band": BAND_HOT, "penalty": 0.24, "steps": 3},
+	{"min": 6.0, "band": BAND_WATCHED, "penalty": 0.16, "steps": 2},
+	{"min": 3.0, "band": BAND_KNOWN, "penalty": 0.08, "steps": 1},
+	{"min": 0.0, "band": BAND_QUIET, "penalty": 0.00, "steps": 0},
+]
+
+## FS-003 §6: a clean initial Boost success adds +0.5 Boost pressure. A FAILED
+## lift adds nothing here — it waits for the Caught encounter's resolved tier,
+## which is what `PRESSURE_BY_TIER` above already covers.
+const PRESSURE_BOOST_SUCCESS := 0.5
+
+## FS-003 §6: "A completed criminal market sale adds +0.25 Market pressure,
+## capped at +1 Market pressure per district per day from ordinary sales."
+##
+## Selling only. Buying product is not what makes a corner recognisable — the
+## repeated handoff is.
+const PRESSURE_MARKET_SALE := 0.25
+const PRESSURE_MARKET_DAILY_CAP := 1.0
+
+## FS-003 §6: "New local pressure bleeds once to adjacent current districts at
+## 50% of the new gain on the next day-cross." The NEW GAIN, not the stored
+## score — regression #17 in spirit: the whole score never copies outward again.
+const PRESSURE_BLEED_FRACTION := 0.5
+
+## FS-003 §6's active adjacency. Downtown and Industrial have no direct edge in
+## the current three-district map, which is why this is authored rather than
+## derived from "every other district".
+const DISTRICT_ADJACENCY := {
+	"north_star_lot": ["downtown", "airport_industrial"],
+	"downtown": ["north_star_lot"],
+	"airport_industrial": ["north_star_lot"],
+}
+
+## FS-003 §6's recovery rule. The first full quiet day HOLDS; the second and
+## every one after takes a point off. TI-003 regression #18 is "First quiet day
+## decays Pressure early", and the grace count is what stops it.
+const PRESSURE_QUIET_GRACE_DAYS := 1
+const PRESSURE_QUIET_RECOVERY := 1.0
+
+# --- Financial Pressure rollover (TI-003 §17, FS-003 §8) -------------------
+#
+# The GAIN side lives in `systems/wallet.gd` beside the spend that produces it —
+# the wallet is the only thing that can see a transaction's dirty portion, and
+# splitting the formula from the only caller that can evaluate it would buy
+# nothing. What lives here is the ROLLOVER, which the day lifecycle owns.
+
+## TI-003 §17, post-increment: `financial_pressure = max(0, financial_pressure - 1)`.
+const FINANCIAL_PRESSURE_DECAY := 1
+## Then, on what REMAINS: "if financial_pressure >= 6: HeatSystem.apply_direct(+1)".
+##
+## The order is load-bearing and both halves are on TI-003's regression list:
+## #25 is folding before the decay, #26 is Exposure propagating morning Heat
+## before the fold. Decay, then fold, then Exposure — see `day_lifecycle.gd`.
+const FINANCIAL_PRESSURE_FOLD_AT := 6
+const FINANCIAL_PRESSURE_FOLD_HEAT := 1.0
+
+# --- pressure lookups ------------------------------------------------------
+
+## The band a score falls in. Walks highest-first, so `HOT` needs the full 9.
+func pressure_band(score: float) -> String:
+	for row in PRESSURE_BANDS:
+		if score >= float((row as Dictionary)["min"]):
+			return str((row as Dictionary)["band"])
+	return BAND_QUIET
+
+## Percentage points off a source action's success chance, BEFORE its clamp.
+func pressure_penalty(score: float) -> float:
+	for row in PRESSURE_BANDS:
+		if score >= float((row as Dictionary)["min"]):
+			return float((row as Dictionary)["penalty"])
+	return 0.0
+
+## Difficulty steps, for anything that wants the band's rank rather than its cost.
+func pressure_steps(score: float) -> int:
+	for row in PRESSURE_BANDS:
+		if score >= float((row as Dictionary)["min"]):
+			return int((row as Dictionary)["steps"])
+	return 0
+
+func adjacent_districts(district_id: String) -> Array:
+	return (DISTRICT_ADJACENCY.get(district_id, []) as Array).duplicate()

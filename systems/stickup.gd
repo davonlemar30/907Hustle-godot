@@ -172,8 +172,21 @@ func chance_for(target: Dictionary) -> float:
 	var c: float = base \
 		+ (float(attributes.compat("combat")) - 2.0) * 0.08 \
 		- float(target["resistance"]) * gs.DISTRICT_DIFF_STEP \
-		- gs.heat * 0.012
+		- gs.heat * 0.012 \
+		- _pressure_penalty()
 	return clampf(c, 0.15, 0.90)
+
+## TI-003 §8's local difficulty penalty for the Stick family, subtracted before
+## the existing clamp. Zero in a QUIET district, which is every fresh run.
+##
+## `resistance` and this are not the same thing and must not be confused: the
+## target's resistance is how hard THAT mark is, permanently. Pressure is how
+## much attention YOU have brought to this district, and it decays.
+func _pressure_penalty() -> float:
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine == null:
+		return 0.0
+	return engine.difficulty_penalty(gs.current_district_id, "stick")
 
 func _run(target_id: String) -> Dictionary:
 	var blocked := blocker(target_id)
@@ -272,6 +285,24 @@ func _run(target_id: String) -> Dictionary:
 	resolver.broadcast_outcome("robbery", tier, gs.current_district_id,
 		result["take"] if success else null)
 
+	var engine_for_pressure: Object = gm.system("consequence") if gm != null else null
+
+	# FS-003 §6: "Stick uses the resolved outcome table above" — the same tiered
+	# gains a Caught encounter uses, under the `stick` family. A clean take is
+	# +0.5 because nobody watched you struggle; a catastrophe is +2.0 because
+	# everybody did.
+	#
+	# Written before the Cause is allocated, and deliberately with no cause_id:
+	# the source robbery's Pressure is not a consequence effect and carries no
+	# receipt, because a robbery resolves once inside one dispatch and cannot be
+	# replayed. The bleed it schedules is keyed on the target and the day.
+	var rules_pressure: RefCounted = RULES.new()
+	var pressure_gain: float = float(rules_pressure.PRESSURE_BY_TIER.get(tier, 0.0))
+	if pressure_gain > 0.0 and engine_for_pressure != null:
+		engine_for_pressure.add_pressure(gs.current_district_id, "stick", pressure_gain,
+			"stickup:%s:%d:%d" % [target_id, gs.day, gs.time_slots_today])
+		result["pressure"] = pressure_gain
+
 	# TI-003 §4: "Every qualifying risky source action gets one stable Cause ID."
 	# Allocated for EVERY attempt, not only the ones that end badly, because two
 	# later consumers need it and neither can know at this point whether it will
@@ -279,7 +310,7 @@ func _run(target_id: String) -> Dictionary:
 	# which keys its schedule roll on the Cause. Allocation is a counter bump and
 	# writes no history row, so an attempt nothing answers costs one integer.
 	var cause_id: String = ""
-	var engine: Object = gm.system("consequence") if gm != null else null
+	var engine: Object = engine_for_pressure
 	if engine != null:
 		cause_id = engine.allocate_cause_id()
 	result["cause_id"] = cause_id

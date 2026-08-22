@@ -113,7 +113,7 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## a missing key as -1: no cooldown, which is the correct history for arrests
 ## that predate the mechanic. One bump, one arm, both new pieces of state
 ## covered.
-const SAVE_VERSION := 12
+const SAVE_VERSION := 13
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 
 ## Every mutable GameState field, captured and applied by name. products.price
@@ -182,6 +182,9 @@ const PERSIST_FIELDS: Array[String] = [
 	# Heat's teeth (v12). `heat_gain_today` is the quiet-day flag and must
 	# survive a mid-day reload or the day gets a decay it did not earn.
 	"heat_gain_today", "lay_low_day",
+	# Wander (v13). The ramp and the seen-cards ledger; both are the run's own
+	# history of going out and looking, and neither can be reconstructed.
+	"wander_misses", "wander_count", "wander_seen", "wander_recent",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -529,6 +532,17 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# loading run may go quiet once today. A v11 build had no cap at
 				# all, so this cannot take away something the save was relying
 				# on having already spent.
+				pass
+			12:
+				# v12 -> v13: Wander. Every field is additive and every default
+				# IS the history — a v12 save was written by a build whose
+				# Wander button spent a slot and printed the weather, so nothing
+				# was ever found and no card was ever drawn.
+				#
+				# `jobs_discovered` is deliberately untouched, the same call the
+				# v11 arm made about the Night Owl. A loading run has genuinely
+				# never been out looking, and the ramp starts it at the oracle's
+				# 30% like anybody else.
 				pass
 			_:
 				return {}

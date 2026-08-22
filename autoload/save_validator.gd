@@ -3,11 +3,14 @@ extends RefCounted
 ## Preloaded rather than reached through the tree: this is a RefCounted, it has
 ## no tree, and a repair table belongs with the data it describes.
 const GAME_STATE := preload("res://autoload/game_state.gd")
+## The wander ramp's authored numbers, for the clamp that keeps a corrupt save
+## from pinning the discovery roll at its cap.
+const GAME_STATE_EVENTS := preload("res://data/wander_events.gd")
 ## Nested save-shape repair for load-time payloads.
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v10. Older saves are
+## repaired payload back to disk. The save schema is v13. Older saves are
 ## migrated before this validator runs, so every arm below reads a v10 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
@@ -33,6 +36,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_gym_streak(state, repairs)
 	_validate_venues_entered(state, repairs)
 	_validate_heat_day(state, repairs)
+	_validate_wander(state, repairs)
 	return {"state": state, "repairs": repairs}
 
 func _repair(repairs: Array[String], path: String, reason: String) -> void:
@@ -575,6 +579,64 @@ func _validate_heat_day(state: Dictionary, repairs: Array[String]) -> void:
 	if int(state["lay_low_day"]) > today:
 		state["lay_low_day"] = -1
 		_repair(repairs, "lay_low_day", "went quiet in the future; cleared")
+
+## v13. The wander ramp and its seen-cards ledger.
+##
+## The ramp is the one that can be abused: it is the numerator of the discovery
+## chance, so a large enough `wander_misses` pins the roll at its 70% cap
+## forever. Clamping it to the number of misses that actually reaches the cap
+## costs an honest save nothing — past that point the extra misses were already
+## doing nothing — and takes the exploit away.
+func _validate_wander(state: Dictionary, repairs: Array[String]) -> void:
+	var ceiling: int = int(ceil((GAME_STATE_EVENTS.DISCOVERY_CAP
+		- GAME_STATE_EVENTS.DISCOVERY_BASE) / GAME_STATE_EVENTS.DISCOVERY_PER_MISS))
+	for field in ["wander_misses", "wander_count"]:
+		if not state.has(field):
+			continue
+		if not (state[field] is int or state[field] is float):
+			state[field] = 0
+			_repair(repairs, field, "wrong type; defaulted")
+		elif int(state[field]) < 0:
+			state[field] = 0
+			_repair(repairs, field, "negative; defaulted")
+		else:
+			state[field] = int(state[field])
+	if state.has("wander_misses") and int(state["wander_misses"]) > ceiling:
+		_repair(repairs, "wander_misses",
+			"beyond the cap (%d); clamped" % int(state["wander_misses"]))
+		state["wander_misses"] = ceiling
+
+	if state.has("wander_seen"):
+		if not state["wander_seen"] is Dictionary:
+			state["wander_seen"] = {}
+			_repair(repairs, "wander_seen", "wrong type; defaulted")
+		else:
+			var seen: Dictionary = state["wander_seen"]
+			for card_id in seen.keys():
+				var path := "wander_seen.%s" % str(card_id)
+				if not (seen[card_id] is int or seen[card_id] is float):
+					seen[card_id] = 0
+					_repair(repairs, path, "wrong type; defaulted")
+				elif int(seen[card_id]) < 0:
+					seen[card_id] = 0
+					_repair(repairs, path, "negative count; defaulted")
+				else:
+					seen[card_id] = int(seen[card_id])
+
+	if not state.has("wander_recent"):
+		return
+	if not state["wander_recent"] is Array:
+		state["wander_recent"] = []
+		_repair(repairs, "wander_recent", "wrong type; defaulted")
+		return
+	var clean: Array = []
+	for index in (state["wander_recent"] as Array).size():
+		var value: Variant = (state["wander_recent"] as Array)[index]
+		if not value is String:
+			_repair(repairs, "wander_recent[%d]" % index, "non-string dropped")
+			continue
+		clean.append(value)
+	state["wander_recent"] = clean
 
 func _validate_arrest_record(state: Dictionary, repairs: Array[String]) -> void:
 	if not state.has("arrest_record"):

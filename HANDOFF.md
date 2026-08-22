@@ -4760,6 +4760,14 @@ Recovery → Lay Low (free, always available, verified) until the card earns its
 way back. Re-homing that control is a navigation change and was out of scope
 ("New screens or navigation changes"). Filed for the next UX pass.
 
+**CLOSED in batch 10.** That was the next UX pass. `MOVE PRODUCT` was never a
+product-moving control at all — the comment above it names it as canon's
+`explore_spenard`, which is **Wander**, priced correctly at one slot and no
+money and wired to `advance_time` plus a toast reading "Time passes." The slot
+was spent and nothing was bought with it. Wander now has its own always-present
+card on Home, above the operation card and outside its HIDDEN gate, so a fresh
+run always has a way to move the clock and something to show for it.
+
 **Unlock triggers were authored, not found.** The brief says Downtown and
 Industrial "unlock via existing travel/territory events". No such event exists —
 travel was unconditional. Rather than invent progression content, the latches
@@ -5651,6 +5659,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 7 | `codex/batch-7-venue-interiors` | Spenard Gym · Night Owl · `effectiveAttribute` + the gym streak ported · the `night_owl` job made findable | 11,402 → 11,493 | Merged, PR #61. **Save v10 → v11.** |
 | 8 | `codex/batch-8-heat-teeth` | Heat bands · the quiet-day decay · the street stop · Lay Low capped · the propagation inversion fixed | 11,493 → 11,576 | Merged, PR #62. **Save v11 → v12.** |
 | 9 | `codex/batch-9-balance-pass` | **The instrument was lying** — a leaked catalogue corrupted every economy number since batch 3 · the class closed · two balance findings filed with live numbers | 11,576 → 11,622 | Merged, PR #63. Schema unchanged. |
+| 10 | `codex/batch-10-wander` | **Wander** — the ramped discovery, the card registry, a fourth chain kind · Home's three dead buttons · two unreachable jobs made findable | 11,622 → 11,723 | Merged, PR #64. **Save v12 → v13.** |
 
 **Two verification defects found in batch 6b, both in the harness rather than
 the game, both now fixed:**

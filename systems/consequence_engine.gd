@@ -79,8 +79,18 @@ const STAGE_TRANSITIONS := {
 const KIND_BOOST_CAUGHT := "boost_caught"
 const KIND_STICK_BOOKING := "stick_booking"
 const KIND_RETALIATION := "retaliation"
+## The fourth kind. A person who is in front of you because you went out
+## looking, rather than because of something you did to them.
+##
+## It is a kind rather than a new engine for the same reason the web build gave
+## when it routed a blown lift through here — "reusing EncounterModal, no new UI
+## shell". A chain is a chain: the screen renders any of them, the stage table
+## governs all of them, and a reloaded save finds its source through the same
+## runtime adapter registry. What a fourth kind actually costs is this constant
+## and one `resolve_consequence` method on the system that opens it.
+const KIND_WANDER := "wander_encounter"
 const KNOWN_KINDS: Array[String] = [
-	KIND_BOOST_CAUGHT, KIND_STICK_BOOKING, KIND_RETALIATION,
+	KIND_BOOST_CAUGHT, KIND_STICK_BOOKING, KIND_RETALIATION, KIND_WANDER,
 ]
 
 var gs: Node

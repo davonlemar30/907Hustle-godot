@@ -113,6 +113,9 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Claim corners, post soldiers, collect nightly | Home → Turf |
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
+| Go out and look, and find out what is around | Home → WANDER |
+| Turn up work nobody told you about by walking the block | automatic, on a wander |
+| Get stopped on foot and decide what to do about it | automatic, above WATCHED |
 | Read texts, pay bills, hear word around town | Phone |
 | Reach everything else, and read the rules | More · More → Help |
 | See what the block calls you, and why | More → Character |
@@ -258,6 +261,7 @@ systems/              # the ONLY writers of GameState
                       #  for it, they do not bring their own condition engine)
   territory.gd        # corners, soldiers, passive income
   venues.gd           # the two Spenard interiors: gym sessions, the counter
+  wander.gd           # going out and looking: the ramp, the draw, the encounter
 
 ui/screens/*.tscn|.gd # one scene per screen; screen_base.gd holds shared chrome
 ui/components/        # atmosphere.tscn (grain/vignette), toast.tscn

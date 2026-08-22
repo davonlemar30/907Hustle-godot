@@ -135,6 +135,7 @@ func _ready() -> void:
 		_check_save_roundtrip()
 		_check_v010()
 		_check_batch1()
+		_check_batch2()
 	_finish()
 
 func _load_fixtures() -> Dictionary:
@@ -14479,6 +14480,179 @@ func _check_dispatch_guard_coverage() -> void:
 				text.contains('_require_dispatch("%s")' % name))
 
 
+# =============================================================================
+# Batch 2 — the settlement contract, and three findings that did not reproduce
+# =============================================================================
+
+func _check_batch2() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	_check_settlement_contract(gs, gm)
+	_check_fresh_run_identity(gs, gm)
+	_check_no_duplicate_home_entry()
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- B2: the four audited ordering dependencies -----------------------------
+#
+# The day-cross order is already asserted as a literal sequence by
+# `_check_lifecycle_trace`. This is different: it asserts the four dependencies
+# that were audited as LOAD-BEARING, each against the reason it matters, so a
+# reordering that still produces a valid-looking sequence is caught by the thing
+# it would actually break.
+#
+# SABOTAGE: swap crew and territory in SETTLE_ORDER -> "crew settles before
+#           territory" fails.
+# SABOTAGE: move `day_crossed` above `economy.evolve()` -> "a day_crossed
+#           listener sees the new board" fails.
+
+func _check_settlement_contract(gs: Node, gm: Node) -> void:
+	var lifecycle: RefCounted = gm.system("day_lifecycle") as RefCounted
+	var settle: Array = lifecycle.SETTLE_ORDER
+	var rollover: Array = lifecycle.ROLLOVER_ORDER
+
+	# 1. Crew settles before territory. A crew member who departs tonight for
+	#    unpaid wages must not reduce tonight's territory heat.
+	_expect_true("crew settles before territory",
+		settle.find("crew") >= 0 and settle.find("territory") > settle.find("crew"))
+
+	# 2. Exposure settles after jobs, obligations and shark, so an observation
+	#    those three produce on this cross can be delivered the same night.
+	#    Expressed as PHASE position rather than list index: they are in
+	#    different lists, and "which list" is the actual guarantee.
+	_expect_true("jobs settles in SETTLE", settle.find("jobs") >= 0)
+	_expect_true("obligations settles in SETTLE", settle.find("obligations") >= 0)
+	_expect_true("shark settles in SETTLE", settle.find("shark") >= 0)
+	_expect_true("exposure runs in ROLLOVER, after every settler",
+		rollover.find("exposure") >= 0)
+	var trace: Array = LIFECYCLE_EXPECTED_TRACE
+	for settler in ["jobs", "obligations", "shark"]:
+		_expect_true("exposure runs after SETTLE:%s" % settler,
+			trace.find("ROLLOVER:exposure") > trace.find("SETTLE:%s" % settler))
+
+	# 3. INVERTED since the audit: a `day_crossed` listener sees the NEW board.
+	#    Asserted against real prices rather than against the trace, because the
+	#    trace would still pass if `evolve()` stopped changing anything.
+	_expect_true("the market evolves before day_crossed",
+		trace.find("MARKET:evolve") < trace.find("MARKET:day_crossed"))
+	_lifecycle_ready(gs)
+	var seen_on_cross: Dictionary = {}
+	var listener: Callable = func() -> void:
+		for product in gs.products:
+			seen_on_cross[str((product as Dictionary)["id"])] = int((product as Dictionary)["price"])
+	gs.day_crossed.connect(listener)
+	var before_cross: Dictionary = {}
+	for product in gs.products:
+		before_cross[str((product as Dictionary)["id"])] = int((product as Dictionary)["price"])
+	gm.dispatch("advance_time", {})
+	gs.day_crossed.disconnect(listener)
+	_expect_true("a day_crossed listener saw a board at all", not seen_on_cross.is_empty())
+	var after_cross: Dictionary = {}
+	for product in gs.products:
+		after_cross[str((product as Dictionary)["id"])] = int((product as Dictionary)["price"])
+	_expect_str("a day_crossed listener sees the new board",
+		str(seen_on_cross), str(after_cross))
+	# And the walk actually moved something, or the check above proves nothing.
+	_expect_true("the overnight walk repriced the board",
+		str(before_cross) != str(after_cross))
+
+	# 4. The phone comes back AFTER the night, not during it.
+	_lifecycle_ready(gs)
+	gs.phone_active = false
+	gs.phone_reactivate_at_slot = 0
+	var phone_on_cross: Array[bool] = []
+	var phone_listener: Callable = func() -> void:
+		phone_on_cross.append(bool(gs.phone_active))
+	gs.day_crossed.connect(phone_listener)
+	gm.dispatch("advance_time", {})
+	gs.day_crossed.disconnect(phone_listener)
+	_expect_int("the phone listener ran once", phone_on_cross.size(), 1)
+	if phone_on_cross.size() == 1:
+		_expect_true("a day_crossed listener sees the phone before restoration",
+			not phone_on_cross[0])
+	_expect_true("and the line is back once the whole advance has run", bool(gs.phone_active))
+
+# --- C1: a run with nothing behind it has no identity yet -------------------
+#
+# Filed as "Street Identity shows 'Hustler' on a brand new game". It does not:
+# it shows "New Face". `dominant_attribute` reads balanced when no lane leads by
+# more than the margin, `dominant_category` reads "default" on an empty ledger,
+# and `IDENTITY_MATRIX.balanced.default` is "New Face". "Hustler" is
+# balanced + PRESENCE, which needs observations the run has not produced.
+#
+# Pinned rather than closed on that reasoning, because the failure it describes
+# is exactly what a leaked ledger or a mis-defaulted category would look like.
+#
+# SABOTAGE: default `dominant_category` to "presence" -> "a fresh run has not
+#           been named yet" fails, reporting Hustler.
+
+func _check_fresh_run_identity(gs: Node, gm: Node) -> void:
+	var attributes: RefCounted = gm.system("attributes") as RefCounted
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_expect_true("a fresh run has an empty ledger", (gs.npc_ledgers as Dictionary).is_empty())
+	_expect_int("a fresh run has observed nothing",
+		(attributes.recent_observations() as Array).size(), 0)
+	_expect_str("a fresh run has no dominant lane", attributes.dominant_attribute(), "balanced")
+	_expect_str("a fresh run has no dominant behaviour",
+		attributes.dominant_category(attributes.recent_observations()), "default")
+	_expect_str("a fresh run has not been named yet", attributes.street_identity(), "New Face")
+	# The label the ticket reported is reachable — it just needs the behaviour
+	# that earns it. Without this the check above would also pass if the matrix
+	# were empty.
+	_expect_str("presence on a balanced run reads Hustler",
+		str((attributes.IDENTITY_MATRIX["balanced"] as Dictionary)["presence"]), "Hustler")
+	_expect_str("and New Face is the balanced default",
+		str((attributes.IDENTITY_MATRIX["balanced"] as Dictionary)["default"]), "New Face")
+
+# --- C3: nothing offers a second door to a screen you are already on --------
+#
+# Filed as "a Home menu option duplicates the nav bar icon". This build has no
+# Home menu row — More's six rows are Finances, Operations, Crew, Recovery,
+# Character and Help — and `screen_base._wire_nav()` already declines to wire
+# the current screen's own nav cell. Both halves asserted, because "there is no
+# duplicate" is only true until somebody adds one.
+#
+# SABOTAGE: add a Home row to more.gd -> "no menu row duplicates a nav
+#           destination" fails, naming the route.
+
+func _check_no_duplicate_home_entry() -> void:
+	var nav := get_node("/root/ScreenManager")
+	var file := FileAccess.open("res://ui/screens/more.gd", FileAccess.READ)
+	if file == null:
+		_fail("duplicate nav", "could not read more.gd")
+		return
+	var text: String = file.get_as_text()
+	file.close()
+	for cell in nav.NAV_ROUTES.keys():
+		var route: String = str(nav.NAV_ROUTES[cell])
+		var constant: String = str(cell).to_upper()
+		_expect_true("no menu row duplicates the %s nav destination" % str(cell),
+			not text.contains("nav.%s))" % constant))
+	# The other half: the nav cell for the screen you are on is never wired, so
+	# even a duplicated destination could not re-enter the current screen.
+	var home: Node = _instantiate_screen("res://ui/screens/home.tscn")
+	if home == null:
+		_fail("duplicate nav", "Home would not instantiate")
+		return
+	var home_button := home.get_node_or_null("HomeBtn") as Button
+	_expect_true("Home has a home button at all", home_button != null)
+	if home_button != null:
+		_expect_int("the current screen's own nav cell is inert",
+			home_button.pressed.get_connections().size(), 0)
+	_free_screen(home)
+	# And a cell for a DIFFERENT screen is wired, or the check above passes on
+	# a screen whose nav was never wired at all.
+	var street: Node = _instantiate_screen("res://ui/screens/street.tscn")
+	if street == null:
+		_fail("duplicate nav", "Street would not instantiate")
+		return
+	var street_home := street.get_node_or_null("HomeBtn") as Button
+	_expect_true("Street's home cell is wired",
+		street_home != null and street_home.pressed.get_connections().size() > 0)
+	_free_screen(street)
+
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -14618,11 +14792,19 @@ func _fail(label: String, detail: String) -> void:
 ##
 ## 11110 (v0.1.0) + 37 (batch 1) = 11147, measured.
 ##
+## Batch 2 raises it to 11167. Its 30 checks are almost all enforcement of
+## things that were already TRUE — the four audited day-cross ordering
+## dependencies, a fresh run having no street identity yet, and nothing offering
+## a second door to the screen you are already on. Three of them came off
+## tickets that did not reproduce, and that is exactly when a check earns its
+## keep: "this does not happen" is a claim with a shelf life unless something
+## holds it. 11147 + 30 = 11177, measured.
+##
 ## Ten of margin, the same margin every floor since FS-003.13 has left, because
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11137
+const MIN_CHECKS := 11167
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

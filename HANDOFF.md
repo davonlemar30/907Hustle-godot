@@ -5070,6 +5070,112 @@ was nothing left for this batch to add.
 
 **B4 (Night Owl "Mini Mart")** shipped in v0.1.0, venue and boost target both.
 
+## Batch 2 — The settlement contract  (added 2026-08-22)
+
+Branch `codex/batch-2-docs-and-glyphs`, from `main` at `d6bdcd8`.
+
+**Parity: 11,177 checks, 0 failures** (from 11,147). Floor 11,137 → 11,167.
+**No production behaviour changed.** Every line of code in this batch is either
+a comment or a test.
+
+That is the finding, not an apology for it. Six tickets were selected; **five of
+them did not reproduce.** Four had already been fixed by earlier builds and one
+describes a surface this port does not have. The work was proving that, and then
+making sure each stays fixed.
+
+### B2 — the day-cross settlement ordering contract (the real one)
+
+The audit that filed this recorded an implicit order and four load-bearing
+dependencies. FS-003.2 has since made the order explicit — `SETTLE_ORDER`,
+`POST_SETTLE_ORDER`, `ROLLOVER_ORDER`, `DAY_START_ORDER`, with the whole trace
+asserted as a literal — so the ticket's closing line ("FS-002.2 should
+eventually replace this with named settlement phases") is already satisfied,
+early and by a different milestone.
+
+What was still missing is the part a reader needs: `time_system.gd` owns the
+CLOCK and is where somebody arrives asking "what happens at midnight", and it
+said almost nothing. It now carries the contract and names all four
+dependencies. Each is asserted — a reordering that still produces a
+valid-looking sequence is now caught by the thing it would actually break, not
+just by the literal trace.
+
+**One of the four had silently inverted.** The audit recorded *"any future
+listener sees pre-evolution markets"*. It does not: FS-003.2 moved
+`day_crossed` BELOW `economy.evolve()` deliberately, because everything still
+connected to that signal was written expecting the new day on the clock and the
+board priced. A listener written against the old note would read yesterday's
+prices. That is now asserted against **real prices** rather than against the
+trace — the trace would still pass if `evolve()` stopped changing anything, so
+the check also asserts the overnight walk actually repriced the board.
+
+The other three hold: crew settles before territory (a crew member who departs
+tonight for unpaid wages does not reduce tonight's territory heat), Exposure
+settles after jobs/obligations/shark (so an observation those three produce on
+this cross can be delivered the same night), and `day_crossed` listeners see
+pre-restoration phone state.
+
+### C1 — "Street Identity shows 'Hustler' on a brand new game"
+
+**Does not reproduce.** A fresh run shows **"New Face"**. Probed directly:
+empty ledger, zero recent observations, `dominant_attribute` → `balanced` (no
+lane leads by more than the margin), `dominant_category` → `default` (empty
+totals), and `IDENTITY_MATRIX.balanced.default` → `"New Face"`.
+
+"Hustler" is `balanced` + **presence**, which needs observations the run has not
+produced. So the reported symptom is what a leaked ledger or a mis-defaulted
+category would look like — which is why it is pinned rather than closed on the
+reasoning. The sabotage confirms it: defaulting `dominant_category` to
+`"presence"` produces exactly the reported "Hustler", and fails 26 assertions.
+
+### C2 — "NPC name popup renders offscreen at the right edge"
+
+**Not applicable to this port.** There is no popup surface in the Godot build —
+no `PopupPanel`, no `PopupMenu`, no `Window`, no positioned floating panel
+anywhere under `ui/`. NPC names are static labels inside `Container`-laid-out
+cards, and the only overlay is the toast, which is anchored and full-width. This
+is a web-build finding with no Godot counterpart. Nothing to clamp.
+
+Not pinned, because there is nothing to pin — the 375×812 overflow rule already
+covers every control the build actually has, and it is already asserted.
+
+### C3 — "Home menu option duplicates the nav bar icon"
+
+**Already satisfied, twice over.** `more.gd` has six rows — Finances,
+Operations, Crew, Recovery, Character, Help — and no Home row. And
+`screen_base._wire_nav()` has always declined to wire the current screen's own
+nav cell (`if route == scene_file_path: continue`), so even a duplicate could
+not re-enter the screen you are on.
+
+Both halves are now asserted, including the control case: Street's Home cell IS
+wired, or "the current screen's cell is inert" would pass on a screen whose nav
+was never wired at all.
+
+### B1 — pin the oracle SHA — already done
+
+`gen_fixtures.mjs` already carries the literal `a7d9534` in the extraction
+comment and `oracle_commit: "a7d9534"` in the fixture metadata, exactly as the
+ticket's optional half asked. No placeholder remains.
+
+### B3 — replace tofu glyphs (U+2197, U+265B) — already done
+
+Removed by commit `25c44f5` ("Fix eight tofu glyphs in the web export"), with
+the replacements recorded in this file's own glyph table: `icon-external` /
+`icon-arrow-up` for the arrow, `icon-crew` for the queen. Neither codepoint
+appears anywhere in the repo outside that table.
+
+Nothing added — unlike A2/A3 in batch 1, the standing guarantee already exists:
+`scripts/check_glyph_coverage.py` is a CI job that reads the fonts' own cmap
+tables and fails the build on any uncovered character.
+
+### Sabotage log
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| B2-S1 | crew and territory swapped in `SETTLE_ORDER` | ✅ 5 failures |
+| B2-S2 | `day_crossed` emitted before `economy.evolve()` | ✅ 3 failures, including the real-price check |
+| B2-S3 | `dominant_category` defaults to `presence` | ✅ 26 failures — **reports "Hustler", the exact filed symptom** |
+| B2-S4 | a Home row added to `more.gd` | ✅ 1 failure, names the destination |
+
 ## Overnight Build Log — 2026-08-22
 
 Autonomous loop. Each entry: branch, tasks, parity, outcome.
@@ -5078,6 +5184,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | --- | --- | --- | --- | --- |
 | — | `claude/v0.1.0-playtest-polish-b4nlnx` | v0.1.0: versioning · surface visibility · seeded key audit · HOT lever · phone tap target · canonical locations | 10,781 → 11,110 | Merged, PR #53. Save v9 → v10. |
 | 1 | `codex/batch-1-hardening` | A1 settlement day · A2 board fill (verified + guaranteed) · A3 crew capacity (verified + guaranteed) · A4 dispatch guards | 11,110 → 11,147 | Merged, PR #54. Schema unchanged. |
+| 2 | `codex/batch-2-docs-and-glyphs` | B2 settlement contract · B1, B3, C1, C2, C3 verified | 11,147 → 11,177 | Merged, PR #55. No production behaviour changed. |
 
 **Findings carried forward:**
 
@@ -5090,9 +5197,20 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
   works (Street travel, any Hustle action, More → Recovery → Lay Low, all
   verified reachable), but re-homing that control is a navigation change and was
   out of scope.
-- Two tickets on the eligible list were **already closed by earlier work** and
-  were converted into standing guarantees rather than no-op commits: A2 (board
-  fill) and A3 (crew capacity). A5 and B4 were closed outright.
+- **Seven tickets on the eligible list were already closed by earlier work.**
+  A2 and A3 (batch 1) and C1, C3 (batch 2) were converted into standing
+  guarantees rather than no-op commits — "this does not happen" is a claim with
+  a shelf life unless something holds it. A5, B4, B1 and B3 were closed
+  outright; B3 in particular already has its guarantee in
+  `check_glyph_coverage.py`, a CI job, so adding a parity check would have been
+  duplicate enforcement.
+- **C2 is not applicable to this port.** The Godot build has no popup surface at
+  all — no `PopupPanel`, `PopupMenu`, `Window` or positioned floating panel
+  anywhere under `ui/`. It is a web-build finding.
+- **One documented contract had silently inverted.** The day-cross audit
+  recorded that `day_crossed` listeners see pre-evolution markets; FS-003.2
+  moved the signal below `economy.evolve()` deliberately and nothing updated the
+  note. Now asserted against real prices.
 
 ## Working notes / gotchas
 - **Build loop:** `session_activate` → edit scene/theme → `scene_open(force_reload)`

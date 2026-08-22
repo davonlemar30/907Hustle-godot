@@ -341,7 +341,7 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (11,147 checks after batch 1, floor enforced at 11,137); fixtures grow with each system |
+| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (11,177 checks after batch 2, floor enforced at 11,167); fixtures grow with each system |
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
 | 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
 | 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
@@ -368,6 +368,7 @@ regardless of how small the source file is.
 | FS-003.13. Balance pass | ✅ Pressure recovery, arrest gates + cooldown, Financial Pressure activation, PX-003 §8 ambient signals, save v9; parity → 10611 checks |
 | **v0.1.0. Playtest polish** | ✅ build versioning, the surface-visibility access layer (progression gates + feature flags), the seeded-key composition audit, the HOT escape lever, the Phone tap-target fix and the canonical location rename, save v10; parity → 11,110 checks, floor at 11,000 |
 | Batch 1. Hardening | ✅ crew/shark settle against the ending day (canon), every persisted Exposure/Curtis mutator behind the dispatch guard, standing guarantees for the 907List board fill and the crew-capacity accessor; parity → 11,147 checks |
+| Batch 2. The settlement contract | ✅ the four audited day-cross ordering dependencies documented in `time_system.gd` and asserted (one of them had silently inverted); three playtest findings verified as not reproducing and pinned so they cannot start; parity → 11,177 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

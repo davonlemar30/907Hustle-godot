@@ -11,6 +11,47 @@ extends RefCounted
 ## The per-slot evolve this used to do read the nightly cadence as a bug and
 ## "fixed" it — the oracle says nightly was the design (found in Phase 5 while
 ## porting the canon walk).
+##
+## ## The day-cross settlement contract
+##
+## This file owns the CLOCK. It does not own the night — `day_lifecycle.gd` does,
+## and that file's `SETTLE_ORDER` / `POST_SETTLE_ORDER` / `ROLLOVER_ORDER` /
+## `DAY_START_ORDER` are the contract. The order used to be implicit, expressed
+## as whichever order five `day_crossed.connect()` calls happened to run in
+## during `GameManager._ready()`; FS-003.2 made it a declared list, and the
+## parity suite asserts the whole sequence as a literal.
+##
+## Four ordering dependencies were audited as load-bearing. They are named here
+## because this is where a reader arrives when they ask "what happens at
+## midnight", and a contract nobody can find is a contract nobody keeps. Each is
+## asserted in `_check_settlement_contract`.
+##
+##   1. **Crew settles BEFORE Territory.** A crew member who departs tonight for
+##      unpaid wages does not reduce tonight's territory heat — canon settles
+##      wages before anything reads whether they were paid, and territory income
+##      is computed off crew power. Reordering these two changes gameplay.
+##
+##   2. **Exposure settles AFTER Jobs, Obligations and Shark.** An observation
+##      those three produce on this cross can be delivered the same night, which
+##      is why Exposure sits in ROLLOVER rather than in SETTLE.
+##
+##   3. **`day_crossed` listeners see POST-evolution markets.** This one
+##      INVERTED, and it is the reason this block exists. The audit recorded
+##      "any future listener sees pre-evolution markets"; FS-003.2 moved the
+##      signal below `economy.evolve()` deliberately, because everything still
+##      connected to it was written expecting the new day on the clock and the
+##      board priced. A listener written against the old note would read
+##      yesterday's prices. Asserted so the inversion cannot silently invert
+##      back.
+##
+##   4. **`day_crossed` listeners see PRE-restoration phone state.** A line paid
+##      for during the ending day comes back AFTER the whole night has run —
+##      `restore_if_ready` is called from `handle()` below, once
+##      `run_night_transition` has returned. Canon does the same, and the
+##      absolute slot it is handed is the one from before the move.
+##
+## FS-002.2 was expected to replace the implicit order with named phases.
+## FS-003.2 got there first, so that half of the audit is closed.
 
 const SLOTS := ["MORNING", "AFTERNOON", "EVENING", "NIGHT"]
 

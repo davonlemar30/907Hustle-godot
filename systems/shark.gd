@@ -222,10 +222,18 @@ func _heat() -> Object:
 ## port has always compared the new one, and shifting it would move when every
 ## note in a live save comes due. Named here, preserved exactly, filed for its
 ## own slice. See systems/day_lifecycle.gd.
+## Notes coming due, settled against the day that ENDED.
+##
+## `ended_day + 1` until this slice — see the note on `CrewSystem.settle_night`
+## for why the `+ 1` existed and why it is gone. The behavioural half here is
+## real and is the point: a note due on day 7 used to resolve on the night that
+## ENDED day 6, because `ended_day + 1` already read 7. It now resolves on the
+## night that ends day 7, so the player has the whole of the due day to pay it —
+## the same rule obligations already applies to rent, and canon's.
 func settle_night(ended_day: int) -> void:
 	if gs.game_over:
 		return
-	var settling_day: int = ended_day + 1
+	var settling_day: int = ended_day
 	for loan in gs.shark_loans:
 		if not str(loan["status"]) in ["active", "extended"]:
 			continue

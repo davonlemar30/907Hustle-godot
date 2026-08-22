@@ -49,18 +49,21 @@ extends RefCounted
 ## depend on sitting above the `run.day = oldDay + 1` line further down."*
 ## Jobs and obligations used to derive `gs.day - 1`; that arithmetic is gone.
 ##
-## ## A divergence this build preserves rather than corrects
+## ## A divergence this build preserved, and has now corrected
 ##
 ## Canon's `confirmDayEnd` settles crew and shark ABOVE the increment, so both
-## see the ending day. This port has always settled them below it, so both see
-## the NEW day — and `crew.settle_night` / `shark.settle_night` therefore still
-## compute against `ended_day + 1` to keep their behaviour identical.
+## see the ending day. This port historically settled them below it, so both saw
+## the NEW day — and when FS-003.2 built this seam and moved them above the
+## increment, `crew.settle_night` / `shark.settle_night` kept computing against
+## `ended_day + 1` so their behaviour did not change inside a refactor that
+## claimed to change nothing.
 ##
-## That is deliberate. This build creates the seam; moving when wages bite or a
-## note comes due is a timing change with real consequences for a run, and it
-## belongs in its own slice rather than riding along inside a refactor that
-## claims to change nothing. The `+ 1` is commented at both call sites and
-## filed. When it is corrected, those two lines are the whole change.
+## That was deliberate, and it was filed with the note "when it is corrected,
+## those two lines are the whole change". It was, and they were. Both now use
+## `ended_day` directly. Wages stamp `wage_missed_since` with the night the wage
+## was actually missed, and a note due on day 7 resolves on the night that ends
+## day 7 rather than the night that ends day 6 — the player gets the whole due
+## day to pay it, which is the rule obligations already applied to rent.
 
 const PRE_SETTLE := "PRE_SETTLE"
 const SETTLE := "SETTLE"

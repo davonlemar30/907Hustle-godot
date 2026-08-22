@@ -5351,6 +5351,105 @@ own vertical slice the way FS-003.7 was one.
 | T-S4 | carry stop chance flattened | ✅ 4 failures |
 | T-S5 | `_sell` credits the board price again | ✅ 1 failure — *"the sell action pays the price the screen shows: got 728, want 554"* |
 
+## Batch 4 — The Stickup Ladder  (added 2026-08-22)
+
+Branch `codex/batch-4-crime-progression`, from `main` at `63a5ffd`. The second
+commissioned design gap: *"the pure-crime path is too heavily constrained by
+capital — design progression options, pressures and decision-making beyond cash
+requirements."*
+
+**Parity: 11,273 checks, 0 failures** (from 11,248). Floor 11,238 → 11,263.
+Save schema unchanged at v10.
+
+### The premise is false, and something worse is true
+
+Batch 3's instrument already showed the web ticket's capital-constraint reading
+does not transfer — the courier route measured at 384% of the day job, limited
+by cargo rather than capital. So this batch extended the instrument to the two
+surfaces nobody had ever measured, `stickup` and `boost`, and found the real
+gap immediately.
+
+**`stick_tier` is written exactly ONCE in the entire repository:**
+
+```
+$ grep -rn "stick_tier *=" --include="*.gd" .
+autoload/game_state.gd:344:	stick_tier = 1
+```
+
+That is `reset_to_new_game()`. There is no `_update_tier()` in `stickup.gd`.
+`stick_rep` is incremented on every successful take and **read by nothing** — a
+counter that costs a save field and does no work.
+
+`visible_targets()` and `blocker()` both gate on `int(t["tier"]) > gs.stick_tier`,
+so for the entire life of every run **four of the nine authored stickup targets
+were unreachable**: both tier-2 tills, the dice game behind the rec center
+($500-1200) and Goodie's stash ($800-1500) — the two biggest paydays on the
+surface. Dead content, authored and shipped and never once seen.
+
+**The tell was in the test harness.** `_simulate` sets `gs.stick_tier = 3` by
+hand. The only thing in this build that had ever exercised the upper tiers was a
+test that skipped the climb — which is exactly how a missing progression hides,
+and the same hazard class the web build named after four builds with false
+premises.
+
+### The rungs
+
+Shaped after `BoostSystem._update_tier()` deliberately: the two ladders are the
+same idea told twice, and a second shape would be a second thing to reason
+about.
+
+```gdscript
+const STICK_TIER2_REP := 4
+const STICK_TIER3_REP := 11
+const STICK_TIER3_NEEDS_FIELD_CREW := true
+```
+
+Rep is the count of jobs that came off, so the ladder is climbed **by doing the
+work rather than by paying for it** — which is the whole point of it being a
+progression rather than a purchase, and the direct answer to "beyond cash
+requirements". Tier 3 additionally wants somebody who can be put somewhere, the
+same gate Boost's tier 3 reads and for the same reason: the top of the ladder is
+where the work stops being something you do alone. Canon already treats tier-3
+stick work as organised — it tells Curtis about the second one over the network.
+
+The ladder only goes up. Losing the crew does not close the room.
+
+### The criminal surfaces, measured against the job for the first time
+
+Two new instrument profiles that climb their own ladders rather than being
+handed a tier:
+
+| profile | netWorth | vs job | jobs | take | arrests | reached | dead ends |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `legal_worker` | 1,553 | **100%** | — | — | 0 | — | 0% |
+| `boost` | 471 | **30%** | 20.0 | $641 | 1 | boost tier **1.8** | 0% |
+| `stickup` | 25 | **2%** | 50.8 | $558 | 9 | stick tier **2.0** | **50%** |
+
+The ladder demonstrably climbs in play — `stickup` reaches tier 2 and `boost`
+averages 1.8 — where before the fix both were pinned at 1 forever.
+
+### The finding that is NOT fixed here, with numbers
+
+**Both criminal surfaces are below the design position's 50% floor, and
+`stickup` is not viable at all.** Fifty jobs across a month return $558 — about
+$11 a job — against nine arrests and half the runs ending. The ladder is
+necessary and it is not sufficient: reaching tier 2 does not save a surface
+whose attempt economics are that thin.
+
+That is a numbers call, not a missing mechanism, and this project's own rule is
+that balance findings become follow-up tasks rather than in-flight fixes
+(FS-003.12's brief, verbatim). Filed for Marcus with the table above. What this
+batch was able to establish is the thing that was missing: **there is now an
+instrument that can tell whether a change to those numbers helped.**
+
+### Sabotage log
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| L-S1 | `_update_tier()` call removed from the success branch | ✅ 1 failure — "the ladder climbs from work alone" |
+| L-S2 | `STICK_TIER2_REP` → 99 | ✅ 3 failures |
+| L-S3 | field-crew gate dropped from tier 3 | ✅ 1 failure — "tier 3 wants a crew that can be put somewhere: got 3, want 2" |
+
 ## Overnight Build Log — 2026-08-22
 
 Autonomous loop. Each entry: branch, tasks, parity, outcome.
@@ -5361,6 +5460,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 1 | `codex/batch-1-hardening` | A1 settlement day · A2 board fill (verified + guaranteed) · A3 crew capacity (verified + guaranteed) · A4 dispatch guards | 11,110 → 11,147 | Merged, PR #54. Schema unchanged. |
 | 2 | `codex/batch-2-docs-and-glyphs` | B2 settlement contract · B1, B3, C1, C2, C3 verified | 11,147 → 11,177 | Merged, PR #55. No production behaviour changed. |
 | 3 | `codex/batch-3-trading-risk` | The economy instrument · the trading path's risk term (sell Heat · corner pricing · the carry) | 11,177 → 11,248 | Merged, PR #56. Pure courier route 384% → 90% of the day job. |
+| 4 | `codex/batch-4-crime-progression` | The Stickup ladder (`stick_tier` had no writer) · criminal surfaces measured against the job | 11,248 → 11,273 | Merged, PR #57. Four dead targets reachable; stickup at 2% filed for balance. |
 
 **Findings carried forward:**
 

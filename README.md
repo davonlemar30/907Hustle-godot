@@ -349,7 +349,7 @@ regardless of how small the source file is.
 | 3e. Crew, territory | ✅ |
 | 3f. Exposure, Curtis awareness | ✅ |
 | 4. Save / load — versioned autosave, CONTINUE RUN | ✅ |
-| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (11,248 checks after batch 3, floor enforced at 11,238); fixtures grow with each system |
+| 5. Behavioral parity harness vs the JS oracle | ✅ core — RNG primitives, the canon market walk, and the save round-trip enforced in CI (11,273 checks after batch 4, floor enforced at 11,263); fixtures grow with each system |
 | 5b. Phone + More screens | ✅ Phone (substrate + screen), More, Help — every nav cell has a screen |
 | 5c. Attributes | ✅ substrate + Character screen — three surfaces unpinned, growth live, Street Identity derived |
 | 5d. Recovery | ✅ treatment ladder + Lay Low — all six More rows ship |
@@ -378,6 +378,7 @@ regardless of how small the source file is.
 | Batch 1. Hardening | ✅ crew/shark settle against the ending day (canon), every persisted Exposure/Curtis mutator behind the dispatch guard, standing guarantees for the 907List board fill and the crew-capacity accessor; parity → 11,147 checks |
 | Batch 2. The settlement contract | ✅ the four audited day-cross ordering dependencies documented in `time_system.gd` and asserted (one of them had silently inverted); three playtest findings verified as not reproducing and pinned so they cannot start; parity → 11,177 checks |
 | Batch 3. The risk term | ✅ the economy instrument (five profiles × four seeds, measuring the trading path against the day job for the first time) and the risk term it made possible — a sale writes Heat, a watched corner pays less, and a trip taken holding can be stopped. The pure courier route goes **384% → 90%** of the day job. Parity → 11,248 checks |
+| Batch 4. The stickup ladder | ✅ `stick_tier` was written exactly once in the whole repo (`= 1`, at reset) and `stick_rep` was counted and read by nothing, so four of nine authored stickup targets — including both biggest paydays — were unreachable for a run's whole life. Rep now climbs the ladder. The criminal surfaces are also measured against the day job for the first time. Parity → 11,273 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

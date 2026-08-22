@@ -116,6 +116,161 @@ static func sync_display_prices(game_state: Node) -> void:
 		if market["prices"].has(pid):
 			prod["price"] = int(market["prices"][pid])
 
+# --- what a sale actually pays (v0.2.0) -------------------------------------
+
+const RULES := preload("res://data/consequence_rules.gd")
+
+## The per-unit price a sale in `district_id` actually pays right now.
+##
+## THE ONE function. `_sell` credits from it and the Market screen displays from
+## it, because a preview that re-derives the answer separately is a second
+## implementation, and the day it drifts is the day the player is shown a number
+## the game does not honour.
+##
+## The board price is what the district is worth. What it pays YOU is that,
+## less what the corner has learned about you: Market Pressure's authored band
+## penalty, scaled by `MARKET_PRESSURE_PRICE_SCALE`. A QUIET district pays the
+## board price exactly, so nothing changes for a player who has not worked a
+## corner hard enough to be recognised there.
+##
+## Floors at $1. A corner that pays nothing is a corner nobody would stand on,
+## and a zero would make the sell button a button that takes your product.
+func sell_unit_price(district_id: String, product_id: String) -> int:
+	var market: Dictionary = gs.markets.get(district_id, {})
+	var board: int = int((market.get("prices", {}) as Dictionary).get(product_id, 0)) \
+		if not market.is_empty() else 0
+	if board <= 0:
+		# No walked market for this district yet — fall back to the display
+		# mirror, which is what every other read of an unwalked board does.
+		board = int(gs.product_by_id(product_id).get("price", 0))
+	if board <= 0:
+		return 0
+	var penalty: float = market_price_penalty(district_id)
+	if penalty <= 0.0:
+		return board
+	return maxi(1, int(round(float(board) * (1.0 - penalty))))
+
+## The fraction the corner holds back, 0.0 when it has nothing on you.
+func market_price_penalty(district_id: String) -> float:
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine == null:
+		return 0.0
+	var rules: RefCounted = RULES.new()
+	var score: float = float(engine.pressure_score(district_id, rules.FAMILY_MARKET))
+	return clampf(rules.pressure_penalty(score) * rules.MARKET_PRESSURE_PRICE_SCALE,
+		0.0, 0.9)
+
+# --- the carry (v0.2.0, Leg 4) ----------------------------------------------
+
+## A trip taken holding, resolved.
+##
+## Called by `TravelSystem` once the move has been paid for and the slot spent —
+## travel owns WHEN, this owns WHAT, because inventory is written here and
+## nowhere else. Returns a report the caller can log and a screen can read; an
+## empty Dictionary means the trip was quiet.
+##
+## `origin_district_id` is where the trip STARTED. That is the corner whose
+## Market Pressure raises the odds: the road out of a block you have been
+## working is where somebody is looking for you, and keying it on the
+## destination would let a courier launder a hot corner by leaving it.
+func resolve_carry(origin_district_id: String) -> Dictionary:
+	var units: int = gs.cargo_used()
+	if units <= 0 or gs.game_over:
+		return {}
+	var rules: RefCounted = RULES.new()
+	var engine: Object = gm.system("consequence") if gm != null else null
+	var steps: int = 0
+	if engine != null:
+		steps = int(rules.pressure_steps(
+			engine.pressure_score(origin_district_id, rules.FAMILY_MARKET)))
+	var chance: float = rules.carry_stop_chance(units, _carried_value(),
+		float(gs.heat), steps)
+	# One keyed roll per trip. Leading with the varying components, per the
+	# v0.1.0 seeded-key audit: day and slot move every trip, the district does
+	# not.
+	var key := "%d:%d:carry:%s" % [gs.day, gs.time_slots_today, origin_district_id]
+	if rng.seeded_random(gs.run_seed, key) >= chance:
+		return {}
+
+	# Stopped. HOW it goes is the resolver's, not a second dice table of ours —
+	# the `escape` shape is already authored and Intelligence already reads it.
+	var resolver: Object = gm.system("outcome_resolver") if gm != null else null
+	var attributes: Object = gm.system("attributes") if gm != null else null
+	var tier: String = "failure"
+	if resolver != null and attributes != null:
+		tier = str((resolver.resolve_action(rules.CARRY_RESOLVER_ACTION,
+			rules.CARRY_ESCAPE_CHANCE, int(attributes.value("intelligence")),
+			gs.run_seed, key + ":stop") as Dictionary)["tier"])
+
+	var seized: Dictionary = _seize_fraction(rules.carry_seize_fraction(tier))
+	var heat_raw: float = rules.carry_stop_heat(tier)
+	if heat_raw > 0.0:
+		var heat: Object = gm.system("heat") if gm != null else null
+		if heat != null:
+			heat.apply_gain(heat_raw, heat.FAMILY_MARKET, origin_district_id,
+				{"source_id": "carry_stop"})
+	var report: Dictionary = {
+		"stopped": true, "tier": tier, "units_before": units,
+		"units_seized": int(seized["units"]), "value_seized": int(seized["value"]),
+		"chance": chance,
+	}
+	gs.log_activity(_carry_line(report), RED if int(seized["units"]) > 0 else AMBER)
+	return report
+
+## What the bag is worth, priced where it is standing.
+func _carried_value() -> int:
+	var prices: Dictionary = (gs.markets.get(str(gs.current_district_id), {}) as Dictionary).get("prices", {})
+	var total: int = 0
+	for product_id in gs.inventory.keys():
+		total += int(prices.get(str(product_id), 0)) * int(gs.inventory[product_id])
+	return total
+
+## Take `fraction` of what is being carried, cheapest-first so a partial loss is
+## a bad day rather than a run-ender. Returns what went.
+##
+## Rounds UP on a partial: a stop that finds a bag and takes nothing out of it
+## is not a stop, and `int(0.34 * 1)` is zero for every single-unit load.
+func _seize_fraction(fraction: float) -> Dictionary:
+	if fraction <= 0.0:
+		return {"units": 0, "value": 0}
+	var prices: Dictionary = (gs.markets.get(str(gs.current_district_id), {}) as Dictionary).get("prices", {})
+	var ordered: Array = []
+	for product_id in gs.inventory.keys():
+		ordered.append({"id": str(product_id),
+			"price": int(prices.get(str(product_id), 0))})
+	ordered.sort_custom(func(a, b): return int(a["price"]) < int(b["price"]))
+	var target: int = int(ceil(float(gs.cargo_used()) * clampf(fraction, 0.0, 1.0)))
+	var taken_units: int = 0
+	var taken_value: int = 0
+	for entry in ordered:
+		if taken_units >= target:
+			break
+		var product_id := str(entry["id"])
+		var held: int = int(gs.inventory.get(product_id, 0))
+		var take: int = mini(held, target - taken_units)
+		if take <= 0:
+			continue
+		taken_units += take
+		taken_value += take * int(entry["price"])
+		if held - take <= 0:
+			gs.inventory.erase(product_id)
+		else:
+			gs.inventory[product_id] = held - take
+	return {"units": taken_units, "value": taken_value}
+
+const CARRY_LINES := {
+	"clean": "Transit officer works the car and steps off two stops later. Nothing said.",
+	"messy": "They go through the bag on the platform and keep what is on top.",
+	"failure": "The bag does not come back. Neither does the afternoon.",
+	"catastrophic": "Everything on you, gone, and somebody wrote your name down.",
+}
+
+func _carry_line(report: Dictionary) -> String:
+	return str(CARRY_LINES.get(str(report["tier"]), CARRY_LINES["failure"]))
+
+const AMBER := Color(0.882, 0.651, 0.227)
+const RED := Color(0.827, 0.161, 0.125)
+
 # --- actions ----------------------------------------------------------------
 
 func _buy(p: Dictionary) -> Dictionary:
@@ -157,10 +312,12 @@ func _sell(p: Dictionary) -> Dictionary:
 	var have: int = int(gs.inventory.get(id, 0))
 	if have < qty:
 		return {"ok": false, "reason": "Not enough to sell."}
+	# What the corner actually pays, after what it has learned about you.
+	var unit: int = sell_unit_price(gs.current_district_id, id)
+	var revenue: int = unit * qty
 	# TI-003 §6 Dirty: "Market criminal sales".
 	var wallet: Object = gm.system("wallet")
-	wallet.credit(int(prod.price) * qty, wallet.DIRTY,
-		{"source_id": "market_sell_%s" % id})
+	wallet.credit(revenue, wallet.DIRTY, {"source_id": "market_sell_%s" % id})
 	var left: int = have - qty
 	if left <= 0:
 		gs.inventory.erase(id)
@@ -180,7 +337,30 @@ func _sell(p: Dictionary) -> Dictionary:
 	var engine: Object = gm.system("consequence") if gm != null else null
 	if engine != null:
 		engine.add_market_pressure(gs.current_district_id)
-	return {"ok": true}
+
+	# v0.2.0, Leg 1 of the trading path's risk term: the handoff is the visible
+	# act, and it is the one leg that had no cost of any kind. Scaled by the
+	# VALUE moved rather than by units or by `product.heat` — see the rules
+	# file for why — and routed through the one Heat owner, so Deshawn damps it
+	# and the district multiplier that has been dormant since FS-003.9 finally
+	# has something to scale.
+	var rules: RefCounted = RULES.new()
+	var heat: Object = gm.system("heat") if gm != null else null
+	if heat != null and revenue > 0:
+		var raw: float = minf(float(revenue) * rules.MARKET_SELL_HEAT_PER_DOLLAR,
+			rules.MARKET_SELL_HEAT_CAP)
+		heat.apply_gain(raw, heat.FAMILY_MARKET, gs.current_district_id,
+			{"source_id": "market_sell"})
+
+	# v0.2.0, Leg 3: the handoff takes a slot. Routed through the time system
+	# by hand rather than dispatched, the same way Boost, Stickup, Jobs and the
+	# 907List all spend their slot — a nested dispatch would fire a second
+	# notify_changed inside this one's stack and break the one-refresh contract.
+	if rules.MARKET_SELL_COSTS_SLOT:
+		var time_system: Object = gm.system("time") if gm != null else null
+		if time_system != null:
+			time_system.handle("advance_time", {})
+	return {"ok": true, "unit_price": unit, "revenue": revenue}
 
 ## Canon evolveMarkets (game-core.js:4483): one stream batch off rng_state,
 ## every area in districts (canon NEIGHBORHOODS) order, cursor written back

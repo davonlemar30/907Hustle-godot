@@ -52,6 +52,7 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 
 	var wallet: Object = gm.system("wallet")
 	wallet.spend(FARE, wallet.ROUTINE_DIRTY_FIRST, {"source_id": "travel_fare"})
+	var previous_district: String = str(gs.current_district_id)
 	gs.current_district_id = target
 	# One slot, the same as any other district action. Routed through the time
 	# system rather than reimplemented so the day-cross and the market evolve
@@ -60,6 +61,20 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 	# The district changed, so the price mirror the screens bind must now show
 	# THIS district's market. (The advance only re-walks prices on a day-cross.)
 	preload("res://systems/economy.gd").sync_display_prices(gs)
+
+	# v0.2.0: the carry. A trip taken holding is the trading path's one real
+	# risk, and this is the moment it happens — after the fare and the slot,
+	# because a stop on the way does not refund either.
+	#
+	# Keyed on the district being LEFT: the road out of a corner you have been
+	# working is where somebody is looking for you, and keying it on the
+	# destination would let a courier launder a hot block by leaving it.
+	# Economy performs it because inventory is written there and nowhere else.
+	var origin: String = previous_district
+	var carry: Dictionary = {}
+	var economy: Object = gm.system("economy")
+	if economy != null:
+		carry = economy.resolve_carry(origin)
 
 	# Watchers appear during ordinary movement, never during the crime itself.
 	var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
@@ -81,4 +96,5 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 	var engine: Object = gm.system("consequence")
 	if engine != null and not gs.game_over:
 		engine.try_surface_delayed(int(gs.day), gs.current_district_id)
-	return {"ok": true, "arrived": district.get("name", ""), "watcher": watcher}
+	return {"ok": true, "arrived": district.get("name", ""), "watcher": watcher,
+		"carry": carry}

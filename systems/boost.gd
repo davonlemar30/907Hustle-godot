@@ -408,8 +408,15 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 		resolver_obs.broadcast_outcome(rules.resolver_for(choice_id), tier_name,
 			str(chain.get("district_id", "")))
 
-	# 8. The arrest gate, read off the PRE-ENCOUNTER snapshot.
+	# 8. The arrest gate, read off the PRE-ENCOUNTER snapshot — then FS-003.13's
+	#    cooldown, which can only ever turn a yes into a no. The authored gate is
+	#    evaluated first and unchanged: the cooldown is a fact about the last few
+	#    days, not a second threshold folded into the gate's own table.
 	var arrested: bool = rules.arrests(choice_id, tier_name, boost_tier, pre_heat)
+	var arrest_owner: Object = gm.system("arrest") if gm != null else null
+	if arrested and arrest_owner != null and arrest_owner.in_cooldown(int(gs.day)):
+		arrested = false
+		result["arrest_suppressed"] = "cooldown"
 	result["arrested"] = arrested
 
 	# 9. Store the result on the chain.
@@ -430,9 +437,8 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	#     it costs.
 	engine.advance_stage(engine.STAGE_RESULT)
 	if arrested:
-		var arrest: Object = gm.system("arrest") if gm != null else null
-		if arrest != null:
-			arrest.attach_booking(chain, {
+		if arrest_owner != null:
+			arrest_owner.attach_booking(chain, {
 				"family": "boost",
 				"tier": boost_tier,
 				"target_id": str(source.get("target_id", "")),

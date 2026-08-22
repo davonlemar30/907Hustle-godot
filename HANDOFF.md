@@ -114,8 +114,11 @@ record of the required change.
 - The requested post-PR #45 base is `5efcb1599b4ec0891b6f95cc76805c5379bc6286`.
 - GitHub had no pushed `codex/fs003-arrest-pressure-retaliation` branch when
   this batch began.
-- Godot 4.7.2 is not installed in this environment, so the parity baseline and
-  all new runtime checks are pending headless verification before merge.
+- The `godot` headless CLI is not on PATH, so the requested shell baseline cannot
+  run here. The connected Godot 4.7.2 editor does parse the edited parity runner;
+  the full parity scene then stops on the existing `ui/components/toast.gd:21`
+  failed-action probe before reporting totals. Headless verification remains
+  pending before merge.
 
 ### 907List keyed-shuffle update
 

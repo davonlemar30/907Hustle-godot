@@ -92,11 +92,26 @@ const DAY_START := "DAY_START"
 ## bleed landing this morning is a GAIN, and a family that gained today is not
 ## having a quiet day. Recovering first would decay a district that is about to
 ## be handed more Pressure.
+##
+## Batch 8 adds two Heat steps, and both positions are load-bearing:
+##
+##   `heat_stop` runs AFTER `financial_fold`, so the night is rolled against the
+##   Heat the player actually ends the day carrying — including the +1.0 the
+##   fold just applied. Rolling before it would let a player fold themselves
+##   over the stop floor and not be stopped for it until tomorrow.
+##
+##   `heat_decay` runs after the stop and BEFORE `exposure`. After the stop
+##   because a quiet day is still a quiet day when somebody else searches you —
+##   the flag it reads counts GAINS, and a stop is relief. Before Exposure
+##   because §26 has the broadcast measured against the settled morning figure,
+##   and the decay is part of settling it.
 const ROLLOVER_ORDER: Array[String] = [
 	"pressure_bleed",
 	"pressure_recovery",
 	"financial_decay",
 	"financial_fold",
+	"heat_stop",
+	"heat_decay",
 	"exposure",
 	"curtis",
 ]
@@ -135,6 +150,7 @@ const POST_SETTLE_ORDER: Array[String] = [
 ## the lifecycle's own work, not somebody else's. The hooks stay empty and
 ## available, and `clear_hooks()` cannot remove the game.
 const DAY_START_ORDER: Array[String] = [
+	"heat_day_reset",
 	"expire_retaliation",
 	"surface_delayed",
 	"retaliation_ambient",
@@ -306,6 +322,14 @@ func _run_rollover_step(step: String, today: int) -> void:
 			var engine: Object = gm.system("consequence") if gm != null else null
 			if engine != null:
 				engine.fold_financial_pressure()
+		"heat_stop":
+			var heat: Object = gm.system("heat") if gm != null else null
+			if heat != null:
+				heat.settle_street_stop(today)
+		"heat_decay":
+			var heat: Object = gm.system("heat") if gm != null else null
+			if heat != null:
+				heat.settle_quiet_day()
 		"exposure":
 			var exposure: Node = _autoload("Exposure")
 			if exposure != null:
@@ -318,6 +342,13 @@ func _run_rollover_step(step: String, today: int) -> void:
 ## One day-start step, by name. Same shape and same null-guarding as
 ## `_run_rollover_step`.
 func _run_day_start_step(step: String, today: int) -> void:
+	# Handled before the engine guard below, because this one does not need the
+	# engine and a build without it must still start the day with a clean
+	# quiet-day flag. Otherwise a run whose consequence system failed to
+	# register would carry yesterday's noise forever and never decay again.
+	if step == "heat_day_reset":
+		gs.heat_gain_today = 0.0
+		return
 	var engine: Object = gm.system("consequence") if gm != null else null
 	if engine == null:
 		return

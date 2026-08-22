@@ -64,6 +64,12 @@ extends RefCounted
 ## discovered by whoever next reads a Heat assertion and finds it changed.
 
 ## TI-003 §7 criminal families. The string a caller passes for `family`.
+## Activity-feed colours. Same values every other system uses; declared here
+## rather than reached for because a RefCounted has no shared base to hold them.
+const GREEN := Color(0.451, 0.722, 0.404)
+const AMBER := Color(0.882, 0.651, 0.227)
+const RED := Color(0.827, 0.161, 0.125)
+
 const FAMILY_MARKET := "market"
 const FAMILY_BOOST := "boost"
 const FAMILY_STICK := "stick"
@@ -87,6 +93,36 @@ const DISTRICT_FAMILY_MULTIPLIERS := {
 
 const NEUTRAL_MULTIPLIER := 1.0
 
+## The four bands (batch 8), and the reason each boundary is where it is.
+##
+## Heat has run 0-15 since the port began with no vocabulary at all — no bands,
+## no names, nothing that told the player which part of the scale they were on.
+## District Pressure has had QUIET/KNOWN/WATCHED/HOT since FS-003.9 and Heat has
+## had a bare float.
+##
+## **None of these numbers are new.** Every boundary is a threshold the build
+## already acted on and never named:
+##   4.0  the job interview penalty starts biting (jobs.gd:91)
+##   8.0  Exposure starts telling the household (exposure.gd:145)
+##  12.0  Exposure starts telling the network (exposure.gd:144)
+## Naming them is the whole change: the band the player can feel and the band
+## that costs them are now provably the same band, and a test can say so.
+const BAND_COOL := "COOL"
+const BAND_NOTICED := "NOTICED"
+const BAND_WATCHED := "WATCHED"
+const BAND_BURNING := "BURNING"
+
+## Highest floor first — the same shape as `AttributesSystem.LABEL_TIERS`, and
+## read the same way.
+const BANDS := [
+	{"floor": 12.0, "band": BAND_BURNING},
+	{"floor": 8.0, "band": BAND_WATCHED},
+	{"floor": 4.0, "band": BAND_NOTICED},
+	{"floor": 0.0, "band": BAND_COOL},
+]
+
+const RULES := preload("res://data/consequence_rules.gd")
+
 var gs: Node
 var gm: Node
 
@@ -97,6 +133,19 @@ var gm: Node
 ## the unscaled pipeline directly — which is what proves the multiplier is being
 ## applied rather than baked into a number that happens to match.
 var _district_scaling_enabled := true
+
+## How many street stops this BOOT has settled, and what they took.
+##
+## Diagnostic only, and deliberately not persisted: it lives on the system
+## handle, which is rebuilt on every boot including after a load, so it is a
+## fact about this process rather than about the run. The economy instrument
+## reads it as a delta across a profile — a counter that survived a save would
+## make every profile after the first report the ones before it too.
+##
+## The alternative was having the instrument infer stops from a cash drop across
+## a day boundary, which is indistinguishable from rent.
+var stops_settled: int = 0
+var stops_seized: int = 0
 
 func setup(game_state: Node, manager: Node) -> void:
 	gs = game_state
@@ -116,6 +165,22 @@ func level() -> float:
 
 func ceiling() -> float:
 	return float(gs.heat_max)
+
+## Which band a Heat level falls in. Pure, so a screen can ask about a level it
+## is projecting rather than only the one it is standing in.
+func band_for(level_value: float) -> String:
+	for row in BANDS:
+		if level_value >= float(row["floor"]):
+			return str(row["band"])
+	return BAND_COOL
+
+func band() -> String:
+	return band_for(float(gs.heat))
+
+## True when the day so far has generated Heat. The quiet-day decay rule reads
+## this and nothing else.
+func loud_today() -> bool:
+	return float(gs.heat_gain_today) > 0.0
 
 ## TI-003 §7's authored table, as a pure lookup. Consulted by `apply_gain` only
 ## once FS-003.9 enables it; covered by tests now so the values are pinned.
@@ -181,7 +246,15 @@ func apply_relief(amount: float, _context: Dictionary = {}) -> float:
 func _commit(delta: float) -> float:
 	var before: float = float(gs.heat)
 	gs.heat = clampf(before + delta, 0.0, float(gs.heat_max))
-	return float(gs.heat) - before
+	var landed: float = float(gs.heat) - before
+	# The quiet-day flag is stamped HERE, in the one place Heat is written, so
+	# no future gain site can forget to raise it. It records the delta that
+	# actually LANDED rather than the one requested: heat the clamp refused is
+	# heat the world never saw, and a day at the ceiling should not be counted
+	# loud on the strength of a gain that went nowhere.
+	if landed > 0.0:
+		gs.heat_gain_today = float(gs.heat_gain_today) + landed
+	return landed
 
 ## The criminal gain pipeline's scaling half, TI-003 §7.
 ##
@@ -192,3 +265,79 @@ func _gain_multiplier(family: String, district_id: String) -> float:
 	if _district_scaling_enabled:
 		mult *= district_multiplier(district_id, family)
 	return mult
+
+
+# --- the night (batch 8) -----------------------------------------------------
+
+## The quiet-day rule. A day that generated no Heat sheds some; a day that
+## generated any sheds nothing.
+##
+## Binary rather than proportional, and deliberately: the question the player is
+## being asked is "can you afford a day off", and a rule that gave partial
+## credit for a quiet afternoon would answer it with arithmetic instead of a
+## decision. Same shape as District Pressure's quiet-day recovery, which has
+## been the answer to the same question since FS-003.9.
+##
+## Returns the relief that landed, which is 0.0 on a loud day and on a run
+## already at zero.
+func settle_quiet_day() -> float:
+	if loud_today():
+		return 0.0
+	if float(gs.heat) <= 0.0:
+		return 0.0
+	var shed: float = -_commit(-float(RULES.HEAT_QUIET_DECAY))
+	if shed > 0.0:
+		gs.log_activity("A day nobody had to hear about. Heat -%.2f." % shed, GREEN)
+	return shed
+
+## The street stop. One keyed roll a night, above the floor only.
+##
+## Takes DIRTY cash and only dirty cash — clean money is documented money, and a
+## street stop is not a forfeiture hearing. Sheds Heat as it goes, because they
+## have had their look and found what they found.
+##
+## No arrest. Arrest is owned by the two consequence chains that have booking
+## stages and decision surfaces; giving Heat a third route into custody would
+## mean a fourth chain kind, a stage table and a blocking encounter. That is a
+## build, and the wrong first move for a number that until this batch did
+## nothing at all at the top of its range.
+func settle_street_stop(ended_day: int) -> Dictionary:
+	var chance: float = float(RULES.heat_stop_chance(float(gs.heat)))
+	if chance <= 0.0:
+		return {}
+	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
+	if rng == null:
+		return {}
+	# Day leads the key, per the v0.1.0 seeded-key audit: it is the component
+	# that moves every time, and the district is the one that mostly does not.
+	var key := "%d:heat_stop:%s" % [ended_day, str(gs.current_district_id)]
+	if rng.seeded_random(gs.run_seed, key) >= chance:
+		return {}
+
+	var seized: int = int(RULES.heat_stop_seizure(int(gs.dirty_cash)))
+	var wallet: Object = gm.system("wallet") if gm != null else null
+	if seized > 0 and wallet != null:
+		# ROUTINE drains dirty first, and the seizure is computed FROM dirty
+		# cash, so it can never reach the clean pool. No new policy is needed
+		# and inventing a DIRTY_ONLY one would be a fourth way to say this.
+		wallet.spend(seized, wallet.ROUTINE_DIRTY_FIRST, {"source_id": "heat_stop"})
+	var shed: float = -_commit(-float(RULES.HEAT_STOP_RELIEF))
+
+	# Curtis reads a stop as exactly what it is. He is the lens that scores
+	# heat_exposure hardest, and a search on the street is the most public
+	# version of it there is.
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure != null:
+		exposure.record_observation("curtis", {
+			"type": "heat_exposure", "event": "stopped_and_searched",
+			"source": "witnessed", "location": str(gs.current_district_id),
+		})
+	if seized > 0:
+		gs.log_activity("Lights behind you on the way home. They took $%d and let you go."
+			% seized, RED)
+	else:
+		gs.log_activity("Lights behind you on the way home. Nothing on you worth taking.",
+			AMBER)
+	stops_settled += 1
+	stops_seized += seized
+	return {"stopped": true, "seized": seized, "relief": shed, "chance": chance}

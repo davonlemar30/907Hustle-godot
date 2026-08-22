@@ -32,6 +32,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_attribute_sessions(state, repairs)
 	_validate_gym_streak(state, repairs)
 	_validate_venues_entered(state, repairs)
+	_validate_heat_day(state, repairs)
 	return {"state": state, "repairs": repairs}
 
 func _repair(repairs: Array[String], path: String, reason: String) -> void:
@@ -544,6 +545,36 @@ func _validate_venues_entered(state: Dictionary, repairs: Array[String]) -> void
 			continue
 		clean.append(value)
 	state["venues_entered"] = clean
+
+## v12. Two fields that both fail in the player's favour if left alone, which is
+## why they are repaired rather than trusted.
+##
+## A negative `heat_gain_today` reads as a quiet day no matter what the run
+## actually did, so every day would decay. A `lay_low_day` in the future blocks
+## going quiet until the run reaches it — the opposite failure, and the one that
+## costs the player something they are owed.
+func _validate_heat_day(state: Dictionary, repairs: Array[String]) -> void:
+	if state.has("heat_gain_today"):
+		if not (state["heat_gain_today"] is int or state["heat_gain_today"] is float):
+			state["heat_gain_today"] = 0.0
+			_repair(repairs, "heat_gain_today", "wrong type; defaulted")
+		elif float(state["heat_gain_today"]) < 0.0:
+			state["heat_gain_today"] = 0.0
+			_repair(repairs, "heat_gain_today", "negative gain; defaulted")
+		else:
+			state["heat_gain_today"] = float(state["heat_gain_today"])
+	if not state.has("lay_low_day"):
+		return
+	if not (state["lay_low_day"] is int or state["lay_low_day"] is float):
+		state["lay_low_day"] = -1
+		_repair(repairs, "lay_low_day", "wrong type; defaulted")
+		return
+	state["lay_low_day"] = int(state["lay_low_day"])
+	var day_value: Variant = state.get("day", 0)
+	var today: int = int(day_value) if (day_value is int or day_value is float) else 0
+	if int(state["lay_low_day"]) > today:
+		state["lay_low_day"] = -1
+		_repair(repairs, "lay_low_day", "went quiet in the future; cleared")
 
 func _validate_arrest_record(state: Dictionary, repairs: Array[String]) -> void:
 	if not state.has("arrest_record"):

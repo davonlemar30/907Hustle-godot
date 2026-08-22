@@ -221,14 +221,33 @@ func _heal(treatment_id: String) -> Dictionary:
 		return {"ok": false, "reason": "You have no private medical contact."}
 	return _treat(treatment)
 
+## Why Lay Low can be refused, or "" if it cannot.
+##
+## Every other action on this screen has had a blocker since it shipped; Lay Low
+## had none at all — no cost, no cap, no gate. Four slots a day made it worth
+## 8.0 of shedding for free, which is more Heat than any single day of play can
+## realistically generate, and it meant Heat could always be ground off rather
+## than carried. Batch 8's whole subject is Heat being something you live with,
+## and it cannot be while this is unlimited.
+##
+## Once a day, and the day is the unit deliberately: a cap of two would be a
+## smaller version of the same "spend slots until it is gone" answer.
+func lay_low_blocker() -> String:
+	if gs.game_over:
+		return "The run is over"
+	if int(gs.lay_low_day) == gs.day:
+		return "You already went quiet today"
+	return ""
+
 ## Canon's LAY_LOW: Heat down, one slot gone, and Curtis hears about the quiet.
 ##
 ## The observation is the part that is easy to miss. Going quiet is not
 ## invisible — it is a `discretion` row on the network channel, and Curtis is
 ## the one lens that reads discretion as information about you.
 func _lay_low() -> Dictionary:
-	if gs.game_over:
-		return {"ok": false, "reason": "The run is over."}
+	var blocked: String = lay_low_blocker()
+	if not blocked.is_empty():
+		return {"ok": false, "reason": blocked + "."}
 	# Relief, not a negative gain. TI-003 §7: relief bypasses the district and
 	# Deshawn multipliers — having Deshawn on the crew must not make going quiet
 	# work less well, which is what routing this through the gain pipeline would
@@ -239,6 +258,7 @@ func _lay_low() -> Dictionary:
 	if exposure != null:
 		exposure.record_observation("curtis",
 			{"type": "discretion", "event": "quiet_day", "source": "network"})
+	gs.lay_low_day = gs.day
 	gs.log_activity("Lights off, phone down. Heat drops %.1f." % dropped, BLUE)
 	time_system.handle("advance_time", {})
 	return {"ok": true, "dropped": dropped}

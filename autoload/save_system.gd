@@ -113,7 +113,7 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## a missing key as -1: no cooldown, which is the correct history for arrests
 ## that predate the mechanic. One bump, one arm, both new pieces of state
 ## covered.
-const SAVE_VERSION := 11
+const SAVE_VERSION := 12
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 
 ## Every mutable GameState field, captured and applied by name. products.price
@@ -179,6 +179,9 @@ const PERSIST_FIELDS: Array[String] = [
 	# behind `effectiveAttribute`; `venues_entered` is what the player has walked
 	# into, which is what makes the Night Owl's shift findable at all.
 	"attribute_sessions", "gym_streak", "gym_last_day", "venues_entered",
+	# Heat's teeth (v12). `heat_gain_today` is the quiet-day flag and must
+	# survive a mid-day reload or the day gets a decay it did not earn.
+	"heat_gain_today", "lay_low_day",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -510,6 +513,22 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# offered it. Stamping it in would hand a loading save a job it
 				# was never told about; walking into the counter offers it, the
 				# same as for a fresh run.
+				pass
+			11:
+				# v11 -> v12: Heat's teeth. Both fields are additive.
+				#
+				# `heat_gain_today` defaults to 0.0, which reads as "nothing
+				# loud has happened today" — and for a v11 save that is not a
+				# guess. The field did not exist, so the day it was written on
+				# has no record either way, and the generous reading costs the
+				# player at most one 0.75 decay they might not have earned.
+				# Defaulting the other way would charge every loading save for a
+				# day it may well have spent doing nothing.
+				#
+				# `lay_low_day` defaults to -1, which no real day equals, so a
+				# loading run may go quiet once today. A v11 build had no cap at
+				# all, so this cannot take away something the save was relying
+				# on having already spent.
 				pass
 			_:
 				return {}

@@ -139,7 +139,12 @@ func _lay_low_card(sys: Object) -> Control:
 	v.add_child(label(
 		"Expected immediate result: lower Heat by %s. Debt, wages, markets, and Curtis continue moving while the lights are off."
 			% _heat_text(sys.lay_low_preview()), "Muted", 11, MUTED, true))
-	v.add_child(button("LAY LOW", false, _on_lay_low, 44))
+	# The blocker is the label, the same as every other card in the build.
+	var blocked: String = str(sys.lay_low_blocker())
+	var b := button("LAY LOW" if blocked.is_empty() else blocked.to_upper(),
+		false, _on_lay_low, 44)
+	b.disabled = not blocked.is_empty()
+	v.add_child(b)
 	v.add_child(label("Lowers Heat and advances time", "Muted", 10, MUTED))
 	return c
 

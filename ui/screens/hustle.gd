@@ -64,6 +64,12 @@ func _bind_surfaces() -> void:
 			status = live[0]
 			detail = live[1]
 			col = live[2]
+		# FS-001.9. The 907List row says she is out, and says nothing on the days
+		# she is not. Appended to whatever the row already reads rather than
+		# replacing it: the row's own status is still the true one, and "she is
+		# also working it" is a second fact, not a different one.
+		if SURFACE_ORDER[i] == "List" and _pherris_active_today():
+			status = "%s · PHERRIS ACTIVE" % status
 
 		var st := get_node_or_null(base + "/Right/St") as Label
 		if st:
@@ -71,6 +77,22 @@ func _bind_surfaces() -> void:
 			st.add_theme_color_override("font_color", col)
 
 		_set_text(base + "/Right/St2", detail)
+
+## Whether Pherris is out on the board right now.
+##
+## Read from `operation_summary()`, which is the rule for every delegation fact
+## a screen shows: the summary already answers this and a second derivation here
+## would be a second opinion about the same assignment.
+func _pherris_active_today() -> bool:
+	var gm: Node = get_node_or_null("/root/GameManager")
+	var ops: Object = gm.system("crew_operations") if gm != null else null
+	if ops == null:
+		return false
+	for operation_id in ops.operation_ids():
+		var summary: Dictionary = ops.operation_summary(str(operation_id))
+		if bool(summary.get("active_today", false)):
+			return true
+	return false
 
 ## [status, detail, colour] for the Jobs row, from actual employment.
 func _jobs_row_text() -> Array:

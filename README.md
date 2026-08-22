@@ -56,6 +56,7 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Lend at interest and decide what a default costs | Hustle → Shark |
 | Hire crew, pay wages, watch loyalty, move them up the ranks | Street → People → Crew |
 | Give Pherris the day to work the board, and get the money back at night | automatic, once she is Trusted enough |
+| Hear from her when she can do it, what she took, and how the night went | Phone · Activity feed · Home · Hustle |
 | Claim corners, post soldiers, collect nightly | Home → Turf |
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
@@ -76,8 +77,13 @@ blocking encounter you cannot navigate away from, into an arrest, a bail
 decision, time served while the world keeps moving, and — days later, in the
 same part of town — the people you robbed finding you.
 
-The two milestones still ahead are **FS-001 Crew Operations** (delegation beyond
-Pherris and the 907List board) and **FS-002 Territory Warfare**.
+**FS-001 Crew Operations is closed.** FS-001.10 was its exit gate: the migration
+chain walks v5 to current, a night replayed from a save lands identically, one
+dispatch is one refresh, and a thirty-day economy simulation says what delegation
+is worth. Delegation beyond Pherris and the 907List board was never in the
+milestone; what shipped is the whole vertical slice, end to end.
+
+The milestone still ahead is **FS-002 Territory Warfare**.
 
 ### What FS-003 delivered
 
@@ -214,6 +220,14 @@ tests/parity/         # CI gate: replays recorded oracle fixtures through the
   are identical. What does *not* transfer is the player's own experience of the
   trade: no slot, no Intelligence, no progress toward Broker standing. Without
   that line a crew member would be strictly better than doing the work yourself.
+  Thirty simulated days say it holds: sixty delegated cycles produced zero
+  flips, zero Intelligence and zero tier progress, against an identical solo run.
+- **Delegation talks back through channels that already exist.** Discovery, the
+  morning acknowledgement, the nightly report and the loyalty complaint go out
+  through `phone.push_message()` and `GameState.activity_log` — there is no
+  notification system and no tutorial layer. Which template fires is decided by
+  the result, never authored per outcome, and the one-shot flags live inside
+  `crew_operation_state` so none of them costs a schema bump.
 - **The night runs in a declared order.** `day_lifecycle.gd` owns the whole
   transition — settle against the ending day, move the clock, walk the market,
   start the new one — as a list a test reads, not as five `day_crossed.connect()`
@@ -303,6 +317,8 @@ regardless of how small the source file is.
 | FS-001.6. Crew operations | ✅ day-ending lifecycle + delegation substrate, save v7; parity → 7211 checks |
 | FS-001.7. Run the Board | ✅ Pherris buys and settles on her own day; parity → 7308 checks |
 | FS-001.8. Player experience | ✅ the delegation slice is playable from the existing screens; parity → 7400 checks |
+| FS-001.9. Narrative continuity | ✅ discovery, assignment, settlement and loyalty callbacks through Phone + feed; Home/Hustle contextual surfaces; parity → 10499 checks |
+| FS-001.10. Integration gate | ✅ v5→current migration chain, replay from a save, one-refresh contract, 30-day economy simulation, 375×812 UI regression; **FS-001 closed**; parity → 10609 checks |
 | FS-003.1. Consequence freeze | ✅ consequence-adjacent behavior pinned as regression fixtures; parity → 7665 checks |
 | FS-003.2. DayLifecycle seam | ✅ night settlement is a declared sequence, not signal-connection order; parity → 7726 checks |
 | FS-003.3. Wallet + Heat owners | ✅ every runtime Cash/Heat write routes through one owner, with automated writer audits; parity → 7889 checks |

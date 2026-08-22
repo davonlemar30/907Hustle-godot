@@ -48,6 +48,54 @@ extends RefCounted
 
 const AMBER := Color(0.882, 0.651, 0.227)
 
+# --- FS-001.9: the callbacks --------------------------------------------------
+#
+# Delegation worked before this and said almost nothing. The player could learn
+# that Pherris runs the board only by opening the 907List screen and reading a
+# panel; they found out how her day went by noticing the cash total had moved.
+#
+# What follows is CONTINUITY, not a tutorial and not a notification system. Every
+# line goes out through a channel that already exists — `phone.push_message()`
+# for anything she says to you, `gs.log_activity()` for anything the day records
+# — and every number in every line is read off the assignment that produced it.
+# There is no authored "good day" text: which template fires is decided by the
+# settlement result, and the figures inside it come from the same Dictionary the
+# 907List screen renders.
+#
+# ## The one-shot flags
+#
+# Three facts have to survive a reload or they become spam: that she has offered
+# once, that she has complained about her loyalty once, and — the one that is not
+# a latch — whether that complaint is still standing. They live inside
+# `crew_operation_state`, which is already in PERSIST_FIELDS, so none of them
+# costs a schema bump.
+#
+# `discovery_notified` is checked SEPARATELY from the `discovered` list rather
+# than folded into `_mark_discovered`. A save written before FS-001.9 can already
+# carry a discovered operation and has never seen the text; keying the message on
+# its own flag means that run gets the offer once, on its next reconcile, instead
+# of never.
+
+## Who the delegation texts come from. Her actual roster name is "Pherris
+## Dickens"; the inbox renders the sender uppercase and a text is from a person,
+## not from a file.
+const CALLBACK_FROM := "Pherris"
+
+## The offer, once she is capable of it. PX/FS-001.9's authored copy.
+const DISCOVERY_TEXT := "I been watching how you move product on that list. " \
+	+ "Let me run your board tomorrow morning. I know what sells."
+
+## The one blocker that gets a text rather than a panel line. Routine refusals —
+## it is the afternoon, she already has the day — are already answered where the
+## player asked, and texting about them would be nagging about a button.
+const LOYALTY_WARNING_TEXT := "I'm not feeling like running errands right now. " \
+	+ "You know what I need."
+
+## The loyalty the warning arms and disarms around. Read from the assignment
+## requirement rather than restated, so the text cannot drift from the gate that
+## produced it — see `_loyalty_gate()`.
+const LOYALTY_REQUIREMENT_TYPE := "crew_loyalty_min"
+
 ## What has to be true for an operation to become KNOWN. Evaluated continuously
 ## through `reconcile()`; once satisfied the result is latched.
 const DISCOVERY_REQUIREMENTS := {
@@ -187,6 +235,11 @@ func reconcile() -> void:
 			DISCOVERY_REQUIREMENTS[operation_id], facts)
 		if bool(verdict["ok"]):
 			_mark_discovered(str(operation_id))
+	# FS-001.9. Runs after the latch loop, on the same pass, so an operation that
+	# became discoverable during THIS action is offered on the same refresh that
+	# revealed it — the discovery text and the panel appearing together is the
+	# whole point of reconciling here rather than on the next action.
+	_reconcile_callbacks()
 
 func _mark_discovered(operation_id: String) -> void:
 	if not (gs.crew_operation_state.get("discovered") is Array):
@@ -196,6 +249,148 @@ func _mark_discovered(operation_id: String) -> void:
 	gs.crew_operation_state["discovered"].append(operation_id)
 	gs.log_activity(
 		"Pherris mentions she could work the board herself, if you asked.", AMBER)
+
+# --- FS-001.9: state-driven callbacks --------------------------------------
+
+## A run-level flag out of `crew_operation_state`, defaulted rather than indexed.
+##
+## The Dictionary is persisted whole and a save written before these flags
+## existed comes back without them, so every read has to answer "has not happened
+## yet" for a missing key rather than raising.
+func callback_flag(key: String) -> bool:
+	return bool(gs.crew_operation_state.get(key, false))
+
+func _set_callback_flag(key: String, value: bool) -> void:
+	gs.crew_operation_state[key] = value
+
+func _phone() -> Object:
+	return gm.system("phone") if gm != null else null
+
+## The loyalty an assignment actually requires, read off the requirement list.
+##
+## Restating "6" in the callback code would be a second copy of a number the
+## requirement table already owns — and the failure mode of a drifted copy is a
+## text that fires at a loyalty the game does not care about, which reads as a
+## bug in Pherris rather than in a constant.
+func _loyalty_gate(operation_id: String) -> int:
+	for entry in (ASSIGNMENT_REQUIREMENTS.get(operation_id, []) as Array):
+		var row: Dictionary = entry
+		if str(row.get("type", "")) == LOYALTY_REQUIREMENT_TYPE:
+			return int(row.get("min", 0))
+	return 0
+
+## The two flag-driven texts, evaluated every reconcile.
+##
+## Deliberately NOT hung off the events that cause them. Discovery already has a
+## latch and loyalty is written by four different paths (wages, proofs, decay,
+## dismissal); hooking each of them would put the same two `if`s in four files
+## and would still miss the fifth. Reading the current state once per action is
+## both cheaper and complete — and it is how the discovery latch above already
+## works.
+func _reconcile_callbacks() -> void:
+	var phone: Object = _phone()
+	if phone == null:
+		return
+	for operation_key in OPERATION_CAPABILITY.keys():
+		var operation_id := str(operation_key)
+		if not is_discovered(operation_id):
+			continue
+		# --- the offer, once per run ---
+		if not callback_flag("discovery_notified"):
+			phone.push_message(CALLBACK_FROM, DISCOVERY_TEXT)
+			_set_callback_flag("discovery_notified", true)
+		# --- the loyalty complaint, once per episode ---
+		#
+		# An EPISODE, not a run: the flag clears the moment loyalty recovers, so
+		# a second slump months later is heard again. That is the difference
+		# between a character with a mood and a tutorial that fires once.
+		var crew_id := str((OPERATION_CAPABILITY[operation_id] as Dictionary).get("crew_id", ""))
+		if crew_id.is_empty():
+			continue
+		var record: Dictionary = gs.crew_record(crew_id)
+		# Nothing to say about somebody who is not on the crew. Her loyalty is
+		# not "low" when she is gone, it is absent, and reading a missing record
+		# as 0 would fire the complaint at every player who never hired her.
+		if record.is_empty() or not gs.is_recruited(crew_id):
+			continue
+		var loyalty: int = int(record.get("loyalty", 0))
+		var gate: int = _loyalty_gate(operation_id)
+		if loyalty < gate:
+			if not callback_flag("loyalty_warning_sent"):
+				phone.push_message(CALLBACK_FROM, LOYALTY_WARNING_TEXT)
+				_set_callback_flag("loyalty_warning_sent", true)
+		elif callback_flag("loyalty_warning_sent"):
+			# Re-armed rather than left set. The flag is "there is a complaint
+			# standing", and once she is loyal again there is not.
+			_set_callback_flag("loyalty_warning_sent", false)
+
+## The activity-feed line for a claim that just succeeded.
+##
+## Three shapes, chosen by what the morning actually produced rather than by an
+## authored "she went out" default: a budget the player set, a spend they left
+## open, and a board that had nothing on it. Every figure is read off the
+## selection the adapter just returned.
+func _assignment_line(selection: Variant, spend_limit: int) -> String:
+	var picked: int = 0
+	var spent: int = 0
+	if selection is Dictionary:
+		picked = int((selection as Dictionary).get("cycles_used", 0))
+		spent = int((selection as Dictionary).get("total_spent", 0))
+	if picked <= 0:
+		# She still spent the day, and the day is still gone. The settlement
+		# summary says what came of it; this only says where she is.
+		return "Pherris is running your board today. Nothing worth picking up yet."
+	if spend_limit >= 0:
+		return "Pherris is running your board today. %d item%s, up to $%d." \
+			% [picked, "" if picked == 1 else "s", spend_limit]
+	return "Pherris is running your board today. %d item%s, $%d out of pocket." \
+		% [picked, "" if picked == 1 else "s", spent]
+
+## What she reports back at settlement, in her own words, from real numbers.
+##
+## One message per settlement, never per item. Which template fires is decided by
+## the result: no authored line claims an outcome the night did not have.
+func _settlement_text(assignment: Dictionary) -> String:
+	var result: Variant = assignment.get("result")
+	var sold: int = 0
+	var gross: int = 0
+	var profit: int = 0
+	if result is Dictionary:
+		sold = int((result as Dictionary).get("settled_count", 0))
+		gross = int((result as Dictionary).get("gross", 0))
+		profit = int((result as Dictionary).get("profit_or_loss", 0))
+	var bought: int = 0
+	var selection: Variant = assignment.get("selection")
+	if selection is Dictionary:
+		bought = int((selection as Dictionary).get("cycles_used", 0))
+
+	if sold > 0:
+		if profit > 0:
+			return "Moved %d for $%d. You cleared $%d after what I paid." \
+				% [sold, gross, profit]
+		return "Moved %d for $%d. Thin margins today, but the board's turning over." \
+			% [sold, gross]
+	if bought > 0:
+		# The fourth case the brief's three do not cover, and it is reachable:
+		# she bought stock that is not past its sell delay yet. Saying "nothing
+		# worth touching" here would be a lie about money that is already spent.
+		return "Picked up %d today. Nothing's turned over yet." \
+			% bought
+	return "Nothing worth touching on the board today. Kept your money where it is."
+
+## Fire the nightly report for one settled assignment.
+##
+## Called from `_on_day_ending` after settlement has run and before the clock
+## moves, so the text is about the day it is reporting on. Guarded on the result
+## being a real Dictionary: an operation with no adapter settles to null, and a
+## crew member cannot report on work nothing performed.
+func _settlement_callback(assignment: Dictionary) -> void:
+	var phone: Object = _phone()
+	if phone == null:
+		return
+	if not (assignment.get("result") is Dictionary):
+		return
+	phone.push_message(CALLBACK_FROM, _settlement_text(assignment))
 
 # --- eligibility -----------------------------------------------------------
 
@@ -258,7 +453,6 @@ func _assign(crew_id: String, operation_id: String, payload: Dictionary = {}) ->
 		"selection": null,
 	}
 	gs.crew_assignments[crew_id] = assignment
-	gs.log_activity("Pherris takes the day to work the board.", AMBER)
 
 	# She shops immediately. The money leaves when the stock is picked up, which
 	# is what makes the assignment a commitment rather than a bet — and it stops
@@ -267,6 +461,12 @@ func _assign(crew_id: String, operation_id: String, payload: Dictionary = {}) ->
 	var adapter: Variant = _adapter_for(operation_id)
 	if adapter != null and (adapter as Object).has_method("select"):
 		assignment["selection"] = adapter.select(crew_id, assignment)
+	# FS-001.9: the acknowledgement, logged AFTER she has shopped rather than
+	# before. The line reports what she picked up and what it cost, and neither
+	# of those exists until `select()` has run — logging first would have meant
+	# authoring a line that could not say anything true.
+	gs.log_activity(_assignment_line(assignment["selection"],
+		int(assignment["spend_limit"])), AMBER)
 	return {"ok": true, "crew_id": crew_id, "operation_id": operation_id,
 		"selection": assignment["selection"]}
 
@@ -308,6 +508,10 @@ func _on_day_ending(ended_day: int) -> void:
 			continue
 		assignment["settled"] = true
 		assignment["result"] = _settle(str(crew_id), assignment, ended_day)
+		# FS-001.9. Inside `day_ending`, after settlement and before the
+		# increment: the report is about the day it is reporting on, and the
+		# clock still reads that day while it is written.
+		_settlement_callback(assignment)
 
 ## The adapter hand-off. Returns whatever the adapter reports, or null when
 ## nothing owns this operation yet.
@@ -373,6 +577,43 @@ func operation_summary(operation_id: String) -> Dictionary:
 		# answer it did not exist yet. FS-001.8 is where it gets filled, and it
 		# is filled by ASKING rather than by the screen working it out.
 		"preview": _preview(operation_id, crew_id) if known and not assigned_here else null,
+		# --- FS-001.9's contextual surfaces ---
+		#
+		# Home and Hustle are not allowed to work any of this out. They render
+		# what the summary hands them, which is why "is she out right now" and
+		# "what did last night come to" are FIELDS rather than two screens each
+		# reaching into `crew_assignments` and deriving the same answer twice.
+		"active_today": assigned_here and not bool(assignment.get("settled", false)),
+		"last_night": _last_night(crew_id),
+	}
+
+## Last night's settled result, or null.
+##
+## Day-scoped to `day - 1` on purpose. `assignment_for()` refuses a stale record
+## because a claim on a finished day is not a claim on today — that rule is
+## load-bearing and does not bend. This is the separate question ("what came back
+## last night"), answered separately, and it goes quiet on its own after one day
+## rather than leaving yesterday's number on the Home card all week.
+func _last_night(crew_id: String) -> Variant:
+	if crew_id.is_empty():
+		return null
+	var entry: Variant = gs.crew_assignments.get(crew_id)
+	if not (entry is Dictionary):
+		return null
+	var assignment: Dictionary = entry
+	if int(assignment.get("day", -1)) != int(gs.day) - 1:
+		return null
+	if not bool(assignment.get("settled", false)):
+		return null
+	var result: Variant = assignment.get("result")
+	if not (result is Dictionary):
+		return null
+	var row: Dictionary = result
+	return {
+		"operation_id": str(assignment.get("operation_id", "")),
+		"settled_count": int(row.get("settled_count", 0)),
+		"gross": int(row.get("gross", 0)),
+		"profit_or_loss": int(row.get("profit_or_loss", 0)),
 	}
 
 ## The adapter's own read of what it would do. The coordinator does not compute

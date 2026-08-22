@@ -149,6 +149,7 @@ func _ready() -> void:
 		_check_batch12(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch13(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch14(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch15(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -14269,9 +14270,20 @@ func _check_phone_dismiss_target(gs: Node, gm: Node) -> void:
 		_fail("phone dismiss", "the phone screen would not instantiate")
 		return
 	(screen as Control).size = FS001_VIEWPORT
-	# The Texts accordion is closed by default and the dismiss control only
-	# exists inside it, so the section is opened the way a finger opens it.
-	screen._on_toggle("texts")
+	# Texts is OPEN by default — canon's `defaultExpanded: true`, and `phone.gd`
+	# says so where `_open` is declared. This check used to call
+	# `_on_toggle("texts")` here with a comment claiming the opposite, which
+	# CLOSED the section it needed open, and it passed anyway for a reason worth
+	# writing down: `surface_base._bind_content()` cleared its rows with
+	# `queue_free()`, which is deferred, so the runner — which never yields a
+	# frame — was walking a tree that still held every earlier build. The check
+	# was reading a dismiss control from the render before the one it made.
+	#
+	# Batch 15 made the clear immediate, and this went red the same run. The
+	# default is now ASSERTED rather than assumed, so a change to it is a failing
+	# check here instead of a silently wrong premise.
+	_expect_true("Texts is open by default, per canon's defaultExpanded",
+		bool(screen._is_open("texts")))
 	screen.refresh()
 
 	var buttons: Array = []
@@ -16885,6 +16897,455 @@ func _check_home_actions(gs: Node, gm: Node) -> void:
 		_free_screen(with_op)
 	gs.reset_to_new_game()
 
+
+# === batch 15 — the doors, and the news =====================================
+#
+# An adversarial read of batch 14 plus two defects older than it. Every one is
+# the same class: a rule the build states about itself that it was not actually
+# keeping.
+#
+# **The Crew row never rendered.** `more.gd` called
+# `apply_surface_gate(ACCESS.MENU_CREW, _menu_row(...))` — and `_menu_row`
+# BUILDS a card, it does not parent one. Every other call site wraps it in
+# `body.add_child()`. So from v0.1.0 until this batch the More menu had no Crew
+# row at all, and the paragraph in that file arguing carefully that the row
+# should be LOCKED rather than hidden was describing something nobody could see.
+# Verified by rendering the screen and reading its titles.
+#
+# **Two doors, two answers.** Batch 14 hid five Hustle rows and stopped at the
+# button. `More -> Finances` IS the Shark screen (that file says so) and it
+# opened on a fresh run while the Hustle row hid until day 5, and
+# `resolved_route` let a deep link into any of the five straight through. The
+# design pass's second improvement exists precisely to forbid that.
+#
+# **The clear-and-rebuild did not clear.** `surface_base._bind_content()` used
+# `queue_free()`, which is deferred, so a second refresh inside one frame
+# rebuilt on top of rows that were still parented — measured at 4 -> 8 -> 16.
+# It had never been seen on a phone because a frame usually elapses between
+# state changes, and it had been quietly corrupting this suite the whole time:
+# every check that refreshed a surface twice was reading a stacked tree. One of
+# them was PASSING BECAUSE OF IT — see the phone dismiss check, which toggled
+# the Texts accordion CLOSED under a comment claiming it opened it, and found
+# its dismiss control in the render before the one it made.
+#
+# **And five surfaces arrived silently.** A HIDDEN gate has no padlock and no
+# hint, so batch 14's ladder opened with nothing anywhere saying it had. Hiding
+# a surface until it is earned is only better than showing it broken if the game
+# says something when it arrives.
+#
+# SABOTAGE: drop `body.add_child(crew_row)` from more.gd
+#           ==> "the More menu renders a Crew row" fails.
+# SABOTAGE: drop the Finances gate ==> "Finances is not a back door to the
+#           shark" fails.
+# SABOTAGE: remove the five entries from ROUTE_GATES ==> "a fresh run cannot
+#           deep-link into <surface>" fails.
+# SABOTAGE: put `queue_free()` back in surface_base ==> "a second refresh in one
+#           frame does not stack the rows" fails.
+# SABOTAGE: announce from a persisted flag instead of the diff ==> "a reload
+#           announces nothing" fails.
+# SABOTAGE: drop the `before.has(id)` guard in announce_since ==> "an empty
+#           before-picture announces nothing" fails.
+
+func _check_batch15(gs: Node, gm: Node) -> void:
+	_check_more_menu_rows(gs)
+	_check_route_button_parity(gs, gm)
+	_check_rebuild_is_a_rebuild(gs)
+	_check_unlock_announcements(gs, gm)
+	_check_the_opening(gs)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- the More menu -----------------------------------------------------------
+
+## Every row the More menu is supposed to draw, drawn.
+##
+## Asserted on RENDERED TITLES rather than on the calls that make them, because
+## the defect this closes was a call that made a card and threw it away. A test
+## written against `_menu_row` returning non-null would have passed throughout.
+func _check_more_menu_rows(gs: Node) -> void:
+	# Past every gate the menu reads, so the question is only whether the rows
+	# are drawn at all.
+	_fresh_gate_run(gs)
+	_unlock_every_surface(gs)
+	gs.health = gs.health_max - 1
+	var screen: Node = _instantiate_screen("res://ui/screens/more.tscn")
+	if screen == null:
+		_fail("batch15 more", "the More screen would not instantiate")
+		return
+	(screen as Control).size = FS001_VIEWPORT
+	screen.refresh()
+	var titles: Array[String] = []
+	_collect_labels(screen.get_node("Shell/Scroll/Pad/Content/Body"), titles)
+	for row in ["FINANCES", "OPERATIONS", "CREW", "RECOVERY", "CHARACTER", "HELP"]:
+		_expect_true("the More menu renders a %s row" % str(row),
+			str(row) in titles)
+	# Exactly once each. The stacking defect above is what makes this worth
+	# asserting rather than assuming.
+	_expect_int("and renders Crew exactly once", titles.count("CREW"), 1)
+	_free_screen(screen)
+
+	# A fresh run: Crew is present and LOCKED, which is the state more.gd's own
+	# docblock argues for and which has never once been rendered.
+	_fresh_gate_run(gs)
+	var fresh: Node = _instantiate_screen("res://ui/screens/more.tscn")
+	if fresh == null:
+		_fail("batch15 more", "the More screen would not instantiate fresh")
+		return
+	(fresh as Control).size = FS001_VIEWPORT
+	fresh.refresh()
+	var body: Node = fresh.get_node("Shell/Scroll/Pad/Content/Body")
+	var crew_row: Control = _row_titled(body, "CREW")
+	_expect_true("a fresh More menu still shows the Crew row", crew_row != null)
+	if crew_row != null:
+		_expect_true("and shows it locked",
+			bool(crew_row.get_meta("surface_locked", false)))
+		_expect_true("and dimmed", crew_row.modulate.a < 1.0)
+		_expect_true("with a line saying what opens it",
+			_find_lock_badge(crew_row) != null)
+	# And the Finances row is out of the layout on day 1, because it IS the
+	# shark. Asserted on VISIBILITY rather than on absence: `apply_surface_gate`
+	# hides a node rather than freeing it — a Container skips an invisible child
+	# entirely, so the rows below close the gap — and the row has to survive to
+	# come back on day 5 without the screen rebuilding differently.
+	var finances: Control = _row_titled(body, "FINANCES")
+	_expect_true("the Finances row exists", finances != null)
+	_expect_true("but is not a back door to the shark on day 1",
+		finances != null and not finances.visible)
+	_free_screen(fresh)
+
+	# Day 5 brings it back, on the same fact the Hustle row reads.
+	_fresh_gate_run(gs)
+	gs.day = 5
+	var later: Node = _instantiate_screen("res://ui/screens/more.tscn")
+	if later != null:
+		(later as Control).size = FS001_VIEWPORT
+		later.refresh()
+		var open_row: Control = _row_titled(
+			later.get_node("Shell/Scroll/Pad/Content/Body"), "FINANCES")
+		_expect_true("and arrives with the Hustle row on day 5",
+			open_row != null and open_row.visible)
+		_expect_true("and takes a tap once it does",
+			open_row != null and not bool(open_row.get_meta("surface_locked", false)))
+		_free_screen(later)
+	gs.reset_to_new_game()
+
+## The card carrying a given title, or null. Walks up from the label, because a
+## menu row is `PanelContainer > VBox > HBox > VBox > Label` and the gate is
+## applied to the card at the top of that.
+func _row_titled(body: Node, title: String) -> Control:
+	for child in body.get_children():
+		var found: Array[String] = []
+		_collect_labels(child, found)
+		if title in found:
+			return child as Control
+	return null
+
+# --- the route and the button agree ------------------------------------------
+
+## Every gated surface, asked twice: once as a control and once as a door.
+##
+## The design pass's second improvement in one loop. A surface whose button is
+## hidden and whose route is open is a deep link, a stale nav cell or a
+## consequence return away from being reachable anyway.
+const B15_ROUTE_CASES: Array[Dictionary] = [
+	{"id": "hustle.market", "scene": "res://ui/screens/market.tscn", "what": "the market"},
+	{"id": "hustle.list", "scene": "res://ui/screens/nine07list.tscn", "what": "907List"},
+	{"id": "hustle.boost", "scene": "res://ui/screens/boost.tscn", "what": "boost"},
+	{"id": "hustle.stickup", "scene": "res://ui/screens/stickup.tscn", "what": "stickup"},
+	{"id": "hustle.shark", "scene": "res://ui/screens/shark.tscn", "what": "the shark"},
+	{"id": "menu.crew", "scene": "res://ui/screens/crew.tscn", "what": "crew"},
+	{"id": "menu.jobs", "scene": "res://ui/screens/jobs.tscn", "what": "jobs"},
+]
+
+func _check_route_button_parity(gs: Node, gm: Node) -> void:
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	var nav: Node = get_node("/root/ScreenManager")
+	if access == null:
+		_fail("batch15 routes", "no SurfaceVisibility autoload")
+		return
+
+	_fresh_gate_run(gs)
+	for entry in B15_ROUTE_CASES:
+		var row: Dictionary = entry
+		var scene := str(row["scene"])
+		_expect_str("a fresh run cannot deep-link into %s" % str(row["what"]),
+			nav.resolved_route(scene), "")
+		_expect_true("and the route says the same thing the button does",
+			access.route_allowed(scene) == access.is_unlocked(str(row["id"])))
+
+	# Past every gate: every one of them resolves to itself, and the two answers
+	# still agree. A gate that never re-opens is as broken as one that never
+	# closes.
+	_fresh_gate_run(gs)
+	_unlock_every_surface(gs)
+	for entry in B15_ROUTE_CASES:
+		var row: Dictionary = entry
+		var scene := str(row["scene"])
+		_expect_str("an earned %s resolves to itself" % str(row["what"]),
+			nav.resolved_route(scene), scene)
+		_expect_true("and still agrees with its button",
+			access.route_allowed(scene) == access.is_unlocked(str(row["id"])))
+
+	# Home is never gated, which is what the consequence screen falls back to.
+	_fresh_gate_run(gs)
+	_expect_str("Home is never refused", nav.resolved_route(nav.HOME), nav.HOME)
+	# And every one of these gates is MONOTONIC, which is what makes gating a
+	# consequence return route safe: a surface the player was standing on when a
+	# chain opened cannot have re-closed under them. Asserted rather than
+	# claimed — raise each fact, then raise it further, and nothing shuts.
+	_unlock_every_surface(gs)
+	gs.day = int(gs.day) + 30
+	gs.wander_count = int(gs.wander_count) + 30
+	gs.list_flips = int(gs.list_flips) + 30
+	for entry in B15_ROUTE_CASES:
+		_expect_true("%s does not re-close as the run goes on"
+			% str((entry as Dictionary)["what"]),
+			access.is_unlocked(str((entry as Dictionary)["id"])))
+	gs.reset_to_new_game()
+
+# --- a rebuild rebuilds -------------------------------------------------------
+
+## Two refreshes inside one frame leave one set of rows, not two.
+##
+## The runner is the right place to assert this and the reason is the defect
+## itself: it never yields a frame, so it is the one caller that can see a
+## deferred free not happening. Measured on More, which is the screen where the
+## stacking was found, and asserted on a COUNT rather than on presence — the old
+## behaviour drew every row correctly, just twice.
+func _check_rebuild_is_a_rebuild(gs: Node) -> void:
+	_fresh_gate_run(gs)
+	_unlock_every_surface(gs)
+	var screen: Node = _instantiate_screen("res://ui/screens/more.tscn")
+	if screen == null:
+		_fail("batch15 rebuild", "the More screen would not instantiate")
+		return
+	(screen as Control).size = FS001_VIEWPORT
+	screen.refresh()
+	var body: Node = screen.get_node("Shell/Scroll/Pad/Content/Body")
+	var once: int = body.get_child_count()
+	_expect_true("the More menu drew some rows", once > 0)
+	screen.refresh()
+	screen.refresh()
+	_expect_int("a second refresh in one frame does not stack the rows",
+		body.get_child_count(), once)
+	_free_screen(screen)
+	gs.reset_to_new_game()
+
+# --- the opening --------------------------------------------------------------
+
+## The screen between naming yourself and the first morning.
+##
+## Two claims, and the second is the one that matters. It has to SAY the run's
+## real numbers — a screen that promises a rent the obligations system will not
+## charge is worse than no screen — and it has to CHANGE NOTHING, because it is
+## introducing a run that has already been reset and is the one thing positioned
+## to make a fresh run not fresh.
+func _check_the_opening(gs: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	var before: Dictionary = (get_node("/root/SaveSystem") as Node).capture()
+
+	var screen: Node = _instantiate_screen("res://ui/screens/opening.tscn")
+	if screen == null:
+		_fail("batch15 opening", "the opening would not instantiate")
+		return
+	# A script that failed to parse leaves the scene instantiable and inert —
+	# which is how `_set` shadowing `Object._set` shipped for one commit. Asked
+	# here as well as in the smoke gate, because this is the check that reads
+	# what the screen SAYS and it would otherwise read an empty screen as a
+	# copy failure rather than as a broken script.
+	_expect_true("the opening has its script attached", screen.get_script() != null)
+	(screen as Control).size = FS001_VIEWPORT
+	if screen.has_method("refresh"):
+		screen.refresh()
+	var lines: Array[String] = []
+	_collect_labels(screen, lines)
+	var text: String = "\n".join(lines)
+
+	_expect_true("the opening says who you are", text.contains("PARITY"))
+	_expect_true("and where the run opens",
+		text.contains(str(gs.current_district().get("name", ""))))
+	_expect_true("and what day it is", text.contains("DAY %d" % int(gs.day)))
+	# The two numbers it would be worst to invent, read rather than authored.
+	_expect_true("and what is in the pocket", text.contains("$%d" % int(gs.cash)))
+	_expect_true("and what the rent is", text.contains("$%d" % int(gs.WEEKLY_RENT)))
+	_expect_true("and when it lands",
+		text.contains("%d days" % maxi(0, int(gs.rent_due_day) - int(gs.day))))
+	# The one instruction. After batch 14 it is very nearly the only thing a
+	# Day 1 player can do, so the screen has to name it.
+	_expect_true("and tells the player the one thing they can do",
+		text.to_lower().contains("walk the block"))
+	var go := screen.get_node_or_null("Pad/V/Go") as Button
+	_expect_true("the opening has a way out", go != null and go.visible)
+	_expect_true("and it is a real tap target",
+		go != null and go.custom_minimum_size.y >= 44.0)
+	_expect_true("and it says what it does", go != null and not go.text.is_empty())
+	_free_screen(screen)
+
+	# It wrote nothing. Compared field by field through the save capture, which
+	# is the same shape the round-trip check compares.
+	var after: Dictionary = (get_node("/root/SaveSystem") as Node).capture()
+	for field in before:
+		_expect_str("the opening does not change %s" % str(field),
+			str(after.get(field)), str(before[field]))
+
+	# The route. It is reachable, it is not a nav destination, and CONTINUE RUN
+	# does not pass through it — a player resuming day 12 is not told where they
+	# woke up on day 1.
+	var nav: Node = get_node("/root/ScreenManager")
+	_expect_str("the opening resolves to itself",
+		nav.resolved_route(nav.OPENING), nav.OPENING)
+	var in_nav := false
+	for cell in nav.NAV_ROUTES:
+		if str(nav.NAV_ROUTES[cell]) == str(nav.OPENING):
+			in_nav = true
+	_expect_true("the opening is not a bottom-nav destination", not in_nav)
+	_expect_str("and continuing a run goes straight to the game",
+		nav.resolved_route(nav.HOME), nav.HOME)
+	# The 375 rule and the 44pt rule, through the one owner of both.
+	_fs001_render("res://ui/screens/opening.tscn", "day one")
+	gs.reset_to_new_game()
+
+# --- the news -----------------------------------------------------------------
+
+## A surface arriving says so, once, on the action that brought it.
+func _check_unlock_announcements(gs: Node, gm: Node) -> void:
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	var announcer: Object = gm.system("announcer")
+	if access == null or announcer == null:
+		_fail("batch15 announce", "no announcer registered")
+		return
+
+	# The registry is the list, and it covers exactly the progression gates.
+	var lines: Dictionary = access.announceable()
+	for surface_id in ["hustle.market", "hustle.list", "hustle.boost",
+			"hustle.stickup", "hustle.shark", "menu.jobs",
+			"street.downtown", "street.ship_creek"]:
+		_expect_true("%s has something to say when it opens" % str(surface_id),
+			lines.has(str(surface_id)) and not str(lines[str(surface_id)]).is_empty())
+	# And nothing else does. A population gate opens because something arrived,
+	# and the thing that arrived is its own announcement.
+	for surface_id in ["home.market_snapshot", "home.text_messages",
+			"home.activity_feed", "home.tonights_operation", "home.actions"]:
+		_expect_true("%s stays quiet, because it is a population not a door"
+			% str(surface_id), not lines.has(str(surface_id)))
+
+	# 1. A FRESH RUN announces nothing: a closed gate cannot have just opened.
+	_fresh_gate_run(gs)
+	gs.activity_log = []
+	var quiet: Array = announcer.announce_since(announcer.snapshot())
+	_expect_int("a run that changed nothing announces nothing", quiet.size(), 0)
+	_expect_int("and writes nothing to the feed", gs.activity_log.size(), 0)
+
+	# 2. THE REAL PATH. One walk opens the market, through a real dispatch, and
+	#    the line lands on the same feed the screen renders.
+	_fresh_gate_run(gs)
+	gs.activity_log = []
+	_expect_true("a fresh run has no market row",
+		not access.is_unlocked("hustle.market"))
+	_expect_true("a walk dispatches", gm.dispatch("wander", {"intent": "read"}))
+	_expect_true("and the walk opened the market row",
+		access.is_unlocked("hustle.market"))
+	var said: String = str(lines["hustle.market"])
+	var heard: int = 0
+	for row in gs.activity_log:
+		if str((row as Dictionary).get("text", "")) == said:
+			heard += 1
+	_expect_int("the feed says the market row arrived", heard, 1)
+	# It is the NEWEST row, which is what puts it on batch 14's wander toast —
+	# the player is told on the screen they are standing on.
+	_expect_str("and it is the line the wander toast will carry",
+		str((gs.activity_log[0] as Dictionary).get("text", "")), said)
+
+	# 3. ONCE. A second walk does not repeat it.
+	gs.activity_log = []
+	gm.dispatch("wander", {"intent": "read"})
+	var again: int = 0
+	for row in gs.activity_log:
+		if str((row as Dictionary).get("text", "")) == said:
+			again += 1
+	_expect_int("and does not say it again on the next walk", again, 0)
+
+	# 4. A DAY GATE, through the clock rather than through a walk.
+	_fresh_gate_run(gs)
+	gs.activity_log = []
+	var stickup_line: String = str(lines["hustle.stickup"])
+	for _slot in range(4):
+		gm.dispatch("advance_time", {})
+	_expect_true("day 2 opens the stickup row", access.is_unlocked("hustle.stickup"))
+	var stick_heard := false
+	for row in gs.activity_log:
+		if str((row as Dictionary).get("text", "")) == stickup_line:
+			stick_heard = true
+	_expect_true("and the day that opened it says so", stick_heard)
+
+	# 5. A RELOAD ANNOUNCES NOTHING. This is the property the snapshot diff buys
+	#    and a persisted "already told them" flag would have to be taught: a run
+	#    reloaded on day 20 earned all of it days ago and there is no news.
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+	_fresh_gate_run(gs)
+	_unlock_every_surface(gs)
+	gs.reconcile_persistent_invariants()
+	saves.save_run()
+	gs.activity_log = []
+	_expect_true("the run reloads", saves.load_run())
+	var announced_on_load := 0
+	for row in gs.activity_log:
+		var text := str((row as Dictionary).get("text", ""))
+		for surface_id in lines:
+			if text == str(lines[surface_id]):
+				announced_on_load += 1
+	_expect_int("a reload announces nothing", announced_on_load, 0)
+	if previous_save.is_empty():
+		if FileAccess.file_exists(saves.SAVE_PATH):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(saves.SAVE_PATH))
+	else:
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+
+	# 6. AN EMPTY BEFORE-PICTURE announces nothing. That is the conservative
+	#    direction and it is the one that matters: an empty snapshot means the
+	#    access layer was unavailable when the action started, and reading it as
+	#    "everything was closed" would announce the whole ladder at once.
+	_fresh_gate_run(gs)
+	_unlock_every_surface(gs)
+	gs.activity_log = []
+	var from_nothing: Array = announcer.announce_since({})
+	_expect_int("an empty before-picture announces nothing", from_nothing.size(), 0)
+	_expect_int("and writes no feed rows", gs.activity_log.size(), 0)
+
+	# 7. TWO AT ONCE, in registry order, so a replay of the same seed reads the
+	#    same way twice.
+	_fresh_gate_run(gs)
+	gs.activity_log = []
+	var before: Dictionary = announcer.snapshot()
+	gs.day = 9
+	gs.wander_count = 9
+	var spoken: Array = announcer.announce_since(before)
+	_expect_true("several doors opening at once are all announced",
+		spoken.size() >= 5)
+	var registry_order: Array = []
+	for surface_id in lines:
+		if str(surface_id) in spoken:
+			registry_order.append(str(surface_id))
+	_expect_str("and in the order the registry authors them",
+		", ".join(PackedStringArray(spoken)),
+		", ".join(PackedStringArray(registry_order)))
+	# The announcer never decides anything: every id it spoke about is one the
+	# access layer says is open.
+	for surface_id in spoken:
+		_expect_true("%s was actually open when it was announced" % str(surface_id),
+			access.is_unlocked(str(surface_id)))
+	gs.reset_to_new_game()
+
 func _expect_int(label: String, got: int, want: int) -> void:
 	_checks += 1
 	if got != want:
@@ -17076,11 +17537,28 @@ func _fail(label: String, detail: String) -> void:
 ## and the discovery axis gets a mechanism section, because a registry entry can
 ## be proven by a table and a seeded roll cannot.
 ##
+## Batch 15 takes it to 12431, and the arithmetic does not add up the way the
+## others have — 12,249 + 192 new checks would be 12,441 against a run that
+## reports exactly that, but the batch-14 run it is measured against was 9
+## checks HIGHER than the same suite reports today. Those 9 were never real.
+## `surface_base._bind_content()` cleared its rows with `queue_free()`, which is
+## deferred, and this runner never yields a frame — so every check that
+## refreshed a surface screen twice was walking a tree that still held every
+## earlier build, counting the same button two and three times. Making the clear
+## immediate removed the duplicates and the count with them.
+##
+## That is the floor working exactly backwards from how it usually does, and it
+## is worth leaving on the record: it normally catches a section that stopped
+## running, and here it caught a section that had been running against a bigger
+## tree than the screen actually had. One of those inflated checks was also the
+## only thing keeping the phone dismiss check green — see the note at
+## `_check_phone_dismiss_target`.
+##
 ## Ten of margin, the same margin every floor since FS-003.13 has left, because
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 12239
+const MIN_CHECKS := 12431
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

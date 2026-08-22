@@ -59,11 +59,18 @@ extends "res://ui/screens/surface_base.gd"
 ## inventing IA rather than porting it.
 
 func _build_body() -> void:
-	body.add_child(_menu_row(
+	# Finances IS the Shark screen — see note 1 above — so it carries the Shark
+	# gate. Batch 14 hid the Hustle hub's Shark row until day 5 and left this
+	# door open, which is exactly the disagreement the design pass's second
+	# improvement exists to forbid: two entrances to one surface answering
+	# differently. One registry entry, both doors.
+	var finance_row: Control = _menu_row(
 		"Finances",
 		_finance_summary(),
 		"Cash, debt, Shark notes, and financial risk." if gs.debt > 0 else "Cash and financial risk.",
-		nav.SHARK))
+		nav.SHARK)
+	body.add_child(finance_row)
+	apply_surface_gate(ACCESS.HUSTLE_SHARK, finance_row)
 
 	body.add_child(_menu_row(
 		"Operations",
@@ -73,11 +80,24 @@ func _build_body() -> void:
 
 	# The Crew row carries the same gate as the Crew route and as Street's
 	# People row, from the same registry entry — three doors, one verdict.
-	apply_surface_gate(ACCESS.MENU_CREW, _menu_row(
+	#
+	# **This row never rendered.** `_menu_row` BUILDS a card and returns it; it
+	# is `body.add_child()` at every other call site that puts one on the screen.
+	# This one passed the card straight into `apply_surface_gate`, which gated an
+	# orphan — so from v0.1.0 until batch 15 the More menu had no Crew row at
+	# all, locked or otherwise, and the paragraph above arguing that it should be
+	# LOCKED rather than hidden was describing something nobody could see.
+	#
+	# Parented FIRST and gated second, which is the order every other gated
+	# surface in the build uses and the order that makes the mistake impossible:
+	# a row is on the screen, and then a gate decides how it looks.
+	var crew_row: Control = _menu_row(
 		"Crew",
 		"%d/%d active" % [gs.recruited_crew().size(), gs.crew_capacity()],
 		"Wages, loyalty, tiers, and who answers when it gets loud.",
-		nav.CREW))
+		nav.CREW)
+	body.add_child(crew_row)
+	apply_surface_gate(ACCESS.MENU_CREW, crew_row)
 
 	# Canon shows Recovery only once it is relevant, and then keeps showing it.
 	if _recovery_available():

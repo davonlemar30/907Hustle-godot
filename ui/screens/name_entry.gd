@@ -68,4 +68,9 @@ func _on_begin() -> void:
 		return
 	gs.street_name = chosen
 	gs.reset_to_new_game()
-	nav.go_to_game()
+	# Through the opening rather than straight to Home (batch 15). This is the
+	# ONE route to that screen, which is what makes "shown once per run" a
+	# property of the flow rather than a flag somebody has to remember to clear:
+	# naming yourself happens once, and CONTINUE RUN on the title screen calls
+	# `go_to_game()` directly and never passes through it.
+	nav.go_to(nav.OPENING)

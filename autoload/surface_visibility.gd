@@ -140,17 +140,20 @@ const GATES := {
 		"mode": MODE_LOCKED,
 		"requirements": [{"type": "job_contacts_min", "min": 1}],
 		"hint": "Meet someone who hires",
+		"announce": "Somebody will vouch for you now. There is work on the board.",
 	},
 	STREET_DOWNTOWN: {
 		"mode": MODE_LOCKED,
 		"requirements": [{"type": "district_discovered", "district_id": "downtown"}],
 		"hint": "Hold a corner before the city opens up",
+		"announce": "Downtown is worth the bus fare now. Different prices, different people.",
 	},
 	STREET_SHIP_CREEK: {
 		"mode": MODE_LOCKED,
 		"requirements": [{"type": "district_discovered",
 			"district_id": "airport_industrial"}],
 		"hint": "Hold two corners before the port is worth the trip",
+		"announce": "Ship Creek is on the map. The yards run all night out there.",
 	},
 
 	# --- population / feature flags: HIDDEN -----------------------------
@@ -224,26 +227,31 @@ const GATES := {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "wander_count_min", "min": 1}],
 		"hint": "",
+		"announce": "You know where the corner is now. Street Market is on the board.",
 	},
 	HUSTLE_LIST: {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "day_min", "min": 3}],
 		"hint": "",
+		"announce": "People are posting things worth having. 907List is on the board.",
 	},
 	HUSTLE_BOOST: {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "wander_count_min", "min": 3}],
 		"hint": "",
+		"announce": "You have walked past enough doors to know which ones are loose.",
 	},
 	HUSTLE_STICKUP: {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "day_min", "min": 2}],
 		"hint": "",
+		"announce": "Rent does not wait. Stickup is on the board, for what that is worth.",
 	},
 	HUSTLE_SHARK: {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "day_min", "min": 5}],
 		"hint": "",
+		"announce": "You know who lends now, and who they lend to.",
 	},
 }
 
@@ -253,9 +261,26 @@ const GATES := {
 ## Keyed by scene path because that is what `go_to` is handed — a nav cell, a
 ## deep link and a debug jump all arrive as a path, and all three get the same
 ## answer.
+## Batch 15 completes the table. Batch 14 gated five Hustle rows and stopped at
+## the button, which is precisely the half-measure this map exists to prevent:
+## `More -> Finances` is a second door onto the Shark screen and it opened on a
+## fresh run while the Hustle row hid until day 5. Two entrances, two answers.
+##
+## Every gate on this ladder is MONOTONIC — days and walks only ever go up — so
+## a route cannot be refused after the player has already been through it. That
+## matters for one caller in particular: `consequence.gd` sends the player back
+## to where a chain started, and a gate that could re-close would strand them on
+## a screen with no navigation. The consequence screen falls back to Home now
+## rather than relying on that property holding forever, but the property is real
+## and is the reason adding these five is safe today.
 const ROUTE_GATES := {
 	"res://ui/screens/crew.tscn": MENU_CREW,
 	"res://ui/screens/jobs.tscn": MENU_JOBS,
+	"res://ui/screens/market.tscn": HUSTLE_MARKET,
+	"res://ui/screens/nine07list.tscn": HUSTLE_LIST,
+	"res://ui/screens/boost.tscn": HUSTLE_BOOST,
+	"res://ui/screens/stickup.tscn": HUSTLE_STICKUP,
+	"res://ui/screens/shark.tscn": HUSTLE_SHARK,
 }
 
 var gs: Node
@@ -356,6 +381,46 @@ func operation_card_reason() -> String:
 		if jobs != null and str(jobs.shift_blocker()).is_empty():
 			return "shift"
 	return ""
+
+# --- what has just arrived -------------------------------------------------
+
+## Every surface worth telling the player about when it opens, and the line.
+##
+## The list is not authored separately — it is the gates that carry an
+## `announce` key, so "is this worth announcing" sits beside "what does this
+## require" and neither can be edited without the other being visible.
+##
+## Only PROGRESSION gates carry one. A population gate opens because something
+## arrived (a text, a feed row, an operation) and the thing that arrived is its
+## own announcement; a line saying "you have a text" beside the text is noise.
+## An earned surface is the opposite case: nothing else on the screen says that
+## a door opened, and after batch 14 five of them open with no padlock to watch.
+func announceable() -> Dictionary:
+	var out: Dictionary = {}
+	for surface_id in GATES:
+		var line := str((GATES[surface_id] as Dictionary).get("announce", ""))
+		if not line.is_empty():
+			out[str(surface_id)] = line
+	return out
+
+## Which announceable surfaces are open right now.
+##
+## A plain snapshot, so a caller can take one before an action and one after and
+## diff them. **That is deliberately how "what just opened" is answered, rather
+## than by a persisted `announced` set.** This file's founding rule is that
+## nothing derived is stored — a stored flag is a second opinion about a
+## condition, and it is the one thing that can contradict the run. A transition
+## is only meaningful inside the action that caused it, which is exactly where
+## the diff is taken.
+##
+## It also gets loading right for free. A load is not a dispatch, so no snapshot
+## is taken across it and a run reloaded on day 20 is told nothing — which is
+## correct, because nothing opened.
+func unlocked_snapshot() -> Dictionary:
+	var out: Dictionary = {}
+	for surface_id in announceable():
+		out[str(surface_id)] = is_unlocked(str(surface_id))
+	return out
 
 # --- Home's standing actions -----------------------------------------------
 

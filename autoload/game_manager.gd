@@ -175,6 +175,13 @@ func _ready() -> void:
 	# lets a chain reloaded from a save find its source again — the save carries
 	# `action_id`, a String, and this is what turns it back into a system.
 	# Nothing here is ever serialised (TI-003 §1, §26).
+	# The announcer. Built late because it asks the access layer about every
+	# gate in the build and the access layer asks GameManager about some of
+	# them, but like everything else it resolves its collaborators at call time.
+	var announcer = preload("res://systems/announcer.gd").new()
+	announcer.setup(_gs, self)
+	register_system("announcer", announcer)
+
 	var consequence_engine = preload("res://systems/consequence_engine.gd").new()
 	consequence_engine.setup(_gs, self)
 	consequence_engine.register_source_adapter("boost", boost)
@@ -211,6 +218,12 @@ func dispatch(action: String, payload: Dictionary = {}) -> bool:
 		var sys = entry["node"]
 		if sys.can_handle(action):
 			_dispatch_depth += 1
+			# The before-picture for the announcer, taken BEFORE the handler so
+			# it spans everything the action causes. See `systems/announcer.gd`
+			# for why a transition is measured across a dispatch rather than
+			# recorded in a persisted flag.
+			var announcer: Object = system("announcer")
+			var gates_before: Dictionary = announcer.snapshot() if announcer != null else {}
 			var result: Dictionary = sys.handle(action, payload)
 			if result.get("ok", false):
 				# Discovery first: an action may have just qualified an operation
@@ -226,6 +239,12 @@ func dispatch(action: String, payload: Dictionary = {}) -> bool:
 				# Persistent latches must settle before state_changed. SaveSystem
 				# autosaves from that signal, before a screen gets to refresh.
 				_gs.reconcile_persistent_invariants()
+				# And THEN say what opened — after every reconcile that can open
+				# a gate and before the refresh that renders the feed, so the
+				# line the player reads about a surface arriving is on the same
+				# render as the surface.
+				if announcer != null:
+					announcer.announce_since(gates_before)
 				_gs.notify_changed()
 				_dispatch_depth = maxi(0, _dispatch_depth - 1)
 				return true

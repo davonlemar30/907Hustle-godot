@@ -544,6 +544,165 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.12: the integration gate, and what FS-003 leaves behind  (added 2026-08-22)
+
+The milestone gate. Everything above proves one slice; this proves they are one
+LAYER — that TI-003 §23's named scenarios run end to end, that every save path
+arrives somewhere coherent, and that thirty days of heavy criminal activity move
+the market stream exactly as far as thirty quiet days do.
+
+**Parity: 10,044 → 10,211 checks, 0 failures. Save schema stays v8.**
+
+### The schema did not need to move, and that is worth stating
+
+FS-003.8 through .11 persist an arrest record with charge history, District
+Pressure ledgers with their daily market caps, a bleed queue, a delayed
+retaliation queue, booking quotes and arrest warnings — and **not one of them
+needed a new field.** Everything rides in structures FS-003.4 allocated: the
+booking block and the arrest warnings live inside `active_consequence`, which is
+persisted whole.
+
+A version bump with no new field is a migration arm nobody can test, so the
+schema stayed at v8 and the suite now asserts both halves: that `SAVE_VERSION`
+is 8, and that every field these four slices depend on is in `PERSIST_FIELDS`.
+The second assertion is the one with teeth — dropping `district_pressure` from
+the manifest fails three checks and drops the total by 38.
+
+### Two verification bugs the gate found in its own tests
+
+Both are the same species as FS-003.8's provenance hole, and both are worth
+recording because neither was in the product.
+
+**`str(capture())` is not a state digest.** A freshly-built state carries its
+Dictionary keys in insertion order; one reconstructed from the save file carries
+them in the order the JSON parser produced, which is sorted. The two are
+byte-for-byte different and semantically identical — so the first version of the
+stage round-trip matrix reported *every* stage as a mismatch, on states that were
+in fact perfect. `_canonical()` sorts recursively and normalises whole-valued
+floats, which is what makes the comparison mean "the same facts" rather than "the
+same typing order".
+
+**A round trip cannot be compared against an unreconciled wallet.** The setups
+reach their stages through `_frozen_ready`, which sets `gs.cash` directly — one
+of TI-003 §6's named test exceptions. `SaveSystem` reconciles on load, so an
+unreconciled save comes back reconciled and the digest reports a difference that
+is really the harness's own shortcut. The matrix now reconciles first and asserts
+`cash == clean + dirty` before capturing, so both sides are states the game can
+actually be in.
+
+### The market non-drift check, and why it is sampled by day
+
+TI-003 §21's headline claim is that TI-003 adds zero market-stream draws. The
+check is two runs from one seed to day 39. One does nothing but sleep. The other
+lifts, robs Goodie's stash, gets caught, answers, gets booked, serves time, and
+takes the retaliation that robbery scheduled.
+
+Sampled **by day**, not by dispatch count — the only comparison that means
+anything, because a booking advances several slots at once and the two runs reach
+day 39 after very different numbers of calls. What must be equal is the number of
+nightly evolves, and that is one per day either way.
+
+Result: **30 days compared, 0 cursor mismatches, 0 board mismatches.**
+
+Two things had to be equalised for the comparison to be about the stream rather
+than about survival. Rent and the phone bill are pushed out of range in both arms
+— the loud arm is the one that spends slots inside bookings, so it is the one
+that would reach eviction first, and comparing a thirty-day run against a
+nineteen-day one proves nothing. And neither arm buys or sells product: market
+transactions consume availability, which the nightly walk reads.
+
+### Simulation findings
+
+Three seeded profiles, reported rather than asserted. FS-003.12's brief is
+explicit that balance findings become follow-up tasks rather than in-flight
+fixes, so the only assertions here are invariants that would be bugs at any
+balance: the wallet balances, Pressure stays inside 0–9, Heat inside 0–15,
+Financial Pressure inside 0–10, priors never outrun arrests, and every reload
+checkpoint matches.
+
+| Profile | Days | Arrests | Booking slots | Retaliation queued / surfaced | FP days ≥6 |
+| --- | --- | --- | --- | --- | --- |
+| Frequent crime, fights everything | 29 | 15 | 58 | 4 / 3 | 0 |
+| Frequent crime, yields everything | 29 | 12 | 50 | 8 / 4 | 4 |
+| Cautious, crime every third day | 26 | 5 | 19 | 1 / 1 | 0 |
+
+Pressure band distribution, home district, aggressive profile:
+
+    north_star_lot/boost   QUIET 1 · KNOWN 5 · WATCHED 2 · HOT 19
+    north_star_lot/stick   QUIET 4 · KNOWN 7 · WATCHED 4 · HOT 12
+
+**Four findings, filed rather than fixed:**
+
+1. **Arrest frequency.** A player committing crime every slot is arrested roughly
+   every other day and spends 58 of 29 days' worth of slots in booking. That may
+   be the intended cost of that playstyle; it is worth a designer looking at,
+   because it is close to the point where the arrest loop *is* the game.
+2. **Pressure saturates and stays saturated.** The home district sits at HOT for
+   19 of 29 days on the aggressive profile. Recovery is −1/day after a grace day,
+   and a single messy outcome is +1.0 — so any player working one district daily
+   outruns the decay permanently. The bands function; whether the top one should
+   be that easy to live in is a balance question.
+3. **The Financial Pressure fold almost never fires.** Zero days at the fold
+   threshold on two of three profiles. Bail is the main high-visibility spend in
+   these runs and most quotes are under the $400 free band, so the dirty portion
+   rarely clears it. The mechanic is correct and currently near-dormant.
+4. **Retaliation never expires when the player does not travel.** Expired count
+   is 0 across all three profiles, because none of them leaves the district. That
+   is the mechanic working — avoidance is the counterplay — but it means the
+   *avoidance* path gets no exercise in an ordinary aggressive run.
+
+`game over` in two profiles is eviction and is a property of the PROFILE rather
+than of the consequence layer: none of them ever works a shift or pays rent.
+
+### Sabotage results
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| 1 | A consequence roll draws from the market stream | **caught** — 1 failure |
+| 2 | v7 saves migrate cash to Dirty (canon's rule, not TI-003's) | **caught** — 6 failures |
+| 3 | `district_pressure` dropped from `PERSIST_FIELDS` | **caught** — 3 failures, and the total fell by 38 |
+
+Sabotage 1 exposed a gap in the drift check itself and was fixed rather than
+noted: the loud arm was robbing `washgo_regular`, which has no retaliation row,
+so the 30-day comparison never exercised the schedule roll at all. It robs
+Goodie's stash now, which schedules at 1.00 — so the arm covers the delayed path
+as well as Caught and Booking, and the check asserts it reached both.
+
+### The full TI-003 picture
+
+**Ownership, as shipped.** `GameManager` is the mutation boundary. `GameState`
+owns persisted facts. `ConsequenceEngine` owns the active chain, Cause receipts,
+the delayed queue and District Pressure. `ArrestSystem` owns booking quotes and
+the arrest record. `RetaliationSystem` owns the delayed path. `WalletSystem` and
+`HeatSystem` own every runtime Cash and Heat write, enforced by an audit that
+scans the source. `DayLifecycle` owns the ordered rollover. `OutcomeResolver`
+remains the tier authority and the odds projection. Source systems own their own
+state, tables and observations — and nothing else.
+
+**Known weaknesses, named.**
+
+- The Boost/Stickup surfaces still show a raw percentage for the ACTION's own
+  odds, while the consequence screen shows bands. Two vocabularies for the same
+  kind of number. FS-003.11 changed only what the brief scoped; unifying them is
+  a design call, not an implementation one.
+- The simulator answers chains with a fixed policy, so the metrics describe three
+  specific playstyles rather than a distribution. A profile that picks responses
+  by the odds it is shown would measure something closer to real play.
+- The retaliation `:injury` RNG key TI-003 reserves is unused, because §16 gives
+  Health as a flat number rather than a band. If a later pass makes it a band,
+  the key is already named.
+- District Pressure and Global Heat now BOTH scale by district — Pressure through
+  the difficulty penalty, Heat through the §7 multiplier table. They are separate
+  systems with separate storage, but a player experiences them as one "this
+  district is worse" and may not be able to tell them apart.
+
+**Migration path from a pre-TI-003 save.** A v7 save loads. Its aggregate cash
+enters Clean (TI-003 §20, a deliberate divergence from canon, which classifies
+its own pre-split saves Dirty). Every consequence structure defaults empty, and
+empty is the only true answer — a v7 save cannot hold an unfinished consequence,
+because none of these systems existed while it was being played. Nothing is
+inferred and no active chain is created.
+
 ## FS-003.11: numbers underneath, situations on top  (added 2026-08-22)
 
 The consequence layer becomes a player experience. The engine could already

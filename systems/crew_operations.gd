@@ -76,9 +76,18 @@ const AMBER := Color(0.882, 0.651, 0.227)
 # its own flag means that run gets the offer once, on its next reconcile, instead
 # of never.
 
-## Who the delegation texts come from. Her actual roster name is "Pherris
-## Dickens"; the inbox renders the sender uppercase and a text is from a person,
-## not from a file.
+## Who the delegation texts come from, when the adapter does not say.
+##
+## GENERALISED in batch 6a. Every string in this block used to be the only thing
+## an operation could say, which was fine while there was one operation and is
+## the reason there could only ever be one. The coordinator now asks the ADAPTER
+## for its copy and falls back to these, so a second operation is a second
+## adapter rather than an `if operation_id ==` in a file whose own header
+## forbids exactly that.
+##
+## The fallbacks stay Pherris's because `list_adapter` is the one adapter that
+## predates the seam; its own strings moved into it and these are what any
+## adapter that declines to speak inherits.
 const CALLBACK_FROM := "Pherris"
 
 ## The offer, once she is capable of it. PX/FS-001.9's authored copy.
@@ -297,7 +306,8 @@ func _reconcile_callbacks() -> void:
 			continue
 		# --- the offer, once per run ---
 		if not callback_flag("discovery_notified"):
-			phone.push_message(CALLBACK_FROM, DISCOVERY_TEXT)
+			phone.push_message(_sender_for(operation_id),
+				_adapter_copy(operation_id, "discovery_text", [], DISCOVERY_TEXT))
 			_set_callback_flag("discovery_notified", true)
 		# --- the loyalty complaint, once per episode ---
 		#
@@ -317,7 +327,9 @@ func _reconcile_callbacks() -> void:
 		var gate: int = _loyalty_gate(operation_id)
 		if loyalty < gate:
 			if not callback_flag("loyalty_warning_sent"):
-				phone.push_message(CALLBACK_FROM, LOYALTY_WARNING_TEXT)
+				phone.push_message(_sender_for(operation_id),
+					_adapter_copy(operation_id, "loyalty_warning_text", [],
+						LOYALTY_WARNING_TEXT))
 				_set_callback_flag("loyalty_warning_sent", true)
 		elif callback_flag("loyalty_warning_sent"):
 			# Re-armed rather than left set. The flag is "there is a complaint
@@ -330,6 +342,27 @@ func _reconcile_callbacks() -> void:
 ## authored "she went out" default: a budget the player set, a spend they left
 ## open, and a board that had nothing on it. Every figure is read off the
 ## selection the adapter just returned.
+## An adapter's own copy, or the coordinator's fallback.
+##
+## Four optional methods, all checked rather than required, because an adapter
+## that only knows how to `settle()` is still a valid adapter:
+##
+##     sender() -> String
+##     discovery_text() -> String
+##     assignment_line(selection, spend_limit) -> String
+##     settlement_text(assignment) -> String
+func _adapter_copy(operation_id: String, method: String, args: Array,
+		fallback: String) -> String:
+	var adapter: Variant = _adapter_for(operation_id)
+	if adapter == null or not (adapter as Object).has_method(method):
+		return fallback
+	var said: Variant = (adapter as Object).callv(method, args)
+	return str(said) if said is String and not str(said).is_empty() else fallback
+
+## Who a given operation's texts come from.
+func _sender_for(operation_id: String) -> String:
+	return _adapter_copy(operation_id, "sender", [], CALLBACK_FROM)
+
 func _assignment_line(selection: Variant, spend_limit: int) -> String:
 	var picked: int = 0
 	var spent: int = 0
@@ -390,7 +423,10 @@ func _settlement_callback(assignment: Dictionary) -> void:
 		return
 	if not (assignment.get("result") is Dictionary):
 		return
-	phone.push_message(CALLBACK_FROM, _settlement_text(assignment))
+	var operation_id := str(assignment.get("operation_id", ""))
+	phone.push_message(_sender_for(operation_id),
+		_adapter_copy(operation_id, "settlement_text", [assignment],
+			_settlement_text(assignment)))
 
 # --- eligibility -----------------------------------------------------------
 
@@ -446,6 +482,12 @@ func _assign(crew_id: String, operation_id: String, payload: Dictionary = {}) ->
 		# real answer that commits her day for nothing, which is the player's
 		# right to choose.
 		"spend_limit": int(payload.get("spend_limit", -1)),
+		# A generic passthrough for whatever an operation needs that is not a
+		# budget. `spend_limit` was the only parameter the dispatch ever read,
+		# which meant an operation wanting a TARGET — a district to work, a
+		# corner to stand on — had nowhere to receive one. Carried as an opaque
+		# Dictionary the coordinator never inspects; the adapter owns its shape.
+		"params": payload.get("params", {}) if payload.get("params") is Dictionary else {},
 		# What she picked this morning. Kept SEPARATE from `result`, which the
 		# coordinator defines as whatever settlement returned — writing the
 		# selection there would have it overwritten at midnight, losing the
@@ -465,8 +507,10 @@ func _assign(crew_id: String, operation_id: String, payload: Dictionary = {}) ->
 	# before. The line reports what she picked up and what it cost, and neither
 	# of those exists until `select()` has run — logging first would have meant
 	# authoring a line that could not say anything true.
-	gs.log_activity(_assignment_line(assignment["selection"],
-		int(assignment["spend_limit"])), AMBER)
+	gs.log_activity(_adapter_copy(operation_id, "assignment_line",
+		[assignment["selection"], int(assignment["spend_limit"])],
+		_assignment_line(assignment["selection"], int(assignment["spend_limit"]))),
+		AMBER)
 	return {"ok": true, "crew_id": crew_id, "operation_id": operation_id,
 		"selection": assignment["selection"]}
 

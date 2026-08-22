@@ -139,6 +139,7 @@ func _ready() -> void:
 		_check_trading_risk(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_stick_ladder(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_route_visibility(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_operation_substrate(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -15509,6 +15510,10 @@ func _check_stick_ladder(gs: Node, gm: Node) -> void:
 # SABOTAGE: `best_route` reports the board price ==> "a burned corner is
 #           discounted from here" fails.
 
+## How many products have a route worth taking on the probe board. Pinned so
+## this section's check count cannot drift with the economy.
+const ROUTE_PROBE_COUNT := 3
+
 func _check_route_visibility(gs: Node, gm: Node) -> void:
 	var economy: RefCounted = gm.system("economy") as RefCounted
 	var phone: RefCounted = gm.system("phone") as RefCounted
@@ -15526,9 +15531,18 @@ func _check_route_visibility(gs: Node, gm: Node) -> void:
 	_expect_true("the city has a route worth taking", not routes.is_empty())
 	if routes.is_empty():
 		return
+	# The COUNT is pinned, and the loop below is bounded by it, for a reason the
+	# check floor cares about: a loop whose length is data makes this section's
+	# contribution to `_checks` move whenever the economy does, and the floor
+	# exists to catch a section aborting rather than to absorb that. Batch 6a's
+	# availability and fare rules legitimately disqualified some routes and this
+	# read 8 checks lighter — a real change that should be visible here rather
+	# than turning up as floor drift.
+	_expect_int("the qualifying routes on this board", routes.size(), ROUTE_PROBE_COUNT)
 	# Best edge first, and every reported edge is real.
 	var previous: int = 0x7FFFFFFF
-	for entry in routes:
+	for index in range(mini(routes.size(), ROUTE_PROBE_COUNT)):
+		var entry: Variant = routes[index]
 		var route: Dictionary = entry
 		_expect_true("a reported route pays more than it costs", int(route["edge"]) > 0)
 		_expect_true("routes are ordered by what they pay", int(route["edge"]) <= previous)
@@ -15654,6 +15668,203 @@ func _check_route_visibility(gs: Node, gm: Node) -> void:
 		economy.price_trend("nowhere", "weed"), "flat")
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
+
+
+# =============================================================================
+# The operation substrate, and three honesty defects in the route surface
+# =============================================================================
+
+func _check_operation_substrate(gs: Node, gm: Node) -> void:
+	_check_route_honesty(gs, gm)
+	_check_adapter_copy_seam(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- batch 5 follow-ups -----------------------------------------------------
+#
+# Three ways the route line could be true and still mislead. Each was found by
+# reading the shipped surface rather than by a failing test, which is why each
+# now has one.
+#
+# SABOTAGE: drop the availability check ==> "a sold-out corner advertises no
+#           route" fails.
+# SABOTAGE: drop the fare floor ==> "a route has to clear its own bus fare"
+#           fails.
+# SABOTAGE: collapse the two silences ==> "knowing nowhere else says so" fails.
+
+func _check_route_honesty(gs: Node, gm: Node) -> void:
+	var economy: RefCounted = gm.system("economy") as RefCounted
+
+	# 1. A route you cannot stock is not a route.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 4
+	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+	var stocked: Array = economy.known_routes()
+	_expect_true("the probe board has something to route", not stocked.is_empty())
+	if not stocked.is_empty():
+		var product_id := str((stocked[0] as Dictionary)["product_id"])
+		var here: Dictionary = gs.markets[str(gs.current_district_id)]
+		var had: int = int((here["availability"] as Dictionary)[product_id])
+		_expect_true("the probe product was actually in stock", had > 0)
+		(here["availability"] as Dictionary)[product_id] = 0
+		_expect_true("a sold-out corner advertises no route",
+			(economy.best_route(product_id) as Dictionary).is_empty())
+		(here["availability"] as Dictionary)[product_id] = had
+		_expect_true("and it comes back when the stock does",
+			not (economy.best_route(product_id) as Dictionary).is_empty())
+
+	# 2. Every reported route clears the bus fare. A one-dollar spread is
+	#    arithmetic, not a trip.
+	for entry in economy.known_routes():
+		_expect_true("a route has to clear its own bus fare",
+			int((entry as Dictionary)["edge"]) > int(gs.TravelFare))
+	# That sweep alone proves nothing and the sabotage said so: no route on the
+	# probe board happens to have a sub-fare edge, so removing the floor left it
+	# green. The case has to be BUILT — a spread the fare eats — and asserted
+	# from both sides of the line.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.day = 4
+	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
+	gs.current_district_id = "north_star_lot"
+	var fare: int = int(gs.TravelFare)
+	for district_id in gs.markets.keys():
+		var board: Dictionary = gs.markets[district_id]
+		(board["prices"] as Dictionary)["weed"] = 40
+		(board["availability"] as Dictionary)["weed"] = 5
+	# Exactly the fare: not worth the trip, so not a route.
+	((gs.markets["downtown"] as Dictionary)["prices"] as Dictionary)["weed"] = 40 + fare
+	_expect_true("a spread the fare eats is not a route",
+		(economy.best_route("weed") as Dictionary).is_empty())
+	# One dollar over: the trip pays for itself, so it is.
+	((gs.markets["downtown"] as Dictionary)["prices"] as Dictionary)["weed"] = 40 + fare + 1
+	var marginal: Dictionary = economy.best_route("weed")
+	_expect_true("a spread that clears it is", not marginal.is_empty())
+	if not marginal.is_empty():
+		_expect_int("and it reports the real edge", int(marginal["edge"]), fare + 1)
+
+	# 3. Two different silences. Before a first corner the player knows one
+	#    district, so there is nowhere for word to come FROM — which is a map
+	#    problem and used to read as a market conclusion, on all eight rows.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.phone_active = true
+	_expect_int("a fresh run knows one district",
+		(gs.districts_unlocked as Array).size(), 1)
+	var alone: Node = _instantiate_screen("res://ui/screens/market.tscn")
+	if alone == null:
+		_fail("route honesty", "the market screen would not instantiate")
+		return
+	(alone as Control).size = FS001_VIEWPORT
+	alone.refresh()
+	var solo: Array[String] = []
+	_collect_labels(alone, solo)
+	var solo_text: String = "\n".join(solo)
+	_expect_true("knowing nowhere else says so",
+		solo_text.contains("NO OTHER BOARD YOU KNOW OF"))
+	_expect_true("and does not call it a market conclusion",
+		not solo_text.contains("NOBODY PAYING OVER THE ODDS"))
+	_free_screen(alone)
+
+# --- the adapter copy seam --------------------------------------------------
+#
+# Every delegation string used to be a const or a private method on the
+# coordinator. That is what made a second operation impossible: the coordinator
+# could only ever say one thing, in one person's voice, about one kind of work.
+#
+# SABOTAGE: make `_adapter_copy` return the fallback unconditionally ==> "an
+#           adapter speaks in its own voice" fails.
+# SABOTAGE: drop `params` from the assignment record ==> "an operation can be
+#           given a target" fails.
+
+## A stand-in adapter that answers every optional copy method, so the seam is
+## tested against something that is not the one adapter that predates it.
+class _CopyProbe:
+	extends RefCounted
+	func sender() -> String:
+		return "Probe"
+	func discovery_text() -> String:
+		return "probe discovery"
+	func loyalty_warning_text() -> String:
+		return "probe loyalty"
+	func assignment_line(_selection: Variant, _spend_limit: int) -> String:
+		return "probe assignment"
+	func settlement_text(_assignment: Dictionary) -> String:
+		return "probe settlement"
+	func settle(_crew_id: String, _assignment: Dictionary, _ended_day: int) -> Variant:
+		return null
+
+## An adapter that knows only how to settle. Still a valid adapter.
+class _SilentProbe:
+	extends RefCounted
+	func settle(_crew_id: String, _assignment: Dictionary, _ended_day: int) -> Variant:
+		return null
+
+func _check_adapter_copy_seam(gs: Node, gm: Node) -> void:
+	var ops: RefCounted = gm.system("crew_operations") as RefCounted
+	var operation_id := "907list_run_board"
+
+	# The real adapter's voice, which moved out of the coordinator verbatim.
+	_expect_str("the shipped adapter still speaks as Pherris",
+		ops._sender_for(operation_id), "Pherris")
+	_expect_true("and her discovery line is hers",
+		ops._adapter_copy(operation_id, "discovery_text", [], "FALLBACK")
+			.contains("run your board"))
+
+	# A different adapter speaks differently. Registered over the top and put
+	# back after, so nothing else in the suite sees the probe.
+	var real: Variant = ops._adapter_for(operation_id)
+	ops.register_adapter(operation_id, _CopyProbe.new())
+	_expect_str("an adapter speaks in its own voice",
+		ops._sender_for(operation_id), "Probe")
+	_expect_str("its discovery line is its own",
+		ops._adapter_copy(operation_id, "discovery_text", [], "FALLBACK"),
+		"probe discovery")
+	_expect_str("its settlement line is its own",
+		ops._adapter_copy(operation_id, "settlement_text", [{}], "FALLBACK"),
+		"probe settlement")
+
+	# An adapter that says nothing inherits the coordinator's fallbacks rather
+	# than rendering an empty string at the player.
+	ops.register_adapter(operation_id, _SilentProbe.new())
+	_expect_str("a silent adapter falls back to the coordinator",
+		ops._sender_for(operation_id), ops.CALLBACK_FROM)
+	_expect_str("and to its fallback copy",
+		ops._adapter_copy(operation_id, "discovery_text", [], "FALLBACK"), "FALLBACK")
+
+	# No adapter at all is the third case, and it must not error at midnight.
+	ops.register_adapter(operation_id, null)
+	_expect_str("no adapter falls back too",
+		ops._adapter_copy(operation_id, "sender", [], "FALLBACK"), "FALLBACK")
+	if real != null:
+		ops.register_adapter(operation_id, real)
+	_expect_str("the real adapter is back",
+		ops._sender_for(operation_id), "Pherris")
+
+	# `params`: an operation that needs a TARGET rather than a budget had
+	# nowhere to receive one. Carried opaquely; the coordinator never looks in.
+	_rb_ready(gs)
+	ops.reconcile()
+	var assigned: bool = gm.dispatch("assign_crew_operation", {
+		"crew_id": RB_CREW, "operation_id": operation_id,
+		"spend_limit": 200, "params": {"district_id": "downtown", "nonsense": 7},
+	})
+	_expect_true("an assignment carrying params dispatches", assigned)
+	var record: Dictionary = ops.assignment_for(RB_CREW)
+	_expect_true("an operation can be given a target", record.has("params"))
+	if record.has("params"):
+		_expect_str("and the coordinator passes it through untouched",
+			str(record["params"]), str({"district_id": "downtown", "nonsense": 7}))
+	# A payload with no params still gets an empty Dictionary rather than null,
+	# so an adapter can read it without checking.
+	_rb_ready(gs)
+	ops.reconcile()
+	gm.dispatch("assign_crew_operation", {"crew_id": RB_CREW,
+		"operation_id": operation_id, "spend_limit": 200})
+	var bare: Dictionary = ops.assignment_for(RB_CREW)
+	_expect_true("an assignment without params still has the field",
+		bare.get("params") is Dictionary)
 
 
 # --- plumbing ---------------------------------------------------------------
@@ -15826,11 +16037,20 @@ func _fail(label: String, detail: String) -> void:
 ## authored strings are no longer rendered at all, which is the only way to
 ## prove a live read replaced a static one. 11273 + 38 = 11311, measured.
 ##
+## Batch 6a takes it to 11320. Its own additions are the adapter copy seam and
+## the `params` passthrough; the rest is three honesty defects in batch 5's
+## route surface, each found by reading the shipped code rather than by a
+## failing test, which is why each now has one. The section also PINS its route
+## count: that loop's length is data, and a loop whose length is data makes this
+## floor move whenever the economy does, which is the opposite of what a floor
+## is for. 11311 - 7 (routes disqualified by the new availability and fare
+## rules) + 26 = 11330, measured.
+##
 ## Ten of margin, the same margin every floor since FS-003.13 has left, because
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11301
+const MIN_CHECKS := 11320
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

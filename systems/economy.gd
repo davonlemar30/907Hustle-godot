@@ -185,6 +185,11 @@ func best_route(product_id: String, known_only: bool = true) -> Dictionary:
 	var cost: int = int((here_market.get("prices", {}) as Dictionary).get(product_id, 0))
 	if cost <= 0:
 		return {}
+	# A route you cannot stock is not a route. `best_route` reported the
+	# spread without ever checking this corner had any to sell you, so a
+	# sold-out product still advertised somewhere to take it.
+	if int((here_market.get("availability", {}) as Dictionary).get(product_id, 0)) <= 0:
+		return {}
 	var best: Dictionary = {}
 	var best_edge: int = 0
 	for district in gs.districts:
@@ -198,6 +203,11 @@ func best_route(product_id: String, known_only: bool = true) -> Dictionary:
 			continue
 		var pays: int = sell_unit_price(there, product_id)
 		var edge: int = pays - cost
+		# The trip has to clear its own bus fare before it is a trip. A
+		# one-dollar spread is arithmetic, not a route, and reporting it as
+		# one is the same class of claim as the authored hint this replaced.
+		if edge <= int(gs.TravelFare):
+			continue
 		if edge > best_edge:
 			best_edge = edge
 			best = {"district_id": there, "name": str(row["name"]), "pays": pays,

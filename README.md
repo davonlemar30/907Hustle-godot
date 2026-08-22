@@ -113,7 +113,8 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Claim corners, post soldiers, collect nightly | Home → Turf |
 | See what each character knows and makes of it | Home → People |
 | Rent, phone bill, eviction | automatic, on day-cross |
-| Go out and look, and find out what is around | Home → WANDER |
+| Go out looking for work, for a deal, or just to read the block | Home → the three wander buttons |
+| Learn what a corner is hot for, and whether anyone has started watching you | Home → SEE WHO IS OUT |
 | Turn up work nobody told you about by walking the block | automatic, on a wander |
 | Get stopped on foot and decide what to do about it | automatic, above WATCHED |
 | Read texts, pay bills, hear word around town | Phone |
@@ -139,7 +140,7 @@ one distinctive obligation — rent — is already payable from the Phone.
 test catalogue had been corrupting every economy figure since batch 3; batch 9
 closed it and re-measured. Against a day job at 100%, the 907List flipper reads
 358% and the trade-plus-job hybrid 732%, while Boost sits at 13% and Stickup at
-2%. A worker who spends spare slots wandering reads 307% — the strongest clean
+2%. A worker who spends spare slots wandering reads 288% — the strongest clean
 path in the game, on zero Heat and zero arrests, because wandering is how you
 find the shifts that pay three times what you started on. The two low surfaces are filed as design decisions with the evidence, not
 tuned in flight.

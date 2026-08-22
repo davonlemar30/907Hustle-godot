@@ -5662,6 +5662,7 @@ Autonomous loop. Each entry: branch, tasks, parity, outcome.
 | 10 | `codex/batch-10-wander` | **Wander** — the ramped discovery, the card registry, a fourth chain kind · Home's three dead buttons · two unreachable jobs made findable | 11,622 → 11,723 | Merged, PR #64. **Save v12 → v13.** |
 | 11 | `codex/batch-11-wander-followups` | An adversarial read of batch 10 found five shipped defects · all five fixed · adapter-supplied choice copy · the glyph CI job now scans `data/` | 11,723 → 11,761 | Merged, PR #65. Schema unchanged. |
 | 12 | `codex/batch-12-measure-wander` | **Wander measured** — 307% of the day job · the discovery→money mechanism pinned · the other two harnesses gated in CI | 11,761 → 11,780 | Merged, PR #66. Schema unchanged. |
+| 13 | `codex/batch-13-wander-intents` | Wander becomes a choice — three intents · per-day effort falloff · READ, the intent that tells you what the build hides | 11,780 → 11,887 | Merged, PR #67. **Save v13 → v14.** |
 
 **Two verification defects found in batch 6b, both in the harness rather than
 the game, both now fixed:**
@@ -5832,6 +5833,48 @@ call with a lot of downstream, so it is filed rather than taken.
 gate; `save_validation` and `screen_smoke` were green and manual-only. Both run
 on `pull_request` now, each grepping its own PASS line because a Godot run that
 dies part-way still exits 0.
+
+**Wander was dominant and inert, and batch 13 is the fix.**
+
+The measurement said it plainly: 89.5 walks over 31 days, three a day every day,
+11 cards of which 7 were ungated flavour, 307% of the day job, and no decision
+anywhere in it. The correct play was to press the button with every spare slot.
+Dominant and inert at once is the worst pair a mechanic can have.
+
+Three changes, which are really one:
+
+- **The walk has an INTENT.** `LOOK FOR WORK` / `LOOK FOR A DEAL` / `SEE WHO IS
+  OUT`. The pool does not change; the WEIGHTING does, and so does what a find
+  can be — only a walk that went looking for work finds work. A non-matching
+  card is damped (×0.4) rather than excluded (×4.0 on a match), because an
+  intent should steer the walk, not put blinkers on it: getting jumped while
+  looking for work is exactly the kind of thing that should still happen.
+- **A second walk in a day is worth less than the first** — 1.0 / 0.6 / 0.25,
+  flattening at 0.1. Applied to the discovery roll and to what an opportunity
+  pays, never to whether a card is drawn, so a walk still always produces
+  something. This is what kills "press it with every spare slot"; the wandering
+  worker drops 307% → 288% and now earns it by choosing rather than by
+  repeating.
+- **READ is the intent that tells you something.** Five readers reporting live
+  state the build tracks and had NO surface for: which families a corner is hot
+  for, the Heat band (batch 8 named four and nothing rendered them), whether
+  Curtis's people have started looking, what a product fetches somewhere you are
+  not standing, and which crew member has a day free. Every one writes nothing —
+  a report cannot desync from the thing it reports because it IS the thing it
+  reports, and there is a check that captures the save either side of all five.
+
+**READ exists because discovery runs out.** Two jobs, usually found in week one,
+and after that the old Wander had nothing left with weight. Reading the block
+does not run out.
+
+**`jobs_discovered` is the ONLY discovery axis in the build**, which is worth
+knowing before anyone extends this. Boost targets (12), stickup targets (9),
+shark borrowers (4), 907List items (18), the crew roster (4), the venues (4) and
+the five NPCs are all fully visible from day one — their filters are area, tier
+or nothing at all. So `LOOK FOR A DEAL` is the thinnest of the three intents by
+construction: it can weight the draw but it has nothing to FIND. Giving it one
+means deciding that boost or stickup targets start unknown, which is a design
+call about the opening hour, not a hardening task.
 
 **Findings carried forward:**
 

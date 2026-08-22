@@ -54,9 +54,12 @@ func _wire_taps() -> void:
 			continue
 		b.text = str(OP_ACTIONS[node_name])
 		tap_connect(b, _on_post_eli if str(node_name) == "Post" else _on_lay_low)
-	var go := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go") as Button
-	if go:
-		tap_connect(go, _on_wander)
+	# Three intents, three buttons. One button was a lever; three is a question.
+	for intent in EVENTS.INTENTS:
+		var b := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go/%s"
+			% str(intent).capitalize()) as Button
+		if b:
+			tap_connect(b, _on_wander.bind(str(intent)))
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Market", _on_market)
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Turf", _on_turf)
 	make_tappable("Shell/Scroll/Pad/Content/People", _on_people)
@@ -67,7 +70,7 @@ func _wire_taps() -> void:
 ## — see `systems/wander.gd`. The toast reports what the walk turned up; the
 ## feed carries the line itself, and a blocking encounter takes the player to
 ## the consequence screen on its own.
-func _on_wander() -> void:
+func _on_wander(intent: String) -> void:
 	var sys: Object = _gm.system("wander")
 	if sys == null:
 		return
@@ -76,7 +79,7 @@ func _on_wander() -> void:
 		nav.show_toast(blocked + ".")
 		return
 	var before_day: int = gs.day
-	if not _gm.dispatch("wander", {}):
+	if not _gm.dispatch("wander", {"intent": intent}):
 		return
 	# A wander that opened a blocking encounter has already navigated away, and
 	# the toast is parented to the tree root rather than the screen — so it
@@ -138,6 +141,7 @@ func _on_people() -> void:
 ## filling a hidden node is harmless, and filling a locked one is what makes the
 ## lock legible — a greyed-out card with real numbers under it says "this is
 ## coming", where a greyed-out card of placeholder text says nothing.
+const EVENTS := preload("res://data/wander_events.gd")
 const ACCESS := preload("res://autoload/surface_visibility.gd")
 
 func _bind_content() -> void:
@@ -176,11 +180,16 @@ func _bind_wander() -> void:
 	_set_text("Shell/Scroll/Pad/Content/Wander/V/Head/T", "GO OUT AND LOOK")
 	_set_text("Shell/Scroll/Pad/Content/Wander/V/Head/Where",
 		gs.time_slot.capitalize())
-	var go := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go") as Button
 	var blocked: String = str(sys.blocker())
-	if go:
-		go.text = "WANDER" if blocked.is_empty() else blocked.to_upper()
-		go.disabled = not blocked.is_empty()
+	for intent in EVENTS.INTENTS:
+		var b := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go/%s"
+			% str(intent).capitalize()) as Button
+		if b == null:
+			continue
+		var copy: Dictionary = EVENTS.INTENT_COPY[intent]
+		b.text = str(copy["label"]) if blocked.is_empty() else blocked.to_upper()
+		b.disabled = not blocked.is_empty()
+		b.tooltip_text = str(copy["line"])
 	_set_text("Shell/Scroll/Pad/Content/Wander/V/Sub", _wander_line(sys))
 
 ## What the card says under the button. Three states, and the middle one is the
@@ -191,7 +200,16 @@ func _wander_line(sys: Object) -> String:
 	if (sys.undiscovered() as Array).is_empty():
 		return "%s, and you know it well enough by now. Still worth the walk." \
 			% str(gs.current_district().get("name", "the block"))
+	# The day's effort first, because it is the thing that changes what the next
+	# tap is worth. Said rather than numbered, like the ramp.
+	var walked: int = int(gs.wanders_today)
+	if walked >= 3:
+		return "You have walked this block enough for one day."
+	if walked == 2:
+		return "Twice already today. There is not much left out there."
 	var misses: int = int(gs.wander_misses)
+	if walked == 1:
+		return "Once already today. Still worth a look."
 	if misses <= 0:
 		return "An hour on foot. You never know who is out."
 	if misses < 3:

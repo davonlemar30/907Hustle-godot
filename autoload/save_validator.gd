@@ -592,7 +592,7 @@ func _validate_wander(state: Dictionary, repairs: Array[String]) -> void:
 	# The same number the live path caps at — one owner, so the two cannot
 	# disagree and repair an honest save.
 	var ceiling: int = int(WANDER_EVENTS.miss_ceiling())
-	for field in ["wander_misses", "wander_count"]:
+	for field in ["wander_misses", "wander_count", "wanders_today"]:
 		if not state.has(field):
 			continue
 		if not (state[field] is int or state[field] is float):

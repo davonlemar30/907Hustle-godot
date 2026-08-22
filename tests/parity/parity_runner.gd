@@ -147,6 +147,7 @@ func _ready() -> void:
 		_check_batch10(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch11(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch12(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch13(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -1761,8 +1762,8 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# schema change cannot land by accident, which means every real bump edits
 	# it on purpose. 6 → 7 in FS-001.6, 7 → 8 in FS-003.4, 8 → 9 in FS-003.13,
 	# 9 → 10 in v0.1.0, 10 → 11 in batch 7, 11 → 12 in batch 8, 12 → 13 in
-	# batch 10 (Wander).
-	_expect_int("save version is 13", saves.SAVE_VERSION, 13)
+	# batch 10 (Wander), 13 → 14 in batch 13 (the wander intents).
+	_expect_int("save version is 14", saves.SAVE_VERSION, 14)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
 
 	# A v5 save mid-day 4: one listing bought today and still held (recoverable),
@@ -12700,7 +12701,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is at batch 10's version", saves.SAVE_VERSION, 13)
+	_expect_int("the schema is at batch 13's version", saves.SAVE_VERSION, 14)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -15313,8 +15314,18 @@ func _econ_try_wander(gs: Node, gm: Node, metrics: Dictionary) -> bool:
 	var sys: Object = gm.system("wander")
 	if sys == null or not str(sys.blocker()).is_empty():
 		return false
+	# The intent is a decision now, so the profile has to make one. Look for
+	# work while there is work left to find, and read the block after — which is
+	# what a player does, and what makes READ worth authoring: it is the intent
+	# that still has something to say once discovery is finished.
+	#
+	# Dispatching without an intent defaults to READ, and the first run of this
+	# after the intents landed did exactly that: 0 jobs found and the profile
+	# back down to 113%. That is the gate working, not a regression.
+	var intent: String = B10_EVENTS.INTENT_WORK \
+		if not (sys.undiscovered() as Array).is_empty() else B10_EVENTS.INTENT_READ
 	var known_before: int = gs.jobs_discovered.size()
-	if not gm.dispatch("wander", {}):
+	if not gm.dispatch("wander", {"intent": intent}):
 		return false
 	metrics["wanders"] = int(metrics.get("wanders", 0)) + 1
 	if gs.jobs_discovered.size() > known_before:
@@ -16262,7 +16273,7 @@ func _fail(label: String, detail: String) -> void:
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 11760
+const MIN_CHECKS := 11860
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -17050,7 +17061,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v13", int(saves.SAVE_VERSION), 13)
+	_expect_int("the schema is v14", int(saves.SAVE_VERSION), 14)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -17465,7 +17476,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v13 for Heat's teeth", int(saves.SAVE_VERSION), 13)
+	_expect_int("the schema is v14 for Heat's teeth", int(saves.SAVE_VERSION), 14)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -17827,7 +17838,7 @@ func _check_wander_draw(gs: Node, gm: Node) -> void:
 			not str(card["line"]).is_empty())
 		_expect_true("%s is one of the authored kinds" % str(card["id"]),
 			str(card["kind"]) in [B10_EVENTS.KIND_AMBIENT, B10_EVENTS.KIND_OPPORTUNITY,
-				B10_EVENTS.KIND_ENCOUNTER])
+				B10_EVENTS.KIND_ENCOUNTER, B10_EVENTS.KIND_READ])
 		# Every gate goes through the ONE evaluator. A card whose requirement
 		# type the evaluator does not know fails closed, which would hide the
 		# card forever — so an authored typo is caught here rather than in play.
@@ -17918,7 +17929,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v13 for Wander", int(saves.SAVE_VERSION), 13)
+	_expect_int("the schema is v14 for Wander", int(saves.SAVE_VERSION), 14)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -18023,7 +18034,10 @@ func _check_wander_ramp_agreement(gs: Node, gm: Node) -> void:
 			gs.time_slots_today = 0
 			if (sys.undiscovered() as Array).size() < 2:
 				break
-			gm.dispatch("wander", {})
+			# WORK, explicitly. Batch 13 made the intent a decision and only a
+			# walk that went looking for work finds any — a bare dispatch now
+			# defaults to READ and would sweep for nothing.
+			gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_WORK})
 		# Whichever of the two is on the map first.
 		for job_id in B10_EVENTS.DISCOVERY_JOBS:
 			if str(job_id) in gs.jobs_discovered:
@@ -18178,11 +18192,19 @@ func _check_wander_card_is_reachable(gs: Node, gm: Node) -> void:
 	_expect_true("the wander card exists on Home", card != null)
 	if card != null:
 		_expect_true("and a fresh run can see it", bool((card as Control).visible))
-	var go: Button = home.get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go") as Button
-	_expect_true("its button is there", go != null)
-	if go != null:
-		_expect_true("it is a real tap target", go.custom_minimum_size.y >= 44.0)
-		_expect_true("and it is not disabled on a fresh run", not go.disabled)
+	# Three buttons since batch 13, one per intent, and every one of them has to
+	# be reachable and tappable on a fresh run — the card is only worth having
+	# if the choice it offers is actually offered.
+	for intent in B10_EVENTS.INTENTS:
+		var b: Button = home.get_node_or_null(
+			"Shell/Scroll/Pad/Content/Wander/V/Go/%s" % str(intent).capitalize()) as Button
+		_expect_true("the %s button is there" % str(intent), b != null)
+		if b == null:
+			continue
+		_expect_true("%s is a real tap target" % str(intent),
+			b.custom_minimum_size.y >= 44.0)
+		_expect_true("and %s is not disabled on a fresh run" % str(intent), not b.disabled)
+		_expect_true("and it says what it is for: %s" % str(intent), not b.text.is_empty())
 	# The stale MOVE PRODUCT control is gone from the layout rather than
 	# relabelled, so nothing offers two doors onto the same walk.
 	var stale: Button = home.get_node_or_null(
@@ -18276,4 +18298,219 @@ func _check_discovery_pays(gs: Node, gm: Node) -> void:
 		var upgrade: Dictionary = jobs_system.handle("apply_job", {"job_id": "ship_creek"})
 		_expect_true("but you can go for a better one while employed",
 			bool(upgrade.get("ok", false)))
+	gs.reset_to_new_game()
+
+# === batch 13 — the wander intents ==========================================
+#
+# Wander shipped as one button and the instrument said what that made it: 89.5
+# walks over 31 days, three a day every day, 11 cards of which 7 were ungated
+# flavour, 307% of the day job, and no decision anywhere in it. Dominant and
+# inert at once, which is the worst pair a mechanic can have.
+#
+# Three things change that, and they are one change: the walk has an INTENT, a
+# second walk in a day is worth less than the first, and one of the intents
+# exists to tell the player something the build otherwise hides completely.
+#
+# SABOTAGE: return 1.0 unconditionally from WanderEvents.effort_for
+#           ==> "the third walk of a day is worth less than the first" fails.
+# SABOTAGE: drop the intent gate on discovery (always look for work)
+#           ==> "only a walk that went looking for work finds work" fails.
+# SABOTAGE: apply INTENT_MATCH to every card regardless of intent
+#           ==> "what you went out for is what you mostly get" fails.
+# SABOTAGE: return [] from WanderSystem._read_pressure
+#           ==> "reading the corner names the bands nothing else shows" fails.
+# SABOTAGE: accept any intent string in handle()
+#           ==> "nobody wanders in a way nobody authored" fails.
+
+func _check_batch13(gs: Node, gm: Node) -> void:
+	_check_wander_effort(gs, gm)
+	_check_wander_intents(gs, gm)
+	_check_wander_reads(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+# --- the day's third walk is not the first -----------------------------------
+
+func _check_wander_effort(gs: Node, gm: Node) -> void:
+	var sys: Object = gm.system("wander")
+	if sys == null:
+		_fail("batch13 effort", "no wander system")
+		return
+
+	_expect_float("the first walk of a day is worth all of it",
+		float(B10_EVENTS.effort_for(0)), 1.0)
+	_expect_true("the second is worth less",
+		float(B10_EVENTS.effort_for(1)) < float(B10_EVENTS.effort_for(0)))
+	_expect_true("the third walk of a day is worth less than the first",
+		float(B10_EVENTS.effort_for(2)) < float(B10_EVENTS.effort_for(1)))
+	_expect_float("and past that it flattens rather than reaching zero",
+		float(B10_EVENTS.effort_for(9)), float(B10_EVENTS.EFFORT_FLOOR))
+	_expect_true("a walk is never worth nothing",
+		float(B10_EVENTS.effort_for(999)) > 0.0)
+	_expect_float("a nonsense count reads as a first walk",
+		float(B10_EVENTS.effort_for(-3)), 1.0)
+
+	# Through the live path: the counter climbs with each walk and the effort
+	# falls with it.
+	_b10_ready(gs)
+	_expect_int("a fresh day has no walks behind it", int(gs.wanders_today), 0)
+	_expect_float("so the next one is full value", float(sys.effort()), 1.0)
+	gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ})
+	_expect_int("the walk is counted", int(gs.wanders_today), 1)
+	_expect_true("and the next is worth less", float(sys.effort()) < 1.0)
+
+	# And it resets with the day, through the declared DAY_START step.
+	_b10_ready(gs)
+	gs.wanders_today = 3
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	_expect_true("the night dispatches", gm.dispatch("advance_time", {}))
+	_expect_int("a new day is a new set of legs", int(gs.wanders_today), 0)
+	gs.reset_to_new_game()
+
+# --- the intent is the decision ----------------------------------------------
+
+func _check_wander_intents(gs: Node, gm: Node) -> void:
+	var sys: Object = gm.system("wander")
+	if sys == null:
+		_fail("batch13 intents", "no wander system")
+		return
+
+	_expect_int("there are three intents", (B10_EVENTS.INTENTS as Array).size(), 3)
+	for intent in B10_EVENTS.INTENTS:
+		var copy: Dictionary = B10_EVENTS.INTENT_COPY[intent]
+		_expect_true("%s has a button" % str(intent), not str(copy["label"]).is_empty())
+		_expect_true("and says what it is for" % [], not str(copy["line"]).is_empty())
+	# Every card declares what it is for, or declares that it is for nothing in
+	# particular — an absent key would silently read as "matches nothing".
+	for card in B10_EVENTS.CARDS:
+		_expect_true("%s declares its intents" % str(card["id"]), card.has("intents"))
+		for intent in (card["intents"] as Array):
+			_expect_true("%s names a real intent" % str(card["id"]),
+				str(intent) in B10_EVENTS.INTENTS)
+
+	_b10_ready(gs)
+	_expect_true("nobody wanders in a way nobody authored",
+		not gm.dispatch("wander", {"intent": "sideways"}))
+	_expect_int("and a refused walk costs no time", int(gs.time_slots_today), 0)
+
+	# Only WORK finds work. This is the gate that makes the choice matter, and
+	# the economy instrument proved it live: the profile that stopped naming an
+	# intent found nothing and fell from 307% to 113%.
+	_b10_ready(gs)
+	var found_reading := false
+	for walk in range(30):
+		gs.day = 6 + walk
+		gs.time_slots_today = 0
+		gs.wanders_today = 0
+		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ})
+		if (sys.undiscovered() as Array).size() < 2:
+			found_reading = true
+	_expect_true("only a walk that went looking for work finds work", not found_reading)
+
+	_b10_ready(gs)
+	var found_working := false
+	for walk in range(30):
+		gs.day = 6 + walk
+		gs.time_slots_today = 0
+		gs.wanders_today = 0
+		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_WORK})
+		if (sys.undiscovered() as Array).size() < 2:
+			found_working = true
+	_expect_true("and a walk that did find work, does", found_working)
+
+	# The weighting steers without blinkering: a card that matches is favoured,
+	# one that does not is damped rather than removed.
+	_expect_true("a match is favoured", float(B10_EVENTS.INTENT_MATCH) > 1.0)
+	_expect_true("a miss is damped, not excluded",
+		float(B10_EVENTS.INTENT_MISS) > 0.0 \
+			and float(B10_EVENTS.INTENT_MISS) < float(B10_EVENTS.INTENT_MATCH))
+
+	# Measured over a sweep and COMPARATIVELY, because a weighting is a
+	# distribution and the claim is that it steers — not that it blinkers.
+	#
+	# An absolute "a read walk mostly returns a read" is the wrong test and the
+	# first pass proved it: three of the AMBIENT cards are tagged READ as well,
+	# because standing on a corner watching the block is a read whether or not
+	# it produces a number. So the honest property is the difference between two
+	# intents over the same pool.
+	var reads_when_reading: int = _b13_read_share(gs, gm, B10_EVENTS.INTENT_READ)
+	var reads_when_dealing: int = _b13_read_share(gs, gm, B10_EVENTS.INTENT_DEAL)
+	_expect_true("what you went out for is what you mostly get",
+		reads_when_reading > reads_when_dealing)
+	_expect_true("and going out for something else mostly gets you that",
+		reads_when_dealing < 20)
+	gs.reset_to_new_game()
+
+## How many of forty walks under one intent came back a READ. Each walk gets its
+## own day so the keyed roll moves, and a cleared recency window so the sweep is
+## measuring the weighting rather than the suppression.
+func _b13_read_share(gs: Node, gm: Node, intent: String) -> int:
+	_b10_ready(gs)
+	var reads: int = 0
+	for walk in range(40):
+		gs.day = 6 + walk
+		gs.time_slots_today = 0
+		gs.wanders_today = 0
+		gs.wander_recent = []
+		var report: Dictionary = (gm.system("wander") as RefCounted).handle(
+			"wander", {"intent": intent})
+		if str(report.get("kind", "")) == "read":
+			reads += 1
+	return reads
+
+# --- the intent that tells you something -------------------------------------
+
+func _check_wander_reads(gs: Node, gm: Node) -> void:
+	var sys: Object = gm.system("wander")
+	if sys == null:
+		_fail("batch13 reads", "no wander system")
+		return
+	_b10_ready(gs)
+
+	# Every reader answers, and none of them writes. A report cannot desync from
+	# the thing it reports because it IS the thing it reports — which is what
+	# makes READ safe to author freely, and what this asserts.
+	var engine: Object = gm.system("consequence")
+	engine.add_pressure(str(gs.current_district_id), "stick", 7.0, "cause:b13")
+	# Put the run in the shape the readers are being asked about BEFORE the
+	# baseline is taken — the first pass set heat between the two captures and
+	# then asserted that reading had not changed it.
+	gs.heat = 13.0
+	gs.curtis_phase = "watching"
+	var before: Dictionary = (get_node("/root/SaveSystem") as Node).capture()
+	var pressure_lines: Array = sys._read_pressure()
+	_expect_true("reading the corner names the bands nothing else shows",
+		pressure_lines.size() > 0)
+	var named := false
+	for line in pressure_lines:
+		if str(line).to_lower().contains("stick"):
+			named = true
+	_expect_true("including the family that is actually hot", named)
+
+	_expect_true("reading the street names the heat band",
+		(sys._read_heat() as Array).size() > 0)
+	_expect_true("and says when Curtis's people have started looking",
+		(sys._read_curtis() as Array).size() > 0)
+
+	# Nothing a reader did changed the run.
+	var after: Dictionary = (get_node("/root/SaveSystem") as Node).capture()
+	for field in ["cash", "heat", "inventory", "jobs_discovered", "wander_misses",
+			"crew_records", "district_pressure"]:
+		_expect_str("reading does not change %s" % str(field),
+			str(after.get(field)), str(before.get(field)))
+
+	# Silence when there is nothing to say, rather than an invention.
+	gs.curtis_phase = "invisible"
+	_expect_int("and says nothing when they have not",
+		(sys._read_curtis() as Array).size(), 0)
+
+	# And the whole card path, through a dispatch.
+	_b10_ready(gs)
+	gs.activity_log = []
+	engine.add_pressure(str(gs.current_district_id), "market", 7.0, "cause:b13b")
+	_expect_true("a read walk dispatches",
+		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ}))
+	_expect_true("and it says something", gs.activity_log.size() > 0)
+	gs.street_name = "Parity"
 	gs.reset_to_new_game()

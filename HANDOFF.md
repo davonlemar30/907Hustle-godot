@@ -544,6 +544,54 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## Doc drift cleanup: making the baseline honest before layering on it  (added 2026-08-22)
+
+The first commit of the FS-003.8-.12 branch changes no behaviour. It fixes three
+places where the written record had drifted from the merged one, because every
+statement made after this point is layered on top of these.
+
+**1. `README.md` claimed the engine was the next gap.** It said *"The consequence
+encounter engine is the next real gap"* — written before FS-003.3 through .7 and
+true when it was written. PR #45 merged all five. The section now says what
+actually shipped (one blocking chain with exactly-once receipts, Wallet/Heat as
+sole writers, pure odds projection, and Failed Boost -> Caught end to end) and
+carries a table of the five slices that genuinely remain. A README that
+overstates what is missing is the same failure as one that overstates what is
+done: the next person cannot tell which sentences to trust.
+
+**2. The ClickUp `Current Godot Build State` callout was three merges stale.**
+It named PR #34 and 2,399 parity checks as the current baseline. Merged `main` is
+PR #45, save schema v8, 9,100 parity checks. A new authoritative callout now sits
+at the top of that document.
+
+The old callout is **retained directly beneath it rather than deleted**, and the
+new one says so explicitly. That is a tooling decision, not an editorial one: the
+page is ~150,000 characters and the available update path is whole-page replace or
+prepend. Re-emitting 150,000 characters to change one paragraph risks a
+transcription error somewhere in the other 149,800, and a corrupted living doc is
+a worse outcome than a superseded paragraph that is labelled as superseded. The
+"BASELINE UPDATE" sections further down were already audit-trail by convention;
+this one joins them.
+
+**3. ClickUp slice statuses were checked against the merge, not assumed.**
+FS-003.1 through FS-003.7 all read `shipped`, which is correct — PR #45 is merged
+to `main`, and `shipped` means exactly that. FS-003.8 through FS-003.12 read `not
+started`, which is also correct at the time of this commit. No status was moved on
+trust; each was read back from the API. The rule this branch inherits and keeps:
+a slice reads `shipped` when the PR carrying its work is merged, never when the
+code is written.
+
+### Baseline verified before any of it
+
+Godot 4.7.2 headless, `main` at `5efcb15`:
+
+```
+parity: PASS — 9100 checks, 0 failures
+```
+
+That number is the floor `MIN_CHECKS` enforces, and it is what the four feature
+commits after this one have to move up rather than down.
+
 ## FS-003.7: the first thing that answers back  (added 2026-08-21)
 
 A failed Boost no longer ends in a toast. It opens a Caught encounter, holds the

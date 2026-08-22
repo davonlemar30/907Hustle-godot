@@ -54,10 +54,25 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 
 ### Not built yet
 
-Arrest/jail, venue interiors, combat encounters, and equipment. The consequence
-encounter engine is the next real gap: canon routes a blown boost and a hard
-collection into it, and it is what would let those two surfaces reach the tiers
-that already exist for them.
+Venue interiors, tactical combat, and equipment.
+
+The consequence-encounter engine is **no longer the gap** — it is live. Shipped
+through PR #45: `ConsequenceEngine` holds one blocking chain with exactly-once
+receipts across a reload, blocking consequence presentation the bottom nav
+cannot bypass, `WalletSystem`/`HeatSystem` as the single writers for Cash and
+Heat, pure probability projection proved against the resolver, and the Failed
+Boost → Caught vertical slice end to end (contested take, Fight/Run/Talk/Yield,
+persistent store bans, and a source slot that settles exactly once).
+
+What the engine still has open, in build order:
+
+| Slice | What is missing |
+| --- | --- |
+| FS-003.8 | `ArrestSystem` — severity, bail, priors, processing time, booking and release |
+| FS-003.9 | District Pressure and Financial Pressure lifecycle — bands, bleed, quiet recovery, the ≥6 Heat fold |
+| FS-003.10 | Retaliation scheduling — the delayed path a robbed mark's people take |
+| FS-003.11 | Consequence UX polish — local attention, arrest warnings, return routes |
+| FS-003.12 | The integration and simulation gate that closes FS-003 |
 
 ## Project layout
 

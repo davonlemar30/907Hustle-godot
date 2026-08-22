@@ -387,19 +387,26 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	decision["result"] = result
 	chain["decision"] = decision
 
-	# 10. Booking when arrested, Result when not. Booking EXECUTION is FS-003.8;
-	#     what this slice does is hand the chain over at the right stage with the
-	#     facts that slice needs already on it.
+	# 10. The result, always. An arrest ATTACHES a booking quote to the chain and
+	#     stops there — the chain waits at `result` until the player presses
+	#     Continue, which is what carries them into Booking (see the engine's
+	#     `_continue`). Advancing straight to `booking` here would render a bail
+	#     quote over a result the player never got to read, which PX-003 §5 shows
+	#     as the wrong shape: the arrested result is a screen with a BOOKING
+	#     action under it, not a screen that is skipped.
+	#
+	#     The quote itself is ArrestSystem's: Boost decides WHETHER, never what
+	#     it costs.
 	engine.advance_stage(engine.STAGE_RESULT)
 	if arrested:
-		chain["booking"] = {
-			"pending": true,
-			"severity": "boost_t1" if boost_tier <= 1 else "boost_t2",
-			"source_family": "boost",
-			"source_target_id": str(source.get("target_id", "")),
-			"cause_id": cause_id,
-		}
-		engine.advance_stage(engine.STAGE_BOOKING)
+		var arrest: Object = gm.system("arrest") if gm != null else null
+		if arrest != null:
+			arrest.attach_booking(chain, {
+				"family": "boost",
+				"tier": boost_tier,
+				"target_id": str(source.get("target_id", "")),
+				"cause_id": cause_id,
+			})
 
 	gs.log_activity(_caught_line(source, choice_id, tier_name, result), _caught_tone(tier_name))
 	return {"ok": true, "tier": tier_name, "arrested": arrested}

@@ -233,3 +233,163 @@ func pressure_gain(choice_id: String, tier_name: String) -> float:
 	if choice_id == "yield":
 		return YIELD_PRESSURE_GAIN
 	return float(PRESSURE_BY_TIER.get(tier_name, 0.0))
+
+# --- Arrest and Booking (TI-003 §13-14, FS-003 §7) -------------------------
+#
+# The severity table is the whole of the arrest economy: what a charge costs,
+# how long it holds you, and how much Heat the city lets go of once the incident
+# has a case number attached to it.
+#
+# Boost tier 3 deliberately shares tier 2's row. FS-003 §7 says why: "Tier 3
+# Boost continues using the Boost 2 booking severity because the charge remains
+# a high-level shoplifting/organized-theft incident rather than a Stick Tier 3
+# robbery charge." A $1,000 bail for walking out of a warehouse club would price
+# theft like armed robbery.
+
+const SEVERITY_BOOST_T1 := "boost_t1"
+const SEVERITY_BOOST_T2 := "boost_t2"
+const SEVERITY_STICK_T1 := "stick_t1"
+const SEVERITY_STICK_T2 := "stick_t2"
+const SEVERITY_STICK_T3 := "stick_t3"
+const SEVERITY_GENERIC := "generic"
+
+## FS-003 §7 / TI-003 §13, transcribed. `relief` is a float because Heat is —
+## an int here would be fine today (every row is whole) and would silently
+## truncate the first fractional row anyone authors.
+const ARREST_SEVERITIES := {
+	SEVERITY_BOOST_T1: {"bail": 150, "processing": 1, "relief": 2.0, "label": "SHOPLIFTING"},
+	SEVERITY_BOOST_T2: {"bail": 250, "processing": 1, "relief": 2.0, "label": "ORGANIZED THEFT"},
+	SEVERITY_STICK_T1: {"bail": 350, "processing": 2, "relief": 3.0, "label": "ROBBERY"},
+	SEVERITY_STICK_T2: {"bail": 600, "processing": 2, "relief": 4.0, "label": "ARMED ROBBERY"},
+	SEVERITY_STICK_T3: {"bail": 1000, "processing": 3, "relief": 5.0, "label": "ORGANIZED ROBBERY"},
+	SEVERITY_GENERIC: {"bail": 300, "processing": 2, "relief": 3.0, "label": "DISORDERLY"},
+}
+
+## Bail multiplier by the number of arrests ALREADY on the record. Index is the
+## prior count; anything at or above the last index takes the last value, which
+## is FS-003's "4+ -> 3.50x".
+const PRIOR_BAIL_MULTIPLIERS: Array[float] = [1.00, 1.50, 2.00, 2.75, 3.50]
+
+## FS-003 §7: "Processing gains +1 slot per 2 prior arrests."
+const PRIORS_PER_EXTRA_SLOT := 2
+## FS-003 §7: "Maximum total booking/serving time from one arrest is 4 time
+## slots." TOTAL — the shortfall conversion below counts against this ceiling
+## too, which is what keeps a broke player from being held for a week.
+const MAX_BOOKING_SLOTS := 4
+## FS-003 §7: "Every $150 of remaining shortfall, rounded up, adds +1 slot."
+const SHORTFALL_DOLLARS_PER_SLOT := 150
+
+## The three lanes. Names are stable IDs, not copy.
+const BOOKING_FULL_BAIL := "full_bail"
+const BOOKING_ALL_CASH := "all_cash"
+const BOOKING_SERVE_TIME := "serve_time"
+const BOOKING_CHOICES: Array[String] = [
+	BOOKING_FULL_BAIL, BOOKING_ALL_CASH, BOOKING_SERVE_TIME,
+]
+
+## TI-003 §14's Stick arrest gate. A plain Failure books only when the player was
+## ALREADY carrying more Heat than the tier tolerates; a Catastrophic books at
+## every tier regardless.
+##
+## The direction is the point, and it is easy to get backwards: the BIGGER the
+## job, the LESS existing Heat it takes to turn a blown attempt into an arrest.
+## A fumbled pocket-pick at Heat 9 is a bad night; a fumbled tier-3 job at Heat 7
+## is a case.
+const STICK_FAILURE_ARREST_HEAT := {1: 10.0, 2: 8.0, 3: 6.0}
+
+## The one observation an arrest files, TI-003 §13 step 6.
+##
+## AUTHORED HERE, stated rather than inferred: FS-003 §7 says only "an arrest
+## writes an Exposure observation through the existing propagation rules only
+## where an authored observer/channel qualifies" and never names the row. This
+## is that row.
+##
+##   - `heat_exposure` because that is exactly what an arrest is to the people
+##     around you, and because it is the one category whose existing weights
+##     already price "you brought police attention into my life" correctly
+##     (Yalonda -3.0, Mina -1.5).
+##   - `neighborhood` because an arrest is public and slow: it reaches the
+##     household and the block over a day, not instantly and not through
+##     Curtis's network ear. `heat_exposure` is not in
+##     `CURTIS_NETWORK_CATEGORIES`, so routing it wider would still not reach
+##     him — the channel choice is about Yalonda, Juan and Mina, and it is a day
+##     late on purpose.
+const ARREST_OBSERVATION := {
+	"type": "heat_exposure", "event": "arrested", "channel": "neighborhood",
+}
+
+# --- arrest lookups ---------------------------------------------------------
+
+func severity_row(severity_id: String) -> Dictionary:
+	return ARREST_SEVERITIES.get(severity_id, ARREST_SEVERITIES[SEVERITY_GENERIC])
+
+## Boost tiers 2 and 3 share one severity — see the section header.
+func severity_for_boost(boost_tier: int) -> String:
+	return SEVERITY_BOOST_T1 if clampi(boost_tier, 1, 3) <= 1 else SEVERITY_BOOST_T2
+
+func severity_for_stick(stick_tier: int) -> String:
+	match clampi(stick_tier, 1, 3):
+		1: return SEVERITY_STICK_T1
+		2: return SEVERITY_STICK_T2
+	return SEVERITY_STICK_T3
+
+func severity_for(family: String, tier: int) -> String:
+	match family:
+		"boost": return severity_for_boost(tier)
+		"stick", "stickup": return severity_for_stick(tier)
+	return SEVERITY_GENERIC
+
+func base_bail(severity_id: String) -> int:
+	return int(severity_row(severity_id).get("bail", 0))
+
+func base_processing_slots(severity_id: String) -> int:
+	return int(severity_row(severity_id).get("processing", 0))
+
+func heat_relief(severity_id: String) -> float:
+	return float(severity_row(severity_id).get("relief", 0.0))
+
+func severity_label(severity_id: String) -> String:
+	return str(severity_row(severity_id).get("label", ""))
+
+func bail_multiplier(priors: int) -> float:
+	var index: int = clampi(priors, 0, PRIOR_BAIL_MULTIPLIERS.size() - 1)
+	return PRIOR_BAIL_MULTIPLIERS[index]
+
+## The quote, rounded to a dollar. Priors are the count BEFORE this booking —
+## your first arrest is priced at 1.00x, not 1.50x.
+func bail_quote(severity_id: String, priors: int) -> int:
+	return int(round(float(base_bail(severity_id)) * bail_multiplier(priors)))
+
+## Processing time for a fully-paid bail: the severity's base plus the prior
+## adjustment, capped.
+func processing_slots(severity_id: String, priors: int) -> int:
+	var extra: int = int(floor(float(maxi(0, priors)) / float(PRIORS_PER_EXTRA_SLOT)))
+	return mini(base_processing_slots(severity_id) + extra, MAX_BOOKING_SLOTS)
+
+## Time bought by money you did not have. `ceil(shortfall / 150)`.
+func shortfall_slots(shortfall: int) -> int:
+	if shortfall <= 0:
+		return 0
+	return int(ceil(float(shortfall) / float(SHORTFALL_DOLLARS_PER_SLOT)))
+
+## Total slots held, which is what the player is actually deciding between.
+##
+## The cap is applied to the TOTAL rather than to the prior adjustment alone.
+## FS-003 §7 states it twice — once under Post Available Cash and once under
+## Serve — and it is the rule that keeps TI-003 regression #14 ("a broke player
+## loses every legal Booking option") from being true in practice: serving is
+## always available and can never cost more than four slots.
+func total_booking_slots(severity_id: String, priors: int, shortfall: int) -> int:
+	return mini(processing_slots(severity_id, priors) + shortfall_slots(shortfall),
+		MAX_BOOKING_SLOTS)
+
+## Whether a blown Stick books, TI-003 §14. `pre_source_heat` is the Heat the
+## player was already carrying when they walked up — never the Heat this robbery
+## just generated, or the robbery would decide its own arrest.
+func stick_arrests(stick_tier: int, tier_name: String, pre_source_heat: float) -> bool:
+	if tier_name == "catastrophic":
+		return true
+	if tier_name != "failure":
+		return false
+	var gate: float = float(STICK_FAILURE_ARREST_HEAT.get(clampi(stick_tier, 1, 3), 10.0))
+	return pre_source_heat > gate

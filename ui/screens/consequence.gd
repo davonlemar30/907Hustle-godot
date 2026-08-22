@@ -171,7 +171,11 @@ func _build_result() -> void:
 		v.add_child(label(str(line), "Muted", 12, MUTED, true))
 	c.add_child(v)
 	body.add_child(c)
-	body.add_child(_continue_button("CONTINUE"))
+	# An arrested result hands off to Booking rather than back to the street, and
+	# the button says which — PX-003 §5 labels it `BOOKING`.
+	body.add_child(_continue_button(
+		"BOOKING" if bool((result.get("result", {}) as Dictionary).get("arrested", false))
+			else "CONTINUE"))
 
 func _tier_tone(tier: String) -> Color:
 	match tier:
@@ -214,7 +218,15 @@ func _effect_lines(result: Dictionary) -> Array:
 		lines.append("Nothing you can point at. This time.")
 	return lines
 
-## The bail quote, before committing to it. Payment options are FS-003.8's.
+## The cash-versus-time decision. PX-003 §6: the player reads the quote, their
+## own cash, their prior count, and the exact time each lane costs BEFORE
+## committing — the $150 shortfall conversion stays underneath.
+const BOOKING_LABELS := {
+	"full_bail": "POST FULL BAIL",
+	"all_cash": "PUT UP WHAT YOU HAVE",
+	"serve_time": "SERVE IT",
+}
+
 func _build_booking() -> void:
 	var booking: Dictionary = _engine.booking_summary()
 	var c := card()
@@ -223,17 +235,75 @@ func _build_booking() -> void:
 	v.add_child(label("BOOKING", "Muted", 11, MUTED))
 	if booking.is_empty():
 		v.add_child(label("They are still writing it up.", "Muted", 12, MUTED))
-	else:
-		v.add_child(_quote_row("Bail", "$%d" % int(booking.get("bail_quote", 0)), CREAM))
-		v.add_child(_quote_row("Processing",
-			"%d slots" % int(booking.get("processing_slots", 0)), MUTED))
-		v.add_child(_quote_row("Priors",
-			str(int(booking.get("priors_at_quote", 0))), MUTED))
-		var relief: int = int(booking.get("heat_relief", 0))
-		if relief > 0:
-			v.add_child(_quote_row("Heat relief", "−%d" % relief, GREEN))
+		c.add_child(v)
+		body.add_child(c)
+		return
+
+	v.add_child(label("YOU'RE IN", "CardTitle", 15, CREAM))
+	v.add_child(label(_booking_context(booking), "Muted", 11, MUTED))
+	v.add_child(label("The move is over. Now the choice is how much cash you are "
+		+ "willing to trade for time.", "Muted", 12, MUTED, true))
+	v.add_child(_quote_row("Bail", "$%d" % int(booking.get("bail_quote", 0)), CREAM))
+	v.add_child(_quote_row("Cash", "$%d" % int(booking.get("cash_on_hand", 0)), CREAM))
+	v.add_child(_quote_row("Priors", str(int(booking.get("priors_at_quote", 0))), MUTED))
 	c.add_child(v)
 	body.add_child(c)
+
+	# The first booking carries PX-003 §6's one-time reminder that the world does
+	# not pause. Later ones do not repeat it.
+	if int(booking.get("priors_at_quote", 0)) == 0:
+		body.add_child(note("Time keeps moving while you're in. Anything scheduled "
+			+ "during those slots still settles."))
+
+	body.add_child(label("HOW YOU GET OUT", "Muted", 11, MUTED))
+	for entry in (booking.get("choices", []) as Array):
+		var row: Dictionary = entry
+		if not bool(row.get("available", false)) and not bool(row.get("committed", false)):
+			continue
+		body.add_child(_booking_row(row))
+
+func _booking_context(booking: Dictionary) -> String:
+	var family := str(booking.get("source_family", "")).to_upper()
+	var severity := str(booking.get("severity_label", "")).to_upper()
+	return "%s · %s · PRIOR RECORD %d" % [family, severity,
+		int(booking.get("priors_at_quote", 0))]
+
+func _booking_row(row: Dictionary) -> Control:
+	var c := card()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	var choice_id := str(row["choice_id"])
+	v.add_child(label(str(BOOKING_LABELS.get(choice_id, choice_id.to_upper())),
+		"CardTitle", 14, CREAM))
+	v.add_child(label(_booking_terms(row), "Mono", 12,
+		GREEN if int(row["cash_cost"]) == 0 else AMBER))
+	v.add_child(label("Out DAY %d · %s" % [int(row["release_day"]),
+		str(row["release_slot_name"])], "Muted", 11, MUTED))
+	var b := Button.new()
+	b.theme_type_variation = &"BtnPrimary"
+	b.custom_minimum_size = Vector2(0, 46)
+	b.text = "COMMITTED" if bool(row["committed"]) else str(
+		BOOKING_LABELS.get(choice_id, choice_id.to_upper()))
+	b.disabled = bool(row["disabled"])
+	if not b.disabled:
+		b.pressed.connect(_commit_booking.bind(choice_id))
+	v.add_child(b)
+	c.add_child(v)
+	return c
+
+func _booking_terms(row: Dictionary) -> String:
+	var cost: int = int(row["cash_cost"])
+	var slots: int = int(row["slots"])
+	var money: String = "Pay $0" if cost <= 0 else "Pay $%d" % cost
+	return "%s · %d slot%s" % [money, slots, "" if slots == 1 else "s"]
+
+func _commit_booking(choice_id: String) -> void:
+	var summary: Dictionary = _engine.active_summary()
+	_gm.dispatch("resolve_booking_choice", {
+		"consequence_id": str(summary.get("consequence_id", "")),
+		"cause_id": str(summary.get("cause_id", "")),
+		"choice_id": choice_id,
+	})
 
 func _quote_row(key: String, value: String, tone: Color) -> HBoxContainer:
 	var h := HBoxContainer.new()
@@ -244,16 +314,34 @@ func _quote_row(key: String, value: String, tone: Color) -> HBoxContainer:
 	h.add_child(label(value, "Mono", 13, tone))
 	return h
 
-## The receipt, and the way out.
+## The receipt, and the way out. PX-003 §6: one concise summary, and the systems
+## that owned whatever happened during those slots keep their own presentation —
+## this does not re-narrate a bill or a wage.
 func _build_release() -> void:
 	var booking: Dictionary = _engine.booking_summary()
 	var c := card()
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
 	v.add_child(label("RELEASED", "Muted", 11, MUTED))
+	v.add_child(label("YOU'RE OUT", "CardTitle", 15, CREAM))
 	if not booking.is_empty():
 		var paid: int = int(booking.get("paid", 0))
-		v.add_child(label("Paid $%d." % paid if paid > 0 else "You served it.", "CardTitle", 13, CREAM))
+		v.add_child(label("Paid $%d." % paid if paid > 0 else "You served it.",
+			"Mono", 13, CREAM))
+		var slots: int = int(booking.get("slots_served", 0)) \
+			+ int(booking.get("source_slots_settled", 0))
+		v.add_child(_quote_row("Time gone", "%d slot%s" % [slots,
+			"" if slots == 1 else "s"], MUTED))
+		var relief: float = float(booking.get("heat_relief_applied", 0.0))
+		if relief > 0.0:
+			v.add_child(_quote_row("Heat", "−%.1f" % relief, GREEN))
+		v.add_child(_quote_row("Priors", str(int(booking.get("priors_after", 0))), AMBER))
+		# PX-003 §9: a loud payment gets a traceable receipt. The Financial
+		# Pressure score itself stays hidden — this is the situation, not the
+		# meter.
+		if int(booking.get("financial_pressure_gain", 0)) > 0:
+			v.add_child(label("That payment was loud. Too much street money moved "
+				+ "through a formal bill at once.", "Muted", 11, AMBER, true))
 	c.add_child(v)
 	body.add_child(c)
 	body.add_child(_continue_button("BACK TO THE STREET"))

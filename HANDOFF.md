@@ -544,6 +544,150 @@ Parity is **6641 checks / 0 failures** (13 hardening regressions added), glyph
 coverage passes, and headless import/startup remain clean. Full findings and the
 system map are in `HARDENING_PASS_01.md`.
 
+## FS-003.8: what it costs when they actually have you  (added 2026-08-22)
+
+`systems/arrest.gd`. Boost could already decide that a Caught result ended in
+cuffs; Stick could not, and neither of them could say what happened next. Now
+both hand the same system one fact — *this is what I am and this is how big it
+was* — and everything after that is one owner's problem.
+
+**Parity: 9,100 → 9,440 checks, 0 failures.**
+
+### The two things a source system is not allowed to know
+
+`attach_booking(chain, {family, tier, target_id, cause_id})` is the whole
+interface. Boost passes `boost` and a tier; Stick passes `stick` and a tier.
+Neither knows the severity table exists, that Boost tier 3 shares tier 2's
+booking row, that a second arrest costs half again as much, or that four priors
+add a slot. If they did, the second source would have to reproduce all of it,
+and the two copies would drift the first time a balance pass touched one.
+
+### The quote is frozen at arrest, but the release point is not
+
+This looked like one rule and is two.
+
+The **price** — bail, priors, multiplier, processing slots, Heat relief — is
+computed once when the arrest is decided and stored on the chain. Recomputing it
+at render time would reproduce the same number today and would start lying the
+moment anything it reads moved. The live example is not hypothetical: the priors
+count increments during the commit, so a quote recomputed after payment prices
+the arrest the player is currently standing in as if it had already happened.
+
+The **release point** is projected from the live clock instead. Both are stable
+across reload — `day` and `time_slots_today` persist like everything else — but
+only the live clock agrees with what the commit itself computes. An earlier
+version projected from the quote's stamped position and disagreed with its own
+receipt the moment a test moved the clock between the arrest and the decision;
+in ordinary play nothing can, which is exactly the kind of agreement that holds
+until it does not.
+
+### The source slot and the booking slots are different time
+
+TI-003 §13 separates them into steps 8 and 9, and it matters:
+
+    8. settle the source action's one slot once;
+    9. advance additional booking slots one by one;
+
+The source slot is what the lift or the robbery costs, owed whether or not it
+ended badly. The booking slots are what the arrest costs on top. The release
+receipt counts them separately (`source_slots_settled`, `slots_served`) because
+folding them together would quietly make the second arrest of a run cheaper in
+wall-clock terms than the first, and nobody would have decided that.
+
+Every one of those slots runs the ordinary night one at a time. The day-boundary
+check parks the clock at NIGHT with rent due and somebody on the payroll, serves
+the booking out, and asserts the run landed exactly where the projection
+promised, that rent was **missed** rather than skipped, that a wage accrued for
+each night inside, and that the market cursor moved. TI-003 regression #13 is
+"Booking jumps days and skips obligations"; jail gets its weight from the
+simulation that was already running.
+
+### The arrest waits at `result`, and Continue is what books you
+
+Behaviour change to shipped code, and a fix rather than an addition. FS-003.7
+advanced an arrested Caught chain straight to `booking`, so the bail quote
+rendered over a result the player never read. PX-003 §5 shows the arrested
+result as a screen with a `BOOKING` action under it — the outcome first, then
+the procedure. `_continue` now moves a `result` stage with a pending booking to
+`booking` and settles nothing on the way, because §13 step 8 makes settling the
+source slot part of the commit.
+
+`open_chain` also gained an `initial_stage`. A Stick arrest has no decision — the
+robbery already resolved through the source system's own tier roll — so its chain
+opens at `result` rather than opening a decision with an empty choice list and
+walking past it. The stage is validated against the same transition table every
+later move is.
+
+### The sabotage that passed, and why it is the most useful result here
+
+Four of five planned sabotages failed the suite as intended. The fifth did not:
+
+| # | Injected fault | Result |
+| --- | --- | --- |
+| 1 | Prior bail multiplier 1.50 → 1.25 | **caught** — 8 failures |
+| 2 | Bail spends `ROUTINE_DIRTY_FIRST` | **PASSED — hole found** |
+| 3 | Heat relief through `apply_gain` | **caught** — 5 failures |
+| 4 | `settle_source_time()` deleted | **caught** — 3 failures |
+| 5 | Stick gate `>` → `>=` | **caught** — 6 failures |
+| 6 | Four-slot total cap removed | **caught** — 3 failures |
+| 7 | Same-Cause suppression removed | **caught** — 2 failures |
+| 2b | Bail spends `ROUTINE_DIRTY_FIRST` (after fix) | **caught** — 6 failures |
+
+Sabotage 2 is the one worth writing down. The provenance check paid a bail out of
+a wallet holding exactly the bail — clean $150, dirty $0, bill $150. Clean-first
+and dirty-first move identical money in that situation, so the policy could be
+swapped and nothing could see it. The check was not weak; it was **incapable**.
+
+The fix is a wallet larger than the bill and mixed: $400 clean and $800 dirty
+against an $875 quote. Clean-first takes $400 then $475; dirty-first takes $800
+then $75. The Financial Pressure that falls out differs too (1 versus 4), so the
+same setup carries the slice's Financial-Pressure-feedback requirement instead of
+needing a second scenario.
+
+The general lesson, worth more than the specific bug: **a check whose two
+outcomes are indistinguishable under the fault it is meant to catch is not a weak
+check, it is a decoration.** Rule 9 of this build ("every new verification check
+must be sabotage-tested before being trusted") is what surfaced it, and it would
+not have been found by reading the test.
+
+### Decisions taken, and where they came from
+
+- **Total time is capped at 4 slots, shortfall included.** TI-003 §13 says "cap
+  base + prior adjustment at 4 slots" and lists the shortfall conversion
+  separately; FS-003 §7 says "Maximum total booking/serving time from one arrest
+  is 4 time slots" and repeats "Total time remains capped at 4 slots" under both
+  shortfall lanes. The total reading satisfies both documents and is what makes
+  TI-003 regression #14 ("a broke player loses every legal Booking option")
+  false in practice: SERVE IT is always offered, always $0, and never longer
+  than a day. Without it, serving a $1,000 bail at four priors is eleven slots.
+- **The arrest observation is authored here.** FS-003 §7 says an arrest writes an
+  Exposure observation "only where an authored observer/channel qualifies" and
+  never names the row. It is `heat_exposure` / `neighborhood`: the category whose
+  existing weights already price "you brought police into my life" correctly
+  (Yalonda −3.0, Mina −1.5), on the one-day channel the household and the block
+  actually hear things through. Curtis is not on `neighborhood`, and
+  `heat_exposure` does not clear his network filter either — an arrest is not how
+  he finds out, which the suite asserts rather than assumes.
+- **`all_cash` is hidden when full bail is affordable, and at $0.** FS-003 §7's
+  own availability rule. Offering "put up what you have" beside "post full bail"
+  at the same price is two buttons for one action; offering it at $0 is Serve
+  with extra steps.
+- **Stick allocates a Cause on every attempt, not only on an arrest.** TI-003 §4:
+  "Every qualifying risky source action gets one stable Cause ID." Two consumers
+  need it and neither is knowable at allocation time — the arrest gate, and
+  FS-003.10's retaliation scheduler, which keys its schedule roll on the Cause.
+  Allocation is a counter bump that writes no history row, so an attempt nothing
+  ever answers costs one integer.
+
+### What FS-003.9 inherits
+
+A booking that settles time through the ordinary lifecycle, which is the seam
+Pressure bleed and the Financial Pressure fold will run inside. `district_pressure`
+already has real history in it from FS-003.7's Caught gains — .9 starts from a
+ledger with entries rather than from zero. And `heat.gd`'s `_district_scaling_enabled`
+is still `false`: that one line is .9's, and flipping it changes what every
+existing crime costs in Heat.
+
 ## Doc drift cleanup: making the baseline honest before layering on it  (added 2026-08-22)
 
 The first commit of the FS-003.8-.12 branch changes no behaviour. It fixes three

@@ -125,6 +125,7 @@ func _ready() -> void:
 		_check_consequence_engine()
 		_check_outcome_projection()
 		_check_boost_caught()
+		_check_arrest_booking()
 		_check_save_roundtrip()
 	_finish()
 
@@ -1322,8 +1323,28 @@ func _run_stickup_case(gs: Node, gm: Node, exposure: Node, target: Dictionary,
 	_expect_int(label + " successes", gs.stick_successes - successes_before, scored)
 	_expect_int(label + " daily count", gs.stick_daily_count, 1)
 
-	# A robbery is still exactly one slot, tier or no tier.
-	_expect_int(label + " advances one slot", gs.time_slots_today, slot_before + 1)
+	# A robbery is still exactly one slot — EXCEPT when it ends in cuffs.
+	#
+	# FS-003.8 attached TI-003 §14's arrest gate to Stick, and a Catastrophic
+	# robbery books at every tier. An arrested robbery keeps its slot unsettled
+	# (§14: "keeps source time unsettled until Booking commits it"), so the slot
+	# is owed rather than spent, and the chain is holding it.
+	#
+	# Asserted both ways round rather than skipped on the arrested branch: the
+	# unarrested tiers still have to cost exactly one slot, and the arrested one
+	# has to cost none AND be holding an open booking. Skipping would let a
+	# regression that stopped charging time on a clean take pass unnoticed.
+	var arrested: bool = not (gs.active_consequence as Dictionary).is_empty()
+	if arrested:
+		var engine_probe: RefCounted = gm.system("consequence") as RefCounted
+		_expect_int(label + " holds its slot while booked",
+			gs.time_slots_today, slot_before)
+		_expect_true(label + " owes its source slot", engine_probe.source_time_owed())
+		_expect_str(label + " opens a stick booking chain",
+			str((gs.active_consequence as Dictionary).get("chain_kind", "")),
+			engine_probe.KIND_STICK_BOOKING)
+	else:
+		_expect_int(label + " advances one slot", gs.time_slots_today, slot_before + 1)
 
 	# The Exposure footprint, row for row against canon's table. A `direct` row
 	# lands in the ledger the same turn; `neighborhood` and `network` take a day,
@@ -7345,11 +7366,15 @@ func _check_caught_effects_applied(gs: Node, gm: Node, engine: RefCounted,
 		_expect_true("fight/%s arrest matches the authored row" % tier_name,
 			bool(outcome["result"]["arrested"])
 				== rules.arrests("fight", tier_name, 1, 0.0))
-		# Stage follows: Booking on an arrest, Result otherwise.
-		_expect_str("fight/%s lands on the right stage" % tier_name,
-			engine.active_stage(),
-			engine.STAGE_BOOKING if bool(outcome["result"]["arrested"])
-				else engine.STAGE_RESULT)
+		# Stage follows: RESULT either way. FS-003.8 moved the arrest handoff to
+		# Continue rather than letting resolution advance itself, so the player
+		# reads what happened before the bail quote replaces it. An arrest is
+		# visible here as a pending booking on the chain, not as a stage.
+		_expect_str("fight/%s stops at the result stage" % tier_name,
+			engine.active_stage(), engine.STAGE_RESULT)
+		_expect_true("fight/%s books only when the row arrests" % tier_name,
+			bool((engine.booking_summary() as Dictionary).get("pending", false))
+				== bool(outcome["result"]["arrested"]))
 
 		gs.active_consequence = {}
 		if seen_tiers.size() >= 3:
@@ -7461,14 +7486,24 @@ func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
 		found_tier3 = true
 		_expect_true("run/failure at tier 3 arrests even at zero heat",
 			bool(outcome3["result"]["arrested"]))
-		_expect_str("an arrest moves the chain to booking",
-			engine.active_stage(), engine.STAGE_BOOKING)
-		# The facts FS-003.8 will need are on the chain already.
+		_expect_str("an arrest waits at the result stage",
+			engine.active_stage(), engine.STAGE_RESULT)
 		var booking: Dictionary = engine.booking_summary()
-		_expect_true("the booking stage carries a severity",
+		_expect_true("the arrest attaches a pending booking",
+			bool(booking.get("pending", false)))
+		_expect_true("the booking carries a severity",
 			not str(booking.get("severity", "")).is_empty())
-		_expect_str("the booking stage carries the source family",
+		_expect_str("the booking carries the source family",
 			str(booking.get("source_family", "")), "boost")
+		# Continue is what carries an arrested result into Booking.
+		_expect_true("continue moves an arrested result to booking",
+			gm.dispatch("consequence_continue", {}))
+		_expect_str("the chain is at booking after continue",
+			engine.active_stage(), engine.STAGE_BOOKING)
+		# And it settles nothing on the way: TI-003 §13 step 8 makes the source
+		# slot part of the booking commit, not of this handoff.
+		_expect_true("the source slot is still owed at booking",
+			engine.source_time_owed())
 		gs.active_consequence = {}
 		break
 	_expect_true("the tier-3 arrest probe found a run/failure", found_tier3)
@@ -7655,6 +7690,968 @@ func _check_caught_rng_non_drift(gs: Node, gm: Node, engine: RefCounted) -> void
 		int(gs.rng_state), open_cursor)
 	gs.active_consequence = {}
 
+
+# =============================================================================
+# FS-003.8 — ArrestSystem and Booking
+# =============================================================================
+#
+# Four layers, same shape as the Caught section:
+#
+#   1. the authored tables, transcribed independently of consequence_rules.gd
+#   2. the quote and the projection, over every severity x prior combination
+#   3. the gates — Boost's on the Caught table, Stick's on TI-003 §14's Heat
+#      thresholds, both driven through the real dispatch layer
+#   4. the commit — all three lanes, the time they cost, what settles while the
+#      player is inside, and what survives a reload
+#
+# The layers are separate on purpose. A table can be right while the wiring that
+# reads it is wrong, and a booking that produces the right numbers can still be
+# charging the source slot twice.
+
+func _check_arrest_booking() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var engine: RefCounted = gm.system("consequence") as RefCounted
+	var arrest: RefCounted = gm.system("arrest") as RefCounted
+	if engine == null or arrest == null:
+		_fail("arrest", "systems not registered")
+		return
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	_check_arrest_authored_tables(rules)
+	_check_arrest_quote_matrix(rules)
+	_check_arrest_release_projection(arrest)
+	_check_booking_projection(gs, gm, engine, arrest, rules)
+	_check_stick_arrest_gate(gs, gm, engine, rules)
+	_check_booking_full_bail(gs, gm, engine, rules)
+	_check_booking_all_cash(gs, gm, engine, rules)
+	_check_booking_serve_time(gs, gm, engine, rules)
+	_check_booking_provenance(gs, gm, engine, rules)
+	_check_booking_suppression_and_observation(gs, gm, engine)
+	_check_booking_heat_relief(gs, gm, engine)
+	_check_booking_priors_persist(gs, gm, engine)
+	_check_booking_source_time(gs, gm, engine)
+	_check_booking_day_boundary(gs, gm, engine)
+	_check_booking_reload(gs, gm, engine)
+	_check_booking_rng_non_drift(gs, gm, engine)
+	gs.reset_to_new_game()
+
+# --- layer 1: the authored tables ------------------------------------------
+
+## FS-003 §7 and TI-003 §13, transcribed here rather than read from the module
+## under test. Same discipline as the Caught rows: two independent
+## transcriptions of one document, so a slip in either fails rather than agrees.
+func _check_arrest_authored_tables(rules: RefCounted) -> void:
+	# severity id, base bail, base processing slots, heat relief
+	var severities := [
+		["boost_t1", 150, 1, 2.0],
+		["boost_t2", 250, 1, 2.0],
+		["stick_t1", 350, 2, 3.0],
+		["stick_t2", 600, 2, 4.0],
+		["stick_t3", 1000, 3, 5.0],
+		["generic", 300, 2, 3.0],
+	]
+	for row in severities:
+		var id := str((row as Array)[0])
+		_expect_int("%s base bail" % id, rules.base_bail(id), int((row as Array)[1]))
+		_expect_int("%s base processing" % id, rules.base_processing_slots(id),
+			int((row as Array)[2]))
+		_expect_float("%s heat relief" % id, rules.heat_relief(id),
+			float((row as Array)[3]))
+
+	# FS-003 §7: "Tier 3 Boost continues using the Boost 2 booking severity."
+	_expect_str("boost tier 1 severity", rules.severity_for_boost(1), "boost_t1")
+	_expect_str("boost tier 2 severity", rules.severity_for_boost(2), "boost_t2")
+	_expect_str("boost tier 3 shares the boost tier 2 severity",
+		rules.severity_for_boost(3), "boost_t2")
+	_expect_str("stick tier 1 severity", rules.severity_for_stick(1), "stick_t1")
+	_expect_str("stick tier 2 severity", rules.severity_for_stick(2), "stick_t2")
+	_expect_str("stick tier 3 severity", rules.severity_for_stick(3), "stick_t3")
+	# The family dispatcher, including the fallback nobody should hit.
+	_expect_str("family boost routes to the boost table", rules.severity_for("boost", 2), "boost_t2")
+	_expect_str("family stick routes to the stick table", rules.severity_for("stick", 3), "stick_t3")
+	_expect_str("an unknown family falls back to generic",
+		rules.severity_for("mugging_a_ghost", 1), "generic")
+
+	# Prior bail multipliers, FS-003 §7. Five rows, and everything past the last
+	# one holds at 3.50x.
+	var multipliers := [1.00, 1.50, 2.00, 2.75, 3.50]
+	for priors in range(0, 5):
+		_expect_float("bail multiplier at %d priors" % priors,
+			rules.bail_multiplier(priors), float(multipliers[priors]))
+	for priors in range(5, 9):
+		_expect_float("bail multiplier holds at %d priors" % priors,
+			rules.bail_multiplier(priors), 3.50)
+
+	# The shortfall conversion: ceil(shortfall / 150). The boundaries are what
+	# matter — 150 is one slot, 151 is two.
+	var shortfalls := [[0, 0], [1, 1], [149, 1], [150, 1], [151, 2], [300, 2],
+		[301, 3], [450, 3], [451, 4], [1000, 7]]
+	for row in shortfalls:
+		_expect_int("shortfall $%d converts" % int((row as Array)[0]),
+			rules.shortfall_slots(int((row as Array)[0])), int((row as Array)[1]))
+	_expect_int("a negative shortfall converts to nothing", rules.shortfall_slots(-40), 0)
+
+	# Processing: base + floor(priors / 2), capped at 4.
+	var processing := [
+		["boost_t1", 0, 1], ["boost_t1", 1, 1], ["boost_t1", 2, 2],
+		["boost_t1", 3, 2], ["boost_t1", 4, 3], ["boost_t1", 6, 4],
+		["boost_t1", 8, 4], ["boost_t1", 20, 4],
+		["stick_t3", 0, 3], ["stick_t3", 2, 4], ["stick_t3", 4, 4],
+	]
+	for row in processing:
+		_expect_int("%s processing at %d priors" % [str((row as Array)[0]), int((row as Array)[1])],
+			rules.processing_slots(str((row as Array)[0]), int((row as Array)[1])),
+			int((row as Array)[2]))
+
+	# FS-003 §7: "Maximum total booking/serving time from one arrest is 4 time
+	# slots" — the TOTAL, shortfall included. This is what keeps regression #14
+	# ("a broke player loses every legal Booking option") false: serving a
+	# $1,000 bail with four priors is still four slots, not eleven.
+	_expect_int("total time is capped at four slots",
+		rules.total_booking_slots("stick_t3", 4, 3500), 4)
+	_expect_int("a paid booking costs only its processing",
+		rules.total_booking_slots("boost_t1", 0, 0), 1)
+	_expect_int("a shortfall adds to processing under the cap",
+		rules.total_booking_slots("boost_t1", 0, 300), 3)
+
+	# TI-003 §14's Stick gate. Both sides of every threshold, plus the two tiers
+	# that do not gate at all.
+	var gates := [[1, 10.0], [2, 8.0], [3, 6.0]]
+	for row in gates:
+		var tier: int = int((row as Array)[0])
+		var gate: float = float((row as Array)[1])
+		_expect_true("stick tier %d failure does not book at the gate" % tier,
+			not rules.stick_arrests(tier, "failure", gate))
+		_expect_true("stick tier %d failure books above the gate" % tier,
+			rules.stick_arrests(tier, "failure", gate + 0.1))
+		_expect_true("stick tier %d failure does not book below the gate" % tier,
+			not rules.stick_arrests(tier, "failure", gate - 0.1))
+		# Catastrophic books at every tier and every Heat, including zero.
+		_expect_true("stick tier %d catastrophic books at zero heat" % tier,
+			rules.stick_arrests(tier, "catastrophic", 0.0))
+		# And a good night never books, no matter how much Heat is on the meter.
+		_expect_true("stick tier %d clean never books" % tier,
+			not rules.stick_arrests(tier, "clean", 15.0))
+		_expect_true("stick tier %d messy never books" % tier,
+			not rules.stick_arrests(tier, "messy", 15.0))
+
+	# The authored observation. Named here so a later edit to the channel is a
+	# failure rather than a silent change to who finds out you were arrested.
+	var observation: Dictionary = rules.ARREST_OBSERVATION
+	_expect_str("the arrest observation is heat exposure",
+		str(observation["type"]), "heat_exposure")
+	_expect_str("the arrest observation travels the neighborhood",
+		str(observation["channel"]), "neighborhood")
+	_expect_str("the arrest observation is named", str(observation["event"]), "arrested")
+
+# --- layer 2: the quote and the projection ---------------------------------
+
+## Every severity against every prior count that changes the answer, with the
+## quote computed by hand from the two tables rather than by calling the same
+## function twice.
+func _check_arrest_quote_matrix(rules: RefCounted) -> void:
+	var bails := {"boost_t1": 150, "boost_t2": 250, "stick_t1": 350,
+		"stick_t2": 600, "stick_t3": 1000, "generic": 300}
+	var multipliers := [1.00, 1.50, 2.00, 2.75, 3.50, 3.50, 3.50]
+	for severity_key in bails.keys():
+		var severity := str(severity_key)
+		for priors in range(0, 7):
+			var want: int = int(round(float(bails[severity]) * float(multipliers[priors])))
+			_expect_int("%s bail at %d priors" % [severity, priors],
+				rules.bail_quote(severity, priors), want)
+	# The one that matters most in play: your second arrest costs half again as
+	# much as your first for the same charge.
+	_expect_int("a first stick tier 2 arrest quotes $600",
+		rules.bail_quote("stick_t2", 0), 600)
+	_expect_int("a second stick tier 2 arrest quotes $900",
+		rules.bail_quote("stick_t2", 1), 900)
+
+## The release projection is plain slot arithmetic, and it has to agree with what
+## the clock actually does. Checked against the wrap boundary in both directions.
+func _check_arrest_release_projection(arrest: RefCounted) -> void:
+	var cases := [
+		# day, slot, slots, want day, want slot, want name
+		[9, 0, 0, 9, 0, "MORNING"],
+		[9, 0, 1, 9, 1, "AFTERNOON"],
+		[9, 0, 3, 9, 3, "NIGHT"],
+		[9, 0, 4, 10, 0, "MORNING"],
+		[9, 3, 1, 10, 0, "MORNING"],
+		[9, 3, 4, 10, 3, "NIGHT"],
+		[9, 2, 7, 11, 1, "AFTERNOON"],
+	]
+	for row in cases:
+		var c: Array = row
+		var got: Dictionary = arrest.project_release(int(c[0]), int(c[1]), int(c[2]))
+		_expect_int("release day from day %d slot %d + %d" % [int(c[0]), int(c[1]), int(c[2])],
+			int(got["day"]), int(c[3]))
+		_expect_int("release slot from day %d slot %d + %d" % [int(c[0]), int(c[1]), int(c[2])],
+			int(got["slot"]), int(c[4]))
+		_expect_str("release slot name from day %d slot %d + %d" % [int(c[0]), int(c[1]), int(c[2])],
+			str(got["slot_name"]), str(c[5]))
+
+# --- driving a real arrest --------------------------------------------------
+
+## Put the run in a known shape and walk days until a Boost lift fails, the
+## chosen response arrests, and Continue lands the chain on Booking.
+##
+## Derived rather than seeded, for the same reason `_open_failed_lift` is: a
+## pinned day may resolve to a success or an unarrested tier, and every
+## assertion afterwards would then be measuring a chain that does not exist.
+func _open_boost_booking(gs: Node, gm: Node, engine: RefCounted, tier: int,
+		target_id: String, priors: int, cash: int) -> bool:
+	for attempt in range(1, 260):
+		_caught_ready(gs, attempt, tier)
+		gs.heat = 0.0
+		gs.health = gs.health_max
+		gs.cash = cash
+		gs.clean_cash = cash
+		gs.dirty_cash = 0
+		gs.arrest_record = {"priors": priors, "last_arrest_day": -1, "charges": []}
+		var lifted: bool = gm.dispatch("boost", {"target_id": target_id})
+		_caught_carry(gs)
+		if not lifted or (gs.active_consequence as Dictionary).is_empty():
+			continue
+		# Fight failure and Fight catastrophic both arrest unconditionally, so
+		# this response reaches an arrest without depending on the Heat gate.
+		if not gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"}):
+			gs.active_consequence = {}
+			continue
+		var outcome: Dictionary = engine.result_summary()
+		if not bool((outcome["result"] as Dictionary)["arrested"]):
+			gs.active_consequence = {}
+			continue
+		if not gm.dispatch("consequence_continue", {}):
+			gs.active_consequence = {}
+			continue
+		if engine.active_stage() != engine.STAGE_BOOKING:
+			gs.active_consequence = {}
+			continue
+		return true
+	return false
+
+func _booking_choice(rows: Array, choice_id: String) -> Dictionary:
+	for entry in rows:
+		if str((entry as Dictionary)["choice_id"]) == choice_id:
+			return entry
+	return {}
+
+## What the Booking stage hands the screen: the frozen quote, the live cash, and
+## three lanes with their exact costs already worked out.
+func _check_booking_projection(gs: Node, gm: Node, engine: RefCounted,
+		arrest: RefCounted, rules: RefCounted) -> void:
+	if not _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		_fail("booking projection", "no arrested lift found")
+		return
+	var booking: Dictionary = engine.booking_summary()
+	var severity := str(booking["severity"])
+	_expect_str("a tier 1 boost books as shoplifting", severity, "boost_t1")
+	_expect_int("the quote matches the table",
+		int(booking["bail_quote"]), rules.bail_quote(severity, 0))
+	_expect_int("the quote records the priors it was priced at",
+		int(booking["priors_at_quote"]), 0)
+	_expect_float("the quote records its multiplier",
+		float(booking["prior_multiplier"]), 1.0)
+	_expect_int("the projection reads live cash", int(booking["cash_on_hand"]), int(gs.cash))
+	_expect_true("the booking is pending until a lane is committed",
+		bool(booking["pending"]))
+	# The source slot is still owed and the projection says so — it is time that
+	# will genuinely pass before the player is back outside.
+	_expect_int("the projection carries the unsettled source slot",
+		int(booking["source_slots"]), 1)
+
+	var rows: Array = booking["choices"]
+	_expect_int("three lanes are projected", rows.size(), 3)
+	var full: Dictionary = _booking_choice(rows, "full_bail")
+	var partial: Dictionary = _booking_choice(rows, "all_cash")
+	var serve: Dictionary = _booking_choice(rows, "serve_time")
+
+	# $5,000 against a $150 quote: pay it, and the other partial lane is off.
+	_expect_true("full bail is available when the cash covers it", bool(full["available"]))
+	_expect_true("all-cash is hidden when full bail is affordable",
+		not bool(partial["available"]))
+	_expect_true("serving is always available", bool(serve["available"]))
+	_expect_int("full bail costs the quote", int(full["cash_cost"]), int(booking["bail_quote"]))
+	_expect_int("serving costs nothing", int(serve["cash_cost"]), 0)
+	_expect_int("full bail costs the processing slots",
+		int(full["slots"]), rules.processing_slots(severity, 0))
+	# Serving converts the whole quote to time: 150 / 150 = 1 extra slot.
+	_expect_int("serving converts the whole quote to time",
+		int(serve["slots"]),
+		rules.total_booking_slots(severity, 0, int(booking["bail_quote"])))
+	_expect_int("full bail leaves the rest of the cash",
+		int(full["cash_after"]), int(gs.cash) - int(booking["bail_quote"]))
+	# Release points agree with the projection helper, source slot included.
+	var want_release: Dictionary = arrest.project_release(
+		int(booking["quoted_day"]), int(booking["quoted_slot"]),
+		int(booking["source_slots"]) + int(full["slots"]))
+	_expect_int("the full-bail release day is projected",
+		int(full["release_day"]), int(want_release["day"]))
+	_expect_int("the full-bail release slot is projected",
+		int(full["release_slot"]), int(want_release["slot"]))
+	# Nothing is disabled before a commit.
+	for entry in rows:
+		_expect_true("no lane is disabled before a commit",
+			not bool((entry as Dictionary)["disabled"]))
+	gs.active_consequence = {}
+
+	# --- the poor player, and TI-003 regression #14 ---
+	#
+	# A tier 3 lift at four priors is the most expensive booking the first slice
+	# can produce. With $10 in pocket the player must still have somewhere to go.
+	if _open_boost_booking(gs, gm, engine, 3, "warehouse_club", 4, 10):
+		var broke: Dictionary = engine.booking_summary()
+		var broke_rows: Array = broke["choices"]
+		_expect_int("a tier 3 lift still books as organized theft",
+			int(broke["bail_quote"]), rules.bail_quote("boost_t2", 4))
+		_expect_true("full bail is refused when the cash is short",
+			not bool((_booking_choice(broke_rows, "full_bail") as Dictionary)["available"]))
+		_expect_true("all-cash opens when the cash is short and above zero",
+			bool((_booking_choice(broke_rows, "all_cash") as Dictionary)["available"]))
+		_expect_true("serving is still available at $10",
+			bool((_booking_choice(broke_rows, "serve_time") as Dictionary)["available"]))
+		_expect_int("all-cash puts up everything the player has",
+			int((_booking_choice(broke_rows, "all_cash") as Dictionary)["cash_cost"]), 10)
+		# The cap is what makes this survivable rather than a lost week.
+		for entry in broke_rows:
+			_expect_true("no lane exceeds the four-slot cap",
+				int((entry as Dictionary)["slots"]) <= rules.MAX_BOOKING_SLOTS)
+		gs.active_consequence = {}
+	else:
+		_fail("booking projection", "no arrested tier 3 lift found")
+
+	# At exactly zero cash, all-cash disappears — it would be Serve with extra
+	# steps — and Serve carries the whole quote.
+	if _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 0):
+		var zero_rows: Array = (engine.booking_summary() as Dictionary)["choices"]
+		_expect_true("all-cash is hidden at zero cash",
+			not bool((_booking_choice(zero_rows, "all_cash") as Dictionary)["available"]))
+		_expect_true("serving is available at zero cash",
+			bool((_booking_choice(zero_rows, "serve_time") as Dictionary)["available"]))
+		gs.active_consequence = {}
+	else:
+		_fail("booking projection", "no arrested lift at zero cash")
+
+# --- layer 3: the Stick gate on the real path ------------------------------
+
+## The Stick probe's target set, one per tier, all reachable from Spenard.
+const STICK_GATE_TARGETS := {
+	1: {"id": "washgo_regular", "slot": 0},
+	2: {"id": "spenard_fuel_till", "slot": 3},
+	3: {"id": "goodie_stash", "slot": 0},
+}
+
+func _stick_gate_ready(gs: Node, heat: float, slot: int) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.time_slots_today = slot
+	gs.time_slot = ["MORNING", "AFTERNOON", "EVENING", "NIGHT"][slot]
+	gs.stick_tier = 3
+	gs.stick_daily_count = 0
+	gs.attributes = {"combat": 1, "charisma": 1, "intelligence": 1}
+	gs.heat = heat
+	gs.cash = 4000
+	gs.clean_cash = 4000
+	gs.dirty_cash = 0
+
+## Find a day whose robbery resolves to `want_tier` at this exact Heat.
+##
+## Heat is an INPUT to `chance_for`, so the tier a day produces moves when the
+## Heat does. That is why each side of a threshold gets its own scan rather than
+## one day reused at two Heat values: reusing it would silently compare two
+## different tiers and call the difference a gate.
+func _find_stick_day(gs: Node, gm: Node, tier: int, want_tier: String,
+		heat: float, slot: int) -> int:
+	var stickup: RefCounted = gm.system("stickup") as RefCounted
+	var resolver: RefCounted = gm.system("outcome_resolver") as RefCounted
+	var target_id := str((STICK_GATE_TARGETS[tier] as Dictionary)["id"])
+	_stick_gate_ready(gs, heat, slot)
+	var target: Dictionary = gs.stick_target_by_id(target_id)
+	var chance: float = stickup.chance_for(target)
+	for day in range(1, 400):
+		var key := "stickup:%d:%d:%s" % [day, slot, target_id]
+		var outcome: Dictionary = resolver.resolve_action("robbery", chance, 1,
+			gs.run_seed, key)
+		if str(outcome["tier"]) == want_tier:
+			return day
+	return -1
+
+## TI-003 §14, through the real dispatch layer rather than the rules module.
+##
+## Both sides of every tier's threshold, and the catastrophic row that ignores
+## it. This is where a gate wired to the wrong Heat value shows up: the rules
+## module can be perfect while `stickup.gd` hands it post-robbery Heat.
+func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	for tier_key in [1, 2, 3]:
+		var tier: int = int(tier_key)
+		var spec: Dictionary = STICK_GATE_TARGETS[tier]
+		var target_id := str(spec["id"])
+		var slot: int = int(spec["slot"])
+		var gate: float = float(rules.STICK_FAILURE_ARREST_HEAT[tier])
+
+		# Above the gate: a plain failure books.
+		var above: float = gate + 0.5
+		var day_above: int = _find_stick_day(gs, gm, tier, "failure", above, slot)
+		if day_above > 0:
+			_stick_gate_ready(gs, above, slot)
+			gs.day = day_above
+			_expect_true("tier %d failure above the gate dispatches" % tier,
+				gm.dispatch("stickup", {"target_id": target_id}))
+			_expect_true("tier %d failure at heat %.1f books" % [tier, above],
+				not (gs.active_consequence as Dictionary).is_empty())
+			_expect_str("tier %d books under the stick severity" % tier,
+				str((engine.booking_summary() as Dictionary).get("severity", "")),
+				rules.severity_for_stick(tier))
+			# TI-003 §14: the source slot stays unsettled until booking commits.
+			_expect_true("an arrested robbery still owes its slot",
+				engine.source_time_owed())
+			_expect_int("an arrested robbery spends no slot",
+				int(gs.time_slots_today), slot)
+			gs.active_consequence = {}
+		else:
+			_fail("stick gate tier %d" % tier, "no failure day above the gate")
+
+		# At the gate exactly: strictly greater than, so this does NOT book.
+		var day_at: int = _find_stick_day(gs, gm, tier, "failure", gate, slot)
+		if day_at > 0:
+			_stick_gate_ready(gs, gate, slot)
+			gs.day = day_at
+			_expect_true("tier %d failure at the gate dispatches" % tier,
+				gm.dispatch("stickup", {"target_id": target_id}))
+			_expect_true("tier %d failure at exactly heat %.1f does not book" % [tier, gate],
+				(gs.active_consequence as Dictionary).is_empty())
+			gs.active_consequence = {}
+		else:
+			_fail("stick gate tier %d" % tier, "no failure day at the gate")
+
+		# Catastrophic books at zero Heat, which is the row that has no gate.
+		var day_cat: int = _find_stick_day(gs, gm, tier, "catastrophic", 0.0, slot)
+		if day_cat > 0:
+			_stick_gate_ready(gs, 0.0, slot)
+			gs.day = day_cat
+			_expect_true("tier %d catastrophic dispatches" % tier,
+				gm.dispatch("stickup", {"target_id": target_id}))
+			_expect_true("tier %d catastrophic books at zero heat" % tier,
+				not (gs.active_consequence as Dictionary).is_empty())
+			gs.active_consequence = {}
+		else:
+			_fail("stick gate tier %d" % tier, "no catastrophic day at zero heat")
+
+		# A clean take never books, whatever the meter reads.
+		var day_clean: int = _find_stick_day(gs, gm, tier, "clean", 14.0, slot)
+		if day_clean > 0:
+			_stick_gate_ready(gs, 14.0, slot)
+			gs.day = day_clean
+			_expect_true("tier %d clean dispatches at high heat" % tier,
+				gm.dispatch("stickup", {"target_id": target_id}))
+			_expect_true("tier %d clean never books, even at heat 14" % tier,
+				(gs.active_consequence as Dictionary).is_empty())
+			gs.active_consequence = {}
+		else:
+			_fail("stick gate tier %d" % tier, "no clean day at high heat")
+	gs.reset_to_new_game()
+
+# --- layer 4: the commit ----------------------------------------------------
+
+func _check_booking_full_bail(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	if not _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		_fail("full bail", "no arrested lift found")
+		return
+	var booking: Dictionary = engine.booking_summary()
+	var quote: int = int(booking["bail_quote"])
+	var slot_before: int = int(gs.time_slots_today)
+	var cash_before: int = int(gs.cash)
+	var clean_before: int = int(gs.clean_cash)
+	var heat_before: float = float(gs.heat)
+
+	_expect_true("full bail commits",
+		gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+	_expect_str("paying moves the chain to release",
+		engine.active_stage(), engine.STAGE_RELEASE)
+	_expect_int("full bail takes exactly the quote", cash_before - int(gs.cash), quote)
+	# TI-003 §6: bail is high-visibility, so Clean drains first. Regression #23
+	# is this running dirty-first.
+	_expect_int("bail spends clean money first", clean_before - int(gs.clean_cash), quote)
+	_expect_int("bail leaves the dirty bucket alone", int(gs.dirty_cash), 0)
+	# Heat relief landed, and downward.
+	_expect_true("booking relieved heat", float(gs.heat) <= heat_before)
+	# One source slot plus the processing slots, and no more.
+	var want_slots: int = 1 + rules.processing_slots(str(booking["severity"]), 0)
+	_expect_int("full bail costs the source slot plus processing",
+		int(gs.time_slots_today) - slot_before, want_slots)
+	var receipt: Dictionary = engine.booking_summary()
+	_expect_str("the receipt records the lane", str(receipt["committed_choice"]), "full_bail")
+	_expect_int("the receipt records what was paid", int(receipt["paid"]), quote)
+	_expect_int("the receipt records no shortfall", int(receipt["shortfall"]), 0)
+	_expect_int("the receipt records the source slot it settled",
+		int(receipt["source_slots_settled"]), 1)
+	_expect_int("priors incremented once", int(gs.arrest_record["priors"]), 1)
+	_expect_int("one charge was filed", (gs.arrest_record["charges"] as Array).size(), 1)
+	# Committing again is refused, and the lanes are disabled in the projection.
+	_expect_true("a second booking commit is refused",
+		not gm.dispatch("resolve_booking_choice", {"choice_id": "serve_time"}))
+	for entry in (receipt.get("choices", []) as Array):
+		_expect_true("every lane is disabled after a commit",
+			bool((entry as Dictionary)["disabled"]))
+	# Continue from release clears the chain and settles nothing further: the
+	# source slot was already paid by the commit (regression #12).
+	var slot_at_release: int = int(gs.time_slots_today)
+	_expect_true("continue from release dispatches", gm.dispatch("consequence_continue", {}))
+	_expect_true("release clears the chain", not engine.has_active())
+	_expect_int("release costs no further slot",
+		int(gs.time_slots_today), slot_at_release)
+
+func _check_booking_all_cash(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	# $60 against a $150 quote: a $90 shortfall, which is one extra slot.
+	if not _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 60):
+		_fail("all cash", "no arrested lift found")
+		return
+	var booking: Dictionary = engine.booking_summary()
+	var quote: int = int(booking["bail_quote"])
+	var slot_before: int = int(gs.time_slots_today)
+	_expect_int("the quote is more than the player has", quote, 150)
+	_expect_true("all-cash commits",
+		gm.dispatch("resolve_booking_choice", {"choice_id": "all_cash"}))
+	var receipt: Dictionary = engine.booking_summary()
+	_expect_int("all-cash empties the wallet", int(gs.cash), 0)
+	_expect_int("the receipt records what was put up", int(receipt["paid"]), 60)
+	_expect_int("the receipt records the shortfall", int(receipt["shortfall"]), quote - 60)
+	var want_booking_slots: int = rules.total_booking_slots(
+		str(booking["severity"]), 0, quote - 60)
+	_expect_int("the shortfall bought its time",
+		int(receipt["slots_served"]), want_booking_slots)
+	_expect_int("all-cash costs the source slot plus the converted time",
+		int(gs.time_slots_today) - slot_before, 1 + want_booking_slots)
+	_expect_int("priors incremented once", int(gs.arrest_record["priors"]), 1)
+	gs.active_consequence = {}
+
+func _check_booking_serve_time(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	if not _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		_fail("serve time", "no arrested lift found")
+		return
+	var booking: Dictionary = engine.booking_summary()
+	var quote: int = int(booking["bail_quote"])
+	var cash_before: int = int(gs.cash)
+	var slot_before: int = int(gs.time_slots_today)
+	var heat_before: float = float(gs.heat)
+	# Serving is a liquidity CHOICE, not a fallback: it is available here even
+	# though the player could comfortably pay.
+	_expect_true("serving is offered to a player who could pay",
+		bool((_booking_choice(booking["choices"], "serve_time") as Dictionary)["available"]))
+	_expect_true("serve commits",
+		gm.dispatch("resolve_booking_choice", {"choice_id": "serve_time"}))
+	var receipt: Dictionary = engine.booking_summary()
+	_expect_int("serving costs no cash", int(gs.cash), cash_before)
+	_expect_int("the receipt records nothing paid", int(receipt["paid"]), 0)
+	_expect_int("serving treats the whole quote as shortfall",
+		int(receipt["shortfall"]), quote)
+	var want_booking_slots: int = rules.total_booking_slots(str(booking["severity"]), 0, quote)
+	_expect_int("serving costs the source slot plus the converted quote",
+		int(gs.time_slots_today) - slot_before, 1 + want_booking_slots)
+	_expect_int("serving still files a prior", int(gs.arrest_record["priors"]), 1)
+	# Serving buys the same Heat relief as paying. FS-003 §7 lists it under all
+	# three lanes: the release valve is the formal case, not the money.
+	_expect_float("serving relieves the same heat as paying",
+		float(receipt["heat_relief_applied"]),
+		minf(heat_before, rules.heat_relief(str(booking["severity"]))))
+	gs.active_consequence = {}
+
+## Which dollars bail takes, and what taking the wrong ones costs.
+##
+## TI-003 §6 puts bail under `HIGH_VISIBILITY_CLEAN_FIRST`, and regression #23 is
+## "High-visibility spending uses Dirty before Clean". The two policies are
+## INDISTINGUISHABLE whenever the payment drains the whole wallet, which is what
+## an earlier version of this section measured and why a dirty-first sabotage
+## walked straight through it: with clean $x, dirty $0 and a bill of $x, both
+## policies move the same money.
+##
+## So the wallet here is deliberately larger than the bill and mixed. Clean-first
+## takes $400 clean then $475 dirty; dirty-first would take $800 dirty then $75
+## clean. The Financial Pressure that falls out of each is different too, which
+## is the second signal — and is the "Financial Pressure transaction feedback on
+## bail payment" the slice owes.
+func _check_booking_provenance(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	if not _open_boost_booking(gs, gm, engine, 3, "warehouse_club", 4, 1200):
+		_fail("booking provenance", "no arrested tier 3 lift found")
+		return
+	var booking: Dictionary = engine.booking_summary()
+	var quote: int = int(booking["bail_quote"])
+	_expect_int("a tier 3 lift at four priors quotes the boost tier 2 severity",
+		quote, rules.bail_quote("boost_t2", 4))
+	# A mixed wallet with more in it than the bill — see the docstring.
+	gs.cash = 1200
+	gs.clean_cash = 400
+	gs.dirty_cash = 800
+	gs.financial_pressure = 0
+	_expect_true("the mixed-wallet booking commits",
+		gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+	var receipt: Dictionary = engine.booking_summary()
+	_expect_int("bail drains every clean dollar first", int(receipt["clean_used"]), 400)
+	_expect_int("bail reaches dirty money only for the deficit",
+		int(receipt["dirty_used"]), quote - 400)
+	_expect_int("the clean bucket is emptied", int(gs.clean_cash), 0)
+	_expect_int("the dirty bucket keeps what bail did not need",
+		int(gs.dirty_cash), 800 - (quote - 400))
+	_expect_true("the wallet still balances",
+		int(gs.cash) == int(gs.clean_cash) + int(gs.dirty_cash))
+	# TI-003 §6: round((dirty_used - 400) * 0.01), and the receipt carries it so
+	# PX-003 §9's "that payment was loud" line has something to fire on.
+	var want_pressure: int = int(round(float(maxi(0, (quote - 400) - 400)) * 0.01))
+	_expect_int("the bail payment reports its financial pressure",
+		int(receipt["financial_pressure_gain"]), want_pressure)
+	_expect_int("the financial pressure landed on the run",
+		int(gs.financial_pressure), want_pressure)
+	_expect_true("this bail was loud enough to register at all", want_pressure > 0)
+	gs.active_consequence = {}
+
+	# The other side of the same rule: a bail paid entirely in clean money is
+	# silent, however large. Regression #24 in spirit — pressure is about
+	# provenance, not size.
+	if _open_boost_booking(gs, gm, engine, 3, "warehouse_club", 4, 2000):
+		gs.cash = 2000
+		gs.clean_cash = 2000
+		gs.dirty_cash = 0
+		gs.financial_pressure = 0
+		_expect_true("the clean-money booking commits",
+			gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+		_expect_int("bail paid in clean money creates no financial pressure",
+			int(gs.financial_pressure), 0)
+		_expect_int("and reports none",
+			int((engine.booking_summary() as Dictionary)["financial_pressure_gain"]), 0)
+		gs.active_consequence = {}
+	else:
+		_fail("booking provenance", "no arrested tier 3 lift found for the clean case")
+
+## TI-003 §13 steps 6-7: the arrest files one observation and clears the
+## retaliation the same Cause would otherwise have produced.
+##
+## FS-003 §10: "When police already converted the cause into a booking, the same
+## incident's actor retaliation entry clears." You already answered for it.
+func _check_booking_suppression_and_observation(gs: Node, gm: Node,
+		engine: RefCounted) -> void:
+	if not _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		_fail("booking suppression", "no arrested lift found")
+		return
+	var cause_id := str((engine.active_summary() as Dictionary)["cause_id"])
+	# Two rows under this Cause and one under another. Only this Cause's clear.
+	engine.enqueue({"queue_id": "ret:same:1", "cause_id": cause_id,
+		"actor_id": "till_crew", "district_id": "north_star_lot",
+		"trigger_day": int(gs.day) + 2, "expires_end_day": int(gs.day) + 5})
+	engine.enqueue({"queue_id": "ret:same:2", "cause_id": cause_id,
+		"actor_id": "goodie", "district_id": "north_star_lot",
+		"trigger_day": int(gs.day) + 2, "expires_end_day": int(gs.day) + 5})
+	engine.enqueue({"queue_id": "ret:other", "cause_id": "cause:00007777",
+		"actor_id": "goodie", "district_id": "north_star_lot",
+		"trigger_day": int(gs.day) + 2, "expires_end_day": int(gs.day) + 5})
+	_expect_int("three rows are queued before the booking", gs.consequence_queue.size(), 3)
+
+	var queue_before: int = gs.observation_queue.size()
+	_expect_true("the suppressing booking commits",
+		gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+	_expect_int("both same-cause rows are suppressed", gs.consequence_queue.size(), 1)
+	_expect_str("the surviving row belongs to another cause",
+		str((gs.consequence_queue[0] as Dictionary)["cause_id"]), "cause:00007777")
+
+	# The observation. `neighborhood` is a one-day channel, so it lands in the
+	# queue rather than the ledger — checking the ledger would pass an arrest
+	# that had quietly gone out over the network instead.
+	var exposure := get_node("/root/Exposure")
+	var listeners: int = 0
+	for npc_id in exposure.NPC_LENSES.keys():
+		if "neighborhood" in exposure.NPC_CHANNELS.get(str(npc_id), []):
+			listeners += 1
+	_expect_true("somebody listens on the neighborhood channel", listeners > 0)
+	_expect_int("the arrest queued one observation per neighborhood listener",
+		gs.observation_queue.size() - queue_before, listeners)
+	var queued: Dictionary = gs.observation_queue[gs.observation_queue.size() - 1]
+	_expect_str("the queued arrest observation is heat exposure",
+		str((queued["spec"] as Dictionary)["type"]), "heat_exposure")
+	_expect_str("the queued arrest observation names the event",
+		str((queued["spec"] as Dictionary)["event"]), "arrested")
+	# Curtis is not on the neighborhood channel, and `heat_exposure` does not
+	# clear his network filter either. An arrest is not how he finds out.
+	_expect_true("an arrest does not reach curtis",
+		not exposure.clears_curtis_filter(queued["spec"]))
+	gs.active_consequence = {}
+
+## TI-003 regression #15: "Heat relief passes through criminal gain multipliers."
+##
+## Deshawn reduces the Heat your crimes GENERATE. If relief went through him,
+## having him on the crew would make being arrested help you less — which
+## inverts his entire purpose. Measured with him actually recruited.
+func _check_booking_heat_relief(gs: Node, gm: Node, engine: RefCounted) -> void:
+	if not _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		_fail("booking heat relief", "no arrested lift found")
+		return
+	var booking: Dictionary = engine.booking_summary()
+	var relief: float = float(booking["heat_relief"])
+	_expect_float("a tier 1 boost booking relieves 2 heat", relief, 2.0)
+	# Enough Heat on the meter that the clamp cannot swallow the relief.
+	gs.heat = 9.0
+	var heat_before: float = float(gs.heat)
+	_expect_true("relief booking commits",
+		gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+	_expect_float("relief comes off the meter exactly",
+		snappedf(heat_before - float(gs.heat), 0.001), relief)
+	_expect_float("the receipt records the relief that landed",
+		float((engine.booking_summary() as Dictionary)["heat_relief_applied"]), relief)
+	gs.active_consequence = {}
+
+	# Now with Deshawn on the crew. His multiplier is below 1.0, so relief
+	# routed through the gain pipeline would come off SMALLER. It must not.
+	if not _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		_fail("booking heat relief", "no arrested lift found with crew")
+		return
+	var crew: RefCounted = gm.system("crew") as RefCounted
+	gs.crew_records["deshawn"] = {"recruited": true, "tier": 1, "loyalty": 3,
+		"wage_due": 0, "wage_missed_since": -1}
+	var multiplier: float = float(crew.heat_multiplier())
+	_expect_true("deshawn actually reduces generated heat", multiplier < 1.0)
+	gs.heat = 9.0
+	var with_crew_before: float = float(gs.heat)
+	_expect_true("relief booking with deshawn commits",
+		gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+	_expect_float("relief bypasses deshawn's multiplier",
+		snappedf(with_crew_before - float(gs.heat), 0.001), relief)
+	gs.active_consequence = {}
+	gs.crew_records.erase("deshawn")
+
+	# Relief can never push Heat below zero.
+	if _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		gs.heat = 0.5
+		_expect_true("relief booking at low heat commits",
+			gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+		_expect_float("relief floors at zero", float(gs.heat), 0.0)
+		_expect_float("the receipt records only the relief that fit",
+			float((engine.booking_summary() as Dictionary)["heat_relief_applied"]), 0.5)
+		gs.active_consequence = {}
+
+## Priors persist, price the NEXT arrest, and increment exactly once each.
+func _check_booking_priors_persist(gs: Node, gm: Node, engine: RefCounted) -> void:
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	if not _open_boost_booking(gs, gm, engine, 1, "night_owl", 2, 5000):
+		_fail("priors", "no arrested lift found")
+		return
+	var booking: Dictionary = engine.booking_summary()
+	# Two priors: 2.00x bail and +1 processing slot.
+	_expect_int("two priors double the bail", int(booking["bail_quote"]),
+		rules.bail_quote("boost_t1", 2))
+	_expect_int("two priors add a processing slot",
+		int(booking["processing_slots"]), rules.processing_slots("boost_t1", 2))
+	_expect_true("the priors booking commits",
+		gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+	_expect_int("priors go from two to three", int(gs.arrest_record["priors"]), 3)
+	_expect_int("the arrest stamped the day",
+		int(gs.arrest_record["last_arrest_day"]), int(gs.day))
+	var charges: Array = gs.arrest_record["charges"]
+	_expect_int("three priors do not mean three charge rows", charges.size(), 1)
+	var charge: Dictionary = charges[0]
+	_expect_str("the charge records its severity", str(charge["severity"]), "boost_t1")
+	_expect_str("the charge records its family", str(charge["source_family"]), "boost")
+	_expect_str("the charge records the target", str(charge["source_target_id"]), "night_owl")
+	_expect_str("the charge records the lane", str(charge["booking_choice"]), "full_bail")
+	_expect_int("the charge records the quote it was priced at",
+		int(charge["bail_quote"]), rules.bail_quote("boost_t1", 2))
+	_expect_str("the charge names its cause",
+		str(charge["cause_id"]), str((engine.active_summary() as Dictionary)["cause_id"]))
+	gs.active_consequence = {}
+
+## TI-003 regression #12: "Source time settles twice around Booking."
+func _check_booking_source_time(gs: Node, gm: Node, engine: RefCounted) -> void:
+	if not _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		_fail("booking source time", "no arrested lift found")
+		return
+	_expect_true("the source slot is owed at the booking stage", engine.source_time_owed())
+	var slot_before: int = int(gs.time_slots_today)
+	var day_before: int = int(gs.day)
+	_expect_true("booking commits", gm.dispatch("resolve_booking_choice",
+		{"choice_id": "full_bail"}))
+	_expect_true("the source slot is settled after the commit",
+		not engine.source_time_owed())
+	var absolute_before: int = day_before * 4 + slot_before
+	var absolute_after: int = int(gs.day) * 4 + int(gs.time_slots_today)
+	# One source slot + one processing slot for a tier 1 boost at zero priors.
+	_expect_int("the commit advanced exactly two slots",
+		absolute_after - absolute_before, 2)
+	# Continue at release must not charge again.
+	_expect_true("continue dispatches from release", gm.dispatch("consequence_continue", {}))
+	_expect_int("continue after a booking charges nothing more",
+		int(gs.day) * 4 + int(gs.time_slots_today), absolute_after)
+
+## Booking crosses days, and the ordinary night runs while the player is inside.
+##
+## TI-003 regression #13 is "Booking jumps days and skips obligations", and this
+## is the check that would catch it: rent is due on the day the booking crosses,
+## and it has to be MISSED rather than skipped.
+func _check_booking_day_boundary(gs: Node, gm: Node, engine: RefCounted) -> void:
+	if not _open_boost_booking(gs, gm, engine, 1, "night_owl", 4, 5000):
+		_fail("booking day boundary", "no arrested lift found")
+		return
+	# Park the clock at NIGHT so any booking slot crosses the day, and make the
+	# ending day the one rent is due on.
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	var ending_day: int = int(gs.day)
+	gs.rent_due_day = ending_day
+	gs.rent_missed = 0
+	gs.household_warnings = 0
+	# Somebody on the payroll, so a wage has to accrue while the player is gone.
+	gs.crew_records["tone"] = {"recruited": true, "tier": 1, "loyalty": 3,
+		"wage_due": 0, "wage_missed_since": -1}
+	var market_before: int = int(gs.rng_state)
+
+	var booking: Dictionary = engine.booking_summary()
+	var serve: Dictionary = _booking_choice(booking["choices"], "serve_time")
+	var projected_day: int = int(serve["release_day"])
+	var projected_slot: int = int(serve["release_slot"])
+	_expect_true("serving from NIGHT is projected into a later day",
+		projected_day > ending_day)
+
+	_expect_true("the day-crossing booking commits",
+		gm.dispatch("resolve_booking_choice", {"choice_id": "serve_time"}))
+
+	# The projection is a promise. The clock has to land where it said.
+	_expect_int("the booking released on the projected day", int(gs.day), projected_day)
+	_expect_int("the booking released in the projected slot",
+		int(gs.time_slots_today), projected_slot)
+	# Obligations settled against the day that ended, not skipped over.
+	_expect_int("rent came due while the player was booked", int(gs.rent_missed), 1)
+	_expect_true("the rent clock rolled forward", int(gs.rent_due_day) > ending_day)
+	# Crew wages accrued for every night that passed.
+	var nights: int = projected_day - ending_day
+	_expect_int("a wage accrued for every night inside",
+		int((gs.crew_records["tone"] as Dictionary)["wage_due"]),
+		gs.crew_wage_for("tone", 1) * nights)
+	# The market walked, once per night — the only thing allowed to move the
+	# stream cursor (TI-003 §21).
+	_expect_true("the market walked while the player was inside",
+		int(gs.rng_state) != market_before)
+	_expect_true("the chain is still at release after the day cross",
+		engine.active_stage() == engine.STAGE_RELEASE or gs.game_over)
+	gs.active_consequence = {}
+	gs.crew_records.erase("tone")
+
+## Every stage of a booking survives a reload, and the quote does not move.
+func _check_booking_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
+	var saves := get_node("/root/SaveSystem")
+	var previous_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if prior != null:
+			previous_save = prior.get_as_text()
+			prior.close()
+
+	# --- at the booking decision ---
+	if _open_boost_booking(gs, gm, engine, 1, "night_owl", 1, 400):
+		var before: Dictionary = engine.booking_summary()
+		var quote: int = int(before["bail_quote"])
+		var slots: int = int(before["processing_slots"])
+		var release_day: int = int((_booking_choice(before["choices"], "full_bail")
+			as Dictionary)["release_day"])
+		saves.save_run()
+		gs.active_consequence = {}
+		gs.arrest_record = {"priors": 0, "last_arrest_day": -1, "charges": []}
+		_expect_true("a booking chain reloads", saves.load_run())
+		var after: Dictionary = engine.booking_summary()
+		_expect_str("the reloaded chain is still at booking",
+			engine.active_stage(), engine.STAGE_BOOKING)
+		_expect_int("the bail quote survives a reload", int(after["bail_quote"]), quote)
+		_expect_int("the processing slots survive a reload",
+			int(after["processing_slots"]), slots)
+		_expect_int("the priors it was quoted at survive a reload",
+			int(after["priors_at_quote"]), 1)
+		_expect_int("the projected release survives a reload",
+			int((_booking_choice(after["choices"], "full_bail") as Dictionary)["release_day"]),
+			release_day)
+		# And the reloaded chain still commits.
+		_expect_true("a reloaded booking commits",
+			gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+		gs.active_consequence = {}
+	else:
+		_fail("booking reload", "no arrested lift found")
+
+	# --- at release, after the commit ---
+	if _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		_expect_true("the release-stage booking commits",
+			gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+		var paid: int = int((engine.booking_summary() as Dictionary)["paid"])
+		var priors_after: int = int(gs.arrest_record["priors"])
+		saves.save_run()
+		gs.active_consequence = {}
+		gs.arrest_record = {"priors": 0, "last_arrest_day": -1, "charges": []}
+		_expect_true("a release chain reloads", saves.load_run())
+		_expect_str("the reloaded chain is still at release",
+			engine.active_stage(), engine.STAGE_RELEASE)
+		_expect_int("the release receipt survives a reload",
+			int((engine.booking_summary() as Dictionary)["paid"]), paid)
+		_expect_int("the arrest record survives a reload",
+			int(gs.arrest_record["priors"]), priors_after)
+		_expect_int("the charge history survives a reload",
+			(gs.arrest_record["charges"] as Array).size(), 1)
+		# The receipt is a receipt: committing again after a reload is refused.
+		_expect_true("a reloaded release refuses a second commit",
+			not gm.dispatch("resolve_booking_choice", {"choice_id": "serve_time"}))
+		gs.active_consequence = {}
+	else:
+		_fail("booking reload", "no arrested lift found for release")
+
+	if not previous_save.is_empty():
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(previous_save)
+			restore.close()
+
+## TI-003 §21: "TI-003 adds zero market-stream draws." Booking math is all
+## arithmetic — severity tables, multipliers, division — and none of it may touch
+## the seeded stream. The only thing allowed to move the cursor is the nightly
+## market evolve, so this measures a booking that stays inside one day.
+func _check_booking_rng_non_drift(gs: Node, gm: Node, engine: RefCounted) -> void:
+	# Each lane needs a wallet that makes it legal: full bail needs the quote,
+	# all-cash needs less than the quote and more than nothing, serving needs
+	# neither. One shared figure would silently skip whichever lane it excluded.
+	var lane_cash := {"full_bail": 5000, "all_cash": 60, "serve_time": 5000}
+	for lane in ["full_bail", "all_cash", "serve_time"]:
+		if not _open_boost_booking(gs, gm, engine, 1, "night_owl", 0,
+				int(lane_cash[lane])):
+			_fail("booking rng", "no arrested lift found for %s" % str(lane))
+			continue
+		# MORNING, so a tier 1 booking cannot reach NIGHT and cross the day.
+		gs.time_slots_today = 0
+		gs.time_slot = "MORNING"
+		gs.rng_state = 424242
+		var cursor: int = int(gs.rng_state)
+		var day_before: int = int(gs.day)
+		_expect_true("%s dispatches for the rng check" % str(lane),
+			gm.dispatch("resolve_booking_choice", {"choice_id": str(lane)}))
+		_expect_int("%s stayed inside the day" % str(lane), int(gs.day), day_before)
+		_expect_int("%s draws nothing from the market stream" % str(lane),
+			int(gs.rng_state), cursor)
+		gs.active_consequence = {}
+	# And the quote itself, computed without a dispatch at all.
+	var arrest: RefCounted = gm.system("arrest") as RefCounted
+	gs.rng_state = 999999
+	var quiet: int = int(gs.rng_state)
+	var chain: Dictionary = {"cause_id": "cause:00009999", "district_id": "north_star_lot",
+		"time": {"source_slots_remaining": 1, "source_time_settled": false}}
+	arrest.attach_booking(chain, {"family": "stick", "tier": 3,
+		"target_id": "goodie_stash", "cause_id": "cause:00009999"})
+	var _projection: Dictionary = arrest.booking_projection(chain)
+	_expect_int("quoting a booking draws nothing from the market stream",
+		int(gs.rng_state), quiet)
+	# Idempotent by inspection: a second attach keeps the first quote even when
+	# the priors underneath have moved.
+	var first_quote: int = int((chain["booking"] as Dictionary)["bail_quote"])
+	gs.arrest_record = {"priors": 4, "last_arrest_day": -1, "charges": []}
+	arrest.attach_booking(chain, {"family": "stick", "tier": 3,
+		"target_id": "goodie_stash", "cause_id": "cause:00009999"})
+	_expect_int("a second attach does not re-price the arrest",
+		int((chain["booking"] as Dictionary)["bail_quote"]), first_quote)
+
 # --- plumbing ---------------------------------------------------------------
 
 func _expect_int(label: String, got: int, want: int) -> void:
@@ -7716,7 +8713,15 @@ func _fail(label: String, detail: String) -> void:
 ## sweeps until it finds the outcome it needs, so its contribution depends on
 ## how quickly each branch turns up — deterministic, because the keys are, but
 ## not a number to re-derive by counting assertions in the source.
-const MIN_CHECKS := 9100
+##
+## FS-003.8 raises it to 9440. Twenty-two of those exist because a sabotage
+## PASSED: the first provenance check paid a bail that drained the whole wallet,
+## and clean-first and dirty-first are indistinguishable when the bill equals the
+## balance. Swapping the policy changed nothing the suite could see. The mixed
+## wallet in `_check_booking_provenance` is what catches it now, and the shape of
+## that mistake — a check that could only ever pass — is the reason every new
+## check in this build is sabotaged before it is trusted.
+const MIN_CHECKS := 9440
 
 func _finish() -> void:
 	if _failures.is_empty():

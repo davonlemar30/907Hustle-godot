@@ -129,6 +129,14 @@ func _ready() -> void:
 	territory.setup(_gs, self)
 	register_system("territory", territory)
 
+	# The arrest owner. Built before the consequence engine because the engine
+	# asks it for booking projections, and after the surfaces whose gates feed it
+	# — though both reach each other through `system()` at call time, so this
+	# ordering is documentation rather than a dependency.
+	var arrest = preload("res://systems/arrest.gd").new()
+	arrest.setup(_gs, self)
+	register_system("arrest", arrest)
+
 	# The consequence layer, last: it reaches its source adapters through a
 	# runtime registry, so every system it can drive has to exist first.
 	#

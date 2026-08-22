@@ -244,11 +244,22 @@ func open_chain(kind: String, spec: Dictionary) -> Dictionary:
 	var cause_id := str(spec.get("cause_id", ""))
 	if cause_id.is_empty():
 		cause_id = allocate_cause_id()
+	# A chain normally opens on the decision it is asking the player to make.
+	# Not every chain has one: a Stick arrest opens on the RESULT of a robbery
+	# that already resolved through the source system, and there was never a
+	# response to choose. `initial_stage` lets a source say so rather than
+	# opening a decision with no choices and walking straight past it.
+	#
+	# Validated against the same table every later move is: an unknown stage is
+	# refused here rather than becoming a chain nothing can advance.
+	var initial_stage := str(spec.get("initial_stage", STAGE_DECISION))
+	if not STAGE_TRANSITIONS.has(initial_stage):
+		return {"ok": false, "reason": "Unknown consequence stage '%s'." % initial_stage}
 	var chain: Dictionary = {
 		"consequence_id": allocate_consequence_id(),
 		"cause_id": cause_id,
 		"chain_kind": kind,
-		"stage": STAGE_DECISION,
+		"stage": initial_stage,
 		"created_day": int(gs.day),
 		"created_slot": int(gs.time_slots_today),
 		"district_id": str(spec.get("district_id", gs.current_district_id)),
@@ -498,6 +509,24 @@ func _continue(payload: Dictionary) -> Dictionary:
 	if not stage in [STAGE_RESULT, STAGE_RELEASE]:
 		return {"ok": false, "reason": "This is not finished."}
 
+	# A result that ends in an arrest is not a handoff — it is the doorway to
+	# Booking, and Continue walks through it.
+	#
+	# The chain deliberately WAITS at `result` rather than jumping to `booking`
+	# the moment the arrest gate fires. PX-003 §5 shows the arrested result with
+	# a BOOKING action under it ("THE FIGHT ENDS IN CUFFS"), and TI-003 §18
+	# requires the result stage to show "exact changes to Cash, goods, Health,
+	# Heat, bans, and arrest state". A chain that advanced itself would render
+	# the bail quote over a result the player never got to read.
+	#
+	# Nothing settles here: the source slot stays owed, because §13 step 8 makes
+	# settling it part of the booking commit.
+	if stage == STAGE_RESULT and _booking_pending():
+		var moved: Dictionary = advance_stage(STAGE_BOOKING)
+		if not bool(moved.get("ok", false)):
+			return moved
+		return {"ok": true, "stage": STAGE_BOOKING, "slots_settled": 0}
+
 	var owed: int = 0
 	if source_time_owed():
 		var time_block: Dictionary = gs.active_consequence.get("time", {})
@@ -574,13 +603,30 @@ func choice_summaries() -> Array:
 		})
 	return rows
 
+## Whether the active chain is holding a booking the player has not answered yet.
+func _booking_pending() -> bool:
+	if not has_active():
+		return false
+	var booking: Dictionary = gs.active_consequence.get("booking", {})
+	return bool(booking.get("pending", false))
+
 ## The booking quote, before the player commits to paying it.
+##
+## The stored block is the source of truth for everything frozen at arrest time —
+## quote, priors, severity, relief. The three payment lanes and their release
+## points are DERIVED, and ArrestSystem owns that derivation because it owns the
+## severity table the slot math reads. This asks it and falls back to the raw
+## block, so a build with no ArrestSystem registered still renders a quote
+## instead of crashing.
 func booking_summary() -> Dictionary:
 	if not has_active():
 		return {}
 	var booking: Dictionary = gs.active_consequence.get("booking", {})
 	if booking.is_empty():
 		return {}
+	var arrest: Object = gm.system("arrest") if gm != null else null
+	if arrest != null and arrest.has_method("booking_projection"):
+		return arrest.booking_projection(gs.active_consequence)
 	return booking.duplicate(true)
 
 ## What actually happened, for the result and release stages.

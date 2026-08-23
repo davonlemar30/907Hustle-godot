@@ -46,12 +46,12 @@ extends Node
 ## names rather than rewritten by hand, which is the proof the seams held.
 
 const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
-## FS-002.3: the authored board, off the canonical data file. `DEFS.NODES`
+## FS-002.3: the authored board, off the canonical data file. `gs.spenard_blocks`
 ## is deleted.
 const DEFS := preload("res://data/territory_definitions.gd")
 
 ## The check floor. See `_ready()` for why a count is a gate.
-const MIN_CHECKS := 158
+const MIN_CHECKS := 169
 
 var a: RefCounted
 var gs: Node
@@ -82,15 +82,15 @@ func _ready() -> void:
 	_test_screen_reads()
 	_test_v16_migration()
 	_test_v16_migration_capacity_hazard()
+	_test_upkeep()
 
 	# The floor, in the shape `parity_runner.gd` uses it. A suite whose checks
 	# quietly stop RUNNING still prints PASS — an early `return` in a test
 	# function, a renamed action every dispatch now fails on — and the count is
 	# the only thing that notices. Raised in the same PR that raises the count.
-	a.check("the suite ran its full complement (%d checks, floor %d)"
-		% [a.checks, MIN_CHECKS], a.checks >= MIN_CHECKS)
-
-	a.report("territory", get_tree())
+	# Passed to `report()` rather than checked here — see that function for the
+	# self-referential off-by-one this used to have.
+	a.report("territory", get_tree(), MIN_CHECKS)
 
 ## A run with money and no corners. Every test starts from one.
 ##
@@ -855,4 +855,68 @@ func _test_v16_migration_capacity_hazard() -> void:
 	}
 	a.eq_int("fronts entries alone do not raise capacity",
 		gs.soldier_capacity(), int(gs.SOLDIER_BASE_CAPACITY))
+	_fresh(100000, 0)
+
+# --- D-1: the recurring cost Territory never had (Batch 18 PR 4) ------------
+
+func _test_upkeep() -> void:
+	# The computation, derived through the rule rather than memorised — same
+	# pattern the income curve checks use.
+	_fresh(100000, 0)
+	gs.soldiers_idle = 3
+	a.eq_int("upkeep with 3 idle soldiers and no corners",
+		_terr().nightly_upkeep(), 3 * int(gs.SOLDIER_UPKEEP_PER_NIGHT))
+	_fresh(100000, 0)
+	a.eq_int("with nobody recruited, upkeep is zero", _terr().nightly_upkeep(), 0)
+
+	# It is charged even with no corner held — the exact "over-extended" case
+	# D-1 exists to price: a soldier recruited before any corner is claimed.
+	_fresh(100000, 3)
+	a.eq_bool("no corners held", gs.territory_nodes.is_empty(), true)
+	var cash_before_idle_only: int = int(gs.cash)
+	_terr().settle_night(int(gs.day))
+	a.eq_int("idle soldiers with no corner still draw upkeep",
+		cash_before_idle_only - int(gs.cash), 3 * int(gs.SOLDIER_UPKEEP_PER_NIGHT))
+
+	# Charged on the FULL roster — idle and posted together — the same as a
+	# crew wage is charged whether or not that member worked today.
+	_fresh(100000, 4)
+	gm.dispatch("claim_block", {"block_id": CHEAPEST})
+	gm.dispatch("post_soldier", {"block_id": CHEAPEST})
+	# 4 recruited: 2 posted on the corner, 2 idle.
+	a.eq_int("the roster under test", gs.soldiers_total(), 4)
+	var cash_before: int = int(gs.cash)
+	var income_expected: int = _terr().nightly_income()
+	var upkeep_expected: int = _terr().nightly_upkeep()
+	_terr().settle_night(int(gs.day))
+	a.eq_int("upkeep is charged on the whole roster, posted and idle alike",
+		upkeep_expected, 4 * int(gs.SOLDIER_UPKEEP_PER_NIGHT))
+	a.eq_int("the wallet nets income minus upkeep in one settlement",
+		int(gs.cash) - cash_before, income_expected - upkeep_expected)
+
+	# Insolvency: pays what it can, no debt, no crash. Cash short of the full
+	# bill still drops to exactly zero rather than refusing the whole charge —
+	# `_wallet().spend()` would refuse an amount larger than cash on hand, and
+	# `_settle_upkeep()` exists specifically to not do that.
+	_fresh(10, 5)
+	a.check("cash is short of the full bill",
+		int(gs.cash) < 5 * int(gs.SOLDIER_UPKEEP_PER_NIGHT))
+	_terr().settle_night(int(gs.day))
+	a.eq_int("a short bill takes every dollar there is, not zero and not a refusal",
+		int(gs.cash), 0)
+
+	# And solvency: a roster the player can afford draws exactly the bill, not
+	# a partial one.
+	_fresh(1000, 2)
+	var cash_before_solvent: int = int(gs.cash)
+	_terr().settle_night(int(gs.day))
+	a.eq_int("a roster the player can afford draws exactly the bill",
+		cash_before_solvent - int(gs.cash), 2 * int(gs.SOLDIER_UPKEEP_PER_NIGHT))
+
+	# Market-RNG non-drift: upkeep is a wallet operation, not a roll, and
+	# rule 2 applies to it the same as every other Territory transition.
+	_fresh(100000, 3)
+	a.market_cursor_unchanged("nightly upkeep does not move the market stream", gs,
+		func() -> void: _terr().settle_night(int(gs.day)))
+
 	_fresh(100000, 0)

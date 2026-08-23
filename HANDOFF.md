@@ -6250,6 +6250,139 @@ is what makes "unreachable" the right word rather than "unavailable".
 
 ---
 
+## Batch 18 PR 4: Territory's operating cost, D-1  (added 2026-08-23)
+
+**The only player-visible change in Build 18.** Territory has claimed and paid
+for six corners with zero recurring cost since Phase 3e — a soldier cost $140
+once and drew no wage, ever. `settler` read 636% of the day job with zero
+arrests, and that was a floor: the profile never even posted a second soldier.
+FS-002.5's offense loop would price risk at one slot while claiming and holding
+stayed free, making the whole warfare mechanic strictly dominated by not using
+it.
+
+### The ruling
+
+Not this session's — decided by the 2026-08-23 studio pass, recorded as D-1 in
+the new `docs/DECISIONS.md`: **a nightly soldier upkeep, $20/soldier/night.**
+This is a missing rule, not a balance tweak — the FS-002 "constants unchanged"
+freeze held through PR 3 only because no FS-002 balance constant existed yet to
+freeze.
+
+Three implementation choices executing that ruling, each flagged in
+`docs/DECISIONS.md` since the ticket's own comment could not be read:
+
+1. **Charged on the full roster** (`soldiers_total()`, idle AND posted) — the
+   parallel to crew wages, charged per recruited member regardless of
+   assignment, and the only reading under which "an over-extended board
+   becomes a live cost" is actually true.
+2. **An immediate best-effort deduction, not a debt.** Every other recurring
+   cost in the build (rent, the phone bill, crew wages) is player-initiated
+   with a due date and a miss penalty; nightly settlement only ever tracked
+   misses, never force-deducted. Building a full debt-and-consequence system
+   to match crew's mechanism is a much bigger change than one upkeep line.
+   `_settle_upkeep()` pays what the wallet holds, logs the shortfall, and stops
+   — no debt, no departure, no grace period. A later ruling can build a real
+   consequence on top without this choice foreclosing it.
+3. **Lives inside `territory.gd`'s existing `settle_night()`**, not a new
+   named step in `day_lifecycle.gd`'s phase lists. "Alongside crew wages...
+   a new step in the declared order, not a `day_crossed.connect()`" is
+   satisfied by `SETTLE_ORDER`'s existing `crew` → `territory` adjacency and by
+   running through the already-declared SETTLE phase — never a signal hookup.
+   No phase list needed a new entry.
+
+### The mechanism
+
+`_settle_upkeep()`, called at the end of `settle_night()` — unconditionally on
+`soldiers_total() > 0`, NOT gated on holding a corner. That guard used to be
+the function's only early-return condition (`territory_nodes.is_empty()`); it
+is narrowed to wrap just the corner-specific work (income, heat, the unstaffed
+log), because upkeep must still charge a soldier recruited before any corner is
+ever claimed — the exact "over-extended" case D-1 exists to price.
+
+```
+paid = min(soldiers_total() * $20, cash on hand)
+```
+
+Solvent: pays the full bill. Short: pays every dollar there is and logs the
+shortfall. Never refuses outright — `wallet.spend()`'s own docs say a refusal
+there means a blocker was missed rather than a player was refused, and that
+contract does not fit an automatic charge with no blocker to check.
+
+Turf's status card now shows the nightly upkeep line whenever there is a roster
+to pay (not gated on holding a corner, matching the mechanism), and the HIRE A
+SOLDIER button quotes both the one-time cost and the nightly one.
+
+### The corridors (`86bbjxth6`)
+
+Every profile's `pct_of_job` used to be a `print()`. Nothing failed if it
+changed, and the instrument has been publicly wrong twice — batch 9's leaked
+catalogue, batch 17's territory-off table — a human catching it both times
+rather than the suite.
+
+**`ECON_CORRIDORS`**: a floor and a ceiling per profile, centred on what this
+build measures TODAY with headroom on both sides — not a tuning target, and
+widening one is a decision with a reason in the diff, made in the PR that
+deliberately moves the number. `legal_worker` is the one exact pin (100–100):
+`pct_of_job` is its own net worth divided by itself, so it reads 100 by
+construction and any other value is corridor code broken, not the economy
+moving.
+
+**Fourteen profiles, not thirteen.** The build prompt's own count is stale —
+`ECON_PROFILES` has carried `settler` since batch 17 and the array has 14
+entries today. Counted programmatically before writing the corridor table
+rather than trusting the prompt's number.
+
+**`settler`: 636% → 409%.** The corridor is centred on the post-D-1 number,
+which is what this build ships — 636% was the bug, not a floor worth
+defending. Every other profile's corridor sits at its pre-existing number
+unchanged: only `settler` and `newcomer` (427%, was 636%-adjacent too) touch
+Territory, and every profile that never claims a corner is byte-for-byte
+unaffected by this PR — confirmed by the parity check count not moving except
+for the new assertions themselves.
+
+**Four premise guards the table shipped without**, added alongside the
+corridors, matching the pattern nine other profiles already had:
+`best_job_worker` actually worked, `stickup_crew` actually committed crimes,
+`worker_wanders` actually wandered AND worked, `wanderer` actually wandered.
+
+**A missing-corridor is a hard failure, not a skip.** A profile present in
+`ECON_PROFILES` without an entry in `ECON_CORRIDORS` fails loudly
+(`_fail("economy corridor", ...)`) rather than silently passing over its check
+— the same "the suite must not pass by running less of itself" rule the check
+floor enforces, applied to corridor coverage.
+
+### A real bug found while wiring this up, unrelated to Territory
+
+`tests/territory/territory_asserts.gd`'s own floor-check pattern had a
+self-referential off-by-one: `a.check("floor", a.checks >= MIN_CHECKS)`
+evaluates its condition BEFORE that same call's own `checks += 1` runs, so it
+always compared against the count from one check EARLIER than the total it
+would go on to report. Every prior PR (1–3) masked this by setting
+`MIN_CHECKS` a few checks below the true total for other reasons; this PR is
+the first time it was set to the exact observed total (170), which made a
+fully passing 169-check run report "169 checks, floor 170" and fail.
+
+Fixed at the root, not by nudging the number: `report()` now takes
+`min_checks` as a parameter and checks it directly against the FINAL count
+without going through `check()` at all — the same shape
+`parity_runner.gd`'s own floor check has always used. `territory_runner.gd`'s
+true content-check total is 169; `MIN_CHECKS` now reads 169 and means it.
+
+### Sabotage log
+
+| sabotage | result |
+| --- | --- |
+| `SOLDIER_UPKEEP_PER_NIGHT` zeroed | **territory FAIL, 2** — the "cash is short of the full bill" premise no longer holds, and the exact-shortfall check fails |
+| `_settle_upkeep()`'s insolvency cap removed (pays the full bill or nothing) | **territory FAIL, 1** — `wallet.spend()` refuses the oversized amount outright, cash stays at 10 instead of dropping to 0 |
+| `settler`'s corridor moved to 900–1000% | **parity FAIL, 1** — `"settler stays inside its corridor (409%, wanted 900-1000%): expected true"` — proof the suite CAN go red on a moved corridor, which the brief notes was not true of a single balance number in this project before this PR |
+
+### Gates
+
+Parity **12,505 → 12,524** checks, 0 failures (floor raised). Territory
+**159 → 169** checks, 0 failures (floor corrected to 169, not raised to a wrong
+170 — see the bug above). Save validation 114/0. Screen smoke 24/24. Glyph
+coverage ok.
+
 ## Batch 18 PR 3: FS-002.3, canonical Territory state and save v16  (added 2026-08-23)
 
 **The one-way door of this milestone.** `held_blocks` (keyed off `spenard_blocks`

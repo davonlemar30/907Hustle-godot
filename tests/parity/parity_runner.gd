@@ -15227,6 +15227,49 @@ const ECON_PROFILES: Array[Dictionary] = [
 		"seed": "econ-settler"},
 ]
 
+## Corridor assertions (`86bbjxth6`), Batch 18 PR 4.
+##
+## Every percentage this file publishes used to be a `print()` — nothing failed
+## if it changed, and the instrument has been publicly wrong twice (batch 9's
+## leaked catalogue, batch 17's territory-off table), a human catching it both
+## times rather than the suite. A floor and a ceiling per profile is the fix:
+## loose enough that an unrelated system's rounding or a minor rebalance
+## elsewhere does not false-positive this section, tight enough that a REAL
+## swing — a broken cost, a doubled income, a rule that stopped firing — fails
+## here instead of shipping unnoticed.
+##
+## These are NOT tuning targets. Each band is centred on what THIS build
+## measures today, with headroom on both sides; widening one is a decision with
+## a reason in the diff, made in the PR that deliberately moves the number
+## (rule 8's "report, do not tune" applies to these bands the same as it does
+## to the printed figures). `legal_worker` is the one exact pin: `pct_of_job`
+## is defined as this profile's own net worth divided by itself, so it reads
+## 100 by construction and any other value is corridor code broken, not the
+## economy moving.
+##
+## `pct_of_job` rather than raw net worth: net worth swings with the baseline
+## job's own market-seeded pay, and the corridor should track a profile's
+## standing RELATIVE to the day job, not chase the baseline's own noise.
+const ECON_CORRIDORS: Dictionary = {
+	"legal_worker": {"floor": 100, "ceiling": 100},
+	"best_job_worker": {"floor": 95, "ceiling": 130},
+	"hustler": {"floor": 600, "ceiling": 850},
+	"arbitrage": {"floor": 60, "ceiling": 110},
+	"flipper": {"floor": 280, "ceiling": 430},
+	"trader": {"floor": 0, "ceiling": 15},
+	"stickup": {"floor": 0, "ceiling": 15},
+	"boost": {"floor": 5, "ceiling": 25},
+	"stickup_crew": {"floor": 0, "ceiling": 15},
+	"worker_wanders": {"floor": 220, "ceiling": 350},
+	"wanderer": {"floor": 0, "ceiling": 15},
+	"boost_finder": {"floor": 0, "ceiling": 20},
+	"newcomer": {"floor": 330, "ceiling": 520},
+	# D-1 (Batch 18 PR 4): 636% before this PR's upkeep, 409% after — the
+	# corridor is centred on the POST-D-1 number, which is the one this build
+	# ships. The old 636% is not a floor to defend; it was the bug.
+	"settler": {"floor": 300, "ceiling": 520},
+}
+
 const ECON_DAYS := 30
 const ECON_START_CASH := 400
 ## Seeds per profile. One is not enough and that was measured, not assumed: the
@@ -16054,6 +16097,10 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			baseline = maxf(1.0, float(row["net_worth"]))
 	for row in rows:
 		var pct: int = int(round(100.0 * float(row["net_worth"]) / baseline))
+		# Stored back onto the row so the corridor assertions below (86bbjxth6)
+		# can read it without recomputing baseline division a second time — the
+		# division is a report-time convenience, not owned by either loop.
+		row["pct_of_job"] = pct
 		print(("economy: %-13s netWorth %5d (%3d%% of job) · net trade %5d · margin %+6.1f%%"
 			+ " · peak heat %4.1f · arrests %d")
 			% [str(row["profile"]), int(row["net_worth"]), pct, int(row["net_trade"]),
@@ -16179,6 +16226,38 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 				float(row["wanders"]) > 0.0)
 			_expect_true("a gated profile only uses what the ladder opened",
 				float(row["days_played"]) > 1.0)
+		# The four premise guards the table shipped without. Same claim every
+		# row above makes about its own premise — a profile whose defining
+		# action never fired is an instrument failure being read as a result.
+		if name == "best_job_worker":
+			_expect_true("best_job_worker actually worked", float(row["shifts"]) > 0.0)
+		if name == "stickup_crew":
+			_expect_true("stickup_crew actually committed crimes", float(row["jobs"]) > 0.0)
+		if name == "worker_wanders":
+			_expect_true("worker_wanders actually wandered", float(row["wanders"]) > 0.0)
+			_expect_true("and actually worked", float(row["shifts"]) > 0.0)
+		if name == "wanderer":
+			_expect_true("wanderer actually wandered", float(row["wanders"]) > 0.0)
+
+	# --- corridors (86bbjxth6) ---
+	#
+	# Every profile in `ECON_CORRIDORS`, checked. A profile present in
+	# `ECON_PROFILES` but missing from `ECON_CORRIDORS` fails loudly rather
+	# than silently skipping its check — the same "the suite must not pass by
+	# running less of itself" rule the check floor enforces elsewhere in this
+	# file, applied to corridor coverage specifically: a fourteenth profile
+	# added later without a corridor is a gap in COVERAGE, not a profile with
+	# nothing to report.
+	for row in rows:
+		var name := str(row["profile"])
+		var pct: int = int(row["pct_of_job"])
+		if not ECON_CORRIDORS.has(name):
+			_fail("economy corridor", "%s has no corridor in ECON_CORRIDORS" % name)
+			continue
+		var corridor: Dictionary = ECON_CORRIDORS[name]
+		_expect_true("%s stays inside its corridor (%d%%, wanted %d-%d%%)"
+			% [name, pct, int(corridor["floor"]), int(corridor["ceiling"])],
+			pct >= int(corridor["floor"]) and pct <= int(corridor["ceiling"]))
 
 	# The save goes back exactly as it was found, including having been absent —
 	# and a file this run could not read is left where it is rather than
@@ -18384,7 +18463,7 @@ func _fail(label: String, detail: String) -> void:
 ## change.
 ##
 ## Ten of margin, as always.
-const MIN_CHECKS := 12505
+const MIN_CHECKS := 12524
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

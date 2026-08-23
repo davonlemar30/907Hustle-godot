@@ -119,7 +119,20 @@ func no_negative_soldiers(label: String, gs: Node) -> bool:
 
 ## The PASS line and the exit code, in the shape the other two harnesses use so
 ## CI can gate this one with the same `grep -q "^<name>: PASS"`.
-func report(suite_name: String, tree: SceneTree) -> void:
+## `min_checks`, when given, is the floor: the suite must not be able to pass by
+## running LESS of itself. Checked here rather than by the caller doing
+## `a.check("floor", a.checks >= MIN_CHECKS)` — that form is self-referential
+## and off by one, always, because `check()`'s own `checks += 1` runs AFTER its
+## condition argument is already evaluated, so the condition sees the count
+## from BEFORE this call. It was masked in every earlier PR only because
+## `MIN_CHECKS` was set a few checks below the true total for other reasons;
+## the first time it was set to the exact observed total, the floor failed on a
+## fully passing run. Fixed at the root: this appends straight to `failures`,
+## the same way `parity_runner.gd`'s own floor check does, so it is measured
+## against the FINAL count and adds nothing to it.
+func report(suite_name: String, tree: SceneTree, min_checks: int = 0) -> void:
+	if min_checks > 0 and checks < min_checks:
+		failures.append("the suite ran its full complement (%d checks, floor %d) — a function returned early before it finished" % [checks, min_checks])
 	if failures.is_empty():
 		print("%s: PASS — %d checks, 0 failures" % [suite_name, checks])
 		tree.quit(0)

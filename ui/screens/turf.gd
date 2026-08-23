@@ -66,8 +66,16 @@ func _status_card(sys: Object) -> Control:
 	else:
 		v.add_child(label("Nothing held. A corner needs a soldier free to stand on it.", "Muted", 11, MUTED, true))
 
+	# D-1 (Batch 18 PR 4): payroll, shown whenever there is a roster to pay —
+	# not gated on holding a corner, since an idle soldier draws it too.
+	if gs.soldiers_total() > 0:
+		v.add_child(label("-$%d a night in soldier upkeep ($%d/soldier)"
+			% [sys.nightly_upkeep(), int(gs.SOLDIER_UPKEEP_PER_NIGHT)], "Muted", 11, RED))
+
 	var blocked: String = sys.recruit_soldier_blocker()
-	var b := button("HIRE A SOLDIER  $%d" % gs.SOLDIER_RECRUIT_COST if blocked.is_empty() else blocked.to_upper(), blocked.is_empty(), _on_hire, 46)
+	var b := button("HIRE A SOLDIER  $%d up front + $%d/night" \
+			% [gs.SOLDIER_RECRUIT_COST, int(gs.SOLDIER_UPKEEP_PER_NIGHT)] \
+		if blocked.is_empty() else blocked.to_upper(), blocked.is_empty(), _on_hire, 46)
 	b.disabled = not blocked.is_empty()
 	v.add_child(b)
 	return c

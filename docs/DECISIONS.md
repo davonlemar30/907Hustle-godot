@@ -100,6 +100,63 @@ a migrated Curtis-secure holding survives with its capture marked consumed; an
 untouched one gets no fronts entry; a neutral migrated holding gets no fronts
 entry either.
 
+## D-1 — Territory's operating cost: $20/soldier/night
+
+**Decided** by the 2026-08-23 studio pass, before this session started · **Ships
+in** Batch 18 PR 4 · **Ticket** `86bbjxtfa`
+
+### The ruling (not this session's — recorded here per the exit criteria)
+
+Territory had no time cost and no recurring cost: claiming and recruiting never
+call `advance_time`, and a soldier cost $140 once and was never on a wage
+clock. Six corners cost $1,680 and paid $415/night forever, unvisited; the
+`settler` economy profile read 636% of the day job with zero arrests, and that
+was a floor — the profile never even posted a second soldier. FS-002.5's
+offense loop would then price risk at one slot while claiming and holding stay
+entirely free, making the whole warfare mechanic strictly dominated by not
+using it.
+
+**Ruling: a nightly soldier upkeep, $20/soldier/night, settled alongside crew
+wages.** This is a missing rule, not a balance tweak — the FS-002 "constants
+unchanged" freeze held through PR 3 because no FS-002 balance constant existed
+yet to freeze. It exists now.
+
+### This session's implementation choices, flagged as choices
+
+The ruling specifies the number and the timing ("alongside crew wages") but not
+the mechanism. Three calls were made executing it, each because the ticket's
+own ClickUp comment could not be read (connector unauthenticated):
+
+1. **Charged on the full roster (`soldiers_total()` — idle AND posted), not
+   just posted soldiers.** Read as the parallel to crew wages, which are
+   charged per RECRUITED member regardless of assignment. It is also the only
+   reading under which "an over-extended board becomes a live cost" (the
+   ruling's own phrase) is true: a posted-only charge would make recruiting
+   soldiers beyond what is staffed free, which is exactly "over-extended" with
+   no cost attached.
+2. **An immediate best-effort wallet deduction, not a debt.** Every other
+   recurring cost in the build (rent, the phone bill, crew wages) is
+   PLAYER-INITIATED with a due date and a miss penalty — nightly settlement
+   only tracks misses, never force-deducts. An automatic nightly charge with no
+   player action and no blocker to check is a genuinely new pattern; building a
+   full debt-and-consequence system to match crew's mechanism would be a much
+   bigger change than one upkeep line. Chosen instead: pay what the wallet
+   holds, log the shortfall, no debt, no departure, no grace period. A later
+   ruling can build a real consequence on top of this without this choice
+   foreclosing it.
+3. **Lives inside `territory.gd`'s existing `settle_night()`, not a new named
+   step in `day_lifecycle.gd`'s phase lists.** "Alongside crew wages... a new
+   step in the declared order, not a `day_crossed.connect()`" is satisfied by
+   the adjacency `SETTLE_ORDER` already declares (`crew` immediately before
+   `territory`) and by running through the existing declared SETTLE phase —
+   never a signal hookup. No phase list needed a new entry.
+
+### A flag on this entry
+
+Choices 1–3 are this session's reading of an already-decided ruling, not a
+re-litigation of the ruling itself. If `86bbjxtfa`'s own comments specify the
+mechanism differently, THIS section is what should change.
+
 ## D-5 — Day-cross settlement ordering: the shipped order wins
 
 **Decided** 2026-08-23 · **Ships in** Batch 18 PR 2 · **Ticket** `86bbj1jnr`

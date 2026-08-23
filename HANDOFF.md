@@ -6189,6 +6189,114 @@ is what makes "unreachable" the right word rather than "unavailable".
 
 ---
 
+## Batch 18 PR 1: FS-002.1, and the 80% that was missing  (added 2026-08-23)
+
+FS-002.1 reads like a recording exercise — nine inherited Territory behaviours,
+write them down before FS-002.3 moves the state underneath them.
+
+**Audited against the existing suite, four of the nine had any coverage at all.**
+
+- `post_soldier` and `pull_soldier` are dispatched **nowhere** in 20,288 lines
+  of parity runner. Two of Territory's five actions had never been driven.
+- `block_income()` is asserted **nowhere**.
+- `SOLDIER_INCOME_DIMINISH` (0.85) — the rule `territory.gd`'s own header calls
+  *"the shape of the decision"* — appeared in **zero checks**.
+- The `settler` economy profile never posts a second soldier, so the curve has
+  never executed in a measured run either. **The 636% that profile reports is a
+  curve that never bent.**
+
+So this slice was mostly writing the missing 80%. The surface is genuinely small
+— `territory.gd` is 240 lines with no hidden state — which is what makes that a
+coverage gap rather than archaeology.
+
+### `tests/territory/`  (`86bbjxtjb`, the blocking prerequisite)
+
+New Territory coverage does not go in `parity_runner.gd`. That file is 20,288
+lines and about ten minutes a run, and FS-002 has **twelve** slices of coverage
+to add to it. A suite you cannot afford to run while you are working is a suite
+you run once, at the end, when it is most expensive to be wrong.
+
+`tests/territory/territory_runner.tscn` answers in seconds. It shares the other
+harnesses' shape — `_check` / count / `<name>: PASS` / exit code — so CI gates
+it with the same `grep` and nobody learns a second vocabulary. It is wired into
+the workflow beside the other three.
+
+`territory_asserts.gd` is the shared helper the remaining eleven slices reuse:
+
+- **`market_cursor_unchanged(label, gs, body)`** — rule 2 demands a market-RNG
+  non-drift proof from every slice that touches Territory randomness, and there
+  was no shared tool for it. `gs.rng_state` IS the market xorshift cursor
+  (`economy.gd:490,498`); a Territory action drawing from that stream would
+  shift every subsequent price in the run and **nothing in the build would
+  report it**, because the prices would still look like prices. Takes the body
+  as a Callable so the before and after cannot drift apart in the caller.
+- **`soldiers_conserved()`** and **`capacity_respected()`** — the two invariants
+  the studio pass found unasserted, the second being `86bbjxtb6`.
+- **`near()`**, because income is a float sum rounded at the edge and heat is
+  fractional by design.
+
+Every assertion reports what it got and what it wanted. `_check("income is
+right", a == b)` tells you a check failed and nothing else, which is a bad trade
+for one saved line.
+
+### 121 checks
+
+Claim cost and the idle-soldier requirement · abandon returning the soldiers ·
+post and pull · recruit cost and the cap moving with held corners · 0–3 soldiers
+against the 0.85 curve · empty-held-corner heat · the Deshawn multiplier at all
+three ranks · soldier conservation · the capacity rule · market-cursor
+non-drift across all six Territory transitions · a legacy save round-trip
+through real `capture()`/`_apply()` and through JSON · and the Turf, Home and
+More reads that must survive FS-002.3.
+
+Floor: `MIN_CHECKS := 118`, in the shape the parity runner uses it.
+
+### The trap in "derive through the rule"
+
+Rule 8 says derive through the rule rather than memorising the answer, and every
+income expectation here does — computed from `gs.SOLDIER_INCOME_DIMINISH` and
+the block's own authored `earning`, by the same rule `block_income()` claims to
+implement.
+
+**That is exactly why sabotage #1 nearly passed.** Setting the constant to 1.0
+moved the fixture and the code together: 14 of the 15 curve checks stayed green,
+and only a weak relational check noticed. A fixture that derives a CONSTANT from
+the same place the code does cannot catch a change to that constant.
+
+So the constant is now pinned as a value — it is canon
+(`SOLDIER_INCOME_BASE_DIMINISH`), which makes it oracle truth and the one
+memorised number in the file — alongside the property it exists to produce:
+*every additional soldier on a corner earns strictly less than the one before*,
+which fails for any diminish ≥ 1.0 regardless of what the fixture derives.
+Sabotage #1 went from 1 failure to 4.
+
+### Why the screen reads are pinned here
+
+Screen-smoke runs on a **fresh save**, where `held_blocks` is empty. Every Turf
+and Home path that reads a held corner is therefore skipped, and the screens
+pass without executing. `home.gd:437` derives the mini-map from
+`block_by_id(id)["cell"]`, and FS-002.3 is where that breaks — so those reads
+are asserted now, with corners actually held, giving PR 3 something that fails
+when it moves the state.
+
+### Sabotage log
+
+| sabotage | result |
+| --- | --- |
+| `SOLDIER_INCOME_DIMINISH` 0.85 → 1.0 | **FAIL, 4** — "the diminishing constant is canon's 0.85 (got 1.000000...)", "a real discount, not a rounding artefact", "each soldier earns strictly less than the one before", "the second soldier is worth less than the first" |
+| deleted the `soldiers_idle < 1` arm (`territory.gd:72`) | **FAIL, 3** — "a claim with no free soldier is refused (got true, wanted false)", "and the corner is not held", "the blocker says why" |
+| `_abandon` no longer returns soldiers | **FAIL, 4** — "the soldier comes back (got 0, wanted 1)", "all three come back idle (got 0, wanted 3)", "the roster is cut to the base capacity", "abandoning returns exactly what was posted — idle 1 + posted 1 = 2, wanted 4" |
+| `nightly_heat` skips unstaffed blocks | **FAIL, 2** — "an empty held corner still costs its authored heat (got 0.000000, wanted 1.000000)", "nightly heat is the sum over every held corner, staffed or not (got 3.000000, wanted 4.000000)" |
+
+### One thing the first run found
+
+Three checks failed on the first green-suite attempt because the test setups put
+more soldiers on the board than the cap allowed, and **PR 0's new discharge rule
+then fired**. That was the fix working, not a regression — but it means the
+interaction is real and worth its own check rather than being set up around. It
+has one now: give every corner back and the roster is cut to the base capacity
+rather than exceeding it.
+
 ## Batch 18 PR 0: the ground under the war  (added 2026-08-23)
 
 Seven defects the 2026-08-23 studio pass found on `main`. None of them are

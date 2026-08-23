@@ -151,6 +151,7 @@ func _ready() -> void:
 		_check_batch14(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch15(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch16(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_batch17(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -14908,9 +14909,32 @@ const ECON_PROFILES: Array[Dictionary] = [
 	#
 	# It wants everything, and the ladder decides what it gets and when.
 	{"name": "newcomer", "job": true, "trade": true, "flip": true,
-		"rob": true, "lift": true, "wander": true, "roam": true,
+		"rob": true, "lift": true, "wander": true, "roam": true, "turf": true,
 		"best_job": true, "gated": true, "find_targets": true,
 		"seed": "econ-newcomer"},
+	# Turf, measured (batch 17). Territory shipped in Phase 3e and no profile in
+	# this table had ever claimed a corner, so every number above it was
+	# measured against a game with its territory system switched off.
+	#
+	# `settler` works a shift to raise the stake and then puts everything it can
+	# into corners. It carries `job` for one reason: the chain costs $320 before
+	# it returns a dollar (a $140 soldier, then a $180 corner) against a $100
+	# start, so a profile with no income at all would never take the first step
+	# and would measure nothing. What is being read here is what the corners pay
+	# ONCE BOUGHT, and how fast the buying pays itself back.
+	#
+	# It is GATED, like `newcomer`: the Turf screen is reached from Home and the
+	# claim needs no surface the ladder withholds, but a profile that plays the
+	# real game should not be handed anything either.
+	# `wander` is not optional here and the first run of this profile proved it:
+	# without it, `settler` reported 0.0 corners and 2% of the day job. Batch 16
+	# made a job you FIND yourself count toward the Jobs gate, and walking the
+	# block is how a gated run finds one — so a profile with no wander leg never
+	# opens the Jobs screen, never works a shift, never earns the $320 the first
+	# corner costs, and measures nothing at all.
+	{"name": "settler", "job": true, "trade": false, "flip": false,
+		"turf": true, "wander": true, "best_job": true, "gated": true,
+		"seed": "econ-settler"},
 ]
 
 const ECON_DAYS := 30
@@ -15043,6 +15067,7 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	var local_only: bool = bool(profile.get("local_only", false))
 	var wants_wander: bool = bool(profile.get("wander", false))
 	var wants_roam: bool = bool(profile.get("roam", false))
+	var wants_turf: bool = bool(profile.get("turf", false))
 	# Batch 16. A profile that plays only what the ladder has actually opened.
 	#
 	# Every other profile in this table reaches its surfaces by DISPATCHING —
@@ -15070,6 +15095,7 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		"phone_paid": 0, "stops": 0, "seizures": 0, "seized_value": 0,
 		"heat_stops": 0, "heat_seized": 0, "bans": 0, "wanders": 0, "found": 0,
 		"clocked": 0, "workable": 0,
+		"corners": 0, "soldiers": 0, "turf_spend": 0, "turf_income": 0,
 		"shift_pay": 0, "upgrades": 0,
 		"applications": 0, "jobs": 0, "take": 0,
 	}
@@ -15080,8 +15106,23 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	var stops_at_start: int = int(heat_system.stops_settled) if heat_system != null else 0
 	var seized_at_start: int = int(heat_system.stops_seized) if heat_system != null else 0
 	var guard: int = 0
+	# What the corners paid, sampled at each day cross (batch 17).
+	#
+	# `TerritorySystem.settle_night` credits `nightly_income()` through the
+	# wallet and keeps no running total — `income_collected` on a held block is
+	# written once at claim time and never touched again, so there is nothing on
+	# GameState to read this off. Sampling the moment the day turns is exact
+	# whenever the corner count did not change during the night, which is every
+	# night: a claim happens in a slot, and the settlement happens at the cross.
+	var turf_day: int = int(gs.day)
 	while int(gs.day) <= ECON_DAYS and guard < ECON_DAYS * 40 and not bool(gs.game_over):
 		guard += 1
+		if int(gs.day) != turf_day:
+			turf_day = int(gs.day)
+			var turf_sys: Object = gm.system("territory")
+			if turf_sys != null:
+				metrics["turf_income"] = int(metrics.get("turf_income", 0)) \
+					+ int(turf_sys.nightly_income())
 		# A blocking consequence has to be answered before anything else. These
 		# profiles read the odds, the same as the `odds` consequence profile.
 		if not (gs.active_consequence as Dictionary).is_empty():
@@ -15217,6 +15258,18 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 				and _econ_try_trade(gs, gm, metrics, local_only):
 			continue
 
+		# --- the turf leg (batch 17) ---
+		#
+		# ABOVE roaming and wander and BELOW everything that earns, because a
+		# corner is bought with money the day has already made. It is also the
+		# only leg in this loop that costs no SLOT: neither `recruit_soldier`
+		# nor `claim_block` advances time, so turf spends capital and nothing
+		# else. That asymmetry is the reason it needed measuring — every other
+		# earner in this table competes for four slots a day and this one
+		# does not compete for anything.
+		if wants_turf and _econ_try_turf(gs, gm, metrics):
+			continue
+
 		# --- the roaming leg (batch 14) ---
 		#
 		# Above Wander and below everything that earns, because moving is what
@@ -15270,6 +15323,10 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	# Boost's binding constraint, on the record rather than in a research note.
 	# A ban is permanent, so the final count IS the run's history.
 	metrics["bans"] = int(gs.boost_store_bans.size())
+	# What the run ended up holding. `corners` is the count and `soldiers` is
+	# how many were hired to make it possible — the second number is the one
+	# that explains the first, because a corner cannot be taken without one.
+	metrics["corners"] = int(gs.held_blocks.size())
 	# What is STILL on the board when the run ends, which is the question the
 	# discovery axis exists to change. Batch 13 and earlier, this could only
 	# fall: the board opened at its widest and every ban took a room off it
@@ -15311,7 +15368,8 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 		"days_played", "rent_paid", "rent_missed", "phone_paid", "seized_value",
 		"applications", "jobs", "take", "final_stick_tier", "final_boost_tier",
 		"stops", "seizures", "heat_stops", "heat_seized", "bans",
-		"wanders", "found", "shift_pay", "upgrades", "clocked", "workable"]
+		"wanders", "found", "shift_pay", "upgrades", "clocked", "workable",
+		"corners", "soldiers", "turf_spend", "turf_income"]
 	for key in averaged:
 		var total: float = 0.0
 		for run in runs:
@@ -15509,6 +15567,72 @@ func _econ_job_for(gs: Node, best_job: bool) -> String:
 	return pick
 
 ## One walk, if there is a slot to spend on it.
+## Buy the block, one step at a time.
+##
+## Territory has existed since Phase 3e — six corners, soldiers, nightly income
+## and nightly heat — and until batch 17 **no profile in this table had ever
+## claimed one.** Every balance number this file has published was measured
+## against a game with its territory system switched off. That is the batch-9
+## failure again (an instrument reporting confidently on something it was not
+## exercising), arrived at by omission rather than by a leaked catalogue.
+##
+## The chain is five steps and the harness has to walk all of it, because the
+## middle of it is where the interesting constraint lives:
+##
+##   recruit a soldier -> an IDLE soldier -> claim a corner -> `held_blocks`
+##   -> `district_discovered` -> Downtown, and a second corner -> Ship Creek
+##
+## `claim_blocker` refuses without an idle soldier, so a run holding $5,000 and
+## no soldier cannot buy anything. A first probe of this missed the soldier step
+## entirely and concluded the city never opens; it opens on day 6.
+##
+## ONE action per call, and a RENT RESERVE. The first version spent to the last
+## dollar the moment it could and was evicted on day 29 holding $5,083 — four
+## rent weeks missed while it was broke buying corners, then income arriving
+## after the eviction clock had already run out. That is a real way to lose and
+## it is not the strategy worth measuring; a player who buys a corner keeps the
+## rent back first.
+func _econ_try_turf(gs: Node, gm: Node, metrics: Dictionary) -> bool:
+	var terr: Object = gm.system("territory")
+	if terr == null or bool(gs.game_over):
+		return false
+	# What must survive the purchase: this week's rent and the phone bill.
+	var reserve: int = int(gs.WEEKLY_RENT) + int(gs.PHONE_BILL)
+
+	# A soldier first — the corner cannot be taken without one standing free.
+	if int(gs.soldiers_idle) < 1:
+		if str(terr.recruit_soldier_blocker()).is_empty() \
+				and int(gs.cash) >= int(gs.SOLDIER_RECRUIT_COST) + reserve:
+			if gm.dispatch("recruit_soldier", {}):
+				metrics["soldiers"] = int(metrics.get("soldiers", 0)) + 1
+				metrics["turf_spend"] = int(metrics.get("turf_spend", 0)) \
+					+ int(gs.SOLDIER_RECRUIT_COST)
+				return true
+		return false
+
+	# Then the cheapest corner still going. Cheapest rather than best-earning:
+	# the first corner is what opens Downtown, and getting there sooner is worth
+	# more than getting there richer.
+	var best_id: String = ""
+	var best_cost: int = 0x7FFFFFFF
+	for entry in gs.spenard_blocks:
+		var block: Dictionary = entry
+		var cost: int = int(block["claim_cost"])
+		if cost >= best_cost:
+			continue
+		if not str(terr.claim_blocker(str(block["id"]))).is_empty():
+			continue
+		if int(gs.cash) < cost + reserve:
+			continue
+		best_cost = cost
+		best_id = str(block["id"])
+	if best_id.is_empty():
+		return false
+	if not gm.dispatch("claim_block", {"block_id": best_id}):
+		return false
+	metrics["turf_spend"] = int(metrics.get("turf_spend", 0)) + best_cost
+	return true
+
 ## Move on when this block is finished, and only then.
 ##
 ## "Finished" is both halves of the Boost board: nothing here is workable AND
@@ -15644,6 +15768,11 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 				float(row["seizures"]), int(row["seized_value"]),
 				float(row["heat_stops"]), int(row["heat_seized"]),
 				int(round(100.0 * float(row["game_over_rate"]))), int(row["runs"])])
+		if float(row["corners"]) > 0.0 or float(row["turf_spend"]) > 0.0:
+			print(("               corners %.1f \u00b7 soldiers %.1f \u00b7 spent $%.0f"
+				+ " \u00b7 corners paid $%.0f")
+				% [float(row["corners"]), float(row["soldiers"]),
+					float(row["turf_spend"]), float(row["turf_income"])])
 		if float(row["bans"]) > 0.0 or float(row["clocked"]) > 0.0:
 			print("               targets clocked %.1f \u00b7 still workable %.1f \u00b7 bans %.1f"
 				% [float(row["clocked"]), float(row["workable"]), float(row["bans"])])
@@ -15730,6 +15859,15 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 		# is exactly what it read before the fix, for thirty days.
 		if name == "newcomer":
 			_expect_true("newcomer actually worked a shift", float(row["shifts"]) > 0.0)
+		# The batch-17 guard, and it earned its place immediately: the first run
+		# of `settler` reported 0.0 corners and 2% of the day job because the
+		# profile had no wander leg, so batch 16's job gate never opened, so it
+		# never earned the $320 the first corner costs. A turf profile that
+		# never took a corner is an instrument failure, not a result — the same
+		# claim every row above it makes about its own premise.
+		if name == "settler":
+			_expect_true("settler actually took corners", float(row["corners"]) > 0.0)
+			_expect_true("and the corners actually paid", float(row["turf_income"]) > 0.0)
 			_expect_true("and it got there by walking, not by going broke",
 				float(row["wanders"]) > 0.0)
 			_expect_true("a gated profile only uses what the ladder opened",
@@ -17527,6 +17665,152 @@ func _check_door_to_work(gs: Node, gm: Node) -> void:
 		access.is_unlocked(access.MENU_JOBS))
 	gs.reset_to_new_game()
 
+
+# === batch 17 — the corner, measured ========================================
+#
+# Territory shipped in Phase 3e: six corners, soldiers, nightly income, nightly
+# heat, a Turf screen and two districts gated behind holding one. Until this
+# batch **no profile in the economy table had ever claimed a corner.** Every
+# balance number this file has published — including "the strongest clean path
+# in the build" — was measured against a game with its territory system
+# switched off.
+#
+# That is batch 9's failure again, arrived at from the other side. Batch 9 found
+# the instrument reporting on a catalogue that had been leaked out from under
+# it; this is the instrument reporting on a game with a whole system missing,
+# and neither is visible from inside the numbers.
+#
+# What it is worth, once somebody plays it (30 days x 4 seeds):
+#
+#   legal_worker     100%   the baseline
+#   worker_wanders   287%   called "the strongest clean path" until now
+#   newcomer         463%   plays everything the ladder opens
+#   settler          636%   6.0 corners, $2,660 in, $9,081 out, 0 arrests
+#   hustler          732%   the ceiling
+#
+# A 3.4x return on capital, no arrests, and — the part that matters — **no slot
+# cost at all.** Neither `recruit_soldier` nor `claim_block` calls
+# `advance_time`. Every other earner in the build competes for four slots a day
+# and this one competes for nothing; it competes only for money. That asymmetry
+# is reported here rather than tuned, for the same reason Boost's 7% was: the
+# numbers are a design decision and this file's job is to make them visible.
+#
+# The one honest qualifier: `settler` takes zero arrests but sits at peak heat
+# 15.0, because holding corners generates heat every night whether or not
+# anybody works them. It is clean in the sense that nobody gets caught, not in
+# the sense that nobody notices.
+#
+# SABOTAGE: drop the idle-soldier arm from `claim_blocker`
+#           ==> "a corner needs somebody free to stand on it" fails.
+# SABOTAGE: make `_claim` call `advance_time`
+#           ==> "taking a corner costs money and not a slot" fails.
+# SABOTAGE: open Downtown on district_discovered without a corner
+#           ==> "the first corner is what opens Downtown" fails.
+# SABOTAGE: drop the turf leg from the settler profile
+#           ==> "settler actually took corners" fails.
+
+func _check_batch17(gs: Node, gm: Node) -> void:
+	_check_city_chain(gs, gm)
+	_check_turf_costs_no_slot(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+## The five-step chain that opens the map, pinned end to end.
+##
+##   recruit a soldier -> an IDLE soldier -> claim a corner -> `held_blocks`
+##   -> `district_discovered` -> Downtown; a second corner -> Ship Creek
+##
+## Nothing asserted any of it. The middle step is the one worth pinning hardest:
+## `claim_blocker` refuses without an idle soldier, so a run holding thousands
+## and no soldier cannot buy anything — which is not obvious from either screen,
+## and which sent the first probe of this batch to the wrong conclusion (that
+## the city never opens at all; it opens on day 6).
+func _check_city_chain(gs: Node, gm: Node) -> void:
+	var terr: Object = gm.system("territory")
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	if terr == null or access == null:
+		_fail("batch17 city", "no territory system or access layer")
+		return
+	var cheapest: Dictionary = gs.spenard_blocks[0]
+	var block_id := str(cheapest["id"])
+
+	# 1. A fresh run: money is not the first thing missing.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.cash = 100000
+	_expect_int("a fresh run has no soldier free", int(gs.soldiers_idle), 0)
+	_expect_str("so a corner needs somebody free to stand on it",
+		str(terr.claim_blocker(block_id)), "Need a soldier free to stand on it.")
+	_expect_true("and the claim is refused however rich the run is",
+		not gm.dispatch("claim_block", {"block_id": block_id}))
+	_expect_int("nothing was taken", gs.held_blocks.size(), 0)
+
+	# 2. A soldier, and then money is the only thing left.
+	_expect_true("a soldier can be hired", gm.dispatch("recruit_soldier", {}))
+	_expect_int("and stands idle until posted", int(gs.soldiers_idle), 1)
+	_expect_str("now the corner is affordable and free", str(terr.claim_blocker(block_id)), "")
+	gs.cash = int(cheapest["claim_cost"]) - 1
+	_expect_str("one dollar short is short", str(terr.claim_blocker(block_id)),
+		"Need $%d." % int(cheapest["claim_cost"]))
+
+	# 3. The corner opens Downtown, and takes the soldier with it.
+	gs.cash = 100000
+	_expect_true("the city is shut before the first corner",
+		not access.is_unlocked("street.downtown"))
+	_expect_true("the corner is taken", gm.dispatch("claim_block", {"block_id": block_id}))
+	_expect_int("the soldier went to stand on it", int(gs.soldiers_idle), 0)
+	_expect_true("the first corner is what opens Downtown",
+		access.is_unlocked("street.downtown"))
+	_expect_true("but not yet Ship Creek", not access.is_unlocked("street.ship_creek"))
+
+	# 4. And the second opens the port.
+	var second: Dictionary = gs.spenard_blocks[1]
+	gm.dispatch("recruit_soldier", {})
+	_expect_true("a second corner is taken",
+		gm.dispatch("claim_block", {"block_id": str(second["id"])}))
+	_expect_true("two corners open Ship Creek",
+		access.is_unlocked("street.ship_creek"))
+
+	# 5. Walking away gives the soldier back and does NOT close the city.
+	#    `districts_unlocked` is a one-way latch, which is the design — a road
+	#    you have driven does not un-discover itself — and it is asserted here
+	#    because the corner count that opened it is not one-way at all.
+	var freed: int = int(gs.soldiers_idle)
+	_expect_true("a corner can be walked away from",
+		gm.dispatch("abandon_block", {"block_id": block_id}))
+	_expect_int("and the soldier comes back", int(gs.soldiers_idle), freed + 1)
+	_expect_true("but the city stays open", access.is_unlocked("street.downtown"))
+	gs.reset_to_new_game()
+
+## Turf buys with money and never with time.
+##
+## This is the whole reason it outruns the table. Every other earner in the
+## build spends one of four slots a day; a corner is bought out of pocket and
+## then pays every night for the rest of the run without ever being visited.
+## Pinned because it is the single fact a balance pass would want to change
+## first, and changing it silently would move every number in this file.
+func _check_turf_costs_no_slot(gs: Node, gm: Node) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.cash = 100000
+	var day_before: int = int(gs.day)
+	var slot_before: int = int(gs.time_slots_today)
+	_expect_true("a soldier is hired", gm.dispatch("recruit_soldier", {}))
+	_expect_int("hiring costs no slot", int(gs.time_slots_today), slot_before)
+	_expect_true("a corner is taken",
+		gm.dispatch("claim_block", {"block_id": str(gs.spenard_blocks[0]["id"])}))
+	_expect_int("taking a corner costs money and not a slot",
+		int(gs.time_slots_today), slot_before)
+	_expect_int("and no day passed either", int(gs.day), day_before)
+	# It pays without being visited: the night settles income for a corner
+	# nobody stood on today.
+	var terr: Object = gm.system("territory")
+	_expect_true("a held corner reports nightly income",
+		int(terr.nightly_income()) > 0)
+	_expect_true("and nightly heat for holding it",
+		float(terr.nightly_heat()) > 0.0)
+	gs.reset_to_new_game()
+
 func _expect_int(label: String, got: int, want: int) -> void:
 	_checks += 1
 	if got != want:
@@ -17751,7 +18035,14 @@ func _fail(label: String, detail: String) -> void:
 ## several sections sweep until they find the outcome they need: their
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
-const MIN_CHECKS := 12457
+## Batch 17 takes it to 12489. The 32 it adds are almost all the city chain —
+## a five-step progression (soldier, idle soldier, corner, held_blocks,
+## district) that nothing asserted at any step, plus the no-slot property that
+## is the reason turf outruns the table and the first thing a balance pass would
+## change.
+##
+## Ten of margin, as always.
+const MIN_CHECKS := 12489
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

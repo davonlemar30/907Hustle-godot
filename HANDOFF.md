@@ -6189,6 +6189,132 @@ is what makes "unreachable" the right word rather than "unavailable".
 
 ---
 
+## Batch 17: the corner, measured  (added 2026-08-23)
+
+Territory shipped in Phase 3e. Six corners, soldiers, nightly income, nightly
+heat, a Turf screen, and two of the three districts gated behind holding one.
+
+**No profile in the economy table had ever claimed a corner.**
+
+Every balance number this file publishes — including the line calling
+`worker_wanders` "the strongest clean path in the build" — was measured against
+a game with its territory system switched off. That is batch 9's failure again,
+reached from the other side: batch 9 found the instrument reporting on a
+catalogue that had leaked out from under it, and this is the instrument
+reporting on a game with a whole system missing. Neither is visible from inside
+the numbers.
+
+### What it is worth
+
+30 days × 4 seeds, against `legal_worker`:
+
+| profile | net worth | % | note |
+| --- | --- | --- | --- |
+| hustler | $11,372 | 732% | the ceiling |
+| **settler** | **$9,874** | **636%** | 6 corners · $2,660 in · **$9,081 out** · 0 arrests |
+| newcomer | $7,195 | 463% | plays everything the ladder opens (0.8 corners) |
+| worker_wanders | $4,457 | 287% | was called the strongest clean path |
+| legal_worker | $1,553 | 100% | the baseline |
+
+A **3.4× return on capital**, zero arrests, second only to the trade-plus-job
+ceiling.
+
+### Why it outruns the table
+
+**It is the only earner in the build that costs no slot.** Neither
+`recruit_soldier` nor `claim_block` calls `advance_time`. Every other way of
+making money competes for four hours a day; a corner is bought out of pocket and
+then pays every night for the rest of the run without ever being visited again.
+
+That asymmetry is now pinned by a check, because it is the first thing a balance
+pass would want to change and changing it silently would move every number in
+this file.
+
+**Reported, not tuned** — the same call made about Boost's 7% in batch 14. What
+the numbers should be is a design decision; making them visible is this file's
+job.
+
+**One honest qualifier.** `settler` takes zero arrests but sits at peak heat
+15.0, because holding corners generates heat every night whether or not anybody
+works them. It is clean in the sense that nobody gets caught, not in the sense
+that nobody notices.
+
+### The chain that opens the map
+
+Five steps, and nothing asserted any of them:
+
+```
+recruit a soldier -> an IDLE soldier -> claim a corner -> held_blocks
+   -> district_discovered -> Downtown;  a second corner -> Ship Creek
+```
+
+The middle link is the one worth pinning hardest: **`claim_blocker` refuses
+without an idle soldier**, so a run holding thousands and no soldier cannot buy
+anything. That is not obvious from either screen, and it sent this batch's first
+probe to the wrong conclusion — it reported that Downtown and Ship Creek *never*
+open, because the probe was a player who never hired anybody. With the soldier
+step, Downtown opens on day 6 and Ship Creek on day 10.
+
+Also pinned: abandoning a corner returns the soldier but does **not** close the
+city. `districts_unlocked` is a one-way latch by design — a road you have driven
+does not un-discover itself — and that deserved an assertion precisely because
+the corner count that opens it is not one-way at all.
+
+### Two things the instrument taught me while I built it
+
+- **A rent reserve is part of the strategy, not a detail.** The first turf leg
+  spent to the last dollar the moment it could and was evicted on day 29 holding
+  **$5,083** — four rent weeks missed while it was broke buying corners, income
+  arriving after the eviction clock had run out. It now keeps a week's rent and
+  the phone bill back.
+- **`settler` needed a wander leg and it was not obvious.** Its first run
+  reported 0.0 corners and 2% of the day job. Batch 16 made a job you FIND
+  yourself count toward the Jobs gate, and walking the block is how a gated run
+  finds one — so a profile with no wander leg never opens the Jobs screen, never
+  works a shift, never earns the $320 the first corner costs, and measures
+  nothing at all. There is now a guard asserting it took corners, the same claim
+  every other row makes about its own premise.
+
+### A small dead field, noted not fixed
+
+`held_blocks[id]["income_collected"]` is initialised to 0 at claim time and
+**never written again**. Nothing reads it. That is why the harness samples
+`nightly_income()` at each day cross rather than reading a total off the run —
+there is no total to read. Left alone because it lives inside a persisted
+Dictionary and removing it is a save-shape change for no gain; recorded here so
+the next person does not trust it.
+
+### Verification
+
+| Gate | Before | After |
+| --- | --- | --- |
+| Parity | 12,467 / 0 | **12,499 / 0** (floor 12,457 → **12,489**) |
+| Save validation | 96 / 0 | 96 / 0 |
+| Screen smoke | 24/24 | 24/24 |
+| Glyph coverage | ok | ok |
+
+### Sabotage log — 4 run, 4 caught
+
+| Sabotage | Caught by |
+| --- | --- |
+| drop the idle-soldier arm from `claim_blocker` | 8 failures, led by "a corner needs somebody free to stand on it" |
+| make `_claim` call `advance_time` | "taking a corner costs money and not a slot" |
+| open Downtown without a corner | "the city is shut before the first corner", plus 4 save round-trip diffs |
+| drop the turf leg from `settler` | "settler actually took corners" |
+
+### Open, for whoever picks this up
+
+- **Turf at 636%, and the no-slot property behind it.** A design call, not a
+  hardening one. `settler` is the instrument for any change to it.
+- **Stickup at 2%** (`86bbjngyz`). Unchanged and still needs a decision.
+- **The other discovery axes.** Stickup targets, borrowers, 907List items, the
+  crew roster, the venues and all five NPCs are still visible from day one.
+- **Crew and venues still have no gated leg.** `newcomer` now covers jobs,
+  trade, flip, crime, wander, roam and turf — but nothing recruits crew or walks
+  into a venue, so a gate added to either will not be measured until one does.
+
+---
+
 ## Where the build stands (end of the 2026-08-22 session)
 
 One place to orient before reading anything else below.
@@ -6197,7 +6323,7 @@ One place to orient before reading anything else below.
 | --- | --- |
 | Build version | `0.1.0` (`autoload/version.gd`) |
 | Save schema | **v15**, migration ladder walks v1 → v15 (unchanged by batches 15-16) |
-| Parity | **12,467 checks, 0 failures**, floor `MIN_CHECKS := 12457` |
+| Parity | **12,499 checks, 0 failures**, floor `MIN_CHECKS := 12489` |
 | Save validation | 96 checks, 0 failures — **a CI gate as of batch 12** |
 | Screen smoke | 24/24 screens instantiate **with their scripts attached** — a CI gate as of batch 12, script-attachment added in batch 15 |
 | Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` |
@@ -6214,7 +6340,9 @@ percentage is against `legal_worker`:
 | hustler | $11,372 | 732% | trade + job; the ceiling |
 | newcomer | $7,114 | 458% | batch 16 — **the only profile that plays the GAME rather than the systems.** Nothing seeded, every gate closed at reset, and it may only use a surface the ladder has opened |
 | flipper | $5,566 | 358% | 907List |
-| worker_wanders | $4,457 | 287% | **the strongest clean path** — zero Heat, zero arrests |
+| settler | $9,874 | 636% | **turf, measured for the first time (batch 17)** — 6 corners, $2,660 in, $9,081 out, zero arrests, and it costs no slot |
+| newcomer | $7,195 | 463% | plays only what the ladder has opened |
+| worker_wanders | $4,457 | 287% | zero Heat, zero arrests — **no longer the strongest clean path** |
 | legal_worker | $1,553 | 100% | the baseline — see below, it holds |
 | best_job_worker | $1,728 | 111% | batch 16 — the same ladder taking the best starter shift. The gap IS the answer to the baseline question |
 | arbitrage | $1,288 | 83% | |

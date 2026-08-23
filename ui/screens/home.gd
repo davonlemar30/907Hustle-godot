@@ -429,11 +429,11 @@ func _bind_snapshot() -> void:
 			pr.add_theme_color_override("font_color", col)
 
 func _bind_turf() -> void:
-	_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Blocks/N", str(gs.held_blocks.size()))
+	_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Blocks/N", str(gs.territory_nodes.size()))
 
 	var held_cells := {}
 	var names := []
-	for id in gs.held_blocks.keys():
+	for id in gs.territory_nodes.keys():
 		var b: Dictionary = gs.block_by_id(str(id))
 		if b.is_empty():
 			continue
@@ -454,8 +454,8 @@ func _bind_turf() -> void:
 
 	# Report what the corners are actually doing rather than a fixed line.
 	var terr: Object = _gm.system("territory") if _gm else null
-	if terr != null and not gs.held_blocks.is_empty():
-		_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Eli", "$%d a night from %d held." % [int(terr.nightly_income()), gs.held_blocks.size()])
+	if terr != null and not gs.territory_nodes.is_empty():
+		_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Eli", "$%d a night from %d held." % [int(terr.nightly_income()), gs.territory_nodes.size()])
 	else:
 		_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Eli", "No corners held yet.")
 

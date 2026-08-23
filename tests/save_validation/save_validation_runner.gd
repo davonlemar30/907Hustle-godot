@@ -22,6 +22,7 @@ func _ready() -> void:
 	_test_v9_fields()
 	_test_v10_fields()
 	_test_v15_boost_discovery()
+	_test_v16_territory_nodes()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -311,6 +312,110 @@ func _test_v15_boost_discovery() -> void:
 	_check("and arrives with nothing clocked",
 		not v14.has("boost_targets_discovered")
 		or (v14["boost_targets_discovered"] as Array).is_empty())
+
+## FS-002.3 (`86bbj1jpm`): the first Territory arm in this validator, and the
+## root-cause fix for `86bbjxtab` — nothing validated the ids in a loaded
+## `held_blocks`/`territory_nodes` before this.
+##
+## SABOTAGE: comment out the `TERRITORY_DEFS.has_id()` guard in
+##           `_validate_territory_nodes` -> "an unknown territory node id is
+##           dropped" fails, and the malformed-row check crashes instead of
+##           repairing (see the bottom of this function for the crash proof).
+func _test_v16_territory_nodes() -> void:
+	# A valid payload is a no-op, byte-shape identical — same contract every
+	# other v-numbered arm in this file makes.
+	var valid := _state("territory_nodes", {
+		"wash_and_go_lot": {"soldiers": 2}, "fourth_ave_strip": {"soldiers": 1},
+	})
+	valid["soldiers_idle"] = 3
+	var valid_result := _result(valid)
+	var valid_fixed: Dictionary = valid_result["state"]
+	_check("valid v16 nodes survive", valid_fixed["territory_nodes"] == valid["territory_nodes"])
+	_check("valid v16 soldiers_idle survives", int(valid_fixed["soldiers_idle"]) == 3)
+	_check("valid v16 shape is a validation no-op", (valid_result["repairs"] as Array).is_empty())
+	_check("valid v16 payload remains byte-shape equivalent", valid_fixed == valid)
+
+	# Wrong type at the top.
+	var wrong_top := _fixed(_state("territory_nodes", "not-a-dict"))
+	_check("a non-Dictionary territory_nodes is defaulted", wrong_top["territory_nodes"] == {})
+
+	# An unknown id — the 86bbjxtab root cause. Dropped, not carried through.
+	var unknown := _fixed(_state("territory_nodes", {
+		"wash_and_go_lot": {"soldiers": 1}, "a_corner_that_never_was": {"soldiers": 1},
+	}))
+	var unknown_nodes: Dictionary = unknown["territory_nodes"]
+	_check("an unknown territory node id is dropped",
+		not "a_corner_that_never_was" in unknown_nodes)
+	_check("a known id survives the sweep", "wash_and_go_lot" in unknown_nodes)
+
+	# A malformed row — non-Dictionary. This is the fixture the ticket's own
+	# list was missing: today, before this arm, a String here loads clean and
+	# crashes the first time `territory.gd:141`-equivalent code indexes it as a
+	# Dictionary. The validator drops it instead of trusting it.
+	var malformed := _fixed(_state("territory_nodes", {
+		"wash_and_go_lot": "not-a-dict-either",
+	}))
+	var malformed_nodes: Dictionary = malformed["territory_nodes"]
+	_check("a non-Dictionary row is dropped rather than crashing the load",
+		not "wash_and_go_lot" in malformed_nodes)
+
+	# Soldiers: wrong type, then negative.
+	var bad_soldiers := _fixed(_state("territory_nodes", {
+		"wash_and_go_lot": {"soldiers": "four"},
+	}))
+	_check("a non-numeric soldier count defaults to 0",
+		int((bad_soldiers["territory_nodes"] as Dictionary)["wash_and_go_lot"]["soldiers"]) == 0)
+	var negative_soldiers := _fixed(_state("territory_nodes", {
+		"wash_and_go_lot": {"soldiers": -3},
+	}))
+	_check("a negative soldier count is repaired to 0",
+		int((negative_soldiers["territory_nodes"] as Dictionary)["wash_and_go_lot"]["soldiers"]) == 0)
+
+	# The capacity clamp: three held corners cap the roster at 8
+	# (2 base + 3*2). A hand-edited save claiming 20 posted must not be trusted
+	# to prove its own capacity — the clamp runs off the CLEANED set, in
+	# deterministic (sorted-id) order.
+	var overcapacity := _fixed(_state("territory_nodes", {
+		"spenard_rec_lot": {"soldiers": 20},
+		"wash_and_go_lot": {"soldiers": 20},
+		"fourth_ave_strip": {"soldiers": 20},
+	}))
+	var over_nodes: Dictionary = overcapacity["territory_nodes"]
+	var total_posted := 0
+	for id in over_nodes.keys():
+		total_posted += int((over_nodes[id] as Dictionary)["soldiers"])
+	_check("a posted sum exceeding capacity is capped at the cleaned capacity (got %d)"
+		% total_posted, total_posted == 8)
+	_check("the clamp is deterministic: the alphabetically-first id keeps its soldiers",
+		int((over_nodes["fourth_ave_strip"] as Dictionary)["soldiers"]) == 8)
+	_check("and a later id in sorted order is zeroed out",
+		int((over_nodes["spenard_rec_lot"] as Dictionary)["soldiers"]) == 0)
+
+	# soldiers_idle: wrong type, then negative.
+	var idle_wrong := _fixed(_state("day", 1))
+	idle_wrong["soldiers_idle"] = "none"
+	var idle_wrong_fixed := _result(idle_wrong)["state"] as Dictionary
+	_check("a non-numeric soldiers_idle defaults to 0", int(idle_wrong_fixed["soldiers_idle"]) == 0)
+	var idle_negative := _fixed(_state("day", 1))
+	idle_negative["soldiers_idle"] = -5
+	var idle_negative_fixed := _result(idle_negative)["state"] as Dictionary
+	_check("a negative soldiers_idle is repaired to 0", int(idle_negative_fixed["soldiers_idle"]) == 0)
+
+	# And the migration itself, through the real chain: a v15 payload with a
+	# corrupted row loads clean rather than crashing SaveSystem.load_run().
+	var save_system: Node = get_node("/root/SaveSystem")
+	var v15_state := _state("held_blocks", {
+		"wash_and_go_lot": {"soldiers": "bad-type"},
+		"fourth_ave_strip": {"soldiers": 2},
+	})
+	var v15_migrated: Dictionary = save_system._migrate({"save_version": 15, "state": v15_state})
+	_check("a v15 save with a bad row migrates", not v15_migrated.is_empty())
+	var v15_validated: Dictionary = save_system._validate_nested_shapes(v15_migrated)
+	var v15_nodes: Dictionary = v15_validated.get("territory_nodes", {})
+	_check("the bad-typed soldier count is repaired through the real pipeline",
+		int((v15_nodes.get("wash_and_go_lot", {}) as Dictionary).get("soldiers", -1)) == 0)
+	_check("and the good row survives it",
+		int((v15_nodes.get("fourth_ave_strip", {}) as Dictionary).get("soldiers", -1)) == 2)
 
 func _test_load_pipeline() -> void:
 	var save_system: Node = get_node("/root/SaveSystem")

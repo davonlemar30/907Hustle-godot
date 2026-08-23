@@ -15,6 +15,91 @@ through D-4, the `CAUGHT_EFFECTS` anomaly and the `legal_worker` baseline.
 
 ---
 
+## D-6 — A migrated Territory holding is never confiscated
+
+**Decided** 2026-08-23 · **Ships in** Batch 18 PR 3 · **Ticket** `86bbj1jpm`
+(FS-002.3)
+
+**Numbered D-6 rather than D-3 deliberately.** The build prompt's own decision
+list names D-1, D-2, D-4 and D-5 and skips D-3 — a gap that reads as reserved
+rather than accidental, most likely a standing ruling already recorded in
+ClickUp under that number and simply not restated in the brief handed to this
+session. Claiming "D-3" for an unrelated new ruling risked colliding with
+whatever that already is. This entry is D-6, continuing after the highest
+number this build actually uses.
+
+### The conflict
+
+FS-002.3 seeds the Territory board with an authored `starting_owner`:
+`spenard_rec_lot` and `wash_and_go_lot` neutral, the other four
+(`minnesota_offramp`, `service_road_chokepoint`, `fourth_ave_strip`,
+`northern_lights_motels`) Curtis-secure.
+
+A save written before this file existed can already hold one of the four
+Curtis-secure nodes — Batch 17 measured the `settler` profile holding all six.
+Migrating that save collides two rules that cannot both be honoured for the
+same corner:
+
+1. **The seeding rule** says those four nodes belong to Curtis from the start.
+2. **"No migrated holding is ever confiscated"** — the ticket's own language,
+   quoted in the build prompt's list of fixtures FS-002.3 was missing — says a
+   holding a save already has survives the migration that introduces a new way
+   to think about it.
+
+One has to lose, in writing.
+
+### The ruling
+
+**The migrated holding wins. It is never confiscated.**
+
+A Curtis-secure node the player already held before FS-002.3 migrates as
+player-held, exactly as `wash_and_go_lot` (neutral) does. The capture is treated
+as having already happened, off camera, before this build had a way to describe
+it — which is the only reading consistent with the player's own save file.
+
+Two bookkeeping facts are stamped alongside the migrated node, in
+`territory_fronts[id]`:
+
+- `capture_reward_consumed: true` — so that whenever FS-002.4/.5 attaches a real
+  reward to a real capture, this corner cannot be awarded it a second time for a
+  capture that already happened.
+- `conflict_active: true` — so a later build can tell this corner apart from one
+  nobody has ever touched, without needing a second migration to add the flag.
+
+A Curtis-secure node the save did **not** hold gets no `territory_fronts` entry
+at all. The field records a migrated capture, not a standing fact about the
+board — an untouched Curtis-secure corner is exactly what the seeding rule says
+it is, until a real takeover mechanic (FS-002.4/.5) changes that.
+
+### What this does NOT do
+
+**`starting_owner` gates nothing about `claim_block` in this build.** All six
+nodes remain claimable through the ordinary flow, identically, on a fresh run.
+Contested takeovers are FS-002.4/.5 (Build 18b) — `territory.gd`'s own header
+has listed "Curtis pressure and contested takeovers" under "Not ported" since
+the system shipped. Gating claims on ownership now, with no mechanic to make a
+Curtis-secure claim mean something different, would lock four of six corners on
+every fresh run for no reason a player could discover — a real gameplay change
+smuggled inside a state-migration PR, which is exactly what the FS-002
+"constants unchanged" freeze and rule 8 (derive through the rule, don't
+hardcode the answer — and don't invent a rule nobody asked for) both forbid.
+
+### A flag on this ruling
+
+**This is a scope call this session made, not a transcription of the ticket.**
+The ticket's own ClickUp comment — which the build prompt explicitly says to
+read in full before starting FS-002.3 — could not be read: the ClickUp
+connector is unauthenticated in this non-interactive session. If that comment
+specifies the confiscation/seeding collision or the claim-gating question
+differently, this ruling is the one that should change, not the code it
+describes. Check `86bbj1jpm`'s comments before treating D-6 as final.
+
+Proven behaviourally in `tests/territory/territory_runner.gd` (`_test_v16_migration`)
+and cross-checked in `tests/parity/parity_runner.gd`'s v9→v16 migration chain:
+a migrated Curtis-secure holding survives with its capture marked consumed; an
+untouched one gets no fronts entry; a neutral migrated holding gets no fronts
+entry either.
+
 ## D-5 — Day-cross settlement ordering: the shipped order wins
 
 **Decided** 2026-08-23 · **Ships in** Batch 18 PR 2 · **Ticket** `86bbj1jnr`

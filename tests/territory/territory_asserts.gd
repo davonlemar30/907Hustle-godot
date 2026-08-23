@@ -89,7 +89,7 @@ func market_cursor_unchanged(label: String, gs: Node, body: Callable) -> bool:
 ## matter what the transition did.
 func soldiers_conserved(label: String, gs: Node, expected_total: int) -> bool:
 	var posted: int = 0
-	for rec in gs.held_blocks.values():
+	for rec in gs.territory_nodes.values():
 		posted += int((rec as Dictionary).get("soldiers", 0))
 	var idle: int = int(gs.soldiers_idle)
 	checks += 1
@@ -112,8 +112,8 @@ func capacity_respected(label: String, gs: Node) -> bool:
 ## alone can miss when two errors cancel.
 func no_negative_soldiers(label: String, gs: Node) -> bool:
 	var ok: bool = int(gs.soldiers_idle) >= 0
-	for id in gs.held_blocks.keys():
-		if int((gs.held_blocks[id] as Dictionary).get("soldiers", 0)) < 0:
+	for id in gs.territory_nodes.keys():
+		if int((gs.territory_nodes[id] as Dictionary).get("soldiers", 0)) < 0:
 			ok = false
 	return check("%s — no negative soldier count anywhere" % label, ok)
 

@@ -1,4 +1,13 @@
 extends Node
+## FS-002.3 (Batch 18 PR 3): the authored board off `data/territory_definitions.gd`
+## rather than `gs.spenard_blocks` (deleted). Same six ids in the same order.
+## Declared here rather than beside its batch-17 usage: GDScript resolves
+## top-level consts in file order, and the economy-measurement section above
+## batch 17 (`_econ_try_turf`) reaches it too — a forward reference the parser
+## does not accept, found the hard way (a hang, not a clean failure — this
+## project's own ground truth warns a parse error in this file hangs rather
+## than fails).
+const B18_TERRITORY := preload("res://data/territory_definitions.gd")
 ## Phase 5 parity runner — replays recorded oracle truth against the Godot port.
 ##
 ## Runs headless in CI:
@@ -840,7 +849,7 @@ func _check_save_roundtrip() -> void:
 	gs.curtis_awareness = 4
 	gs.crew_records["eli"] = {"recruited": true, "loyalty": 6, "tier": 1, "wage_due": 45,
 		"wage_missed_since": 0, "recruited_day": 1, "status": "active"}
-	gs.held_blocks["wash_and_go_lot"] = {"soldiers": 1, "claimed_day": 1, "income_collected": 55}
+	gs.territory_nodes["wash_and_go_lot"] = {"soldiers": 1}
 	gs.soldiers_idle = 1
 	gs.shark_loans.append({"id": 1, "borrower": "nora", "principal": 100, "due_day": 3, "term": 2})
 	# Phone inbox (v3): a live message, a held one, and a pending restoration —
@@ -889,7 +898,7 @@ func _check_save_roundtrip() -> void:
 	gs.npc_ledgers = {}
 	gs.observation_queue = []
 	gs.crew_records = {}
-	gs.held_blocks = {}
+	gs.territory_nodes = {}
 	gs.shark_loans = []
 	gs.activity_log = []
 	gs.job_records = {}
@@ -1822,7 +1831,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# 9 → 10 in v0.1.0, 10 → 11 in batch 7, 11 → 12 in batch 8, 12 → 13 in
 	# batch 10 (Wander), 13 → 14 in batch 13 (the wander intents), 14 → 15 in
 	# batch 14 (Boost's discovery latch).
-	_expect_int("save version is 15", saves.SAVE_VERSION, 15)
+	_expect_int("save version is 16", saves.SAVE_VERSION, 16)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -12948,7 +12957,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is at batch 14's version", saves.SAVE_VERSION, 15)
+	_expect_int("the schema is at Batch 18 PR 3's version", saves.SAVE_VERSION, 16)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -14119,10 +14128,6 @@ func _v9_payload(gs: Node, saves: Node) -> Dictionary:
 	gs.clean_cash = 900
 	gs.dirty_cash = 0
 	gs.list_flips = 4
-	gs.held_blocks = {
-		"wash_and_go_lot": {"soldiers": 1, "claimed_day": 3, "income_collected": 55},
-		"fourth_ave_strip": {"soldiers": 1, "claimed_day": 8, "income_collected": 80},
-	}
 	gs.crew_records["deshawn"] = {"recruited": true, "loyalty": 5, "tier": 1,
 		"wage_due": 50, "wage_missed_since": -1, "recruited_day": 6,
 		"status": "active"}
@@ -14132,6 +14137,18 @@ func _v9_payload(gs: Node, saves: Node) -> Dictionary:
 	# stamped on it.
 	for added in ["districts_unlocked", "job_contacts", "pressure_clean_credits"]:
 		state.erase(added)
+	# The two held corners are written directly onto the captured DICT rather
+	# than through `gs` — a v9 save carries `held_blocks`, the field FS-002.3's
+	# v16 arm renames, and it is not a live GameState field to assign to any
+	# more. `capture()` above would have written `territory_nodes` instead,
+	# which is not what a v9 payload looked like. Same reason `_v7_payload`
+	# hand-writes its shape rather than round-tripping it through `gs`.
+	state["held_blocks"] = {
+		"wash_and_go_lot": {"soldiers": 1, "claimed_day": 3, "income_collected": 55},
+		"fourth_ave_strip": {"soldiers": 1, "claimed_day": 8, "income_collected": 80},
+	}
+	state.erase("territory_nodes")
+	state.erase("territory_fronts")
 	return state
 
 func _check_v10_migration(gs: Node, saves: Node) -> void:
@@ -14181,8 +14198,21 @@ func _check_v10_migration(gs: Node, saves: Node) -> void:
 		str(one_migrated.get("districts_unlocked", [])),
 		str(["north_star_lot", "downtown"]))
 
-	# --- and the same payload through a real load ---
-	_write_save(saves, 9, payload)
+	# --- and an equivalent payload through a real load ---
+	#
+	# Fetched FRESH rather than reusing `payload` from the isolated-arm test
+	# above. `_migrate()` does not duplicate its input — `state: Dictionary =
+	# raw` aliases the Dictionary passed in, and every arm from v9 onward
+	# mutates that same object in place. That was invisible as long as every
+	# arm only ADDED keys; FS-002.3's v15 arm is the first to ERASE one
+	# (`held_blocks`, renamed to `territory_nodes`), so the first `_migrate()`
+	# call above already stripped `held_blocks` off the shared `payload`
+	# object by the time it would otherwise be written back to disk here as a
+	# "v9" save. `barren_state` and `one_corner` above already dodge this by
+	# fetching their own fresh payload; this is the one call in the function
+	# that did not.
+	var real_load_payload: Dictionary = _v9_payload(gs, saves)
+	_write_save(saves, 9, real_load_payload)
 	_expect_true("a v9 save loads into v10", saves.load_run())
 
 	# The arm DERIVES rather than defaults. Two corners means the whole city was
@@ -14215,7 +14245,18 @@ func _check_v10_migration(gs: Node, saves: Node) -> void:
 	_expect_int("v9 migration preserves the day", gs.day, 14)
 	_expect_int("v9 migration preserves cash", int(gs.cash), 900)
 	_expect_int("v9 migration preserves flips", int(gs.list_flips), 4)
-	_expect_int("v9 migration preserves the corners", gs.held_blocks.size(), 2)
+	_expect_int("v9 migration preserves the corners", gs.territory_nodes.size(), 2)
+	# FS-002.3: one of the two migrated corners (fourth_ave_strip) is
+	# Curtis-secure in the canonical board. D-6 (docs/DECISIONS.md): a migrated
+	# holding is never confiscated — it stays held, and the capture is marked
+	# already spent so a future takeover mechanic cannot re-award it.
+	_expect_true("a migrated Curtis-secure corner is not confiscated",
+		gs.holds_block("fourth_ave_strip"))
+	_expect_true("and its capture reward is marked already consumed",
+		bool((gs.territory_fronts.get("fourth_ave_strip", {}) as Dictionary)
+			.get("capture_reward_consumed", false)))
+	_expect_true("the neutral migrated corner gets no fronts entry",
+		not gs.territory_fronts.has("wash_and_go_lot"))
 	_expect_str("v9 migration preserves the name", str(gs.street_name), "Legacy")
 
 	# Deterministic, and idempotent: the migrated run saves as v10 and reloads
@@ -14225,7 +14266,10 @@ func _check_v10_migration(gs: Node, saves: Node) -> void:
 	_expect_true("the migrated run reloads", saves.load_run())
 	_expect_str("the migrated run saves and reloads unchanged",
 		"%s/%d" % [str(gs.districts_unlocked), int(gs.job_contacts)], before)
-	_write_save(saves, 9, payload)
+	# `real_load_payload`, not `payload` — see the comment where it was fetched.
+	# `_write_save` serializes rather than mutates, so the same fresh dict is
+	# safe to write twice.
+	_write_save(saves, 9, real_load_payload)
 	_expect_true("the v9 arm reloads", saves.load_run())
 	_expect_str("the v9 arm is deterministic",
 		"%s/%d" % [str(gs.districts_unlocked), int(gs.job_contacts)], before)
@@ -15572,7 +15616,7 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	# What the run ended up holding. `corners` is the count and `soldiers` is
 	# how many were hired to make it possible — the second number is the one
 	# that explains the first, because a corner cannot be taken without one.
-	metrics["corners"] = int(gs.held_blocks.size())
+	metrics["corners"] = int(gs.territory_nodes.size())
 	# What is STILL on the board when the run ends, which is the question the
 	# discovery axis exists to change. Batch 13 and earlier, this could only
 	# fall: the board opened at its widest and every ban took a room off it
@@ -15825,8 +15869,9 @@ func _econ_job_for(gs: Node, best_job: bool) -> String:
 ## The chain is five steps and the harness has to walk all of it, because the
 ## middle of it is where the interesting constraint lives:
 ##
-##   recruit a soldier -> an IDLE soldier -> claim a corner -> `held_blocks`
-##   -> `district_discovered` -> Downtown, and a second corner -> Ship Creek
+##   recruit a soldier -> an IDLE soldier -> claim a corner -> `territory_nodes`
+##   (FS-002.3; `held_blocks` before it) -> `district_discovered` -> Downtown,
+##   and a second corner -> Ship Creek
 ##
 ## `claim_blocker` refuses without an idle soldier, so a run holding $5,000 and
 ## no soldier cannot buy anything. A first probe of this missed the soldier step
@@ -15861,7 +15906,7 @@ func _econ_try_turf(gs: Node, gm: Node, metrics: Dictionary) -> bool:
 	# more than getting there richer.
 	var best_id: String = ""
 	var best_cost: int = 0x7FFFFFFF
-	for entry in gs.spenard_blocks:
+	for entry in B18_TERRITORY.NODES:
 		var block: Dictionary = entry
 		var cost: int = int(block["claim_cost"])
 		if cost >= best_cost:
@@ -18013,8 +18058,9 @@ func _check_batch17(gs: Node, gm: Node) -> void:
 
 ## The five-step chain that opens the map, pinned end to end.
 ##
-##   recruit a soldier -> an IDLE soldier -> claim a corner -> `held_blocks`
-##   -> `district_discovered` -> Downtown; a second corner -> Ship Creek
+##   recruit a soldier -> an IDLE soldier -> claim a corner -> `territory_nodes`
+##   (FS-002.3; `held_blocks` before it) -> `district_discovered` -> Downtown;
+##   a second corner -> Ship Creek
 ##
 ## Nothing asserted any of it. The middle step is the one worth pinning hardest:
 ## `claim_blocker` refuses without an idle soldier, so a run holding thousands
@@ -18027,7 +18073,7 @@ func _check_city_chain(gs: Node, gm: Node) -> void:
 	if terr == null or access == null:
 		_fail("batch17 city", "no territory system or access layer")
 		return
-	var cheapest: Dictionary = gs.spenard_blocks[0]
+	var cheapest: Dictionary = B18_TERRITORY.NODES[0]
 	var block_id := str(cheapest["id"])
 
 	# 1. A fresh run: money is not the first thing missing.
@@ -18039,7 +18085,7 @@ func _check_city_chain(gs: Node, gm: Node) -> void:
 		str(terr.claim_blocker(block_id)), "Need a soldier free to stand on it.")
 	_expect_true("and the claim is refused however rich the run is",
 		not gm.dispatch("claim_block", {"block_id": block_id}))
-	_expect_int("nothing was taken", gs.held_blocks.size(), 0)
+	_expect_int("nothing was taken", gs.territory_nodes.size(), 0)
 
 	# 2. A soldier, and then money is the only thing left.
 	_expect_true("a soldier can be hired", gm.dispatch("recruit_soldier", {}))
@@ -18060,7 +18106,7 @@ func _check_city_chain(gs: Node, gm: Node) -> void:
 	_expect_true("but not yet Ship Creek", not access.is_unlocked("street.ship_creek"))
 
 	# 4. And the second opens the port.
-	var second: Dictionary = gs.spenard_blocks[1]
+	var second: Dictionary = B18_TERRITORY.NODES[1]
 	gm.dispatch("recruit_soldier", {})
 	_expect_true("a second corner is taken",
 		gm.dispatch("claim_block", {"block_id": str(second["id"])}))
@@ -18094,7 +18140,7 @@ func _check_turf_costs_no_slot(gs: Node, gm: Node) -> void:
 	_expect_true("a soldier is hired", gm.dispatch("recruit_soldier", {}))
 	_expect_int("hiring costs no slot", int(gs.time_slots_today), slot_before)
 	_expect_true("a corner is taken",
-		gm.dispatch("claim_block", {"block_id": str(gs.spenard_blocks[0]["id"])}))
+		gm.dispatch("claim_block", {"block_id": str(B18_TERRITORY.NODES[0]["id"])}))
 	_expect_int("taking a corner costs money and not a slot",
 		int(gs.time_slots_today), slot_before)
 	_expect_int("and no day passed either", int(gs.day), day_before)
@@ -18332,13 +18378,13 @@ func _fail(label: String, detail: String) -> void:
 ## contribution is deterministic but shifts by one or two when an unrelated
 ## seeded key moves.
 ## Batch 17 takes it to 12489. The 32 it adds are almost all the city chain —
-## a five-step progression (soldier, idle soldier, corner, held_blocks,
+## a five-step progression (soldier, idle soldier, corner, territory_nodes,
 ## district) that nothing asserted at any step, plus the no-slot property that
 ## is the reason turf outruns the table and the first thing a balance pass would
 ## change.
 ##
 ## Ten of margin, as always.
-const MIN_CHECKS := 12490
+const MIN_CHECKS := 12505
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -19126,7 +19172,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v15", int(saves.SAVE_VERSION), 15)
+	_expect_int("the schema is v16", int(saves.SAVE_VERSION), 16)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -19541,7 +19587,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v15 for Heat's teeth", int(saves.SAVE_VERSION), 15)
+	_expect_int("the schema is v16 for Heat's teeth", int(saves.SAVE_VERSION), 16)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -19994,7 +20040,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v15 for Wander", int(saves.SAVE_VERSION), 15)
+	_expect_int("the schema is v16 for Wander", int(saves.SAVE_VERSION), 16)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 

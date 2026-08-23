@@ -91,17 +91,21 @@ func _claim(block_id: String) -> Dictionary:
 	_wallet().spend(int(b["claim_cost"]), _wallet().ROUTINE_DIRTY_FIRST,
 		{"source_id": "territory_claim"})
 	gs.soldiers_idle -= 1
-	gs.held_blocks[block_id] = {"soldiers": 1, "claimed_day": gs.day, "income_collected": 0}
+	# {"soldiers": int} only — FS-002.3 dropped `claimed_day` and
+	# `income_collected`. Both were dead: the first backed no mechanic, the
+	# second was written once and read never (86bbjxtjb's PR 1 audit found it
+	# unreferenced everywhere but a save fixture).
+	gs.territory_nodes[block_id] = {"soldiers": 1}
 	gs.log_activity("%s is yours." % str(b["name"]), GREEN)
 	return {"ok": true}
 
 func _abandon(block_id: String) -> Dictionary:
 	if not gs.holds_block(block_id):
 		return {"ok": false, "reason": "Not yours."}
-	var rec: Dictionary = gs.held_blocks[block_id]
+	var rec: Dictionary = gs.territory_nodes[block_id]
 	# The soldiers come back; the claim cost does not.
 	gs.soldiers_idle += int(rec.get("soldiers", 0))
-	gs.held_blocks.erase(block_id)
+	gs.territory_nodes.erase(block_id)
 	gs.log_activity("Walked away from %s." % _block_name(block_id), AMBER)
 	# Giving up a corner takes 2 off the cap with it, and the roster does not
 	# get to stay above the cap because the corner it was sized for is gone
@@ -165,7 +169,7 @@ func _post(block_id: String) -> Dictionary:
 	var blocked := post_blocker(block_id)
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked}
-	var rec: Dictionary = gs.held_blocks[block_id]
+	var rec: Dictionary = gs.territory_nodes[block_id]
 	rec["soldiers"] = int(rec.get("soldiers", 0)) + 1
 	gs.soldiers_idle -= 1
 	return {"ok": true}
@@ -173,7 +177,7 @@ func _post(block_id: String) -> Dictionary:
 func _pull(block_id: String) -> Dictionary:
 	if not gs.holds_block(block_id):
 		return {"ok": false, "reason": "Not yours."}
-	var rec: Dictionary = gs.held_blocks[block_id]
+	var rec: Dictionary = gs.territory_nodes[block_id]
 	if int(rec.get("soldiers", 0)) <= 0:
 		return {"ok": false, "reason": "Nobody posted there."}
 	rec["soldiers"] = int(rec["soldiers"]) - 1
@@ -191,7 +195,7 @@ func _pull(block_id: String) -> Dictionary:
 ## stop paying, silently, on a board that still read "6 HELD", because the
 ## error went to stderr and nothing in the build reads stderr.
 ##
-## A held row CAN outlive its definition: a save carries `held_blocks` verbatim
+## A held row CAN outlive its definition: a save carries `territory_nodes` verbatim
 ## and nothing validates the ids in it, so an edited save, a rolled-back build
 ## or a renamed corner all produce one. FS-002.3 adds the second id namespace
 ## and the migration between them, which is exactly the change that would mint
@@ -213,12 +217,12 @@ func block_income(block_id: String) -> int:
 	if not gs.holds_block(block_id):
 		return 0
 	var b: Dictionary = gs.block_by_id(block_id)
-	# An id in `held_blocks` that the authored table does not carry earns
+	# An id in `territory_nodes` that the authored table does not carry earns
 	# nothing rather than crashing the night. See `_block_name` for why a held
 	# row can outlive its definition at all.
 	if b.is_empty():
 		return 0
-	var n: int = int(gs.held_blocks[block_id].get("soldiers", 0))
+	var n: int = int(gs.territory_nodes[block_id].get("soldiers", 0))
 	var total: float = 0.0
 	for i in range(n):
 		total += float(b["earning"]) * pow(gs.SOLDIER_INCOME_DIMINISH, i)
@@ -226,21 +230,21 @@ func block_income(block_id: String) -> int:
 
 func nightly_income() -> int:
 	var total: int = 0
-	for id in gs.held_blocks.keys():
+	for id in gs.territory_nodes.keys():
 		total += block_income(str(id))
 	return total
 
 ## Held blocks cost heat whether or not anyone is standing on them.
 func nightly_heat() -> float:
 	var total: float = 0.0
-	for id in gs.held_blocks.keys():
+	for id in gs.territory_nodes.keys():
 		total += float(gs.block_by_id(str(id)).get("heat_exposure", 0))
 	return total
 
 ## Nightly corner income and the heat of holding them. Reads no day at all, so
 ## the parameter is accepted and unused — the interface is uniform on purpose.
 func settle_night(_ended_day: int) -> void:
-	if gs.game_over or gs.held_blocks.is_empty():
+	if gs.game_over or gs.territory_nodes.is_empty():
 		return
 
 	var income: int = nightly_income()
@@ -264,8 +268,8 @@ func settle_night(_ended_day: int) -> void:
 			{"source_id": "territory_nightly"})
 
 	var unstaffed: Array = []
-	for id in gs.held_blocks.keys():
-		if int(gs.held_blocks[id].get("soldiers", 0)) <= 0:
+	for id in gs.territory_nodes.keys():
+		if int(gs.territory_nodes[id].get("soldiers", 0)) <= 0:
 			unstaffed.append(_block_name(str(id)))
 	if not unstaffed.is_empty():
 		gs.log_activity("%s sat empty. Still yours, still noticed." % ", ".join(unstaffed), RED)

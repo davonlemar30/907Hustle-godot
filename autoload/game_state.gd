@@ -424,7 +424,8 @@ func reset_to_new_game() -> void:
 	crew_records = {}
 	crew_assignments = {}
 	crew_operation_state = {"discovered": [], "adapters": {}}
-	held_blocks = {}
+	territory_nodes = {}
+	territory_fronts = {}
 	soldiers_idle = 0
 	npc_ledgers = {}
 	observation_queue = []
@@ -582,7 +583,7 @@ func _reconcile_progression_latches() -> void:
 	# for the two locked districts is "territory not yet expanded", so the fact
 	# it reads is the held-block count: one corner earns Downtown, a second
 	# earns Ship Creek.
-	var corners: int = held_blocks.size()
+	var corners: int = territory_nodes.size()
 	if corners >= 1 and not "downtown" in districts_unlocked:
 		districts_unlocked.append("downtown")
 	if corners >= 2 and not "airport_industrial" in districts_unlocked:
@@ -1084,18 +1085,16 @@ func crew_wage_for(id: String, tier: int) -> int:
 		return int(curve[clampi(tier - 1, 0, curve.size() - 1)])
 	return int(crew_member_by_id(id).get("wage", 0))
 
-# --- Territory (canon: src/data/locations.js SPENARD_BLOCKS) ---------------
+# --- Territory (FS-002.3, canon: src/data/locations.js SPENARD_BLOCKS) -----
 # earning_potential is per staffed soldier, with diminishing returns.
 # heat_exposure is charged nightly for OWNING the block, staffed or not:
 # an empty corner you hold is still a corner people know is yours.
-var spenard_blocks: Array = [
-	{"id": "spenard_rec_lot", "cell": 1, "name": "Spenard Rec Center Lot", "earning": 45, "heat_exposure": 1, "patrol": 1, "claim_cost": 180},
-	{"id": "wash_and_go_lot", "cell": 2, "name": "Wash & Go Lot", "earning": 55, "heat_exposure": 1, "patrol": 1, "claim_cost": 220},
-	{"id": "minnesota_offramp", "cell": 5, "name": "Minnesota Off-Ramp", "earning": 65, "heat_exposure": 2, "patrol": 1, "claim_cost": 260},
-	{"id": "service_road_chokepoint", "cell": 6, "name": "Service Road Chokepoint", "earning": 70, "heat_exposure": 2, "patrol": 3, "claim_cost": 300},
-	{"id": "fourth_ave_strip", "cell": 9, "name": "Fourth Avenue Strip", "earning": 80, "heat_exposure": 2, "patrol": 2, "claim_cost": 320},
-	{"id": "northern_lights_motels", "cell": 10, "name": "Northern Lights Motel Row", "earning": 100, "heat_exposure": 3, "patrol": 2, "claim_cost": 400},
-]
+#
+# The board itself lives in data/territory_definitions.gd as of FS-002.3.
+# `spenard_blocks` is deleted whole, not deprecated alongside it — see that
+# file's header for why a retired truth cannot survive next to its
+# replacement.
+const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
 const SOLDIER_RECRUIT_COST := 140
 const SOLDIER_BASE_CAPACITY := 2
@@ -1104,29 +1103,49 @@ const SOLDIER_CAPACITY_PER_BLOCK := 2
 ## 85% of the first, the third 85% of that.
 const SOLDIER_INCOME_DIMINISH := 0.85
 
-## block_id -> {soldiers: int, claimed_day: int, income_collected: int}
-var held_blocks: Dictionary = {}
+## Ownership + staffing truth (FS-002.3, save v16). node_id -> {soldiers: int}.
+## Successor to `held_blocks`, sparse the same way: a key's PRESENCE is what
+## "held" means, same as it always has. `claimed_day` and `income_collected`
+## are not carried — both are dead (see the v16 migration arm in
+## `save_system.gd` for why), and this is the one place either could have been
+## reintroduced by habit.
+var territory_nodes: Dictionary = {}
+## Curtis-relationship bookkeeping for the four Curtis-secure nodes (FS-002.3,
+## save v16). node_id -> {capture_reward_consumed: bool, conflict_active: bool}.
+##
+## Populated ONLY by the v16 migration, for a save that already held a
+## Curtis-secure node before this file existed — the capture already
+## happened, off camera, and a migrated holding is never confiscated. A fresh
+## run starts with this empty and nothing in the current build writes to it
+## during play: contested takeovers are FS-002.4/.5 (Build 18b), and this
+## field exists now so that slice does not need a second Territory migration
+## to add it.
+var territory_fronts: Dictionary = {}
 ## Soldiers hired but not posted to a block.
 var soldiers_idle: int = 0
 
+## The authored row for an id, or `{}` for one the table does not carry — see
+## `TERRITORY_DEFS.by_id()` for why that is a real, expected case rather than
+## only a corrupted-save concern.
 func block_by_id(id: String) -> Dictionary:
-	for b in spenard_blocks:
-		if b.get("id", "") == id:
-			return b
-	return {}
+	return TERRITORY_DEFS.by_id(id)
 
 func holds_block(id: String) -> bool:
-	return held_blocks.has(id)
+	return territory_nodes.has(id)
 
 func soldiers_total() -> int:
 	var n: int = soldiers_idle
-	for rec in held_blocks.values():
+	for rec in territory_nodes.values():
 		n += int(rec.get("soldiers", 0))
 	return n
 
-## Canon: 2, plus 2 for every block held.
+## Canon: 2, plus 2 for every block held. Counts PLAYER-HELD nodes
+## (`territory_nodes.size()`), never the six authored nodes — the highest-risk
+## line in this migration, because getting it backwards silently jumps
+## capacity 2 -> 14 the moment a save carries the four Curtis-secure nodes as
+## definitions without them being held.
 func soldier_capacity() -> int:
-	return SOLDIER_BASE_CAPACITY + held_blocks.size() * SOLDIER_CAPACITY_PER_BLOCK
+	return SOLDIER_BASE_CAPACITY + territory_nodes.size() * SOLDIER_CAPACITY_PER_BLOCK
 
 # --- Exposure ledgers (canon: src/exposure/engine.js) ----------------------
 ## npc_id -> Array of observation rows. The Exposure autoload owns the shape;

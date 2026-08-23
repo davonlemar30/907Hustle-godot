@@ -6,6 +6,10 @@ extends "res://ui/screens/surface_base.gd"
 ## just for being yours. A block you cannot staff is a pure liability, and the
 ## screen should make that obvious before the player buys one.
 
+## FS-002.3: the authored board, off the canonical data file rather than
+## `gs.spenard_blocks` (deleted).
+const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
+
 func _build_body() -> void:
 	var sys: Object = _gm.system("territory")
 	if sys == null:
@@ -13,7 +17,7 @@ func _build_body() -> void:
 
 	body.add_child(_status_card(sys))
 	body.add_child(section("SPENARD BLOCKS"))
-	for b in gs.spenard_blocks:
+	for b in TERRITORY_DEFS.NODES:
 		body.add_child(_block_row(sys, b))
 
 	# A corner you hold that the authored table does not carry (86bbjxtab).
@@ -22,7 +26,7 @@ func _build_body() -> void:
 	# no row and therefore no GIVE IT UP button. Invisible and unabandonable is
 	# the worst pair of properties a liability can have.
 	var orphans: Array = []
-	for id in gs.held_blocks.keys():
+	for id in gs.territory_nodes.keys():
 		if gs.block_by_id(str(id)).is_empty():
 			orphans.append(str(id))
 	if not orphans.is_empty():
@@ -40,7 +44,7 @@ func _orphan_row(id: String) -> Control:
 	v.add_theme_constant_override("separation", 5)
 	c.add_child(v)
 	v.add_child(label(id, "CardTitle", 13, RED))
-	var n: int = int((gs.held_blocks[id] as Dictionary).get("soldiers", 0))
+	var n: int = int((gs.territory_nodes[id] as Dictionary).get("soldiers", 0))
 	v.add_child(label("%d posted  ·  earning nothing  ·  this corner is not on the map any more"
 		% n, "Muted", 11, RED, true))
 	v.add_child(button("GIVE IT UP", false, _on_abandon.bind(id), 40))
@@ -52,12 +56,12 @@ func _status_card(sys: Object) -> Control:
 	v.add_theme_constant_override("separation", 5)
 	c.add_child(v)
 	v.add_child(label("%d HELD  ·  %d/%d SOLDIERS  ·  %d FREE" % [
-		gs.held_blocks.size(), gs.soldiers_total(), gs.soldier_capacity(), gs.soldiers_idle
+		gs.territory_nodes.size(), gs.soldiers_total(), gs.soldier_capacity(), gs.soldiers_idle
 	], "CardTitle", 13, CREAM))
 
 	var income: int = sys.nightly_income()
 	var heat: float = sys.nightly_heat()
-	if not gs.held_blocks.is_empty():
+	if not gs.territory_nodes.is_empty():
 		v.add_child(label("$%d a night  ·  +%.1f heat a night" % [income, heat], "Muted", 11, GREEN if income > 0 else RED))
 	else:
 		v.add_child(label("Nothing held. A corner needs a soldier free to stand on it.", "Muted", 11, MUTED, true))
@@ -84,7 +88,7 @@ func _block_row(sys: Object, b: Dictionary) -> Control:
 	head.add_child(label("HELD" if held else "$%d" % int(b["claim_cost"]), "Mono", 12, GREEN if held else AMBER))
 
 	if held:
-		var rec: Dictionary = gs.held_blocks[id]
+		var rec: Dictionary = gs.territory_nodes[id]
 		var n: int = int(rec.get("soldiers", 0))
 		var earns: int = sys.block_income(id)
 		var col: Color = GREEN if n > 0 else RED

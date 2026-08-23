@@ -6250,6 +6250,179 @@ is what makes "unreachable" the right word rather than "unavailable".
 
 ---
 
+## Batch 18 PR 3: FS-002.3, canonical Territory state and save v16  (added 2026-08-23)
+
+**The one-way door of this milestone.** `held_blocks` (keyed off `spenard_blocks`
+display rows) becomes `territory_nodes` (keyed off the new
+`data/territory_definitions.gd`) plus `territory_fronts`, a Curtis-relationship
+ledger. `spenard_blocks` is deleted whole, not deprecated. Save v15 → **v16**.
+
+The ticket's own ClickUp comment — which the build prompt says to read in full
+before starting — could not be read in this session; the connector is
+unauthenticated. Everything below that reads as a scope call rather than a
+transcription is flagged as such, and one of them (D-6) is recorded as a
+standing decision precisely so it can be corrected once that comment is
+readable, rather than silently baked in.
+
+### The board
+
+Six nodes, same ids, same `earning` / `heat_exposure` / `claim_cost` / `cell` /
+`name` values `spenard_blocks` carried — this is a state-shape migration, not a
+balance pass, and the FS-002 "constants unchanged" freeze holds until PR 4 adds
+the one missing rule it exists to add. `patrol`: authored on every row since the
+system shipped, read by nothing, dropped.
+
+New: `starting_owner`. `spenard_rec_lot` and `wash_and_go_lot` neutral; the
+other four (`minnesota_offramp`, `service_road_chokepoint`, `fourth_ave_strip`,
+`northern_lights_motels`) Curtis-secure.
+
+**Scope call, flagged:** `starting_owner` gates nothing about `claim_block` in
+this PR. All six nodes remain claimable identically on a fresh run — contested
+takeovers are FS-002.4/.5 (Build 18b), `territory.gd`'s own header has listed
+"Curtis pressure and contested takeovers" under "Not ported" since the system
+shipped, and gating claims now with no mechanic behind the gate would lock four
+of six corners on every fresh run for a reason no player could discover. That
+would be a real gameplay change smuggled inside a migration PR. `starting_owner`
+drives the migration only, this build.
+
+### D-6: a migrated holding is never confiscated
+
+A save can already hold a node the new board calls Curtis-secure — Batch 17
+measured `settler` holding all six. The seeding rule and "no migrated holding is
+ever confiscated" (the ticket's own language) collide on that corner, and one of
+them has to lose. **The migrated holding wins.** It stays player-held; the
+capture is treated as already having happened, off camera; `territory_fronts`
+records `capture_reward_consumed: true` (so a real FS-002.4/.5 reward cannot be
+claimed twice) and `conflict_active: true` (so a later build can tell this
+corner apart from one nobody has touched). A Curtis-secure node the save did
+NOT hold gets no `territory_fronts` entry — the field records a migrated
+capture, not a standing fact about the board.
+
+Full ruling, including why it is numbered D-6 rather than D-3 (the build
+prompt's own decision list skips D-3, which reads as reserved for something
+already in ClickUp rather than accidental — claiming that number risked a
+collision), in `docs/DECISIONS.md`.
+
+### The hazards, addressed in order
+
+1. **The 2 → 14 capacity jump.** `soldier_capacity()` counts PLAYER-HELD nodes
+   (`territory_nodes.size()`) exactly as `held_blocks.size()` always did —
+   never the six authored definitions. Proven with the exact hazard scenario:
+   four `territory_fronts` entries present, nothing held, capacity still reads
+   2. Sabotage-verified below.
+2. **The v9 → v10 arm.** Untouched. It still reads `state.get("held_blocks")`
+   off a v9-shaped payload, which is what it will always see — nothing between
+   v9 and the new v15 → v16 arm removes the field, so the climb is unaffected.
+3. **`_reconcile_progression_latches()` / cached vs. derived.** Resolved by not
+   having the dilemma: there is no `held_blocks` compatibility property at all.
+   Every one of the twelve production sites plus the parity fixtures was swept
+   to `territory_nodes` directly, so `_reconcile_progression_latches()` reads
+   `territory_nodes.size()` — a plain field access, not a graph walk, and not a
+   second cached truth either.
+4. **`home.gd:437`'s mini-map `cell` read.** `cell` survives verbatim in
+   `data/territory_definitions.gd`. Coverage that holds corners before
+   asserting Turf/Home shipped in PR 1 (`_test_screen_reads`), which is exactly
+   the coverage the hazard said screen-smoke cannot provide — it runs on a
+   fresh save where `territory_nodes` is empty.
+5. **Dead fields.** `patrol`, `claimed_day`, `income_collected` do not survive
+   the migration. `income_collected` was written once, at claim, and read
+   nowhere — PR 1's audit of `86bbjxtjb` found the only other write in the
+   whole build was a save fixture setting up a round-trip test.
+
+### Sites swept
+
+Twelve production sites named in the ticket, one **not** touched
+(`save_system.gd`'s v9 arm, hazard #2) — `game_state.gd` (the four
+compatibility selectors: `block_by_id`, `holds_block`, `soldiers_total`,
+`soldier_capacity`, plus `reset_to_new_game` and
+`_reconcile_progression_latches`), `turf.gd` (four sites, plus a new
+`UNRECOGNISED` section from PR 0 that now exercises the canonical field),
+`home.gd` (four sites), `more.gd` (one site). Plus the parity fixtures —
+`_v9_payload`, the scramble/restore block, the economy metrics, the batch-17
+five-step chain — and this build's own `tests/territory/` and
+`tests/save_validation/` suites.
+
+### Three additions, all in this PR as specified
+
+- **`spenard_blocks` deleted, not deprecated.** `data/territory_definitions.gd`
+  is the only board now.
+- **The first territory arm in `save_validator.gd`** — the root-cause fix for
+  `86bbjxtab`. Drops an id the definitions do not carry, clamps soldiers
+  non-negative, caps a posted sum that exceeds the capacity the CLEANED rows
+  would grant (deterministic, sorted-id order — which row eats an over-capacity
+  cut cannot depend on Dictionary iteration order), repairs a negative
+  `soldiers_idle` to 0.
+- **Soldier conservation across migration, the total.** Not presence — the
+  ticket's own seven fixtures count nodes, and none would catch an arm that
+  maps holdings correctly and drops the soldiers standing on them.
+  `tests/territory/territory_runner.gd`'s `_test_v16_migration` asserts
+  `idle + Σ posted` directly against the pre-migration total.
+
+### The two fixtures the ticket was missing
+
+Both added. The Curtis-secure collision is D-6, above, tested in both
+`tests/territory/` and cross-checked in the parity suite's v9 → v16 chain (a
+migrated `fourth_ave_strip` holding survives with its capture consumed). The
+malformed row — a String where a Dictionary belongs, `soldiers` as a String or
+negative — is `tests/save_validation/save_validation_runner.gd`'s
+`_test_v16_territory_nodes`, which loads clean today and would crash at
+`territory.gd`'s soldier read without the validator's type guard (proven by
+sabotage, below).
+
+### A bug this migration found, not introduced
+
+`SaveSystem._migrate()` does not duplicate its input — `state: Dictionary = raw`
+aliases the Dictionary handed in, and every existing arm from v9 onward mutates
+that same object in place. Harmless as long as every arm only ADDED keys, which
+is all any of them had ever done. The new v15 → v16 arm is the first to ERASE
+one (`held_blocks`, renamed away), and one existing parity fixture
+(`_check_v10_migration`) reused the same payload Dictionary across two separate
+`_migrate()` calls — safe against every prior arm, and silently broken against
+this one: the first call stripped `held_blocks` off the shared object before
+the second call needed it still there, and a real load then legitimately
+produced an empty `territory_nodes` and a city that never opened.
+
+**Found by running the full parity suite, not by inspection** — six failures,
+all reading like a fresh migration bug ("a v9 run keeps the city it opened",
+"v9 migration preserves the corners: got 0, want 2") until the trace made the
+aliasing obvious. Fixed at the two call sites that reused the mutated object
+(fetch a fresh `_v9_payload()` for each `_migrate()` call, matching the pattern
+the function's own `barren_state`/`one_corner` sub-cases already used) rather
+than in `_migrate()` itself — `_migrate()` is called exactly once per real load
+in production, so the aliasing is invisible there, and changing its general
+contract to deep-copy would touch every arm's behaviour for a bug that only
+existed in test-fixture reuse. **`save_system.gd`'s v9 → v10 arm itself is
+unchanged** — hazard #2 held even while chasing this down.
+
+### A parse error hangs rather than fails, confirmed the hard way
+
+The ground truth's own warning: *"A parse error in `parity_runner.gd` hangs
+rather than fails; a sabotage run going long is probably a compile error."*
+`const B18_TERRITORY := preload(...)` was first declared beside its batch-17
+usage — but the economy-measurement section (`_econ_try_turf`), which precedes
+batch 17 in the file, reaches it too, and GDScript here does not accept a
+top-level const referenced before its own declaration. The parity run sat at
+1–3% CPU for over an hour before this was diagnosed and killed; a syntax check
+(`godot --headless --check-only --script <file>`, wrapped in a 30-second `perl
+alarm` since this environment has no `timeout`) finds the same fault in
+seconds. Fixed by moving the declaration to the top of the file. Every touched
+file was syntax-checked this way before the next full parity run.
+
+### Sabotage log
+
+| sabotage | result |
+| --- | --- |
+| dropped `soldiers` in the v16 arm | **territory FAIL, 5** — every preserved-soldier and conservation check across the migration |
+| confiscated migrated Curtis-secure holdings (D-6, reversed) | **territory FAIL, 6** — "both corners carry over (got 1, wanted 2)", "the Curtis-secure corner is flagged, not confiscated", both consumed/contested flags |
+| `.size()`-based capacity from the compat selector (hazard #1, reversed) | **territory FAIL, 8** — capacity reads 14 everywhere it should read 2, 4, or the base |
+| removed the validator's row-type guard | **save_validation FAIL, 1** — `SCRIPT ERROR: Invalid cast: could not convert value to 'Dictionary'` at `save_validator.gd:717`, exactly the crash the arm exists to prevent |
+
+### Gates
+
+Parity **12,499 → 12,505** checks, 0 failures (floor raised in this PR).
+Territory **136 → 159** (+23, floor raised 134 → 158). Save validation **96 → 114** (+18,
+Territory arm). Screen smoke 24/24. Glyph coverage ok.
+
 ## Batch 18 PR 2: FS-002.2, and the reason that was wrong everywhere  (added 2026-08-23)
 
 FS-002.2 is the lifecycle slice. Most of what it asked for was already shipped —
@@ -6754,18 +6927,25 @@ the next person does not trust it.
 
 ## Where the build stands (end of the 2026-08-22 session)
 
+> **The four numbers below are kept current through Batch 18 PR 3** (light
+> touch-ups only, in place, rather than a rewrite) so this table does not
+> actively lie while Batch 18 is in flight. PR 5 relocates this table to the
+> top of a split `HANDOFF.md` and gives it a proper refresh; until then this is
+> the fastest honest read.
+
 One place to orient before reading anything else below.
 
 | | |
 | --- | --- |
 | Build version | `0.1.0` (`autoload/version.gd`) |
-| Save schema | **v15**, migration ladder walks v1 → v15 (unchanged by batches 15-16) |
-| Parity | **12,499 checks, 0 failures**, floor `MIN_CHECKS := 12489` |
-| Save validation | 96 checks, 0 failures — **a CI gate as of batch 12** |
+| Save schema | **v16** (Batch 18 PR 3, FS-002.3) — migration ladder walks v1 → v16. `held_blocks`/`spenard_blocks` retired; `territory_nodes`/`territory_fronts` off `data/territory_definitions.gd` |
+| Parity | **12,505 checks, 0 failures**, floor `MIN_CHECKS := 12505` |
+| Territory suite | **159 checks, 0 failures** — a CI gate as of Batch 18 PR 1 (`tests/territory/`), FS-002's own harness, seconds rather than the parity runner's ~2 minutes |
+| Save validation | 114 checks, 0 failures — **a CI gate as of batch 12**, +18 from Batch 18 PR 3's Territory arm |
 | Screen smoke | 24/24 screens instantiate **with their scripts attached** — a CI gate as of batch 12, script-attachment added in batch 15 |
 | Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` |
 | Screens | 24 |
-| Systems | 29 registered in `GameManager` |
+| Systems | 30 registered in `GameManager` (Batch 18 PR 0 added `run`) |
 | Discovery axes | **2** — `jobs_discovered` (WORK walks) and `boost_targets_discovered` (DEAL walks, batch 14) |
 | Branches | **25 stale remote branches**, every one merged. This row used to read "`main` only; every batch branch merged and deleted" and that was never true — nothing has ever deleted one. Deleting them is a UI click per branch; the git proxy in the build environment refuses `push --delete`. |
 

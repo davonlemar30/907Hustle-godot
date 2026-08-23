@@ -35,18 +35,23 @@ extends Node
 ## by calling `block_income()`, because a fixture that calls the function it is
 ## testing proves only that the function is consistent with itself.
 ##
-## ## What PR 3 will break here, on purpose
+## ## What PR 3 broke here, as anticipated
 ##
-## `held_blocks` is retired as ownership truth in FS-002.3 and `spenard_blocks`
-## is deleted outright. The checks below reach through `gs.holds_block()`,
-## `gs.block_by_id()` and the five dispatched actions wherever they can, because
-## those are the seams that survive. Where a check reads `gs.held_blocks`
-## directly it is marked, and it is marked because it is a migration site.
+## `held_blocks` was retired as ownership truth in FS-002.3 (Batch 18 PR 3) and
+## `spenard_blocks` was deleted outright, both replaced by `gs.territory_nodes`
+## and `data/territory_definitions.gd`. The checks below were written reaching
+## through `gs.holds_block()`, `gs.block_by_id()` and the five dispatched
+## actions wherever they could, because those are the seams PR 3 preserved —
+## and every remaining direct read was mechanically swept to the new field
+## names rather than rewritten by hand, which is the proof the seams held.
 
 const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
+## FS-002.3: the authored board, off the canonical data file. `DEFS.NODES`
+## is deleted.
+const DEFS := preload("res://data/territory_definitions.gd")
 
 ## The check floor. See `_ready()` for why a count is a gate.
-const MIN_CHECKS := 134
+const MIN_CHECKS := 158
 
 var a: RefCounted
 var gs: Node
@@ -75,6 +80,8 @@ func _ready() -> void:
 	_test_settlement_order_reason()
 	_test_save_round_trip()
 	_test_screen_reads()
+	_test_v16_migration()
+	_test_v16_migration_capacity_hazard()
 
 	# The floor, in the shape `parity_runner.gd` uses it. A suite whose checks
 	# quietly stop RUNNING still prints PASS — an early `return` in a test
@@ -130,7 +137,7 @@ func _test_claim() -> void:
 	# The claiming soldier goes ONTO the corner — it is not a fee paid in
 	# soldiers, it is the soldier standing there.
 	a.eq_int("the claiming soldier is posted, not spent",
-		int((gs.held_blocks[CHEAPEST] as Dictionary).get("soldiers", 0)), 1)
+		int((gs.territory_nodes[CHEAPEST] as Dictionary).get("soldiers", 0)), 1)
 	a.eq_int("and no longer idle", int(gs.soldiers_idle), 0)
 
 	a.eq_bool("claiming the same corner twice is refused",
@@ -142,9 +149,9 @@ func _test_claim() -> void:
 	# tracks its earning. Derived from the table, so re-authoring a row keeps
 	# this honest rather than breaking it.
 	var rising := true
-	for i in range(1, gs.spenard_blocks.size()):
-		var prev: Dictionary = gs.spenard_blocks[i - 1]
-		var cur: Dictionary = gs.spenard_blocks[i]
+	for i in range(1, DEFS.NODES.size()):
+		var prev: Dictionary = DEFS.NODES[i - 1]
+		var cur: Dictionary = DEFS.NODES[i]
 		if int(cur["claim_cost"]) <= int(prev["claim_cost"]) \
 				or int(cur["earning"]) <= int(prev["earning"]):
 			rising = false
@@ -178,7 +185,7 @@ func _test_abandon() -> void:
 	gm.dispatch("post_soldier", {"block_id": DEAREST})
 	gm.dispatch("post_soldier", {"block_id": DEAREST})
 	a.eq_int("three posted on the dear corner",
-		int((gs.held_blocks[DEAREST] as Dictionary)["soldiers"]), 3)
+		int((gs.territory_nodes[DEAREST] as Dictionary)["soldiers"]), 3)
 	a.eq_int("and none left idle", int(gs.soldiers_idle), 0)
 	gm.dispatch("abandon_block", {"block_id": DEAREST})
 	a.eq_int("all three come back idle", int(gs.soldiers_idle), 3)
@@ -188,7 +195,7 @@ func _test_abandon() -> void:
 	# BELOW the roster, the overhang walks. Same setup, but the last corner goes
 	# too — a cap of 2 cannot carry 4.
 	gm.dispatch("abandon_block", {"block_id": CHEAPEST})
-	a.eq_int("no corners left", gs.held_blocks.size(), 0)
+	a.eq_int("no corners left", gs.territory_nodes.size(), 0)
 	a.eq_int("and the roster is cut to the base capacity rather than exceeding it",
 		gs.soldiers_total(), int(gs.SOLDIER_BASE_CAPACITY))
 	a.capacity_respected("after the last corner goes back", gs)
@@ -208,7 +215,7 @@ func _test_post_and_pull() -> void:
 
 	a.eq_bool("posting a free soldier lands",
 		gm.dispatch("post_soldier", {"block_id": CHEAPEST}), true)
-	a.eq_int("two are posted", int((gs.held_blocks[CHEAPEST] as Dictionary)["soldiers"]), 2)
+	a.eq_int("two are posted", int((gs.territory_nodes[CHEAPEST] as Dictionary)["soldiers"]), 2)
 	a.eq_int("and none are free", int(gs.soldiers_idle), 0)
 
 	a.eq_bool("posting with nobody free is refused",
@@ -216,7 +223,7 @@ func _test_post_and_pull() -> void:
 	a.eq_str("and the blocker says so", _terr().post_blocker(CHEAPEST), "Nobody free.")
 
 	a.eq_bool("pulling one back lands", gm.dispatch("pull_soldier", {"block_id": CHEAPEST}), true)
-	a.eq_int("one posted", int((gs.held_blocks[CHEAPEST] as Dictionary)["soldiers"]), 1)
+	a.eq_int("one posted", int((gs.territory_nodes[CHEAPEST] as Dictionary)["soldiers"]), 1)
 	a.eq_int("one free", int(gs.soldiers_idle), 1)
 
 	a.eq_bool("pulling the last one lands", gm.dispatch("pull_soldier", {"block_id": CHEAPEST}), true)
@@ -290,7 +297,7 @@ func _test_income_curve() -> void:
 		if n == 0:
 			gm.dispatch("pull_soldier", {"block_id": DEAREST})
 		a.eq_int("%d posted is %d soldiers on the corner" % [n, n],
-			int((gs.held_blocks[DEAREST] as Dictionary)["soldiers"]), n)
+			int((gs.territory_nodes[DEAREST] as Dictionary)["soldiers"]), n)
 		a.eq_int("%d soldiers earn the curve's answer" % n,
 			int(_terr().block_income(DEAREST)), _expected_income(DEAREST, n))
 
@@ -367,7 +374,7 @@ func _test_nightly_heat() -> void:
 	gs.soldiers_idle = 4
 	gm.dispatch("claim_block", {"block_id": CHEAPEST})
 	gm.dispatch("pull_soldier", {"block_id": CHEAPEST})
-	a.eq_int("the corner is empty", int((gs.held_blocks[CHEAPEST] as Dictionary)["soldiers"]), 0)
+	a.eq_int("the corner is empty", int((gs.territory_nodes[CHEAPEST] as Dictionary)["soldiers"]), 0)
 	a.near("an empty held corner still costs its authored heat",
 		_terr().nightly_heat(), float(_block(CHEAPEST)["heat_exposure"]))
 
@@ -472,7 +479,7 @@ func _test_capacity_invariant() -> void:
 
 	for id in [CHEAPEST, "wash_and_go_lot", "minnesota_offramp"]:
 		gm.dispatch("abandon_block", {"block_id": id})
-	a.eq_int("no corners left", gs.held_blocks.size(), 0)
+	a.eq_int("no corners left", gs.territory_nodes.size(), 0)
 	a.capacity_respected("after giving every corner back", gs)
 	a.no_negative_soldiers("after giving every corner back", gs)
 	a.eq_int("and the roster is exactly the base capacity",
@@ -597,7 +604,7 @@ func _heat_with_order(order: Array) -> float:
 	a.eq_bool("the unpaid wage took Deshawn (order: %s)" % str(order),
 		gs.is_recruited("deshawn"), false)
 	a.check("and a corner was held to charge heat for (order: %s)" % str(order),
-		not gs.held_blocks.is_empty())
+		not gs.territory_nodes.is_empty())
 	return float(gs.heat)
 
 # --- the save --------------------------------------------------------------
@@ -612,7 +619,7 @@ func _test_save_round_trip() -> void:
 	gm.dispatch("claim_block", {"block_id": DEAREST})
 	gm.dispatch("post_soldier", {"block_id": DEAREST})
 
-	var held_before: int = gs.held_blocks.size()
+	var held_before: int = gs.territory_nodes.size()
 	var idle_before: int = int(gs.soldiers_idle)
 	var total_before: int = gs.soldiers_total()
 	var income_before: int = int(_terr().nightly_income())
@@ -628,20 +635,20 @@ func _test_save_round_trip() -> void:
 	_fresh(0, 0)
 	save_system._apply(restored as Dictionary)
 
-	a.eq_int("held corners survive the round trip", gs.held_blocks.size(), held_before)
+	a.eq_int("held corners survive the round trip", gs.territory_nodes.size(), held_before)
 	a.eq_int("idle soldiers survive the round trip", int(gs.soldiers_idle), idle_before)
 	a.soldiers_conserved("and the roster total is conserved across it", gs, total_before)
 	a.eq_bool("the cheap corner is still held", gs.holds_block(CHEAPEST), true)
 	a.eq_bool("the dear corner is still held", gs.holds_block(DEAREST), true)
 	a.eq_int("posted soldiers survive on the corner they were on",
-		int((gs.held_blocks[DEAREST] as Dictionary).get("soldiers", 0)), 2)
+		int((gs.territory_nodes[DEAREST] as Dictionary).get("soldiers", 0)), 2)
 	a.eq_int("and income is unchanged by the round trip",
 		int(_terr().nightly_income()), income_before)
 	a.capacity_respected("after a load", gs)
 
 	# The defect PR 0 guarded, pinned: a held id with no authored definition
 	# must not kill the night, and must not be counted as earning.
-	gs.held_blocks["ghost_corner"] = {"soldiers": 2}
+	gs.territory_nodes["ghost_corner"] = {"soldiers": 2}
 	a.eq_int("an id with no definition earns nothing",
 		int(_terr().block_income("ghost_corner")), 0)
 	a.eq_int("and does not change what the real corners earn",
@@ -653,9 +660,9 @@ func _test_save_round_trip() -> void:
 
 func _test_screen_reads() -> void:
 	# Turf and Home read Territory through five entry points between them, and
-	# FS-002.3 moves the state under all five. Screen-smoke cannot catch a
-	# break: it runs on a FRESH save where `held_blocks` is empty, so every one
-	# of these paths is skipped and the screens pass without executing.
+	# FS-002.3 moved the state under all five. Screen-smoke cannot catch a
+	# break: it runs on a FRESH save where `territory_nodes` is empty, so every
+	# one of these paths is skipped and the screens pass without executing.
 	#
 	# These are not screen tests. They pin the READS, so PR 3 has something that
 	# fails when it moves the state.
@@ -666,7 +673,7 @@ func _test_screen_reads() -> void:
 	gm.dispatch("post_soldier", {"block_id": DEAREST})
 
 	# turf.gd:25 — the status card.
-	a.eq_int("Turf's HELD count", gs.held_blocks.size(), 2)
+	a.eq_int("Turf's HELD count", gs.territory_nodes.size(), 2)
 	# 6 recruited: 3 standing on corners (1 + 2), 3 still free.
 	a.eq_int("Turf's soldier total", gs.soldiers_total(), 6)
 	a.eq_int("Turf's capacity",
@@ -676,13 +683,13 @@ func _test_screen_reads() -> void:
 
 	# turf.gd:16 — the row list walks the authored table.
 	a.eq_int("Turf renders a row per authored corner",
-		gs.spenard_blocks.size(), 6)
+		DEFS.NODES.size(), 6)
 
 	# home.gd:437 — the mini-map derives a cell from every held corner, and a
 	# canonical node with no `cell` makes the map go dark. Nothing else asserts
 	# this, and PR 3 is where it breaks.
 	var cells_found: int = 0
-	for id in gs.held_blocks.keys():
+	for id in gs.territory_nodes.keys():
 		var b: Dictionary = gs.block_by_id(str(id))
 		if b.is_empty():
 			continue
@@ -697,4 +704,155 @@ func _test_screen_reads() -> void:
 		int(_terr().nightly_income()) > 0)
 
 	# more.gd:128 — the block count.
-	a.eq_int("More's block count", gs.held_blocks.size(), 2)
+	a.eq_int("More's block count", gs.territory_nodes.size(), 2)
+
+# --- FS-002.3: the v15 -> v16 migration --------------------------------------
+#
+# The one-way door. `held_blocks` (spenard_blocks display rows) becomes
+# `territory_nodes` (data/territory_definitions.gd ids) plus `territory_fronts`.
+# Driven through `SaveSystem._migrate()` directly, the same technique
+# `parity_runner.gd`'s `_check_v10_migration` uses — the arm asked in isolation,
+# before a load's `reconcile_persistent_invariants()` can mask a missing one.
+
+func _saves() -> Node:
+	return get_node("/root/SaveSystem")
+
+## A minimal v15 payload: the three required keys plus a `held_blocks` shape a
+## real v15 save could have carried, including the two dead fields
+## (`claimed_day`, `income_collected`) that only existed pre-migration.
+func _v15_payload(held: Dictionary, idle: int = 0) -> Dictionary:
+	return {"day": 20, "cash": 500, "street_name": "Legacy", "soldiers_idle": idle,
+		"held_blocks": held}
+
+func _test_v16_migration() -> void:
+	# One neutral corner, one Curtis-secure corner, both held with a real
+	# soldier count and the two dead fields still on them — exactly what a v15
+	# save looked like.
+	var payload := _v15_payload({
+		"wash_and_go_lot": {"soldiers": 2, "claimed_day": 5, "income_collected": 110},
+		"fourth_ave_strip": {"soldiers": 1, "claimed_day": 12, "income_collected": 80},
+	}, 3)
+	var migrated: Dictionary = _saves()._migrate({"save_version": 15, "state": payload})
+	a.check("the v15 payload migrates", not migrated.is_empty())
+	a.eq_bool("held_blocks does not survive the arm", migrated.has("held_blocks"), false)
+
+	var nodes: Dictionary = migrated.get("territory_nodes", {})
+	a.eq_int("both corners carry over", nodes.size(), 2)
+	a.eq_int("soldiers are preserved on the neutral corner",
+		int((nodes.get("wash_and_go_lot", {}) as Dictionary).get("soldiers", -1)), 2)
+	a.eq_int("soldiers are preserved on the Curtis-secure corner",
+		int((nodes.get("fourth_ave_strip", {}) as Dictionary).get("soldiers", -1)), 1)
+	a.eq_bool("claimed_day does not survive the rename",
+		(nodes.get("wash_and_go_lot", {}) as Dictionary).has("claimed_day"), false)
+	a.eq_bool("income_collected does not survive the rename",
+		(nodes.get("wash_and_go_lot", {}) as Dictionary).has("income_collected"), false)
+
+	# D-6 (docs/DECISIONS.md): a migrated holding is never confiscated, even
+	# where the seeding rule calls this node Curtis-secure. The neutral corner
+	# gets no fronts entry at all — it was never anyone's but the player's.
+	var fronts: Dictionary = migrated.get("territory_fronts", {})
+	a.eq_bool("the neutral corner has no fronts entry", fronts.has("wash_and_go_lot"), false)
+	a.check("the Curtis-secure corner is flagged, not confiscated",
+		fronts.has("fourth_ave_strip"))
+	a.eq_bool("its capture reward is marked already consumed",
+		bool((fronts.get("fourth_ave_strip", {}) as Dictionary)
+			.get("capture_reward_consumed", false)), true)
+	a.eq_bool("and it is flagged contested for a later build to read",
+		bool((fronts.get("fourth_ave_strip", {}) as Dictionary)
+			.get("conflict_active", false)), true)
+
+	# A Curtis-secure node the save never held gets no fronts entry either —
+	# fronts records a MIGRATED capture, not a standing fact about the board.
+	# minnesota_offramp is Curtis-secure and was never in `held`.
+	a.eq_bool("an untouched Curtis-secure corner has no fronts entry",
+		fronts.has("minnesota_offramp"), false)
+	a.eq_bool("and is not migrated as held either",
+		nodes.has("minnesota_offramp"), false)
+
+	# An id the definitions do not carry (86bbjxtab) migrates AS-IS. Dropping it
+	# during migration would be silent data loss before the validator — and its
+	# own coverage — gets a say.
+	var orphan_payload := _v15_payload({"ghost_corner": {"soldiers": 2}}, 0)
+	var orphan_migrated: Dictionary = _saves()._migrate(
+		{"save_version": 15, "state": orphan_payload})
+	var orphan_nodes: Dictionary = orphan_migrated.get("territory_nodes", {})
+	a.check("an orphan id survives the migration rather than being dropped",
+		orphan_nodes.has("ghost_corner"))
+	a.eq_int("with its soldier count intact",
+		int((orphan_nodes.get("ghost_corner", {}) as Dictionary).get("soldiers", -1)), 2)
+
+	# Negative soldiers on a v15 row are clamped at the arm, not trusted through
+	# to the validator.
+	var negative_payload := _v15_payload({"wash_and_go_lot": {"soldiers": -4}}, 0)
+	var negative_migrated: Dictionary = _saves()._migrate(
+		{"save_version": 15, "state": negative_payload})
+	var negative_nodes: Dictionary = negative_migrated.get("territory_nodes", {})
+	a.eq_int("a negative soldier count is clamped to 0 at migration",
+		int((negative_nodes.get("wash_and_go_lot", {}) as Dictionary).get("soldiers", -1)), 0)
+
+	# Soldier conservation across the whole migration — the TOTAL, not just
+	# presence. A malicious or accidental arm could map holdings correctly and
+	# still drop the soldiers standing on them.
+	var conserve_payload := _v15_payload({
+		"spenard_rec_lot": {"soldiers": 2}, "wash_and_go_lot": {"soldiers": 1},
+	}, 4)
+	var conserve_migrated: Dictionary = _saves()._migrate(
+		{"save_version": 15, "state": conserve_payload})
+	var conserve_nodes: Dictionary = conserve_migrated.get("territory_nodes", {})
+	var posted_total := 0
+	for id in conserve_nodes.keys():
+		posted_total += int((conserve_nodes[id] as Dictionary).get("soldiers", 0))
+	a.eq_int("soldier conservation holds across migration (idle + posted)",
+		int(conserve_migrated.get("soldiers_idle", -1)) + posted_total, 4 + 3)
+
+	# And through a REAL load, not just the isolated arm — the same
+	# belt-and-suspenders `_check_v10_migration` applies.
+	var real_gs := gs
+	var saves := _saves()
+	saves.save_run()  # preserve whatever is currently on disk
+	var prior_save := ""
+	if FileAccess.file_exists(saves.SAVE_PATH):
+		var f := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
+		if f != null:
+			prior_save = f.get_as_text()
+			f.close()
+	var payload_str := var_to_str({"save_version": 15, "state": _v15_payload({
+		"wash_and_go_lot": {"soldiers": 1}, "fourth_ave_strip": {"soldiers": 1},
+	}, 2)})
+	var out := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+	if out != null:
+		out.store_string(payload_str)
+		out.close()
+	a.check("a v15 save loads through the real pipeline", saves.load_run())
+	a.eq_int("and lands on both corners", real_gs.territory_nodes.size(), 2)
+	a.capacity_respected("after a real v15 -> v16 load", real_gs)
+	if not prior_save.is_empty():
+		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
+		if restore != null:
+			restore.store_string(prior_save)
+			restore.close()
+	_fresh(100000, 0)
+
+## Hazard #1 from the build prompt, named "the highest-risk line in the build":
+## `soldier_capacity() = 2 + held.size() * 2`, and six nodes are seeded, four of
+## them Curtis-secure. If the compat selector counted NODES rather than
+## PLAYER-HELD nodes, capacity would silently jump 2 -> 14 the moment a save
+## carries the four Curtis-secure definitions without holding any of them.
+func _test_v16_migration_capacity_hazard() -> void:
+	_fresh(100000, 0)
+	a.eq_int("capacity with nothing held is the base, not the board size",
+		gs.soldier_capacity(), int(gs.SOLDIER_BASE_CAPACITY))
+	a.check("the authored board is six nodes, so a size()-based bug would show",
+		DEFS.NODES.size() == 6)
+
+	# The exact hazard scenario: a save with all four Curtis-secure fronts
+	# entries present (from a prior migration) and NOTHING actually held.
+	gs.territory_fronts = {
+		"minnesota_offramp": {"capture_reward_consumed": true, "conflict_active": true},
+		"service_road_chokepoint": {"capture_reward_consumed": true, "conflict_active": true},
+		"fourth_ave_strip": {"capture_reward_consumed": true, "conflict_active": true},
+		"northern_lights_motels": {"capture_reward_consumed": true, "conflict_active": true},
+	}
+	a.eq_int("fronts entries alone do not raise capacity",
+		gs.soldier_capacity(), int(gs.SOLDIER_BASE_CAPACITY))
+	_fresh(100000, 0)

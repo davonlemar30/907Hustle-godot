@@ -92,6 +92,15 @@ jobs:
           godot --headless --path . res://tests/save_validation/save_validation_runner.tscn 2>&1 | tee sv.log
           grep -q "^save_validation: PASS" sv.log
 
+      # FS-002's own harness (`86bbjxtjb`). Seconds rather than the parity
+      # runner's ten minutes, which is the whole reason it is a second suite —
+      # FS-002 has twelve slices of coverage to add and the parity runner is
+      # 20,288 lines. Same PASS-line contract as the other three.
+      - name: Run territory suite
+        run: |
+          godot --headless --path . res://tests/territory/territory_runner.tscn 2>&1 | tee territory.log
+          grep -q "^territory: PASS" territory.log
+
       - name: Run screen smoke
         run: |
           godot --headless --path . res://tests/smoke/screen_smoke.tscn 2>&1 | tee smoke.log
@@ -115,7 +124,7 @@ jobs:
       # above already tee'd, so this adds no runtime.
       - name: No script errors in any harness
         run: |
-          if grep -nE "SCRIPT ERROR|Invalid access" parity.log sv.log smoke.log; then
+          if grep -nE "SCRIPT ERROR|Invalid access" parity.log sv.log territory.log smoke.log; then
             echo "::error::A harness raised a script error. A suite that crashed part-way is not a green suite - see the matched lines above."
             exit 1
           fi

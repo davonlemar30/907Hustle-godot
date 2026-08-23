@@ -300,7 +300,34 @@ tests/parity/         # CI gate: replays recorded oracle fixtures through the
                       # Godot port headless; also runs the save round-trip
   fixtures/outcome_resolver/   # Build 5e: whole actions resolving, not primitives
   fixtures/requirements/       # FS-001.5: the eligibility evaluator, every type
+tests/save_validation/# CI gate: adversarial nested-save shapes through the real
+                      # load-time validator; load-only, never writes a save
+tests/territory/      # CI gate: FS-002's own suite. Seconds, not the parity
+                      # runner's ten minutes, which is why it is separate
+  territory_asserts.gd         # the shared helper every FS-002 slice reuses,
+                               # incl. the market-RNG non-drift assertion
+tests/smoke/          # CI gate: every screen instantiates WITH its script
+                      # attached, and refreshes without raising
 ```
+
+### The four gates
+
+All four run in CI on every push and pull request, and all four are green on
+`main`. The `--script` form does **not** exit in this project; use the scene.
+
+```bash
+godot --headless --path . --scene tests/parity/parity_runner.tscn
+godot --headless --path . --scene tests/save_validation/save_validation_runner.tscn
+godot --headless --path . --scene tests/territory/territory_runner.tscn
+godot --headless --path . --scene tests/smoke/screen_smoke.tscn
+scripts/check_glyph_coverage.py
+```
+
+Each harness prints its own `<name>: PASS` line and CI greps for it, because a
+Godot run that dies part-way still exits 0. CI additionally fails any run whose
+log carries `SCRIPT ERROR` or `Invalid access`: a PASS line only says the checks
+that RAN all passed, and `screen_smoke.gd` calls `refresh()` while ignoring
+every error it raises.
 
 ## Architecture
 

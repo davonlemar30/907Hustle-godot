@@ -19,9 +19,17 @@ extends RefCounted
 ##     block you cannot staff is a pure liability.
 ##   - Holding blocks raises the soldier cap (2 per block), which is what lets
 ##     the operation grow rather than just widen.
+##   - **D-1 (Batch 18 PR 4):** every soldier draws $20 a night, posted or
+##     idle — the same as a crew member draws a wage whether or not they did
+##     anything that day. Widening (a new corner) buys heat AND the payroll
+##     for whoever staffs it; stacking (a second soldier on a corner already
+##     held) buys neither. An unstaffed corner was always a liability for its
+##     heat; now the soldiers standing on nothing are one too.
 ##
-## This is the first income in the game that arrives without an action, which is
-## also the first thing that can outrun the rent.
+## This is the first income in the game that arrives without an action — and,
+## since D-1, the first recurring COST that does too. Before D-1 it was also
+## the first thing that could outrun the rent with nothing on the other side of
+## the ledger; the soldiers standing on the payroll are that other side now.
 ##
 ## Not ported, each 3f's business: police raids on staffed corners (the
 ## `policeRaidChance` / patrol-frequency roll), Curtis pressure and contested
@@ -241,35 +249,85 @@ func nightly_heat() -> float:
 		total += float(gs.block_by_id(str(id)).get("heat_exposure", 0))
 	return total
 
-## Nightly corner income and the heat of holding them. Reads no day at all, so
-## the parameter is accepted and unused — the interface is uniform on purpose.
+## D-1 (86bbjxtfa, Batch 18 PR 4): the recurring cost Territory never had. Read
+## as int, same rounding rule `block_income()` already uses — Territory has
+## never carried a fractional dollar and this does not start.
+func nightly_upkeep() -> int:
+	return gs.soldiers_total() * int(gs.SOLDIER_UPKEEP_PER_NIGHT)
+
+## Nightly corner income, the heat of holding them, and — as of D-1 — the
+## payroll for every soldier on the roster. Reads no day at all, so the
+## parameter is accepted and unused — the interface is uniform on purpose.
+##
+## Runs through the SAME declared step Territory has settled through since
+## FS-003.2 (`SETTLE_ORDER:territory`, right after `SETTLE_ORDER:crew` — the
+## "alongside crew wages" D-1 asks for is that adjacency, already declared).
+## No new phase, no new step name, and definitely no `day_crossed.connect()`:
+## the brief's warning against that pattern is about bypassing the lifecycle
+## entirely, and this was never outside it.
 func settle_night(_ended_day: int) -> void:
-	if gs.game_over or gs.territory_nodes.is_empty():
+	if gs.game_over:
 		return
 
-	var income: int = nightly_income()
-	if income > 0:
-		# TI-003 §6 classifies territory income as criminal: "current criminal
-		# Territory income once its payout caller migrates". This is that caller.
-		_wallet().credit(income, _wallet().DIRTY, {"source_id": "territory_income"})
-		gs.log_activity("The corners brought in $%d." % income, GREEN)
+	# Corner-specific work only runs with a corner to be specific about. This
+	# used to be the function's only early-return condition; it is narrowed to
+	# a guard around just this block, because upkeep (below) must still run for
+	# a soldier recruited before any corner is ever claimed — the exact
+	# "over-extended" case D-1 exists to price.
+	if not gs.territory_nodes.is_empty():
+		var income: int = nightly_income()
+		if income > 0:
+			# TI-003 §6 classifies territory income as criminal: "current criminal
+			# Territory income once its payout caller migrates". This is that caller.
+			_wallet().credit(income, _wallet().DIRTY, {"source_id": "territory_income"})
+			gs.log_activity("The corners brought in $%d." % income, GREEN)
 
-	# Deshawn damps this the same way he damps a stickup — it is heat the
-	# operation generates, and it routes through the same multiplier. HeatSystem
-	# fetches him now, so this no longer does.
-	#
-	# No family: holding corners is not one of TI-003 §7's three, so it scales
-	# by Deshawn and by nothing else — the scaling this line already had. Passed
-	# as `FAMILY_NONE` rather than as a bare "" so the exemption is named at both
-	# ends and cannot be re-derived from a dictionary miss (86bbjxtbm).
-	var raw: float = nightly_heat()
-	if raw > 0.0:
-		_heat().apply_gain(raw, _heat().FAMILY_NONE, gs.current_district_id,
-			{"source_id": "territory_nightly"})
+		# Deshawn damps this the same way he damps a stickup — it is heat the
+		# operation generates, and it routes through the same multiplier. HeatSystem
+		# fetches him now, so this no longer does.
+		#
+		# No family: holding corners is not one of TI-003 §7's three, so it scales
+		# by Deshawn and by nothing else — the scaling this line already had. Passed
+		# as `FAMILY_NONE` rather than as a bare "" so the exemption is named at both
+		# ends and cannot be re-derived from a dictionary miss (86bbjxtbm).
+		var raw: float = nightly_heat()
+		if raw > 0.0:
+			_heat().apply_gain(raw, _heat().FAMILY_NONE, gs.current_district_id,
+				{"source_id": "territory_nightly"})
 
-	var unstaffed: Array = []
-	for id in gs.territory_nodes.keys():
-		if int(gs.territory_nodes[id].get("soldiers", 0)) <= 0:
-			unstaffed.append(_block_name(str(id)))
-	if not unstaffed.is_empty():
-		gs.log_activity("%s sat empty. Still yours, still noticed." % ", ".join(unstaffed), RED)
+		var unstaffed: Array = []
+		for id in gs.territory_nodes.keys():
+			if int(gs.territory_nodes[id].get("soldiers", 0)) <= 0:
+				unstaffed.append(_block_name(str(id)))
+		if not unstaffed.is_empty():
+			gs.log_activity("%s sat empty. Still yours, still noticed." % ", ".join(unstaffed), RED)
+
+	_settle_upkeep()
+
+## Pays what it can, rather than refusing outright the way `_wallet().spend()`
+## does everywhere else in this file. Every other call site in `territory.gd`
+## checks a blocker before spending — `wallet.gd`'s own docs say a refusal
+## there means a blocker was missed, not that a player was refused — and that
+## contract does not fit an AUTOMATIC nightly charge with no blocker to check.
+## Every other nightly obligation in the build (rent, the phone bill) is
+## player-initiated with a due date and a miss penalty rather than a forced
+## deduction; inventing that same debt-and-consequence machinery for one
+## upkeep line is a bigger change than D-1 asks for. So this is the smallest
+## honest thing an automatic charge can do when the till is short: take
+## whatever is there, log the shortfall, and stop — no debt, no departure, no
+## grace period. FS-002.4/.5 can build a real consequence on top of this if the
+## ruling later wants one; nothing here forecloses it.
+func _settle_upkeep() -> void:
+	var soldiers: int = gs.soldiers_total()
+	if soldiers <= 0:
+		return
+	var owed: int = nightly_upkeep()
+	var paid: int = mini(owed, int(gs.cash))
+	if paid <= 0:
+		gs.log_activity("Nothing left for %d soldiers' upkeep tonight." % soldiers, RED)
+		return
+	_wallet().spend(paid, _wallet().ROUTINE_DIRTY_FIRST, {"source_id": "territory_upkeep"})
+	if paid < owed:
+		gs.log_activity("Paid $%d of $%d owed in soldier upkeep — nothing left." % [paid, owed], RED)
+	else:
+		gs.log_activity("$%d in upkeep for %d soldiers." % [paid, soldiers], AMBER)

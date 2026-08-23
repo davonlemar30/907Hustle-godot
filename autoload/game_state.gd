@@ -1099,6 +1099,13 @@ const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 const SOLDIER_RECRUIT_COST := 140
 const SOLDIER_BASE_CAPACITY := 2
 const SOLDIER_CAPACITY_PER_BLOCK := 2
+## D-1 (`86bbjxtfa`, Batch 18 PR 4): the missing rule, not a balance tweak.
+## Territory shipped with a one-time recruit cost and no recurring one — every
+## other earner in the build spends a slot or draws a wage; a soldier drew
+## neither. $20/soldier/night, charged on the full roster
+## (`soldiers_total()` — idle AND posted), the same way a crew wage is charged
+## whether or not that member did anything today. See `territory.gd:settle_night`.
+const SOLDIER_UPKEEP_PER_NIGHT := 20
 ## Canon SOLDIER_INCOME_BASE_DIMINISH — the second soldier on a corner earns
 ## 85% of the first, the third 85% of that.
 const SOLDIER_INCOME_DIMINISH := 0.85

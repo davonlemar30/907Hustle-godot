@@ -122,8 +122,9 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## undiscovered and has to be found through play, the same as for a fresh run --
 ## the call the v11 arm made about the Night Owl and the v13 arm made about
 ## `jobs_discovered`, for the same reason.
-const SAVE_VERSION := 15
+const SAVE_VERSION := 16
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
+const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
 ## Every mutable GameState field, captured and applied by name. products.price
 ## is the one mutable value living inside a canon table; it rides separately as
@@ -161,8 +162,8 @@ const PERSIST_FIELDS: Array[String] = [
 	"boost_fence_standing", "boost_daily_hits",
 	# Named Crew Operations (v7)
 	"crew_assignments", "crew_operation_state",
-	# Crew + territory
-	"crew_records", "held_blocks", "soldiers_idle",
+	# Crew + territory (territory_nodes/territory_fronts: v16, FS-002.3)
+	"crew_records", "territory_nodes", "territory_fronts", "soldiers_idle",
 	# Exposure substrate
 	"npc_ledgers", "observation_queue",
 	# Curtis awareness
@@ -593,6 +594,62 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# you are banned from does not un-ban you, and the blocker still
 				# refuses it in the order it always did.
 				pass
+			15:
+				# v15 -> v16: FS-002.3's canonical Territory state. `held_blocks`
+				# (keyed off `spenard_blocks` display rows) becomes
+				# `territory_nodes` (keyed off `data/territory_definitions.gd`
+				# ids) plus `territory_fronts`. Same ids either way — the six
+				# corners never got a second naming scheme — so this is a field
+				# rename and a prune, not a re-keying.
+				#
+				# Dropped per holding: `claimed_day` and `income_collected`.
+				# Both are dead. `income_collected` is written once at claim and
+				# read nowhere — PR 1's audit of `86bbjxtjb` found the only other
+				# write in the whole build was a save fixture setting up a
+				# round-trip test. `claimed_day` backs no mechanic that exists.
+				# Carrying a dead field into a new field name is how a migration
+				# invents a THIRD truth while retiring the second.
+				#
+				# Soldiers are preserved exactly, clamped non-negative — this arm
+				# trusts a save no further than that; `save_validator.gd` is the
+				# load-time backstop for anything worse (a non-Dictionary row, a
+				# String where soldiers should be).
+				#
+				# An id the definitions do not carry (an orphan, 86bbjxtab)
+				# migrates AS-IS rather than being dropped here. Dropping it here
+				# would be silent data loss on every load, before the validator
+				# — and its own test coverage — ever gets a say. The validator
+				# drops it instead, where the decision shows up in `repairs`.
+				var old_blocks: Variant = state.get("held_blocks")
+				var new_nodes: Dictionary = {}
+				var new_fronts: Dictionary = {}
+				if old_blocks is Dictionary:
+					for block_id in (old_blocks as Dictionary).keys():
+						var rec: Variant = (old_blocks as Dictionary)[block_id]
+						if not (rec is Dictionary):
+							continue
+						var soldiers_value: Variant = (rec as Dictionary).get("soldiers", 0)
+						var soldiers: int = int(soldiers_value) 							if (soldiers_value is int or soldiers_value is float) else 0
+						new_nodes[str(block_id)] = {"soldiers": maxi(0, soldiers)}
+						var def: Dictionary = TERRITORY_DEFS.by_id(str(block_id))
+						if str(def.get("starting_owner", "")) == TERRITORY_DEFS.OWNER_CURTIS:
+							# D-6 (FS-002.3, docs/DECISIONS.md): a migrated
+							# holding is never confiscated, even where the
+							# seeding rule says this node starts Curtis-secure.
+							# The player already had it — the capture already
+							# happened, off camera, before this build could
+							# describe it. The capture reward a real FS-002.4/.5
+							# takeover will attach is marked spent so it cannot
+							# be claimed twice for a corner already free, and the
+							# node is flagged contested so a later build can
+							# tell this apart from a corner nobody has touched.
+							new_fronts[str(block_id)] = {
+								"capture_reward_consumed": true,
+								"conflict_active": true,
+							}
+				state["territory_nodes"] = new_nodes
+				state["territory_fronts"] = new_fronts
+				state.erase("held_blocks")
 			_:
 				return {}
 		version += 1

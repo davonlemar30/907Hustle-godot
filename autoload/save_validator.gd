@@ -4,15 +4,20 @@ extends RefCounted
 ## no tree, and a repair table belongs with the data it describes.
 const GAME_STATE := preload("res://autoload/game_state.gd")
 ## The wander ramp's authored numbers, for the clamp that keeps a corrupt save
-## from pinning the discovery roll at its cap. The only preload from `data/` in
-## this directory, and it is here because the clamp has to agree with the ramp.
+## from pinning the discovery roll at its cap. It is here because the clamp
+## has to agree with the ramp.
 const WANDER_EVENTS := preload("res://data/wander_events.gd")
+## The Territory board, for `_validate_territory_nodes` — the arm FS-002.3
+## added as the root-cause fix for `86bbjxtab` (an unknown territory id
+## silently killing nightly settlement). Nothing validated the ids in a loaded
+## `held_blocks`/`territory_nodes` before this.
+const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 ## Nested save-shape repair for load-time payloads.
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v15. Older saves are
-## migrated before this validator runs, so every arm below reads a v15 shape.
+## repaired payload back to disk. The save schema is v16. Older saves are
+## migrated before this validator runs, so every arm below reads a v16 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -39,6 +44,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_heat_day(state, repairs)
 	_validate_wander(state, repairs)
 	_validate_boost_discovery(state, repairs)
+	_validate_territory_nodes(state, repairs)
 	return {"state": state, "repairs": repairs}
 
 func _repair(repairs: Array[String], path: String, reason: String) -> void:
@@ -683,6 +689,67 @@ func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> voi
 			continue
 		cleaned.append(str(entry))
 	state["boost_targets_discovered"] = cleaned
+
+## v16 (FS-002.3). Drop rows whose id the authored board does not carry, clamp
+## soldiers non-negative, and cap a posted sum that exceeds the capacity those
+## same (cleaned) rows would grant — a corrupted save is not trusted to prove
+## its own capacity is real. Load-only, no write-back, following
+## `_validate_boost_discovery`'s shape.
+func _validate_territory_nodes(state: Dictionary, repairs: Array[String]) -> void:
+	if state.has("territory_nodes"):
+		if not state["territory_nodes"] is Dictionary:
+			state["territory_nodes"] = {}
+			_repair(repairs, "territory_nodes", "wrong type; defaulted")
+		else:
+			var nodes: Dictionary = state["territory_nodes"]
+			# Sorted so the capacity clamp below runs in a deterministic order —
+			# which row eats an over-capacity cut must not depend on Dictionary
+			# iteration order, which GDScript does not promise across payloads.
+			var ids: Array = nodes.keys()
+			ids.sort()
+			var cleaned: Dictionary = {}
+			for node_id in ids:
+				var path := "territory_nodes.%s" % str(node_id)
+				var row: Variant = nodes[node_id]
+				if not TERRITORY_DEFS.has_id(str(node_id)):
+					_repair(repairs, path, "no such territory node; dropped")
+					continue
+				if not row is Dictionary:
+					_repair(repairs, path, "wrong type; dropped")
+					continue
+				var clean_row: Dictionary = (row as Dictionary).duplicate(true)
+				_int(clean_row, "soldiers", 0, path + ".soldiers", repairs)
+				if int(clean_row["soldiers"]) < 0:
+					clean_row["soldiers"] = 0
+					_repair(repairs, path + ".soldiers", "negative; repaired to 0")
+				cleaned[str(node_id)] = clean_row
+			# Capacity, computed off the CLEANED set — a corrupted board must not
+			# be able to claim a capacity larger than the corners it actually has
+			# left once the unrecognised rows above are already gone.
+			var capacity: int = int(GAME_STATE.SOLDIER_BASE_CAPACITY) 				+ cleaned.size() * int(GAME_STATE.SOLDIER_CAPACITY_PER_BLOCK)
+			var running: int = 0
+			for node_id in cleaned.keys():
+				var clean_row: Dictionary = cleaned[node_id]
+				var posted: int = int(clean_row["soldiers"])
+				var allowed: int = maxi(0, capacity - running)
+				if posted > allowed:
+					clean_row["soldiers"] = allowed
+					_repair(repairs, "territory_nodes.%s.soldiers" % str(node_id),
+						"posted sum exceeded capacity; capped")
+					posted = allowed
+				running += posted
+			state["territory_nodes"] = cleaned
+	# `soldiers_idle`: a top-level scalar, repaired the same way
+	# `_validate_heat_day` repairs a negative gain.
+	if state.has("soldiers_idle"):
+		if not (state["soldiers_idle"] is int or state["soldiers_idle"] is float):
+			state["soldiers_idle"] = 0
+			_repair(repairs, "soldiers_idle", "wrong type; defaulted")
+		elif int(state["soldiers_idle"]) < 0:
+			state["soldiers_idle"] = 0
+			_repair(repairs, "soldiers_idle", "negative; repaired to 0")
+		else:
+			state["soldiers_idle"] = int(state["soldiers_idle"])
 
 func _validate_arrest_record(state: Dictionary, repairs: Array[String]) -> void:
 	if not state.has("arrest_record"):

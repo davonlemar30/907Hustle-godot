@@ -125,7 +125,7 @@ func _build_body() -> void:
 ## size the status reads as a stat line where "1 BLOCKS" looks like a defect.
 ## Pluralised here, and recorded rather than silently corrected.
 func _ops_summary() -> String:
-	var blocks: int = gs.held_blocks.size()
+	var blocks: int = gs.territory_nodes.size()
 	var soldiers: int = gs.soldiers_total()
 	return "%d %s · %d %s" % [
 		blocks, "block" if blocks == 1 else "blocks",

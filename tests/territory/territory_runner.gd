@@ -46,7 +46,7 @@ extends Node
 const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
 
 ## The check floor. See `_ready()` for why a count is a gate.
-const MIN_CHECKS := 118
+const MIN_CHECKS := 134
 
 var a: RefCounted
 var gs: Node
@@ -72,6 +72,7 @@ func _ready() -> void:
 	_test_soldier_conservation()
 	_test_capacity_invariant()
 	_test_market_cursor_untouched()
+	_test_settlement_order_reason()
 	_test_save_round_trip()
 	_test_screen_reads()
 
@@ -497,6 +498,107 @@ func _test_market_cursor_untouched() -> void:
 		func() -> void: _terr().settle_night(int(gs.day)))
 	a.market_cursor_unchanged("abandoning does not move the market stream", gs,
 		func() -> void: gm.dispatch("abandon_block", {"block_id": DEAREST}))
+
+# --- D-5: why crew settles before territory ---------------------------------
+
+## The documented reason was false in three files and the ordering is still
+## right. This proves both halves, because prose that has been wrong for four
+## batches does not get to be the only record.
+##
+## Claim A (the false one): "territory income is computed off crew power."
+## Claim B (the real one):  crew-before-territory decides what the night COSTS,
+##                          because a Deshawn who departs tonight no longer
+##                          damps tonight's corner heat.
+func _test_settlement_order_reason() -> void:
+	# --- A. Territory income does not read crew power at all.
+	#
+	# Behavioural, not a grep: set `crew_power` to wildly different values and
+	# the corners earn exactly the same. If income were computed off it — the
+	# claim `day_lifecycle.gd`, `time_system.gd` and `crew.gd` all carried —
+	# this would be impossible.
+	_fresh(100000, 0)
+	gs.soldiers_idle = 4
+	gm.dispatch("claim_block", {"block_id": DEAREST})
+	gm.dispatch("post_soldier", {"block_id": DEAREST})
+	gs.crew_power = 0
+	var at_zero: int = int(_terr().nightly_income())
+	gs.crew_power = 999
+	var at_max: int = int(_terr().nightly_income())
+	a.eq_int("corner income is identical at crew power 0 and 999", at_zero, at_max)
+	a.check("and it is not zero, so the comparison means something", at_zero > 0)
+
+	# --- B. The ordering decides the night's HEAT, through Deshawn.
+	#
+	# One Deshawn, one unpaid wage past the grace period and loyalty already on
+	# the floor, so `crew.settle_night()` marks him departed. Then the same
+	# night settled both ways round.
+	var scaled_first: float = _heat_with_order(["territory", "crew"])
+	var crew_first: float = _heat_with_order(["crew", "territory"])
+
+	a.check("settling crew first costs MORE corner heat (%f vs %f)"
+		% [crew_first, scaled_first], crew_first > scaled_first)
+	a.near("because a departed Deshawn damps nothing", crew_first,
+		_terr_raw_heat_for_order_test())
+	a.check("and settling territory first would have let him damp it one last time",
+		scaled_first < _terr_raw_heat_for_order_test())
+
+	# And the SHIPPED order is the one that costs more.
+	#
+	# Driven off `SETTLE_ORDER` itself rather than off a literal, so swapping
+	# crew and territory in that constant changes this MEASUREMENT and not just
+	# an index comparison. That is the difference between asserting the reason
+	# and asserting the trace: the first sabotage run of this file only tripped
+	# the index check, which would still pass if the ordering stopped mattering.
+	var lifecycle: Object = gm.system("day_lifecycle")
+	var order: Array = lifecycle.SETTLE_ORDER
+	var as_shipped: float = _heat_with_order(order)
+	a.near("settling in the shipped SETTLE_ORDER costs the undamped heat",
+		as_shipped, _terr_raw_heat_for_order_test())
+	a.check("which is strictly more than settling territory first would (%f vs %f)"
+		% [as_shipped, scaled_first], as_shipped > scaled_first)
+	a.check("SETTLE_ORDER ships crew before territory",
+		order.find("crew") < order.find("territory"))
+	a.check("and jobs and obligations run LAST, which HANDOFF.md denied for four batches",
+		order.find("jobs") > order.find("territory")
+			and order.find("obligations") == order.size() - 1)
+
+## The raw holding heat for the order test's board, before any multiplier.
+func _terr_raw_heat_for_order_test() -> float:
+	return float(_block(DEAREST)["heat_exposure"])
+
+## Settle one night with Deshawn one missed wage from walking, in the given
+## order, and return the heat that landed.
+func _heat_with_order(order: Array) -> float:
+	_fresh(100000, 0)
+	gs.soldiers_idle = 2
+	gm.dispatch("claim_block", {"block_id": DEAREST})
+	# Far enough into the run that `wage_missed_since` can be a real past day.
+	# A NEGATIVE one reads as "unset" at `crew.gd:335` and is overwritten with
+	# tonight, which resets the grace window and means he never departs — which
+	# is how the first version of this check quietly measured nothing.
+	gs.day = 10
+	gm.dispatch("claim_block", {"block_id": DEAREST})
+	# On the floor and already past the grace window, so tonight's unpaid wage
+	# is the one that takes him.
+	gs.crew_records["deshawn"] = {"recruited": true, "status": "active",
+		"tier": 3, "loyalty": int(gs.CREW_LOYALTY_MIN) + 1, "wage_due": 500,
+		"wage_missed_since": int(gs.day) - int(gs.CREW_WAGE_GRACE_DAYS) - 1}
+	gs.cash = 0
+	gs.clean_cash = 0
+	gs.dirty_cash = 0
+	gs.heat = 0.0
+	for system_name in order:
+		var system: Object = gm.system(str(system_name))
+		if system != null and system.has_method("settle_night"):
+			system.settle_night(int(gs.day))
+	# The premise guard. Without it this helper reports a number whether or not
+	# the departure it is built on ever happened, and a comparison between two
+	# runs that both did nothing passes for the wrong reason.
+	a.eq_bool("the unpaid wage took Deshawn (order: %s)" % str(order),
+		gs.is_recruited("deshawn"), false)
+	a.check("and a corner was held to charge heat for (order: %s)" % str(order),
+		not gs.held_blocks.is_empty())
+	return float(gs.heat)
 
 # --- the save --------------------------------------------------------------
 

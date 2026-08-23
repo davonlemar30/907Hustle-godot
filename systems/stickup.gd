@@ -97,7 +97,10 @@ func setup(game_state: Node, rng_manager: Node, time: RefCounted, manager: Node,
 	time_system = time
 	gm = manager
 	attributes = attribute_system
-	gs.day_crossed.connect(_on_day_crossed)
+	# Driven by DayLifecycle in declared order (`DAY_START_ORDER:stickup_day_reset`).
+	# This used to be `gs.day_crossed.connect(_on_day_crossed)` — the exact
+	# pattern day_lifecycle.gd exists to abolish, surviving in one of the two
+	# places the ordering contract names. See `day_reset()` below.
 
 ## Canon scales generated heat by DESHAWN_HEAT_REDUCTION when he is on the crew.
 ## Returns the heat actually applied.
@@ -461,7 +464,23 @@ func _open_booking(target: Dictionary, tier_name: String, cause_id: String,
 	})
 	return {"ok": true}
 
-func _on_day_crossed() -> void:
+## The two-a-day cap, reset for the new day.
+##
+## A declared DAY_START step rather than a `day_crossed` handler, and the
+## difference is the whole reason `day_lifecycle.gd` exists: a signal runs at
+## whatever position in the handler list its `connect()` call happened to
+## occupy, which nothing declares and nothing tests. Moving a line in
+## `GameManager._ready()` used to be able to reorder this silently.
+##
+## It also moved LATER, from MARKET to DAY_START, and that is correct rather
+## than incidental: the count is a fact about what has already happened today,
+## the same shape as `heat_gain_today` and `wanders_today`, and those are
+## cleared at the start of the new day rather than in the middle of the night's
+## bookkeeping. Nothing between the two positions reads it.
+##
+## Takes the day for interface uniformity with every other step, and does not
+## use it — the cap is a count, not a date.
+func day_reset(_today: int) -> void:
 	gs.stick_daily_count = 0
 
 ## Damage after Tone. Forwarded rather than reached for inline so both of this

@@ -290,7 +290,13 @@ func has_field_crew() -> bool:
 
 ## The nightly wage clock, settled FIRST in the declared order: canon settles
 ## wages before anything reads whether they were paid, and an unpaid crew is
-## worth less power — which territory income is computed off.
+## worth less power.
+##
+## This used to add "— which territory income is computed off", and that was
+## false. `systems/territory.gd` never reads `crew_power`; `crew_power` is read
+## by the HUD, the Crew screen and the save, and by nothing that settles. What
+## settling first actually decides is Territory's HEAT, because a member marked
+## departed below is a Deshawn who no longer damps it. (D-5, 2026-08-23.)
 ##
 ## **`settling_day` is `ended_day + 1`, and that is deliberate.**
 ##

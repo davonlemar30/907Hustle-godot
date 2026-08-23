@@ -6189,6 +6189,162 @@ is what makes "unreachable" the right word rather than "unavailable".
 
 ---
 
+## Batch 18 PR 0: the ground under the war  (added 2026-08-23)
+
+Seven defects the 2026-08-23 studio pass found on `main`. None of them are
+FS-002 work. All of them make FS-002 more dangerous if left, because FS-002.3
+introduces a second territory id namespace and a migration between them — and
+five of the seven are on that path.
+
+Five shipped. Two are balance rulings rather than defects and were escalated
+rather than guessed at; see **Escalated, not fixed** below.
+
+### An unknown territory id silently killed the night  (`86bbjxtab`)
+
+`gs.block_by_id()` returns `{}` for an id the authored table does not carry, and
+three sites in `territory.gd` indexed straight into it. `["name"]` on an empty
+Dictionary is `Invalid access` — Godot logs it to stderr, aborts the function,
+and carries on. So `settle_night` died part-way through, every night, and the
+player saw corners stop paying with no error on a board that still read
+`6 HELD`.
+
+`turf.gd` made it worse in the precise way that matters: it renders by iterating
+the AUTHORED table, so a held id with no definition had no row and therefore no
+`GIVE IT UP` button. Invisible and unabandonable is the worst pair of properties
+a liability can have.
+
+Three fixes, and the shape of each is "make the read total":
+
+- `_block_name()` falls back to the id, so the log line names something.
+- `block_income()` returns 0 for an id with no definition rather than reaching
+  for `["earning"]`.
+- `turf.gd` grows an `UNRECOGNISED` section listing held ids with no definition,
+  each with the one button the player needs.
+
+A held row CAN outlive its definition today — a save carries `held_blocks`
+verbatim and **nothing validates the ids in it**. That last part is the root
+cause and it is not fixed here: `save_validator.gd` has no territory arm at all,
+and adding the first one belongs with the definitions file in PR 3, where there
+is something to validate against.
+
+### The parity suite could delete the developer's save file  (`86bbjxtaw`)
+
+`parity_runner.gd` snapshots `user://907hustle_run.save` before the economy
+profiles trample it and restores it after. It decided whether there had BEEN a
+save by asking whether the snapshot string was empty — which collapses two
+different facts. A save that was unreadable (locked, or open in another process)
+and a save that was legitimately zero bytes both produced `""`, and the restore
+arm reads `""` as "there was none" and answers by removing the file.
+
+`had_save` and `read_save` are now separate booleans. Only an absence this run
+actually observed earns a delete, and a file this run could not read is left
+exactly where it is.
+
+### Soldiers could permanently exceed capacity  (`86bbjxtb6`)
+
+Capacity is `2 + 2 x blocks`. Every path that RAISES the soldier count checks
+it. `_abandon` LOWERS the cap by 2 and hands the corner's soldiers back, and it
+checked nothing: hold 3, recruit to 8, abandon all 3, and you have 8 soldiers
+standing under a capacity of 2, forever, because no other path can bring it
+down.
+
+The excess now walks — `_discharge_over_capacity()`, called from the one path
+that shrinks the cap. Discharging rather than refusing the abandon, because a
+player who over-recruited must still be able to shrink, and a corner you cannot
+give up is a worse rule than a soldier you cannot keep. The cap itself is
+unchanged and stays the single truth; this is the one path that was not reading
+it.
+
+FS-002.5 adds involuntary soldier loss, which is what stops this being a
+constructed edge case.
+
+### Two smaller ones  (`86bbjxtbm`)
+
+**`name_entry.gd` wrote GameState directly.** `gs.street_name = chosen` and
+`gs.reset_to_new_game()`, on the first screen of the game — the one path that
+bypassed the action layer. It mattered more than its size suggests:
+`GameManager.is_dispatching()` is the ownership guard the Exposure and Curtis
+persisted mutators check, and it read **false** through the largest single write
+in the build. A guard that is off during that write is a decoration.
+
+`systems/run_start.gd` owns `start_run` now. Two things fell out for free: the
+name is sanitised in the system rather than only on the screen, so a direct
+dispatch cannot start a nameless run; and **a new run is autosaved when it
+starts**, because `SaveSystem` autosaves off `state_changed` and nothing on the
+naming path emitted it. Quitting between the opening screen and the first tap
+used to lose the run. That was never designed; it was the same missing dispatch.
+
+**Territory applied heat with an empty family string.** `apply_gain(raw, "", ...)`.
+`district_multiplier()` looks the family up in the district's row and defaults a
+miss to 1.0, so an empty family missed every row and returned neutral. The
+behaviour was right and the reason was an accident: the day somebody gives that
+lookup a sensible default — the district's own average, say, which is the
+obvious thing to reach for — corner heat silently starts scaling by wherever the
+player happened to be standing at midnight, and nothing fails.
+
+So the exemption is a rule with a name now. `HeatSystem.FAMILY_NONE` and a guard
+in `_gain_multiplier()` that skips district scaling for it. Behaviour is
+identical today, which the unchanged parity count is the proof of.
+
+### The CI gates  (`86bbjxthk`)
+
+Three one-line changes that protect everything after them.
+
+- **`grep -q "^parity: PASS"`.** Parity was the only one of the three harnesses
+  without it. A Godot run that dies part-way still exits 0.
+- **`timeout-minutes` on every job.** A parse error in `parity_runner.gd` HANGS
+  rather than fails, so an un-timed job on a broken script burns the runner's
+  full six-hour default before anybody learns anything.
+- **A crash gate.** `screen_smoke.gd` calls `refresh()` on every screen and
+  ignores every error it raises: a runtime fault goes to stderr, the screen
+  still counts as instantiated, and the run still exits 0. Any harness log
+  carrying `SCRIPT ERROR` or `Invalid access` now fails the job.
+
+That third one is the reason `86bbjxtab` coexisted with 12,499 green checks and
+24/24 screens. **A PASS line only says the checks that RAN all passed.**
+
+### Sabotage log
+
+Reverse sabotage, which is the honest direction for a defect fix: remove the
+guard, prove the fault it was added for is real and that the new gate sees it.
+
+| removed | observed |
+| --- | --- |
+| `_block_name()` fallback in the unstaffed roll-call | `SCRIPT ERROR: Invalid access to property or key 'name' on a base object of type 'Dictionary'` — and the run continued and exited 0 |
+| `b.is_empty()` guard in `block_income()` | `SCRIPT ERROR: Invalid access to property or key 'earning' ...` at `territory.gd:228`, three times in one settlement |
+| — | both strings are what the new crash gate greps for; neither appears in a clean run of any of the three harnesses |
+
+The capacity fix and the dispatch fix were verified forward: hold 3 / recruit to
+8 / abandon 3 leaves `total=2 cap=2` with the invariant holding, and
+`start_run` dispatches, sanitises `"  Dispatched  "` and refuses `"!!!"`.
+
+**None of these five has a permanent regression test yet.** `tests/territory/`
+is PR 1's blocking prerequisite (`86bbjxtjb`) and the two invariants this batch
+made true — soldier conservation and the capacity rule — are named in PR 1's
+scope. Until that lands, the guards are proven but not pinned.
+
+### Escalated, not fixed
+
+Two of the seven are balance rulings wearing a defect's clothes. Both are
+recorded in `docs/DECISIONS.md` when PR 5 creates it; neither was guessed at.
+
+**`86bbjk6kk` — Boost tier-3 Run failure arrests unconditionally.** It does, and
+it does so because `data/consequence_rules.gd:132-135` transcribes FS-003 §5:
+*"Arrest occurs only when pre-encounter Global Heat > 6 or the target is Tier
+3."* The code implements the approved spec exactly. Changing it amends FS-003
+§5, which is a design ruling and not a fix. **Divergence Protocol invoked.**
+
+**`86bbjkccu` — Pherris's wage exceeds her delegated return at rank 2.** Rank 2
+costs $120/day (`crew_roster` wage curve `[60, 120, 220]`) and raises her cycle
+cap from 1 to 2 (`CREW_CAPABILITIES.pherris.max_cycles_by_rank`). Whether two
+cycles of listing margin clears $120 is a measured question, and every available
+fix — the wage curve, the cycle curve, the margin — is a **tune**. "Report, do
+not tune" is this build's standing rule and Build 18's own PR 4 restates it.
+
+Neither ticket could be read directly: the ClickUp connector is unauthenticated
+in this session, so the tickets' own comments — which may already carry a ruling
+— were not available. Both need a human answer before they can ship.
+
 ## Batch 17: the corner, measured  (added 2026-08-23)
 
 Territory shipped in Phase 3e. Six corners, soldiers, nightly income, nightly

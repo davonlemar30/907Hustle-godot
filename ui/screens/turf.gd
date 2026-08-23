@@ -16,6 +16,36 @@ func _build_body() -> void:
 	for b in gs.spenard_blocks:
 		body.add_child(_block_row(sys, b))
 
+	# A corner you hold that the authored table does not carry (86bbjxtab).
+	# The loop above walks the TABLE, so a held id with no definition rendered
+	# nowhere: it counted in "6 HELD", it charged heat every night, and it had
+	# no row and therefore no GIVE IT UP button. Invisible and unabandonable is
+	# the worst pair of properties a liability can have.
+	var orphans: Array = []
+	for id in gs.held_blocks.keys():
+		if gs.block_by_id(str(id)).is_empty():
+			orphans.append(str(id))
+	if not orphans.is_empty():
+		orphans.sort()
+		body.add_child(section("UNRECOGNISED"))
+		for id in orphans:
+			body.add_child(_orphan_row(str(id)))
+
+## A held id with no definition. Earns nothing (`block_income` returns 0 for it)
+## and can only be given up, which is the one thing the player needs to do with
+## it. Deliberately plain: this is a fault state, not a feature.
+func _orphan_row(id: String) -> Control:
+	var c := card()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 5)
+	c.add_child(v)
+	v.add_child(label(id, "CardTitle", 13, RED))
+	var n: int = int((gs.held_blocks[id] as Dictionary).get("soldiers", 0))
+	v.add_child(label("%d posted  ·  earning nothing  ·  this corner is not on the map any more"
+		% n, "Muted", 11, RED, true))
+	v.add_child(button("GIVE IT UP", false, _on_abandon.bind(id), 40))
+	return c
+
 func _status_card(sys: Object) -> Control:
 	var c := card()
 	var v := VBoxContainer.new()

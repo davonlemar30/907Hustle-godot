@@ -11,6 +11,9 @@ extends Control
 
 @onready var gs: Node = get_node("/root/GameState")
 @onready var nav: Node = get_node("/root/ScreenManager")
+## The action layer. This screen reads `gs` for the sanitiser that greys the
+## button and dispatches for everything that writes — see `_on_begin`.
+@onready var _gm: Node = get_node("/root/GameManager")
 
 @onready var _name: LineEdit = $Pad/V/Name
 @onready var _begin: Button = $Pad/V/Begin
@@ -62,12 +65,15 @@ func _on_text_changed(_t: String) -> void:
 func _refresh_begin() -> void:
 	_begin.disabled = gs.sanitize_street_name(_name.text).is_empty()
 
+## Through dispatch, like every other write in the build (86bbjxtbm). This
+## screen used to set `gs.street_name` and call `gs.reset_to_new_game()` itself
+## — the one path in the game that bypassed the action layer, and the one where
+## `is_dispatching()` therefore read false through the largest write there is.
+## `systems/run_start.gd` owns it now; the name is sanitised there too, so this
+## screen no longer holds the only copy of the rule.
 func _on_begin() -> void:
-	var chosen: String = gs.sanitize_street_name(_name.text)
-	if chosen.is_empty():
+	if not _gm.dispatch("start_run", {"street_name": _name.text}):
 		return
-	gs.street_name = chosen
-	gs.reset_to_new_game()
 	# Through the opening rather than straight to Home (batch 15). This is the
 	# ONE route to that screen, which is what makes "shown once per run" a
 	# property of the flow rather than a flag somebody has to remember to clear:

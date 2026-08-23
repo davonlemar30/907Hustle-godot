@@ -22,6 +22,13 @@ func _ready() -> void:
 	attributes.setup(_gs)
 	register_system("attributes", attributes)
 
+	# The run's first instant. No collaborators at all, so it is built early and
+	# its position says nothing — see systems/run_start.gd for why it is a
+	# system rather than two lines on the naming screen.
+	var run_start = preload("res://systems/run_start.gd").new()
+	run_start.setup(_gs)
+	register_system("run", run_start)
+
 	# The outcome resolver is pure — no GameState handle at all — and every
 	# risky surface reaches it, so it is built alongside attributes rather than
 	# next to any one of its callers.

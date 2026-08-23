@@ -1740,13 +1740,29 @@ func _check_list_consumption(gs: Node, gm: Node, sys: RefCounted) -> void:
 ## Consumption survives a save/load round trip, and the board it produces is
 ## still the pinned one.
 func _check_list_persistence(gs: Node, gm: Node, sys: RefCounted) -> void:
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	_reset_list_probe(gs)
 	_expect_true("907list persistence buy", gm.dispatch("list_buy", {"item_id": "used_tv"}))
@@ -1776,13 +1792,29 @@ func _check_list_persistence(gs: Node, gm: Node, sys: RefCounted) -> void:
 
 ## The v5 → v6 arm: what it reconstructs, and the history it honestly cannot.
 func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	# Pinned deliberately, and bumped deliberately: this assertion exists so a
 	# schema change cannot land by accident, which means every real bump edits
@@ -2558,13 +2590,29 @@ func _check_ops_settlement(gs: Node, gm: Node, ops: RefCounted) -> void:
 
 ## Persistence: the v6 → v7 arm, and that the lifecycle survives a round trip.
 func _check_ops_persistence(gs: Node, gm: Node, ops: RefCounted) -> void:
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	_expect_true("ops assignments persist", "crew_assignments" in saves.PERSIST_FIELDS)
 	_expect_true("ops state persists", "crew_operation_state" in saves.PERSIST_FIELDS)
@@ -4097,13 +4145,29 @@ func _check_rb_leakage(gs: Node, gm: Node, ops: RefCounted, lst: RefCounted) -> 
 ## Save before the night, load, settle: the same money either way.
 func _check_rb_reload(gs: Node, gm: Node, ops: RefCounted, lst: RefCounted) -> void:
 	# `adapter` is fetched inside where it is needed — see the idempotency block.
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	_rb_ready(gs)
 	var selection: Dictionary = _rb_assign(gs, gm, ops)
@@ -5370,13 +5434,29 @@ func _check_lifecycle_hooks(gs: Node, gm: Node, lifecycle: RefCounted) -> void:
 
 ## Two paths to the same night must produce the same state.
 func _check_lifecycle_checkpoint(gs: Node, gm: Node) -> void:
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	# Save at AFTERNOON, walk to the night, remember where it landed.
 	_lifecycle_ready(gs)
@@ -6329,13 +6409,29 @@ func _check_owner_rng_non_drift(gs: Node, gm: Node, wallet: RefCounted,
 func _check_consequence_state() -> void:
 	var gs := get_node("/root/GameState")
 	var gm := get_node("/root/GameManager")
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	_check_v8_field_manifest(saves)
 	_check_v8_migration(gs, saves)
@@ -7642,13 +7738,29 @@ func _check_blocking_route_guard(gs: Node, gm: Node) -> void:
 ## A chain reloaded from a save is the same chain, at the same stage, with the
 ## same buttons disabled.
 func _check_engine_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	# Commit a choice, save, wipe, reload.
 	_engine_ready(gs)
@@ -9103,13 +9215,29 @@ func _check_caught_source_time(gs: Node, gm: Node, engine: RefCounted) -> void:
 ## The contested take, the shown odds and the committed result all survive a
 ## reload — TI-003 regression #4.
 func _check_caught_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	if _open_failed_lift(gs, gm, "night_owl", 1):
 		var summary: Dictionary = engine.active_summary()
@@ -9850,13 +9978,29 @@ func _check_arrest_cooldown(gs: Node, gm: Node, engine: RefCounted,
 		_fail("arrest cooldown", "no arresting lift day found for the boost gate")
 
 	# --- layer 5: the save carries it ---
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 	gs.reset_to_new_game()
 	gs.day = 11
 	gs.arrest_record = {
@@ -10286,13 +10430,29 @@ func _check_booking_day_boundary(gs: Node, gm: Node, engine: RefCounted) -> void
 
 ## Every stage of a booking survives a reload, and the quote does not move.
 func _check_booking_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	# --- at the booking decision ---
 	if _open_boost_booking(gs, gm, engine, 1, "night_owl", 1, 400):
@@ -10693,13 +10853,29 @@ func _check_pressure_bleed(gs: Node, gm: Node, engine: RefCounted,
 		gs.pressure_bleed_pending.size(), scheduled * 2)
 
 	# --- and across a reload ---
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 	gs.reset_to_new_game()
 	gs.day = 9
 	gs.time_slots_today = 3
@@ -11945,13 +12121,29 @@ func _check_retaliation_no_arrest(gs: Node, gm: Node, engine: RefCounted) -> voi
 
 ## The queue and a live encounter both survive a reload, in order.
 func _check_retaliation_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	# --- pending, before the trigger ---
 	gs.reset_to_new_game()
@@ -12178,13 +12370,29 @@ func _check_arrest_risk_projection(gs: Node, gm: Node, engine: RefCounted) -> vo
 
 	# It survives a reload, because it was persisted with the odds rather than
 	# re-derived against state that has since moved.
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 	saves.save_run()
 	gs.active_consequence = {}
 	_expect_true("the warned chain reloads", saves.load_run())
@@ -12874,13 +13082,29 @@ func _save_digest(saves: Node) -> String:
 ## nothing ELSE moved — a stage that round-trips its own facts while quietly
 ## losing a Pressure ledger would pass every one of them.
 func _check_stage_roundtrip_matrix(gs: Node, gm: Node, engine: RefCounted) -> void:
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	var stages: Array = [
 		["caught decision", func() -> bool:
@@ -13235,13 +13459,29 @@ func _simulate(gs: Node, gm: Node, engine: RefCounted, profile: Dictionary) -> D
 		"band_days": {}, "reload_checkpoints": 0, "reload_mismatches": 0,
 		"ambient_warnings": 0, "travels": 0, "districts_worked": {},
 	}
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	var guard: int = 0
 	var last_day: int = int(gs.day)
@@ -15729,13 +15969,29 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 	# save file exposed it immediately — a clean first run passed with 11,330
 	# checks, and the second run, reading what the first had left behind, failed
 	# 19 of them.
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	var rows: Array[Dictionary] = []
 	for entry in ECON_PROFILES:
@@ -15873,11 +16129,13 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			_expect_true("a gated profile only uses what the ladder opened",
 				float(row["days_played"]) > 1.0)
 
-	# The save goes back exactly as it was found, including having been absent.
-	if previous_save.is_empty():
+	# The save goes back exactly as it was found, including having been absent —
+	# and a file this run could not read is left where it is rather than
+	# replaced by nothing. Only the absence THIS run observed earns a delete.
+	if not had_save:
 		if FileAccess.file_exists(saves.SAVE_PATH):
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(saves.SAVE_PATH))
-	else:
+	elif read_save:
 		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
 		if restore != null:
 			restore.store_string(previous_save)
@@ -16890,13 +17148,29 @@ func _check_deal_discovery(gs: Node, gm: Node) -> void:
 
 ## The latch persists, and is repaired rather than trusted.
 func _check_discovery_persistence(gs: Node, gm: Node) -> void:
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 
 	_b10_ready(gs)
 	gs.boost_tier = 2
@@ -17481,13 +17755,29 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 	# 5. A RELOAD ANNOUNCES NOTHING. This is the property the snapshot diff buys
 	#    and a persisted "already told them" flag would have to be taught: a run
 	#    reloaded on day 20 earned all of it days ago and there is no news.
+	#
+	# Whether there WAS a file and what was IN it are two facts, and collapsing
+	# them into one empty string is how this instrument came to delete a
+	# developer's run (86bbjxtaw). A save that was unreadable — locked, or open
+	# in another process — and a save that was legitimately zero bytes both
+	# produced `previous_save == ""`, which the restore below reads as "there was
+	# none" and answers by removing the file. The suite is a read-only
+	# instrument everywhere else; it does not get to be destructive here.
 	var saves := get_node("/root/SaveSystem")
+	var had_save: bool = FileAccess.file_exists(saves.SAVE_PATH)
 	var previous_save := ""
-	if FileAccess.file_exists(saves.SAVE_PATH):
+	var read_save := false
+	if had_save:
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
 		if prior != null:
 			previous_save = prior.get_as_text()
 			prior.close()
+			read_save = true
+		else:
+			# There is a file and this run cannot read it. Whatever happens
+			# below, it must not be the one that ends up gone.
+			printerr("parity: could not read %s to save it; leaving it alone"
+				% saves.SAVE_PATH)
 	_fresh_gate_run(gs)
 	_unlock_every_surface(gs)
 	gs.reconcile_persistent_invariants()

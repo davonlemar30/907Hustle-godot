@@ -74,6 +74,22 @@ const FAMILY_MARKET := "market"
 const FAMILY_BOOST := "boost"
 const FAMILY_STICK := "stick"
 
+## Heat that belongs to none of TI-003 §7's three families — holding corners is
+## the standing example, and `territory.gd` passes it by name now rather than by
+## passing `""` and hoping (86bbjxtbm).
+##
+## It scales by Deshawn and by nothing else. That has always been the BEHAVIOUR,
+## and it was an accident: `district_multiplier()` looks the family up in the
+## district's row and defaults a miss to 1.0, so an empty family missed every
+## row and returned neutral. The day somebody gives that lookup a sensible
+## default — the district's own average, say, which is the obvious thing to
+## reach for — corner heat silently starts scaling by wherever the player
+## happened to be standing at midnight. Nothing would have failed.
+##
+## So the exemption is a rule with a name and a guard in `_gain_multiplier()`
+## rather than a property of a missing dictionary key.
+const FAMILY_NONE := ""
+
 ## TI-003 §7's district/family multiplier table, verbatim.
 ##
 ## District ids are this port's, mapped from TI-003's names:
@@ -262,7 +278,10 @@ func _commit(delta: float) -> float:
 ## it being a separate function.
 func _gain_multiplier(family: String, district_id: String) -> float:
 	var mult: float = crew_multiplier()
-	if _district_scaling_enabled:
+	# No family, no district scaling — see `FAMILY_NONE`. Checked here rather
+	# than left to the table's default so the exemption survives a future
+	# default, and so this reads as the decision it is.
+	if _district_scaling_enabled and family != FAMILY_NONE:
 		mult *= district_multiplier(district_id, family)
 	return mult
 

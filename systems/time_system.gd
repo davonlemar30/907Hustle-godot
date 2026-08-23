@@ -27,9 +27,20 @@ extends RefCounted
 ## asserted in `_check_settlement_contract`.
 ##
 ##   1. **Crew settles BEFORE Territory.** A crew member who departs tonight for
-##      unpaid wages does not reduce tonight's territory heat — canon settles
-##      wages before anything reads whether they were paid, and territory income
-##      is computed off crew power. Reordering these two changes gameplay.
+##      unpaid wages does not reduce tonight's territory heat.
+##
+##      The EFFECT above is right; the reason this block used to give for it was
+##      not. It said "territory income is computed off crew power", and
+##      `systems/territory.gd` does not reference `crew_power` — or `crew` —
+##      anywhere. Corner income is the block's authored `earning` and the
+##      diminishing constant, full stop.
+##
+##      The real path is Deshawn: `crew.settle_night()` can mark a member
+##      departed over unpaid wages, and `territory.settle_night()` applies its
+##      holding heat through `HeatSystem.apply_gain()`, the one site that
+##      consults `crew.heat_multiplier()`. A departed Deshawn multiplies by 1.0.
+##      So the ordering decides what the night COSTS, not what it earns.
+##      Reordering these two still changes gameplay. (D-5, 2026-08-23.)
 ##
 ##   2. **Exposure settles AFTER Jobs, Obligations and Shark.** An observation
 ##      those three produce on this cross can be delivered the same night, which

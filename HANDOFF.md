@@ -85,22 +85,76 @@ has no catastrophic tier; `escape` catastrophic uses `neighborhood`; and the
 tier-3 organized-hit counter increments on success. In each case the oracle
 wins.
 
-### Day-cross settlement ordering contract
+### Day-cross settlement ordering contract  (corrected 2026-08-23 — see D-5)
 
-The approved gameplay ordering is:
+**This section was wrong for four batches.** It documented an order the code has
+never run, and it was written as the authority — "the approved gameplay
+ordering". Anyone reconciling code to this document would have reordered
+gameplay. The corrected contract is below; the ruling is D-5 in
+`docs/DECISIONS.md`.
+
+The ordering lives in `systems/day_lifecycle.gd` as declared `const
+Array[String]` lists with a `match` arm per step, and the parity suite asserts
+the whole sequence as a literal. **The code is the contract.** This section
+describes it; it does not define it.
 
 ```text
-Jobs → Obligations → Stickup reset → Shark → Crew wages/departures →
-Territory income/heat → Exposure queue/heat propagation → Curtis decay →
-Market evolve → Phone restoration → Autosave/UI notification
+PRE_SETTLE    day_ending(ended_day)          — clock still reads the ending day
+SETTLE        crew → territory → shark → jobs → obligations
+POST_SETTLE   pressure_clean_recovery, then hooks
+INCREMENT     day += 1, slot back to MORNING
+ROLLOVER      pressure_bleed → pressure_recovery → financial_decay →
+              financial_fold → heat_stop → heat_decay → exposure → curtis
+MARKET        economy.evolve() → day_crossed (legacy listeners)
+DAY_START     heat_day_reset → stickup_day_reset → expire_retaliation →
+              surface_delayed → retaliation_ambient, then hooks
 ```
 
-This order is load-bearing. Crew settles before Territory, so a departing crew
-member does not reduce that night's territory heat. Exposure settles after
-Jobs/Obligations/Shark, so observations created during the same cross can be
-delivered that night. Any future listener sees pre-evolution markets and the
-pre-restoration phone state. FS-002.2 may replace this list with named phases;
-until then, the ordering is the gameplay contract.
+**Jobs and obligations settle LAST, not first.** Obligations are last because
+rent and the phone bill are what end a run, and everything that could still pay
+them has had its turn.
+
+**Stickup's reset is a declared DAY_START step** as of FS-002.2. It was an
+undeclared `day_crossed.connect()` until then — the pattern `day_lifecycle.gd`
+exists to abolish, surviving in one of the two places this contract names. The
+other survivor is **phone restoration** (`time_system.gd:93`), which runs
+outside `run_night_transition` entirely; it is documented here and deliberately
+not moved, because moving it changes when a paid-for line comes back.
+
+Four dependencies are load-bearing and each is asserted:
+
+1. **Crew settles BEFORE Territory** — but *not* for the reason this file gave
+   for four batches. See D-5 below.
+2. **Exposure settles AFTER jobs, obligations and shark**, so an observation
+   those three produce on this cross can be delivered the same night. That is
+   why Exposure sits in ROLLOVER rather than SETTLE.
+3. **`day_crossed` listeners see POST-evolution markets.** This one inverted
+   relative to the original audit; FS-003.2 moved the signal below
+   `economy.evolve()` deliberately.
+4. **`day_crossed` listeners see PRE-restoration phone state.**
+
+#### D-5 — the ordering is right and its stated reason was false
+
+The reason written beside "crew before territory" was **"territory income is
+computed off crew power"**, and it appeared in three code files plus this
+document. It is false. `systems/territory.gd` does not reference `crew_power` —
+or `crew` — anywhere. Corner income is the block's authored `earning` and the
+diminishing constant, and nothing else. `crew_power` is read by the HUD, the
+Crew screen and the save, and by nothing that settles.
+
+The real dependency is **heat, through Deshawn**. `crew.settle_night()` can mark
+a member departed when loyalty bottoms out over unpaid wages;
+`territory.settle_night()` applies its holding heat through
+`HeatSystem.apply_gain()`, which is the one site that consults
+`crew.heat_multiplier()`, and that returns 1.0 for a Deshawn who is no longer
+recruited. So a Deshawn who departs tonight does **not** damp tonight's corner
+heat.
+
+The ordering therefore decides what the night **costs**, not what it earns.
+Swapping the two is still a gameplay change — it was just never the one this
+file described. Proven behaviourally in `tests/territory/territory_runner.gd`:
+corner income is identical at `crew_power` 0 and 999, and settling in the
+shipped `SETTLE_ORDER` costs strictly more heat than settling territory first.
 
 The post-PR #45 base already contains a Claude-owned `systems/day_lifecycle.gd`
 ordering seam, but its current declared phases do not yet spell out the
@@ -5122,6 +5176,13 @@ settles after jobs/obligations/shark (so an observation those three produce on
 this cross can be delivered the same night), and `day_crossed` listeners see
 pre-restoration phone state.
 
+> **Corrected 2026-08-23 (D-5).** The first of those three is true as stated —
+> the EFFECT is right — but the mechanism this audit and three code files
+> attributed it to was not. It is not that "territory income is computed off
+> crew power"; territory income does not read crew power at all. It is that a
+> departed Deshawn no longer damps territory's holding heat. See the corrected
+> ordering contract near the top of this file.
+
 ### C1 — "Street Identity shows 'Hustler' on a brand new game"
 
 **Does not reproduce.** A fresh run shows **"New Face"**. Probed directly:
@@ -6188,6 +6249,118 @@ is what makes "unreachable" the right word rather than "unavailable".
   "`main` only" was never true.
 
 ---
+
+## Batch 18 PR 2: FS-002.2, and the reason that was wrong everywhere  (added 2026-08-23)
+
+FS-002.2 is the lifecycle slice. Most of what it asked for was already shipped —
+`day_lifecycle.gd` has owned the night as declared `const Array[String]` orders
+with a `match` arm per step since FS-003.2. What was not shipped was a document
+that agreed with it.
+
+### D-5 — the shipped order wins
+
+`HANDOFF.md` documented the day-cross settlement order as
+`Jobs → Obligations → Stickup reset → Shark → Crew → Territory…` and called it
+**"the approved gameplay ordering"**. Shipped `SETTLE_ORDER` is
+`crew, territory, shark, jobs, obligations` — jobs and obligations run **last**.
+
+The two are not reconcilable by reading. One had to lose, in writing, and it is
+the document. Full ruling in `docs/DECISIONS.md`; the short version:
+
+- The code is defended and the document was not. `time_system.gd` carries a
+  canon-grounded rationale with a parity assertion behind it, and the whole
+  trace is pinned as a literal fixture. The document had no test and had drifted
+  through four batches.
+- Reordering would change gameplay. Obligations last is load-bearing — rent and
+  the phone bill are what end a run, and everything that could still pay them
+  has had its turn. Moving them first ends runs that currently survive.
+- `BUILD_18_BRIEF.md` was withdrawn for precisely this: its Slice 2 instructed a
+  reconciliation toward the documented contract, and following it would have
+  reordered gameplay on the strength of a doc nobody had tested.
+
+### The corollary, which is worse
+
+The *reason* the ordering was given is false, and it was false in **four
+places** — `systems/day_lifecycle.gd`, `systems/time_system.gd`,
+`systems/crew.gd` and `HANDOFF.md`. All four said, in words:
+
+> Crew settles before Territory because territory income is computed off crew
+> power.
+
+**`systems/territory.gd` does not reference `crew_power`. It does not reference
+`crew` at all.** Corner income is the block's authored `earning` and
+`SOLDIER_INCOME_DIMINISH`, full stop. `crew_power` is read by the HUD, the Crew
+screen and the save, and by nothing that settles.
+
+The real dependency is heat, through Deshawn. `crew.settle_night()` can mark a
+member departed when loyalty bottoms out over unpaid wages;
+`territory.settle_night()` applies its holding heat through
+`HeatSystem.apply_gain()`, the one site that consults `crew.heat_multiplier()`,
+and that returns 1.0 for a Deshawn who is no longer recruited. **So the ordering
+decides what the night costs, not what it earns.**
+
+All four sites now name Deshawn and the multiplier.
+
+This is the more dangerous half of the finding. A wrong ordering is caught by
+the parity fixture the moment somebody moves it. A wrong *reason* is caught by
+nothing, propagates by copy-paste, and is what the next person reasons from when
+deciding whether a reorder is safe.
+
+It is also asserted now rather than only written down. `tests/territory/` proves
+both halves behaviourally: corner income is **identical at `crew_power` 0 and
+999**, and settling in the shipped `SETTLE_ORDER` costs strictly more heat than
+settling territory first. The measurement is driven off the constant, so
+swapping crew and territory changes the measured number rather than only an
+index comparison — which the first sabotage run showed was the difference
+between a real check and a tautology.
+
+### Stickup's reset joins the declared order
+
+`stickup.gd` was still resetting its two-a-day cap from
+`gs.day_crossed.connect(_on_day_crossed)` — the exact pattern
+`day_lifecycle.gd` exists to abolish, surviving in one of the two places the
+ordering contract names. It is `DAY_START_ORDER:stickup_day_reset` now, calling
+`stickup.day_reset(today)` through the same null-guarded `match` every other
+step uses.
+
+It sits beside `heat_day_reset` because it is the same kind of fact — what has
+already happened today, cleared as today begins — but not *inside* it, because
+that step is Heat's own bookkeeping and this counter is Stick's. The lifecycle
+calls the owner rather than reaching into its state.
+
+The move is also a move later, from MARKET to DAY_START. Nothing between those
+two positions reads `stick_daily_count`.
+
+**The other survivor is phone restoration** (`time_system.gd:93`), which runs
+outside `run_night_transition` entirely. Documented, deliberately not moved: it
+is outside FS-002.2's scope and moving it changes when a paid-for line comes
+back.
+
+### The header described a list it did not match
+
+`day_lifecycle.gd`'s header listed three DAY_START steps where the constant had
+four (now five), and did not mention that `heat_day_reset` runs first — the one
+position in that list a reader has to know, because every step below it can
+generate Heat and clearing the flag afterwards hands the new day a decay it had
+already spent.
+
+Fixed by naming the constants instead of paraphrasing them. **A paraphrase of a
+list is a second copy of the list**, and this file exists because second copies
+drift.
+
+### Scope held
+
+No empty phases were declared for FS-002.6–.9. Those systems do not exist, and
+an empty phase is either a scope violation or an untestable no-op. `territory`
+is already in `SETTLE_ORDER`; adding a phase for it would be gold-plating.
+
+**One item is not done: "add the semantic steps Territory will consume."** The
+brief specifies them only as "steps inside existing phases, not new phases", and
+the detail is in the ticket's ClickUp comment, which could not be read — the
+connector is unauthenticated in this session. Inventing steps now risks
+declaring names FS-002.4 has to rename, which is the failure mode the scope
+guard in the same paragraph warns against. Left for the slice that has a caller
+for them; PR 4 adds the one real step (`territory_upkeep`) that has one.
 
 ## Batch 18 PR 1: FS-002.1, and the 80% that was missing  (added 2026-08-23)
 

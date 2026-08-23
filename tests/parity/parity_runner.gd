@@ -5185,7 +5185,13 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# `heat_day_reset` leads DAY_START: it clears the quiet-day flag, and every
 	# step below it can generate Heat. Clearing after them would hand the new
 	# day a decay it had already spent.
-	"DAY_START", "DAY_START:heat_day_reset",
+	# FS-002.2 appends `stickup_day_reset` beside `heat_day_reset` and reorders
+	# nothing. Stick's two-a-day cap was still resetting from an undeclared
+	# `day_crossed.connect()` — the pattern day_lifecycle.gd exists to abolish,
+	# surviving in one of the two places the ordering contract names. Same kind
+	# of fact as the two above it: what has already happened today, cleared as
+	# today begins.
+	"DAY_START", "DAY_START:heat_day_reset", "DAY_START:stickup_day_reset",
 	"DAY_START:expire_retaliation", "DAY_START:surface_delayed",
 	"DAY_START:retaliation_ambient",
 ]
@@ -18332,7 +18338,7 @@ func _fail(label: String, detail: String) -> void:
 ## change.
 ##
 ## Ten of margin, as always.
-const MIN_CHECKS := 12489
+const MIN_CHECKS := 12490
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

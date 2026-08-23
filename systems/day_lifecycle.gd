@@ -13,12 +13,22 @@ extends RefCounted
 ## ## The sequence
 ##
 ##   1. PRE_SETTLE  — `day_ending(ended_day)`, clock still reads the old day
-##   2. SETTLE      — crew · territory · shark · jobs · obligations, in that order
+##   2. SETTLE      — `SETTLE_ORDER`: crew, territory, shark, jobs, obligations.
+##                    Jobs and obligations run LAST. `HANDOFF.md` documented the
+##                    reverse for four batches; see D-5 below and the ruling in
+##                    `docs/DECISIONS.md`. The code is the contract.
 ##   3. POST_SETTLE — `POST_SETTLE_ORDER`, then hooks
 ##   4. INCREMENT   — day += 1, slot back to MORNING
 ##   5. ROLLOVER    — TI-003 §9's post-increment lifecycle, in `ROLLOVER_ORDER`
 ##   6. MARKET      — economy.evolve(), then `day_crossed` for legacy listeners
-##   7. DAY_START   — retaliation expiry, activation, ambient signal, then hooks
+##   7. DAY_START   — `DAY_START_ORDER`, then hooks
+##
+## The header used to describe three DAY_START steps where the constant has
+## five, and did not mention that `heat_day_reset` runs FIRST — which is the one
+## position in that list a reader has to know, because every step below it can
+## generate Heat and clearing the flag after them would hand the new day a decay
+## it had already spent. Naming the constant instead of paraphrasing it is the
+## fix: a paraphrase of a list is a second copy of the list.
 ##
 ## ## Why Exposure and Curtis moved off `day_crossed`
 ##
@@ -149,8 +159,28 @@ const POST_SETTLE_ORDER: Array[String] = [
 ## Declared here rather than registered as a `day_start_hook` because these are
 ## the lifecycle's own work, not somebody else's. The hooks stay empty and
 ## available, and `clear_hooks()` cannot remove the game.
+## FS-002.2 appends `stickup_day_reset` and reorders nothing.
+##
+## `stickup.gd` was still resetting its two-a-day cap from an undeclared
+## `gs.day_crossed.connect(_on_day_crossed)` — the exact pattern this file
+## exists to abolish, surviving in one of the two places the ordering contract
+## names. It is a declared step now.
+##
+## It sits beside `heat_day_reset` because it is the same KIND of fact: what has
+## already happened today, cleared as today begins. It does not ride INSIDE that
+## step, because that step is Heat's own bookkeeping and this counter is Stick's
+## — the lifecycle calls the owner rather than reaching into its state.
+##
+## The move is also a move LATER, from MARKET (where `day_crossed` fires) to
+## DAY_START. Nothing between those two positions reads `stick_daily_count`.
+##
+## The other survivor of the signal pattern is phone restoration
+## (`time_system.gd:93`), which runs outside `run_night_transition` entirely.
+## Documented, deliberately NOT moved: it is outside FS-002.2's scope and moving
+## it changes when a paid-for line comes back.
 const DAY_START_ORDER: Array[String] = [
 	"heat_day_reset",
+	"stickup_day_reset",
 	"expire_retaliation",
 	"surface_delayed",
 	"retaliation_ambient",
@@ -159,10 +189,30 @@ const DAY_START_ORDER: Array[String] = [
 ## The settlement order, declared. Each entry is the system name as registered
 ## in GameManager; each of those systems exposes `settle_night(ended_day: int)`.
 ##
-## Crew first because canon settles wages before anything reads whether they
-## were paid — an unpaid crew is worth less power, and territory income is
-## computed off that. Obligations last because rent and the phone bill are what
-## end a run, and everything that could still pay them has had its turn.
+## ## D-5: the order is right and its stated reason was wrong
+##
+## Crew first, then territory. That has been the shipped order since FS-003.2
+## and it stays. **The reason written next to it was false in three files**, and
+## the 2026-08-23 studio pass caught it: "territory income is computed off crew
+## power". It is not. `systems/territory.gd` does not reference `crew_power` —
+## or `crew` — anywhere. Corner income is `b["earning"]` and the diminishing
+## constant, and nothing else.
+##
+## The real dependency is HEAT, and it runs through Deshawn:
+##
+##   `crew.settle_night()` can set a member's `status` to "departed" when
+##   loyalty bottoms out over unpaid wages. `territory.settle_night()` applies
+##   its holding heat through `HeatSystem.apply_gain()`, which is the ONE site
+##   that consults `crew.heat_multiplier()` (`heat.gd:199-203`), and that
+##   multiplier returns 1.0 for a Deshawn who is no longer recruited.
+##
+## So a Deshawn who departs tonight for unpaid wages does NOT damp tonight's
+## corner heat — which is the behaviour the audit described correctly and
+## explained wrongly. Swapping these two is still a gameplay change; it is a
+## change to what the night COSTS, not to what it earns.
+##
+## Obligations last because rent and the phone bill are what end a run, and
+## everything that could still pay them has had its turn.
 const SETTLE_ORDER: Array[String] = [
 	"crew", "territory", "shark", "jobs", "obligations",
 ]
@@ -346,6 +396,14 @@ func _run_day_start_step(step: String, today: int) -> void:
 	# engine and a build without it must still start the day with a clean
 	# quiet-day flag. Otherwise a run whose consequence system failed to
 	# register would carry yesterday's noise forever and never decay again.
+	if step == "stickup_day_reset":
+		# Null-guarded like every other step: the ordering tests drive this
+		# lifecycle directly, and a missing owner has to read as "that step did
+		# nothing" rather than crash the whole night.
+		var stick: Object = gm.system("stickup") if gm != null else null
+		if stick != null:
+			stick.day_reset(today)
+		return
 	if step == "heat_day_reset":
 		gs.heat_gain_today = 0.0
 		# The day's walk count rides the same step. Both are "what has already

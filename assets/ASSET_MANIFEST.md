@@ -1,5 +1,36 @@
 # 907Hustle — Godot Asset Manifest
 
+> **Corrected 2026-08-23 (Batch 18 PR 5) — two things below were wrong, found
+> in a documentation audit rather than by anyone hitting the drift in
+> practice.**
+>
+> 1. **The nav-icon list two sections down documents tabs that do not
+>    exist.** It lists `icon-market.svg`, `icon-crew.svg`, `icon-travel.svg`
+>    and `icon-people.svg` as the bottom tab bar. The actual, canonical nav
+>    (`HANDOFF.md`'s "Bottom nav — CANONICAL" section, sourced from web
+>    `ui.jsx:197`) is `street / hustle / home / phone / more`, using
+>    `icon-street.webp`, `icon-hustle.webp`, `icon-home.svg`,
+>    `icon-phone.webp` and `icon-menu.svg`. The four wrongly-listed SVGs are
+>    real files that still exist in `assets/icons/nav/` — they were drawn for
+>    an earlier, since-abandoned nav plan and were never deleted, so the
+>    folder now holds both sets. Do not wire them; they are not the nav.
+> 2. **Four of the delivery folders below are empty on disk** —
+>    `portraits/`, `photos/atmosphere/`, `photos/locations/`, `logo/` — and
+>    the art this manifest describes for each of them shipped somewhere
+>    else instead: character/location art is in `assets/img/`, and the brand
+>    logo and Home's atmosphere backdrop are in `assets/textures/`
+>    (`grungelogo1trans.webp`, `bg-hustle.webp`). The pipeline this manifest
+>    describes (drop into the named folder, Godot auto-imports) was
+>    superseded at some point by delivering finished, already-wired assets
+>    directly into the folder a scene actually reads from — nobody updated
+>    this file to say so.
+>
+> The plan below is left as originally written rather than rewritten, since
+> it is a useful record of the original intent even where delivery diverged
+> from it. Check `assets/img/`, `assets/icons/nav/` and `assets/textures/`
+> directly for what is actually shipped, or `HANDOFF.md`'s Design System
+> section for the current, correct reference.
+
 Drop generated assets into the folders below using the exact filenames.
 Godot auto-imports on focus/scan; then I wire them into the scenes.
 

@@ -155,14 +155,24 @@ stakes, opponents or screen under them, and its NPC is not on the Exposure
 roster. A **Home** interior would duplicate the Home nav tab wholesale, and its
 one distinctive obligation — rent — is already payable from the Phone.
 
-**The economy is measured, and the instrument is now trustworthy.** A leaked
-test catalogue had been corrupting every economy figure since batch 3; batch 9
-closed it and re-measured. Against a day job at 100%, the 907List flipper reads
-358% and the trade-plus-job hybrid 732%, while Boost sits at 13% and Stickup at
-2%. A worker who spends spare slots wandering reads 288% — the strongest clean
-path in the game, on zero Heat and zero arrests, because wandering is how you
-find the shifts that pay three times what you started on. The two low surfaces are filed as design decisions with the evidence, not
-tuned in flight.
+**The economy is measured, asserted within corridors, and the instrument is now
+trustworthy.** A leaked test catalogue had been corrupting every economy figure
+since batch 3; batch 9 closed it and re-measured. Against a day job at 100%,
+the 907List flipper reads 358% and the trade-plus-job hybrid 732%, while Boost
+sits at 13% and Stickup at 2%.
+
+**"Wandering reads 288% — the strongest clean path" was true for one batch and
+is retracted here rather than left standing.** It was measured before Territory
+had ever been played by a profile in this table (batch 17) and before Territory
+had a recurring cost (Batch 18 PR 4, D-1). With both: Territory reads **409%**
+of the day job — six corners, staffed, paying every night and costing
+$20/soldier/night to keep staffed — and is the actual strongest clean path.
+Wandering itself reads 287%, close to its old number and still real, just no
+longer the ceiling. Every percentage in this section is now asserted within a
+floor/ceiling corridor (`ECON_CORRIDORS` in `tests/parity/parity_runner.gd`),
+not a bare `print()` — see `HANDOFF.md`'s orientation table for the full
+current figures. The weak surfaces (Stickup, Boost) are filed as design
+findings with the evidence in `docs/DECISIONS.md`, not tuned in flight.
 
 **The consequence-encounter engine is complete.** FS-003 closed with FS-003.12:
 a blown lift or a bad robbery now runs all the way from the action, through a
@@ -487,9 +497,24 @@ regardless of how small the source file is.
 | Batch 15. The doors, and the news | ✅ an adversarial read of batch 14 and two defects older than it. **The More menu's Crew row never rendered** — `apply_surface_gate(…, _menu_row(…))` gated a card nobody had parented, so from v0.1.0 the row existed only in the comment arguing for it. **Two doors, two answers**: batch 14 gated five Hustle rows at the button and left the routes open, and `More → Finances` IS the Shark screen and opened on Day 1. **The clear-and-rebuild did not clear** — `queue_free()` is deferred, so a second refresh in one frame stacked every row (4 → 8 → 16), which had been quietly inflating this suite and was the only thing keeping one phone check green. And five surfaces arrived **silently**, so the announcer now says once, in the feed, when a door opens — detected by diffing a snapshot across the dispatch that caused it, which needs no persisted flag, no manifest entry and no migration. Plus the opening: one screen between naming yourself and the first morning, reading the rent and the date off GameState. Schema unchanged; parity → 12,441 checks |
 | Batch 16. The door to work | ✅ **the Jobs screen was unreachable on a fresh run.** `menu.jobs` gated on `job_contacts`, which rose in exactly one way — recruiting Deshawn ($100 against a starting $100, then $50/day, with $150 rent on day 7). So "Meet someone who hires" asked the player to go broke to read it, while the run *starts* knowing five places that hire and `apply_job` works when called. Batch 10 had built a second path to work — walking the block until somebody mentions the freight yard — and the gate never learned about it, so you could be told about a job and not be let through the door to apply. A job you find yourself now counts. **Nothing caught it because no profile played the game**: every one dispatches actions directly, and a dispatch does not pass a surface gate, which is how the table came to call `worker_wanders` the strongest clean path at 287% for a path a real run could not take. The new `newcomer` profile plays only what the ladder has opened — measured with the fix at **458%** and without it at **262% with zero shifts in thirty days**, running the Heat ceiling and two arrests because crime was the only thing left open. Schema unchanged; parity → 12,467 checks |
 | Batch 17. The corner, measured | ✅ Territory shipped in Phase 3e — six corners, soldiers, nightly income, nightly heat, and two districts gated behind holding one — and **no profile in the economy table had ever claimed a corner.** Every balance number this project has published, including "the strongest clean path in the build", was measured against a game with its territory system switched off. Played properly it reads **636% of the day job**: six corners, $2,660 in, **$9,081 out**, zero arrests. The reason it outruns everything is that it is the only earner in the build that **costs no slot** — neither `recruit_soldier` nor `claim_block` advances time, so it competes for money and never for the four hours a day everything else fights over. Reported, not tuned. Also pins the five-step chain that opens the map (soldier → idle soldier → corner → `held_blocks` → district), which nothing asserted at any step, and whose middle link — a claim is refused without a free soldier however rich you are — sent this batch's first probe to the wrong conclusion. Schema unchanged; parity → 12,499 checks |
+| Batch 18 PR 0. The ground under the war | ✅ five live defects fixed (an unknown territory id silently killed nightly settlement; the parity suite could delete a developer's save; soldiers could exceed capacity; a screen wrote GameState outside dispatch; Territory's heat scaling relied on a dictionary-miss accident) plus the CI gates that protect everything after: the parity PASS grep it was missing, timeouts on every job, and a crash gate on `SCRIPT ERROR`/`Invalid access`. Parity → 12,499 checks (unchanged — behaviour-preserving) |
+| Batch 18 PR 1. FS-002.1 | ✅ `tests/territory/` stood up as FS-002's own harness — seconds, not the parity runner's ~2 minutes — and closed a coverage gap: `post_soldier`/`pull_soldier` had never been dispatched anywhere, `block_income()` was asserted nowhere, and the diminishing-returns constant appeared in zero checks. 121 checks, new suite |
+| Batch 18 PR 2. FS-002.2 | ✅ D-5: the shipped settlement order (`crew → territory → shark → jobs → obligations`) wins over a documented contract that had said the reverse for four batches with no test behind it. The bigger find: the stated REASON for crew-before-territory was false in four places — territory income does not read crew power at all; the real dependency is Deshawn's heat multiplier. Parity → 12,500 checks |
+| Batch 18 PR 3. FS-002.3 | ✅ the one-way door: `held_blocks`/`spenard_blocks` retired for `territory_nodes`/`territory_fronts` off a new `data/territory_definitions.gd`. Save v15 → **v16**. D-6: a migrated holding is never confiscated, even where the new board calls it Curtis-secure. Found and fixed two real bugs chasing this down — a test-fixture object-aliasing bug in the migration chain, and a forward-referenced const that hung the parity suite for over an hour. Parity → 12,505 checks |
+| Batch 18 PR 4. Territory's operating cost, D-1 | ✅ the only player-visible change in Build 18: a $20/soldier/night upkeep, charged on the full roster whether posted or idle. `settler` moves **636% → 409%** of the day job — 636% was the bug, not a floor worth defending. Every economy profile is now asserted within a floor/ceiling corridor instead of a bare `print()`. Parity → 12,524 checks |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.
+Standing rulings that have already been made are also recorded in
+`docs/DECISIONS.md`, which is the faster read when the question is "has this
+already been decided" rather than "what's the plan."
+
+**The repo owns what the code does; ClickUp owns what we intend to build and
+why. Where they disagree about shipped behaviour, the repo wins.** (Batch 18's
+own studio pass found eleven cases of ClickUp or `HANDOFF.md` narrative
+disagreeing with shipped code — five serious enough to call lying rather than
+merely stale — which is the reason this rule is written down rather than
+assumed.)
 
 ## Contributing
 

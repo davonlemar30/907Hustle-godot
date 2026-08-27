@@ -101,6 +101,16 @@ jobs:
           godot --headless --path . res://tests/territory/territory_runner.tscn 2>&1 | tee territory.log
           grep -q "^territory: PASS" territory.log
 
+      # The confrontation loop's own harness (`tests/confrontation/`), same
+      # shape and same shared asserts as the territory suite, and seconds for
+      # the same reason. Guards the rooms: tier gating, the entry-key take,
+      # verb burning, the guaranteed out, and — the tripwire the parity suite
+      # depends on — that tier 1 still resolves as the single roll.
+      - name: Run confrontation suite
+        run: |
+          godot --headless --path . res://tests/confrontation/confrontation_runner.tscn 2>&1 | tee confrontation.log
+          grep -q "^confrontation: PASS" confrontation.log
+
       - name: Run screen smoke
         run: |
           godot --headless --path . res://tests/smoke/screen_smoke.tscn 2>&1 | tee smoke.log

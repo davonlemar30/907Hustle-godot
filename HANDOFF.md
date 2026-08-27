@@ -31,9 +31,10 @@ One place to orient before reading anything else below.
 | --- | --- |
 | Build version | `0.1.0` (`autoload/version.gd`) |
 | Save schema | **v16** (Batch 18 PR 3, FS-002.3) — migration ladder walks v1 → v16. `held_blocks`/`spenard_blocks` retired; `territory_nodes`/`territory_fronts` off `data/territory_definitions.gd` |
-| Parity | **12,526 checks, 0 failures**, floor `MIN_CHECKS := 12526` |
+| Parity | **12,530 checks, 0 failures**, floor `MIN_CHECKS := 12530` — five sections that drove tier 2-3 stickups now drive the rooms (confrontation loop) |
 | Territory suite | **169 checks, 0 failures** — a CI gate as of Batch 18 PR 1 (`tests/territory/`), FS-002's own harness, seconds rather than the parity runner's ~2 minutes |
-| Save validation | 114 checks, 0 failures — a CI gate as of batch 12, +18 from Batch 18 PR 3's Territory arm |
+| Confrontation suite | **159 checks, 0 failures** — a CI gate as of the rooms build (`tests/confrontation/`), the loop's own harness on the shared territory asserts |
+| Save validation | 121 checks, 0 failures — a CI gate as of batch 12 |
 | Screen smoke | 24/24 screens instantiate **with their scripts attached** — a CI gate as of batch 12, script-attachment added in batch 15 |
 | Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` |
 | Screens | 24 |

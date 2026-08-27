@@ -20,6 +20,29 @@ append-only) and `docs/DECISIONS.md` (standing rulings).
 
 ## Unreleased
 
+### The Rooms — stickup's confrontation loop (2026-08-27)
+
+#### Added
+
+- **Tier 2-3 stickups are multi-round rooms.** Picking the Chevron till, the
+  Holiday register, the dice game, or Goodie's stash now opens a staged
+  confrontation: the take is split across authored stages, TAKE AND GO banks
+  what you have and leaves, a slipped stage forks into DROP IT AND RUN versus
+  RUN WITH IT, and leaving early is quieter — heat scales with the fraction
+  you actually walked out with. Tier-1 marks resolve in one roll exactly as
+  before. WALK at the door costs nothing: no slot, no attempt, no daily cap.
+- **New gate suite** `tests/confrontation/` (159 checks) in CI beside the
+  other four.
+
+#### Changed
+
+- The consequence scene renders loop chains with a stage counter, a #LEFT
+  chip, the banked amount, the current beat as the situation line, and a
+  short SO FAR log.
+- Three parity sections that drove tier 2-3 stickup dispatches now drive the
+  rooms; their contracts (the arrest gate against pre-source Heat, the
+  cooldown, retaliation scheduling by outcome) are unchanged.
+
 ### 0.1.0 Playtest Pass (2026-08-27)
 
 Three UX PRs addressing findings from the first 0.1.0 playtest session.

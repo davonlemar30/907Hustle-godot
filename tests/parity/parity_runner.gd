@@ -9700,6 +9700,9 @@ const STICK_GATE_TARGETS := {
 	3: {"id": "goodie_stash", "slot": 0},
 }
 
+## The rooms' authored half, for the tier 2-3 scans below.
+const CONF_SCRIPTS := preload("res://data/confrontation_scripts.gd")
+
 func _stick_gate_ready(gs: Node, heat: float, slot: int) -> void:
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
@@ -9727,6 +9730,8 @@ func _find_stick_day(gs: Node, gm: Node, tier: int, want_tier: String,
 	var target_id := str((STICK_GATE_TARGETS[tier] as Dictionary)["id"])
 	_stick_gate_ready(gs, heat, slot)
 	var target: Dictionary = gs.stick_target_by_id(target_id)
+	if tier >= 2:
+		return _find_room_day(gs, stickup, resolver, target, want_tier, slot)
 	var chance: float = stickup.chance_for(target)
 	for day in range(1, 400):
 		var key := "stickup:%d:%d:%s" % [day, slot, target_id]
@@ -9736,11 +9741,79 @@ func _find_stick_day(gs: Node, gm: Node, tier: int, want_tier: String,
 			return day
 	return -1
 
+## The room-shaped scan. What a tier NAME means through the loop:
+##   clean        — every stage's PRESS lands clean (the all-clean won exit)
+##   failure      — the first press slips AND the run out of the fork fails,
+##                  which is the beaten-failure exit the arrest gate reads
+##   catastrophic — the first press is a catastrophe, immediate and terminal
+##
+## Pure: the same chance the live path computes, on the same stage keys, so
+## the found day and the driven day cannot disagree. The clean scan gets a
+## longer window — three clean stages in a row is a rarer bird, and the scan
+## costs microseconds either way.
+func _find_room_day(gs: Node, stickup: RefCounted, resolver: RefCounted,
+		target: Dictionary, want_tier: String, slot: int) -> int:
+	var scripts: RefCounted = CONF_SCRIPTS.new()
+	var target_id := str(target["id"])
+	var script: Dictionary = scripts.script_for(target_id)
+	var stages: int = scripts.stage_count(script)
+	var window: int = 3000 if want_tier == "clean" else 400
+	for day in range(1, window):
+		match want_tier:
+			"catastrophic":
+				if _room_press_tier(gs, stickup, resolver, target, script,
+						day, slot, 0) == "catastrophic":
+					return day
+			"success0":
+				# Any first-stage success — enough to bank once and leave.
+				if _room_press_tier(gs, stickup, resolver, target, script,
+						day, slot, 0) in ["clean", "messy"]:
+					return day
+			"failure":
+				if _room_press_tier(gs, stickup, resolver, target, script,
+						day, slot, 0) != "failure":
+					continue
+				var run_key := "stickup:%d:%d:%s:stage:0:run_with_it" % [day, slot, target_id]
+				var run: Dictionary = resolver.resolve_action("escape",
+					CONF_SCRIPTS.STICK_FORK_RUN_BASE, 1, gs.run_seed, run_key)
+				if str(run["tier"]) == "failure":
+					return day
+			"clean":
+				var all_clean := true
+				for stage in range(stages):
+					if _room_press_tier(gs, stickup, resolver, target, script,
+							day, slot, stage) != "clean":
+						all_clean = false
+						break
+				if all_clean:
+					return day
+	return -1
+
+## One stage's PRESS tier, off the live chance function and the live key.
+func _room_press_tier(gs: Node, stickup: RefCounted, resolver: RefCounted,
+		target: Dictionary, script: Dictionary, day: int, slot: int,
+		stage: int) -> String:
+	var scripts: RefCounted = CONF_SCRIPTS.new()
+	var loop := {"stage": stage, "stage_count": scripts.stage_count(script),
+		"watched": false, "tip_no_decay": false}
+	var chance: float = stickup._room_chance(target, script, loop, "press")
+	var key := "stickup:%d:%d:%s:stage:%d:press" % [day, slot, str(target["id"]), stage]
+	return str(resolver.resolve_action("robbery", chance, 1, gs.run_seed, key)["tier"])
+
 ## TI-003 §14, through the real dispatch layer rather than the rules module.
 ##
 ## Both sides of every tier's threshold, and the catastrophic row that ignores
 ## it. This is where a gate wired to the wrong Heat value shows up: the rules
 ## module can be perfect while `stickup.gd` hands it post-robbery Heat.
+##
+## Tier 1 drives the single roll it has always driven. Tiers 2-3 are ROOMS now
+## (the confrontation loop), so their gate is reached the way a player reaches
+## it — a slipped stage, then a failed RUN WITH IT — and "books" is read off
+## the resolved result rather than off the chain's existence, because a room
+## chain exists at every outcome. The pre-vs-post Heat claim this check exists
+## for is SHARPER through the room: the loop applies its own exit heat before
+## the gate is consulted, so a gate wired to live Heat would read the robbery's
+## own noise and book jobs the snapshot says to release.
 func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
 		rules: RefCounted) -> void:
 	for tier_key in [1, 2, 3]:
@@ -9758,8 +9831,10 @@ func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
 			gs.day = day_above
 			_expect_true("tier %d failure above the gate dispatches" % tier,
 				gm.dispatch("stickup", {"target_id": target_id}))
+			if tier >= 2:
+				_drive_room_to_failure(gm)
 			_expect_true("tier %d failure at heat %.1f books" % [tier, above],
-				not (gs.active_consequence as Dictionary).is_empty())
+				_stick_outcome_arrested(gs))
 			_expect_str("tier %d books under the stick severity" % tier,
 				str((engine.booking_summary() as Dictionary).get("severity", "")),
 				rules.severity_for_stick(tier))
@@ -9779,8 +9854,10 @@ func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
 			gs.day = day_at
 			_expect_true("tier %d failure at the gate dispatches" % tier,
 				gm.dispatch("stickup", {"target_id": target_id}))
+			if tier >= 2:
+				_drive_room_to_failure(gm)
 			_expect_true("tier %d failure at exactly heat %.1f does not book" % [tier, gate],
-				(gs.active_consequence as Dictionary).is_empty())
+				not _stick_outcome_arrested(gs))
 			gs.active_consequence = {}
 		else:
 			_fail("stick gate tier %d" % tier, "no failure day at the gate")
@@ -9792,25 +9869,64 @@ func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
 			gs.day = day_cat
 			_expect_true("tier %d catastrophic dispatches" % tier,
 				gm.dispatch("stickup", {"target_id": target_id}))
+			if tier >= 2:
+				# The catastrophe lands on the first press — no fork exists.
+				gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
 			_expect_true("tier %d catastrophic books at zero heat" % tier,
-				not (gs.active_consequence as Dictionary).is_empty())
+				_stick_outcome_arrested(gs))
 			gs.active_consequence = {}
 		else:
 			_fail("stick gate tier %d" % tier, "no catastrophic day at zero heat")
 
-		# A clean take never books, whatever the meter reads.
-		var day_clean: int = _find_stick_day(gs, gm, tier, "clean", 14.0, slot)
-		if day_clean > 0:
-			_stick_gate_ready(gs, 14.0, slot)
-			gs.day = day_clean
-			_expect_true("tier %d clean dispatches at high heat" % tier,
-				gm.dispatch("stickup", {"target_id": target_id}))
-			_expect_true("tier %d clean never books, even at heat 14" % tier,
-				(gs.active_consequence as Dictionary).is_empty())
-			gs.active_consequence = {}
+		# A take that leaves on your terms never books, whatever the meter
+		# reads. Tier 1 proves it on the clean single roll it always did; the
+		# rooms prove it on a banked TAKE AND GO — the success-class exits do
+		# not consult the gate at any Heat, and 14 is as loud as a meter gets.
+		if tier == 1:
+			var day_clean: int = _find_stick_day(gs, gm, tier, "clean", 14.0, slot)
+			if day_clean > 0:
+				_stick_gate_ready(gs, 14.0, slot)
+				gs.day = day_clean
+				_expect_true("tier %d clean dispatches at high heat" % tier,
+					gm.dispatch("stickup", {"target_id": target_id}))
+				_expect_true("tier %d clean never books, even at heat 14" % tier,
+					(gs.active_consequence as Dictionary).is_empty())
+				gs.active_consequence = {}
+			else:
+				_fail("stick gate tier %d" % tier, "no clean day at high heat")
 		else:
-			_fail("stick gate tier %d" % tier, "no clean day at high heat")
+			var day_take: int = _find_stick_day(gs, gm, tier, "success0", 14.0, slot)
+			if day_take > 0:
+				_stick_gate_ready(gs, 14.0, slot)
+				gs.day = day_take
+				_expect_true("tier %d room dispatches at high heat" % tier,
+					gm.dispatch("stickup", {"target_id": target_id}))
+				gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+				gm.dispatch("resolve_consequence_choice", {"choice_id": "take_and_go"})
+				_expect_true("tier %d banked exit never books, even at heat 14" % tier,
+					not _stick_outcome_arrested(gs))
+				gs.active_consequence = {}
+			else:
+				_fail("stick gate tier %d" % tier, "no banked-exit day at high heat")
 	gs.reset_to_new_game()
+
+## A robbery's booked-or-not, read the way that is true for both shapes: the
+## single roll leaves a booking chain (or nothing), the room leaves a resolved
+## result carrying `arrested`.
+func _stick_outcome_arrested(gs: Node) -> bool:
+	var chain: Dictionary = gs.active_consequence
+	if chain.is_empty():
+		return false
+	if str(chain.get("chain_kind", "")) == "confrontation":
+		var decision: Dictionary = chain.get("decision", {})
+		return bool((decision.get("result", {}) as Dictionary).get("arrested", false))
+	return true
+
+## Walk an open room to its beaten-failure exit: the slipped first stage, then
+## the failed run. The finder already proved both rolls land there.
+func _drive_room_to_failure(gm: Node) -> void:
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "run_with_it"})
 
 ## The Cause sequence this section pins its lifts to.
 ##
@@ -9949,8 +10065,9 @@ func _check_arrest_cooldown(gs: Node, gm: Node, engine: RefCounted,
 		gs.day = day_above
 		_expect_true("the uncooled robbery dispatches",
 			gm.dispatch("stickup", {"target_id": target_id}))
+		_drive_room_to_failure(gm)
 		_expect_true("a blown tier 3 above the gate books with no cooldown",
-			not (gs.active_consequence as Dictionary).is_empty())
+			_stick_outcome_arrested(gs))
 		gs.active_consequence = {}
 
 		_stick_gate_ready(gs, above, slot)
@@ -9958,11 +10075,14 @@ func _check_arrest_cooldown(gs: Node, gm: Node, engine: RefCounted,
 		gs.arrest_record["cooldown_until_day"] = day_above
 		_expect_true("the cooled robbery still dispatches",
 			gm.dispatch("stickup", {"target_id": target_id}))
+		_drive_room_to_failure(gm)
 		_expect_true("the same robbery inside the cooldown does not book",
-			(gs.active_consequence as Dictionary).is_empty())
+			not _stick_outcome_arrested(gs))
 		# It is a suppressed ARREST, not a suppressed robbery: the job still
-		# happened and still cost its slot. A cooldown that skipped the whole
-		# action would read the same on the arrest counter and would be a bug.
+		# happened and still costs its slot — which the room settles on
+		# Continue, the same handoff every non-arrest chain pays through.
+		_expect_true("the suppressed room hands back",
+			gm.dispatch("consequence_continue", {}))
 		_expect_int("a suppressed arrest still spends the robbery's slot",
 			int(gs.time_slots_today), slot + 1)
 
@@ -9972,8 +10092,9 @@ func _check_arrest_cooldown(gs: Node, gm: Node, engine: RefCounted,
 		gs.arrest_record["cooldown_until_day"] = day_above - 1
 		_expect_true("the lapsed-cooldown robbery dispatches",
 			gm.dispatch("stickup", {"target_id": target_id}))
+		_drive_room_to_failure(gm)
 		_expect_true("a lapsed cooldown books again",
-			not (gs.active_consequence as Dictionary).is_empty())
+			_stick_outcome_arrested(gs))
 		gs.active_consequence = {}
 	else:
 		_fail("arrest cooldown", "no tier 3 failure day above the gate")
@@ -11477,6 +11598,11 @@ func _check_retaliation_schedule(gs: Node, gm: Node, engine: RefCounted,
 	_retaliation_ready(gs, day, 0)
 	_expect_true("the goodie hit dispatches",
 		gm.dispatch("stickup", {"target_id": "goodie_stash"}))
+	# The stash is a room now: the schedule lands at the exit, and the finder
+	# proved every stage of this day presses clean — the all-clean won exit,
+	# which is the "clean" the 1.00 row answers.
+	for _stage in range(3):
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
 	_expect_int("a guaranteed schedule queues one row", gs.consequence_queue.size(), 1)
 	var row: Dictionary = gs.consequence_queue[0]
 	_expect_str("the row names its actor", str(row["actor_id"]), "goodie")
@@ -11505,6 +11631,7 @@ func _check_retaliation_schedule(gs: Node, gm: Node, engine: RefCounted,
 		_retaliation_ready(gs, fail_day, 0)
 		_expect_true("the failed goodie hit dispatches",
 			gm.dispatch("stickup", {"target_id": "goodie_stash"}))
+		_drive_room_to_failure(gm)
 		_expect_int("a plain failure schedules nothing", gs.consequence_queue.size(), 0)
 		gs.active_consequence = {}
 	else:
@@ -11943,11 +12070,14 @@ func _check_retaliation_arrest_suppression(gs: Node, gm: Node,
 	_retaliation_ready(gs, day, 0)
 	_expect_true("the catastrophic goodie hit dispatches",
 		gm.dispatch("stickup", {"target_id": "goodie_stash"}))
+	# The stash is a room: the catastrophe lands on the first press, and the
+	# schedule and the booking both land at the exit rather than the door.
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
 	_expect_int("the robbery queued its retaliation", gs.consequence_queue.size(), 1)
-	_expect_true("and it also opened a booking",
-		not (gs.active_consequence as Dictionary).is_empty())
-	_expect_str("the booking is a stick booking",
-		str((gs.active_consequence as Dictionary)["chain_kind"]), engine.KIND_STICK_BOOKING)
+	_expect_true("and it also booked",
+		_stick_outcome_arrested(gs))
+	_expect_str("the room chain holds the booking",
+		str((gs.active_consequence as Dictionary)["chain_kind"]), engine.KIND_CONFRONTATION)
 	var cause_id := str((gs.active_consequence as Dictionary)["cause_id"])
 	_expect_str("both halves share one cause",
 		str((gs.consequence_queue[0] as Dictionary)["cause_id"]), cause_id)
@@ -12814,7 +12944,14 @@ func _check_ti003_scenarios(gs: Node, gm: Node, engine: RefCounted) -> void:
 		_retaliation_ready(gs, clean_day, 0)
 		_expect_true("scenario: the goodie hit dispatches",
 			gm.dispatch("stickup", {"target_id": "goodie_stash"}))
+		# Run the room end to end — the finder proved all three stages press
+		# clean — then hand the chain back, so the nights below can surface
+		# the answer into a slot that is actually free.
+		for _stage in range(3):
+			gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
 		_expect_int("scenario: the hit queued a retaliation", gs.consequence_queue.size(), 1)
+		_expect_true("scenario: the room hands back",
+			gm.dispatch("consequence_continue", {}))
 		var cause_day: int = int((gs.consequence_queue[0] as Dictionary)["created_day"])
 		# Two nights forward, standing still.
 		for _night in range(2):
@@ -18651,7 +18788,7 @@ func _fail(label: String, detail: String) -> void:
 ## asking about a button that no longer exists; neither is the discipline
 ## the ratchet exists to enforce, so the floor states the real number
 ## instead of arguing with it.
-const MIN_CHECKS := 12528
+const MIN_CHECKS := 12530
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

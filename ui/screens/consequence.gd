@@ -57,6 +57,7 @@ const CYAN := Color(0.475, 0.733, 0.757)
 const ORANGE := Color(1.0, 0.29, 0.239)
 
 const RULES := preload("res://data/consequence_rules.gd")
+const CONF_SCRIPTS := preload("res://data/confrontation_scripts.gd")
 
 @onready var _engine: Object = _gm.system("consequence")
 
@@ -157,15 +158,42 @@ func _build_situation(summary: Dictionary) -> void:
 
 	# The stakes strip. Only values that change the CURRENT decision: the take
 	# in dispute, and the two meters a bad answer moves.
+	#
+	# A loop chain swaps the static take for the live pair that IS its
+	# decision — what is already banked against what is still on the table —
+	# plus the round counter and the #LEFT chip, which are the chassis's two
+	# promises: this ends, and they are people.
 	var stakes: Array = []
+	var loop: Dictionary = _engine.loop_summary()
 	var contested: int = int(summary.get("contested_take", 0))
-	if contested > 0:
+	if not loop.is_empty():
+		stakes.append("STAGE %d/%d" % [int(loop.get("stage", 0)) + 1,
+			maxi(1, int(loop.get("stage_count", 1)))])
+		stakes.append("%s %d" % [str(loop.get("left_label", "LEFT")),
+			int(loop.get("left", 0))])
+		stakes.append("BANKED $%d" % int(loop.get("banked", 0)))
+	elif contested > 0:
 		stakes.append("TAKE $%d" % contested)
 	stakes.append("HEALTH %d/%d" % [int(gs.health), int(gs.health_max)])
 	stakes.append("HEAT %d/%d" % [gs.heat_shown(), int(gs.heat_max)])
 	v.add_child(label("  ·  ".join(stakes), "Mono", 12, AMBER))
 	c.add_child(v)
 	body.add_child(c)
+
+	# The round log — the last few beats, oldest first, so the scene carries
+	# its own short memory of how it got here. Decision stage only: the result
+	# stage already tells the ending its own way.
+	if not loop.is_empty() and str(summary.get("stage", "")) == _engine.STAGE_DECISION:
+		var log_lines: Array = loop.get("log", [])
+		if not log_lines.is_empty():
+			var lc := card()
+			var lv := VBoxContainer.new()
+			lv.add_theme_constant_override("separation", 3)
+			lv.add_child(label("SO FAR", "Kicker", 10, MUTED))
+			for line in log_lines:
+				lv.add_child(label(str(line), "Muted", 11, MUTED, true))
+			lc.add_child(lv)
+			body.add_child(lc)
 
 func _title(summary: Dictionary) -> String:
 	match str(summary.get("chain_kind", "")):
@@ -177,6 +205,13 @@ func _title(summary: Dictionary) -> String:
 			return "THEY WERE WAITING"
 		_engine.KIND_WANDER:
 			return "SOMEBODY STOPS YOU"
+		_engine.KIND_CONFRONTATION:
+			# The room's own authored name — "THE GAME", "THE NIGHT TILL" —
+			# because a confrontation is a place the player chose to walk into,
+			# not a thing that happened to them.
+			var loop: Dictionary = _engine.loop_summary()
+			var sheet := str(loop.get("sheet_title", ""))
+			return sheet if not sheet.is_empty() else "THIS IS HAPPENING NOW"
 	return "THIS IS HAPPENING NOW"
 
 ## PX-003 §3 D: connects the current problem to the action that made it, without
@@ -198,6 +233,12 @@ func _context_line(summary: Dictionary) -> String:
 			var who := str(summary.get("source_opponent", ""))
 			if not who.is_empty():
 				parts.append(who.to_upper())
+		_engine.KIND_CONFRONTATION:
+			# Named by family so the Lift and the corner scripts inherit this
+			# line the day they arrive on the same kind.
+			var family := str(summary.get("source_family", ""))
+			parts.append("STICK UP" if family == "stick" else family.to_upper())
+			parts.append(str(summary.get("source_target_name", "")).to_upper())
 	var district := str(summary.get("district_id", ""))
 	if not district.is_empty():
 		parts.append(str(gs.district_by_id(district).get("name", "")).to_upper())
@@ -223,6 +264,13 @@ func _situation_body(summary: Dictionary) -> String:
 			# so this is the body of the moment rather than a second retelling
 			# of how it started.
 			return "You went out to see what was around. This is what was around."
+		_engine.KIND_CONFRONTATION:
+			# The situation IS the current beat — the loop re-authors this line
+			# every round, which is what "each round is a new situation" means
+			# on screen.
+			var beat := str(_engine.loop_summary().get("beat", ""))
+			if not beat.is_empty():
+				return beat
 	return "Somebody is waiting on an answer."
 
 # --- decision ---------------------------------------------------------------
@@ -384,6 +432,11 @@ func _build_result(summary: Dictionary) -> void:
 
 func _result_headline(summary: Dictionary, choice: String, tier: String,
 		effects: Dictionary) -> String:
+	if str(summary.get("chain_kind", "")) == _engine.KIND_CONFRONTATION:
+		var headline := str(CONF_SCRIPTS.STICK_RESULT_HEADLINES.get(
+			str(effects.get("resolution", "")), ""))
+		if not headline.is_empty():
+			return headline
 	if str(summary.get("chain_kind", "")) == _engine.KIND_RETALIATION:
 		if int(effects.get("cash", 0)) < 0:
 			return "THEY GOT PAID"
@@ -405,6 +458,11 @@ func _result_headline(summary: Dictionary, choice: String, tier: String,
 
 func _result_body(summary: Dictionary, choice: String, tier: String,
 		effects: Dictionary) -> String:
+	if str(summary.get("chain_kind", "")) == _engine.KIND_CONFRONTATION:
+		var conf_body := str(CONF_SCRIPTS.STICK_RESULT_BODIES.get(
+			str(effects.get("resolution", "")), ""))
+		if not conf_body.is_empty():
+			return conf_body
 	if str(summary.get("chain_kind", "")) == _engine.KIND_RETALIATION:
 		if int(effects.get("cash", 0)) < 0:
 			return "They take what they came for and go."

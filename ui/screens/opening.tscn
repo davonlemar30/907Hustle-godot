@@ -130,14 +130,19 @@ layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"Card"
 
-[node name="K" type="Label" parent="Pad/V/Beats/B1"]
+[node name="V" type="VBoxContainer" parent="Pad/V/Beats/B1"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="K" type="Label" parent="Pad/V/Beats/B1/V"]
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"Kicker"
 theme_override_colors/font_color = Color(0.83, 0.18, 0.14, 1)
 theme_override_font_sizes/font_size = 11
 
-[node name="T" type="Label" parent="Pad/V/Beats/B1"]
+[node name="T" type="Label" parent="Pad/V/Beats/B1/V"]
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"Muted"
@@ -150,14 +155,19 @@ layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"Card"
 
-[node name="K" type="Label" parent="Pad/V/Beats/B2"]
+[node name="V" type="VBoxContainer" parent="Pad/V/Beats/B2"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="K" type="Label" parent="Pad/V/Beats/B2/V"]
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"Kicker"
 theme_override_colors/font_color = Color(0.83, 0.18, 0.14, 1)
 theme_override_font_sizes/font_size = 11
 
-[node name="T" type="Label" parent="Pad/V/Beats/B2"]
+[node name="T" type="Label" parent="Pad/V/Beats/B2/V"]
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"Muted"
@@ -170,14 +180,19 @@ layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"Card"
 
-[node name="K" type="Label" parent="Pad/V/Beats/B3"]
+[node name="V" type="VBoxContainer" parent="Pad/V/Beats/B3"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="K" type="Label" parent="Pad/V/Beats/B3/V"]
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"Kicker"
 theme_override_colors/font_color = Color(0.83, 0.18, 0.14, 1)
 theme_override_font_sizes/font_size = 11
 
-[node name="T" type="Label" parent="Pad/V/Beats/B3"]
+[node name="T" type="Label" parent="Pad/V/Beats/B3/V"]
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"Muted"

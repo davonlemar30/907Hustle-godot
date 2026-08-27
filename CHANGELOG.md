@@ -20,7 +20,36 @@ append-only) and `docs/DECISIONS.md` (standing rulings).
 
 ## Unreleased
 
-Nothing since Batch 18 PR 4.
+### 0.1.0 Playtest Pass (2026-08-27)
+
+Two UX PRs addressing findings from the first 0.1.0 playtest session.
+
+#### Fixed
+
+- **Opening screen beat cards overlapping** (PR #78): each beat card was a
+  `PanelContainer` with two sibling Labels, but PanelContainer only lays out a
+  single managed child. Inserted a VBoxContainer between each card and its
+  labels. Added a staggered entrance animation (fade + slide, `create_tween()`).
+- **Hustle screen permanently showing $312 "Today's Take"** (PR #79): the
+  `todays_take` and `income_sources` fields were scaffold data no system ever
+  wrote to. Replaced with `todays_earnings` Dictionary, a `record_earning()`
+  helper called by all seven income systems after their wallet credit, and a
+  `todays_take()` derived total. Resets at DAY_START alongside `heat_gain_today`.
+  Persisted for mid-day save/reload (additive, no schema bump).
+
+#### Added
+
+- `GameState.record_earning(source, amount)` — bookkeeping method for day-scoped
+  income tracking. Called by jobs, economy (market sells), stickup, boost, shark,
+  territory, and nine07list.
+- `GameState.todays_take()` — derived total of today's earnings.
+- Staggered tween entrance on the Opening screen (head, sub, beat cards, button).
+
+#### Gates
+
+Parity 12,524 → **12,526** checks, 0 failures (floor raised; +2 from existing
+round-trip loops walking one more PERSIST_FIELDS entry). Territory 169/0.
+Save validation 114/0. Screen smoke 24/24.
 
 ## Batch 18 — the ground under the war, and Territory's missing cost
 

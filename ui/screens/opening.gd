@@ -48,6 +48,7 @@ func _ready() -> void:
 	if go != null:
 		go.pressed.connect(_on_go)
 	_bind()
+	_entrance()
 
 func _bind() -> void:
 	_write("Pad/V/Head", gs.street_name.to_upper())
@@ -57,16 +58,16 @@ func _bind() -> void:
 
 	# Three beats, in the order the questions arrive. The labels are authored;
 	# every number in them is read.
-	_write("Pad/V/Beats/B1/K", "THE ROOM")
-	_write("Pad/V/Beats/B1/T",
+	_write("Pad/V/Beats/B1/V/K", "THE ROOM")
+	_write("Pad/V/Beats/B1/V/T",
 		"Yalonda's spare room, and $%d in your pocket. No job, nobody who owes you anything."
 			% int(gs.cash))
 
-	_write("Pad/V/Beats/B2/K", "THE CLOCK")
-	_write("Pad/V/Beats/B2/T", _rent_line())
+	_write("Pad/V/Beats/B2/V/K", "THE CLOCK")
+	_write("Pad/V/Beats/B2/V/T", _rent_line())
 
-	_write("Pad/V/Beats/B3/K", "TODAY")
-	_write("Pad/V/Beats/B3/T",
+	_write("Pad/V/Beats/B3/V/K", "TODAY")
+	_write("Pad/V/Beats/B3/V/T",
 		"Nobody has told you about anything yet. Go outside and walk the block — "
 		+ "what you find is what opens up.")
 
@@ -94,6 +95,45 @@ func _write(path: String, text: String) -> void:
 	var node := get_node_or_null(path) as Label
 	if node != null:
 		node.text = text
+
+## Fades the screen in beat by beat so it reads as an arrival rather than a
+## dump of text: room, then clock, then the beats, then the button.
+func _entrance() -> void:
+	var head := $Pad/V/Head as Label
+	var sub := $Pad/V/Sub as Label
+	var go := $Pad/V/Go as Button
+	var beats := $Pad/V/Beats.get_children()
+
+	# The Beats VBoxContainer has not sorted its children yet at this point
+	# in _ready() — reading position.y now would capture 0 for all three
+	# cards, and the tween-driven offset would fight the container's real
+	# sort every frame and win, collapsing all three cards on top of each
+	# other. Wait a frame so the container has already placed them.
+	await get_tree().process_frame
+
+	head.modulate.a = 0.0
+	sub.modulate.a = 0.0
+	var beat_start_y: Array[float] = []
+	for card in beats:
+		card.modulate.a = 0.0
+		beat_start_y.append(card.position.y)
+		card.position.y += 16.0
+	if go != null:
+		go.modulate.a = 0.0
+
+	var tw := create_tween()
+	tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+
+	tw.tween_property(head, "modulate:a", 1.0, 0.3)
+	tw.parallel().tween_property(sub, "modulate:a", 1.0, 0.25).set_delay(0.15)
+
+	for i in beats.size():
+		var delay := 0.35 + i * 0.12
+		tw.parallel().tween_property(beats[i], "modulate:a", 1.0, 0.28).set_delay(delay)
+		tw.parallel().tween_property(beats[i], "position:y", beat_start_y[i], 0.28).set_delay(delay)
+
+	if go != null:
+		tw.parallel().tween_property(go, "modulate:a", 1.0, 0.2).set_delay(0.35 + beats.size() * 0.12)
 
 func _on_go() -> void:
 	nav.go_to_game()

@@ -235,6 +235,14 @@ func _run(target_id: String) -> Dictionary:
 	# tiers that generate the most Heat are exactly the tiers being gated.
 	var pre_source_heat: float = float(gs.heat)
 
+	# Tier 2 and 3 targets are ROOMS: the robbery is a multi-round confrontation
+	# chain, not a single roll (the REPLACE ruling). Tier 1 deliberately falls
+	# through to the shipped single-roll path below, byte-for-byte — a mark is
+	# one beat, the daily texture stays fast, and the tier-1 parity probe stays
+	# untouched. See `data/confrontation_scripts.gd` for the authored rooms.
+	if _scripts().has_room(t):
+		return _open_room(t, pre_source_heat)
+
 	# Canon keys this roll on seed:stickup:day:slot:targetId, and the resolver
 	# joins seed and context exactly as canon's template string does.
 	var key := "stickup:%d:%d:%s" % [gs.day, gs.time_slots_today, target_id]
@@ -489,3 +497,491 @@ func day_reset(_today: int) -> void:
 func _crew_absorbed(raw: int) -> int:
 	var crew: Object = gm.system("crew") if gm != null else null
 	return raw if crew == null else int(crew.absorbed_damage(raw))
+
+# --- the rooms (tier 2-3 confrontation loop) ---------------------------------
+#
+# The REPLACE ruling, wired. A tier 2-3 robbery opens a `confrontation` chain
+# and plays out in authored stages: the take is rolled ONCE at entry on the
+# same `:take` key the single roll always used, partitioned across stages, and
+# banked stage by stage. TAKE AND GO is the guaranteed out from the first bank
+# onward; a failed stage becomes the exit fork rather than a terminal row; a
+# catastrophic stage ends it on the spot. Exits translate the loop's
+# resolution states back into exactly the consequence vocabulary the single
+# roll already speaks — heat through the one owner, retaliation scheduled on
+# the cause, Curtis by tier, pressure by tier, the arrest gate against
+# pre-source Heat — so everything DOWNSTREAM of a robbery is unchanged and the
+# loop only decides how the money and the noise were arrived at.
+#
+# Stickup is its own chain adapter (`action_id: "stickup"`, already registered
+# for booking chains), so `resolve_consequence` below is reached through the
+# engine's existing seam and nothing new is registered anywhere.
+
+const SCRIPTS := preload("res://data/confrontation_scripts.gd")
+const LOOP := preload("res://systems/confrontation_loop.gd")
+
+## A failed RUN WITH IT that still gets away messy costs the caught table's
+## `run_messy` band — the authored precedent for "you got out, not cleanly".
+const ROOM_RUN_MESSY_INJURY := [1, 5]
+## And one that does not get away costs `run_failure`'s. Without this band the
+## rolled run would strictly dominate the guaranteed drop — same downside plus
+## upside — and a relief valve nobody should ever pull is not a choice.
+const ROOM_RUN_FAILURE_INJURY := [4, 10]
+
+func _scripts() -> RefCounted:
+	return SCRIPTS.new()
+
+func _engine() -> Object:
+	return gm.system("consequence") if gm != null else null
+
+## The engine's adapter-copy seam: the loop's vocabulary is this file's, not
+## the engine's fallback table's.
+func choice_label(choice_id: String) -> String:
+	return _scripts().choice_label(choice_id)
+
+func choice_copy(choice_id: String) -> String:
+	return _scripts().choice_copy(choice_id)
+
+## Open the room. The chain owes the robbery's one slot (settled on Continue),
+## and NOTHING is counted yet: attempts and the daily cap move on the first
+## committed action, so WALK at the door costs exactly what it says — nothing.
+func _open_room(t: Dictionary, pre_source_heat: float) -> Dictionary:
+	var engine: Object = _engine()
+	if engine == null:
+		return {"ok": false, "reason": "Nothing to answer to."}
+	if engine.has_active():
+		return {"ok": false, "reason": "Deal with what is in front of you."}
+	var scripts: RefCounted = _scripts()
+	var target_id := str(t["id"])
+	var script: Dictionary = scripts.script_for(target_id)
+	var tier: int = int(t["tier"])
+	var key := "stickup:%d:%d:%s" % [gs.day, gs.time_slots_today, target_id]
+
+	# One realised take for the whole room, on the key the single roll always
+	# used — the band is the budget, the stages only partition it. The tip
+	# multiplier (fat night) scales the realised roll before partition and is
+	# a no-op until the tip system lands.
+	var band: Array = t["take"]
+	var tips: Dictionary = LOOP.tip_modifiers_for(gs, target_id, tier)
+	var take: int = rng.seeded_int_range(gs.run_seed, key + ":take",
+		int(band[0]), int(band[1]))
+	take = maxi(1, int(round(float(take) * float(tips["take_multiplier"]))))
+	var pots: Array = scripts.stage_pots(take, tier)
+
+	var opening: Dictionary = scripts.beat(script, 0)
+	var loop: Dictionary = {
+		"script_id": target_id,
+		"sheet_title": str(script.get("sheet_title", "")),
+		"left_label": str(script.get("left_label", "IN YOUR WAY")),
+		"left": int(script.get("left", 1)) + int(tips["extra_left"]),
+		"stage": 0,
+		"stage_count": scripts.stage_count(script),
+		"pots": pots,
+		"take_total": take,
+		"banked": 0,
+		"burned": [],
+		"log": [],
+		"watched": false,
+		"started": false,
+		"all_clean": true,
+		"mode": "stage",
+		"beat": str(opening.get("enter", "")),
+		"tip_no_decay": bool(tips["remove_final_decay"]),
+	}
+	var actions: Dictionary = _room_stage_actions(script, loop)
+
+	return engine.open_chain(engine.KIND_CONFRONTATION, {
+		"district_id": gs.current_district_id,
+		"return_route": "STICKUP",
+		"source": {
+			"family": "stick",
+			"action_id": "stickup",
+			"target_id": target_id,
+			"target_name": str(t["name"]),
+			"target_tier": tier,
+			"opponent": str(script.get("opponent", "")),
+			"source_day": int(gs.day),
+			"source_slot": int(gs.time_slots_today),
+			"source_rng_key": key,
+			"pre_encounter_heat": pre_source_heat,
+			"contested_take": take,
+		},
+		"decision": {
+			"definition_id": "stick_room",
+			"allowed_choices": actions["allowed"],
+			"deterministic_choices": actions["deterministic"],
+			"shown_probabilities": _room_shown(t, script, loop, actions["allowed"]),
+			"loop": loop,
+		},
+	})
+
+## The stage's action set. Exactly one guaranteed out per round by
+## construction: WALK before anything is committed, TAKE AND GO from then on.
+## WATCH never appears on the last stage — there is no next move to buy.
+func _room_stage_actions(script: Dictionary, loop: Dictionary) -> Dictionary:
+	var allowed: Array = ["press"]
+	if bool(script.get("talk", false)):
+		allowed.append("talk")
+	var last: bool = int(loop["stage"]) >= int(loop["stage_count"]) - 1
+	if not last:
+		allowed.append("watch")
+	if not bool(loop.get("started", false)):
+		allowed.append("walk")
+	else:
+		allowed.append("take_and_go")
+	allowed = LOOP.without_burned(loop, allowed)
+	var deterministic: Array = []
+	for out in ["watch", "walk", "take_and_go"]:
+		if out in allowed:
+			deterministic.append(out)
+	return {"allowed": allowed, "deterministic": deterministic}
+
+## One stage's chance for one rolled verb. PRESS reads `chance_for()` live —
+## combat, heat, resistance and Pressure exactly as the single roll would —
+## and TALK reads its authored crowd base; both take the stage delta and the
+## watched bonus, re-clamped to the same [0.15, 0.90] floor and ceiling.
+func _room_chance(t: Dictionary, script: Dictionary, loop: Dictionary,
+		choice_id: String) -> float:
+	var scripts: RefCounted = _scripts()
+	var stage: int = int(loop["stage"])
+	var base: float = SCRIPTS.STICK_TALK_BASE if choice_id == "talk" else chance_for(t)
+	var mod: float = scripts.stage_mod(script, stage)
+	if bool(loop.get("tip_no_decay", false)) \
+			and stage == int(loop["stage_count"]) - 1 and mod < 0.0:
+		mod = 0.0
+	if bool(loop.get("watched", false)):
+		mod += SCRIPTS.WATCH_BONUS
+	return clampf(base + mod, 0.15, 0.90)
+
+## Snapshotted odds for every rolled verb on offer — the same
+## `success_probability` read every other decision snapshot uses, so a reload
+## re-renders the numbers the player actually saw.
+func _room_shown(t: Dictionary, script: Dictionary, loop: Dictionary,
+		allowed: Array) -> Dictionary:
+	var resolver: Object = gm.system("outcome_resolver") if gm != null else null
+	if resolver == null:
+		return {}
+	var shown: Dictionary = {}
+	for entry in allowed:
+		var choice_id := str(entry)
+		match choice_id:
+			"press":
+				shown[choice_id] = resolver.success_probability("robbery",
+					_room_chance(t, script, loop, choice_id),
+					attributes.effective("combat"), 0)
+			"talk":
+				shown[choice_id] = resolver.success_probability("negotiation",
+					_room_chance(t, script, loop, choice_id),
+					attributes.effective("charisma"), 0)
+			"run_with_it":
+				shown[choice_id] = resolver.success_probability("escape",
+					SCRIPTS.STICK_FORK_RUN_BASE,
+					attributes.effective("combat"), 0)
+	return shown
+
+## The engine's resolution seam. Called once per committed round; the receipt
+## that guards the commit is the engine's, keyed on `decision.round`.
+func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
+	var engine: Object = _engine()
+	if engine == null:
+		return {"ok": false, "reason": "Nothing to answer to."}
+	if str(chain.get("chain_kind", "")) != engine.KIND_CONFRONTATION:
+		return {"ok": false, "reason": "Not a moment this system owns."}
+	var loop: Dictionary = LOOP.loop_of(chain)
+	if loop.is_empty():
+		return {"ok": false, "reason": "The room is already empty."}
+	var source: Dictionary = chain.get("source", {})
+	var t: Dictionary = gs.stick_target_by_id(str(source.get("target_id", "")))
+	var script: Dictionary = _scripts().script_for(str(source.get("target_id", "")))
+	if t.is_empty() or script.is_empty():
+		return {"ok": false, "reason": "That room is gone."}
+
+	if str(loop.get("mode", "stage")) == "fork":
+		return _room_fork(chain, loop, t, choice_id)
+	return _room_stage(chain, loop, t, script, choice_id)
+
+## One stage round. Success banks and advances (or wins on the last stage), a
+## plain failure becomes the exit fork, a catastrophe ends it here.
+func _room_stage(chain: Dictionary, loop: Dictionary, t: Dictionary,
+		script: Dictionary, choice_id: String) -> Dictionary:
+	var scripts: RefCounted = _scripts()
+
+	# WALK — the free abort, before anything has been committed. The chain
+	# closes with its slot released: looking at a room costs nothing, which is
+	# the same price looking at the target card always had.
+	if choice_id == "walk":
+		var time_block: Dictionary = chain.get("time", {})
+		time_block["source_slots_remaining"] = 0
+		chain["time"] = time_block
+		var engine: Object = _engine()
+		engine.clear_chain()
+		gs.log_activity("You look at %s for a while and keep walking." % str(t["name"]), AMBER)
+		return {"ok": true, "walked": true}
+
+	# The first committed action is when the attempt becomes real: the counter
+	# and the daily cap move here, not at the door.
+	if not bool(loop.get("started", false)):
+		loop["started"] = true
+		gs.stick_attempts += 1
+		gs.stick_daily_count += 1
+
+	var stage: int = int(loop["stage"])
+	var last: bool = stage >= int(loop["stage_count"]) - 1
+
+	# TAKE AND GO — the guaranteed out once anything is banked. Deterministic:
+	# what is in the jacket leaves with you, priced only in the noise the
+	# banked fraction makes.
+	if choice_id == "take_and_go":
+		return _room_exit(chain, loop, t, SCRIPTS.RESOLUTION_ESCAPED,
+			"messy" if int(loop["banked"]) > 0 else "failure", {})
+
+	# WATCH THE ROOM — deterministic: this stage's stack stays on the table,
+	# the next stage comes easier and hurts less if it goes wrong.
+	if choice_id == "watch":
+		loop["watched"] = true
+		LOOP.append_log(loop, "You let the stack sit and count the room instead.")
+		return _room_advance(chain, loop, t, script, stage + 1)
+
+	# PRESS or TALK — the rolled verbs. One keyed roll per stage per verb.
+	var action_type: String = "negotiation" if choice_id == "talk" else "robbery"
+	var attribute: String = "charisma" if choice_id == "talk" else "combat"
+	var resolver: Object = gm.system("outcome_resolver")
+	var key := "%s:stage:%d:%s" % [str(chain["source"]["source_rng_key"]), stage, choice_id]
+	var outcome: Dictionary = resolver.resolve_action(action_type,
+		_room_chance(t, script, loop, choice_id), attributes.effective(attribute),
+		gs.run_seed, key)
+	var tier := str(outcome["tier"])
+
+	if resolver.is_success_tier(tier):
+		var pot: int = int((loop["pots"] as Array)[stage])
+		loop["banked"] = int(loop["banked"]) + pot
+		if tier != "clean":
+			loop["all_clean"] = false
+		# The count going down is somebody stepping off, and it is authored:
+		# a clean PRESS backs one off; TALK working backs one off regardless,
+		# because that is the whole point of talking.
+		if choice_id == "talk" or tier == "clean":
+			loop["left"] = maxi(0, int(loop["left"]) - 1)
+		# WATCH's bonus is spent by the stage it bought.
+		loop["watched"] = false
+		var bank_line := str(scripts.beat(script, stage).get("bank_log", ""))
+		if not bank_line.is_empty():
+			LOOP.append_log(loop, bank_line % pot)
+		if last:
+			return _room_exit(chain, loop, t, SCRIPTS.RESOLUTION_WON,
+				"clean" if bool(loop["all_clean"]) else "messy", {})
+		return _room_advance(chain, loop, t, script, stage + 1)
+
+	if tier == "catastrophic":
+		return _room_exit(chain, loop, t, SCRIPTS.RESOLUTION_BEATEN,
+			"catastrophic", {})
+
+	# Plain failure: the verb is burned and the situation changes — the fork is
+	# the new round, with its own out. The room is no longer yours; the
+	# question is what happens to the jacket.
+	LOOP.burn(loop, choice_id)
+	loop["mode"] = "fork"
+	loop["beat"] = SCRIPTS.STICK_FORK_BEAT
+	loop["watched"] = false
+	LOOP.append_log(loop, "It slips.")
+	var allowed: Array = ["run_with_it", "drop_and_run"]
+	LOOP.present_round(chain, loop, allowed, ["drop_and_run"],
+		_room_shown(t, script, loop, allowed))
+	return {"ok": true, "forked": true}
+
+## Advance the loop to the next stage: new beat, new action set, new odds, new
+## round receipt.
+func _room_advance(chain: Dictionary, loop: Dictionary, t: Dictionary,
+		script: Dictionary, next_stage: int) -> Dictionary:
+	loop["stage"] = next_stage
+	loop["mode"] = "stage"
+	loop["beat"] = str(_scripts().beat(script, next_stage).get("enter", ""))
+	var actions: Dictionary = _room_stage_actions(script, loop)
+	LOOP.present_round(chain, loop, actions["allowed"], actions["deterministic"],
+		_room_shown(t, script, loop, actions["allowed"]))
+	return {"ok": true, "stage": next_stage}
+
+## The exit fork after a slipped stage. DROP IT AND RUN is the guaranteed out;
+## RUN WITH IT rolls `escape` — Combat, because mid-robbery the problem is the
+## grip, not the map.
+func _room_fork(chain: Dictionary, loop: Dictionary, t: Dictionary,
+		choice_id: String) -> Dictionary:
+	if choice_id == "drop_and_run":
+		return _room_exit(chain, loop, t, SCRIPTS.RESOLUTION_SURRENDERED,
+			"failure", {})
+	var resolver: Object = gm.system("outcome_resolver")
+	var stage: int = int(loop["stage"])
+	var key := "%s:stage:%d:%s" % [str(chain["source"]["source_rng_key"]), stage, choice_id]
+	var outcome: Dictionary = resolver.resolve_action("escape",
+		SCRIPTS.STICK_FORK_RUN_BASE, attributes.effective("combat"), gs.run_seed, key)
+	var tier := str(outcome["tier"])
+	if resolver.is_success_tier(tier):
+		var spec: Dictionary = {}
+		if tier == "messy":
+			spec["injury_band"] = ROOM_RUN_MESSY_INJURY
+		return _room_exit(chain, loop, t, SCRIPTS.RESOLUTION_ESCAPED, "messy", spec)
+	if tier == "catastrophic":
+		return _room_exit(chain, loop, t, SCRIPTS.RESOLUTION_BEATEN, "catastrophic", {})
+	return _room_exit(chain, loop, t, SCRIPTS.RESOLUTION_BEATEN, "failure",
+		{"injury_band": ROOM_RUN_FAILURE_INJURY})
+
+## Every way out of a room lands here — ONE translation from the loop's
+## resolution state into the consequence vocabulary the single roll already
+## speaks, so the two paths cannot drift on what a robbery costs.
+##
+## `tier_equiv` is the tier the downstream systems are told: it drives heat
+## shape, Curtis's read, the Exposure footprint, District Pressure and the
+## retaliation schedule through exactly the tables the single roll uses.
+func _room_exit(chain: Dictionary, loop: Dictionary, t: Dictionary,
+		resolution: String, tier_equiv: String, spec: Dictionary) -> Dictionary:
+	var engine: Object = _engine()
+	var cause_id := str(chain.get("cause_id", ""))
+	var source: Dictionary = chain.get("source", {})
+	var banked: int = int(loop.get("banked", 0))
+	var keeps: bool = resolution in [SCRIPTS.RESOLUTION_WON, SCRIPTS.RESOLUTION_ESCAPED]
+	var credited: int = 0
+
+	# 1. The money, exactly once.
+	if keeps and banked > 0 and engine.record_receipt(cause_id, "room:cash"):
+		_wallet().credit(banked, _wallet().DIRTY, {"source_id": "stickup_take"})
+		gs.record_earning("stick", banked)
+		credited = banked
+
+	# 2. Rep. A room run end to end always counts; a partial counts when it
+	# mostly came off — half a take you walked out with is a job that worked.
+	if resolution == SCRIPTS.RESOLUTION_WON \
+			or (keeps and LOOP.banked_fraction(loop) >= SCRIPTS.STICK_REP_FRACTION):
+		if engine.record_receipt(cause_id, "room:rep"):
+			gs.stick_rep += 1
+			gs.stick_successes += 1
+			_update_tier()
+			# Canon: from the second organised (tier-3) job, Curtis is told
+			# directly over the network — same wire as the single roll.
+			if int(t["tier"]) == 3:
+				gs.stick_organized_hits += 1
+				if gs.stick_organized_hits >= 2:
+					var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+					if exposure != null:
+						exposure.record_observation("curtis", {
+							"type": "violence", "event": "organized_hit",
+							"count": gs.stick_organized_hits, "source": "network",
+						})
+
+	# 3. The noise. Scaled by how much of the room actually left with you —
+	# the "clean take is half the heat" rule generalised to partial takes —
+	# and the single roll's own shapes at the extremes.
+	var raw_heat: float
+	match tier_equiv:
+		"clean":
+			raw_heat = float(t["heat"]) * 0.5
+		"messy":
+			raw_heat = maxf(SCRIPTS.STICK_HEAT_FLOOR,
+				float(t["heat"]) * LOOP.banked_fraction(loop)) \
+				if resolution == SCRIPTS.RESOLUTION_ESCAPED else float(t["heat"])
+		"catastrophic":
+			raw_heat = float(t["heat"]) * 1.5
+		_:
+			raw_heat = float(maxi(1, int(t["heat"]) - 1))
+	var applied: float = 0.0
+	if engine.record_receipt(cause_id, "room:heat"):
+		applied = _apply_heat(raw_heat)
+
+	# 4. Injury, keyed and Tone-absorbed. Catastrophic rooms hurt like
+	# catastrophic robberies; a messy escape costs the caught table's
+	# `run_messy` band; everything else walks out whole.
+	var damage: int = 0
+	var band: Array = spec.get("injury_band",
+		INJURY_BANDS.get(tier_equiv, []) if tier_equiv == "catastrophic" else [])
+	if band.size() == 2 and engine.record_receipt(cause_id, "room:injury"):
+		damage = rng.seeded_int_range(gs.run_seed,
+			str(source.get("source_rng_key", "")) + ":room:injury",
+			int(band[0]), int(band[1]))
+		damage = _crew_absorbed(damage)
+		gs.health = clampi(gs.health - damage, 0, gs.health_max)
+
+	# 5. What Curtis makes of it and what the block saw — the single roll's
+	# own tables, fed the equivalent tier.
+	var curtis: Node = _curtis()
+	if curtis != null and engine.record_receipt(cause_id, "room:curtis"):
+		var reads: Dictionary = CURTIS_BY_TIER.get(tier_equiv, CURTIS_BY_TIER["failure"])
+		curtis.raise_awareness(int(reads["awareness"]))
+		if bool(reads["criminal"]):
+			curtis.mark_criminal_activity()
+	var resolver: Object = gm.system("outcome_resolver") if gm != null else null
+	if resolver != null and engine.record_receipt(cause_id, "room:observation"):
+		resolver.broadcast_outcome("robbery", tier_equiv, gs.current_district_id,
+			credited if credited > 0 else null)
+
+	# 6. District Pressure by the same tiered gains, and the clean credit when
+	# it was clean.
+	var rules: RefCounted = RULES.new()
+	var pressure_gain: float = float(rules.PRESSURE_BY_TIER.get(tier_equiv, 0.0))
+	if pressure_gain > 0.0 and engine.record_receipt(cause_id, "room:pressure"):
+		engine.add_pressure(gs.current_district_id, "stick", pressure_gain, cause_id)
+	if engine.record_receipt(cause_id, "room:clean_credit"):
+		engine.credit_clean_outcome(gs.current_district_id, "stick", tier_equiv)
+
+	# 7. The delayed answer, on the chain's own cause. The queue dedupes on
+	# (actor, cause), so this cannot double-schedule across a reload.
+	var retaliation: Object = gm.system("retaliation") if gm != null else null
+	if retaliation != null:
+		retaliation.schedule(str(t["id"]), tier_equiv, cause_id, gs.current_district_id)
+
+	# 8. The arrest gate — beaten exits only, against the PRE-SOURCE snapshot,
+	# with the same cooldown suppression the single roll applies.
+	var arrested: bool = false
+	if resolution == SCRIPTS.RESOLUTION_BEATEN:
+		arrested = rules.stick_arrests(int(t["tier"]), tier_equiv,
+			float(source.get("pre_encounter_heat", 0.0)))
+		var arrest_owner: Object = gm.system("arrest") if gm != null else null
+		if arrested and arrest_owner != null and arrest_owner.in_cooldown(int(gs.day)):
+			arrested = false
+		if arrested and arrest_owner != null:
+			arrest_owner.attach_booking(gs.active_consequence, {
+				"family": "stick",
+				"tier": int(t["tier"]),
+				"target_id": str(t["id"]),
+				"cause_id": cause_id,
+			})
+
+	# 9. The result the scene renders: exact, signed, and carrying the
+	# resolution state the headlines key on.
+	var decision: Dictionary = chain.get("decision", {})
+	decision["resolved_tier"] = tier_equiv
+	decision["result"] = {
+		"resolution": resolution,
+		"cash": credited,
+		"health": -damage,
+		"heat": applied,
+		"pressure": pressure_gain,
+		"arrested": arrested,
+		"banked": banked,
+		"target_name": str(t["name"]),
+	}
+	decision["loop"] = loop
+	chain["decision"] = decision
+	engine.advance_stage(engine.STAGE_RESULT)
+
+	_room_feed_line(t, resolution, credited, applied, damage)
+	return {"ok": true, "resolution": resolution, "tier": tier_equiv,
+		"cash": credited, "arrested": arrested}
+
+func _room_feed_line(t: Dictionary, resolution: String, credited: int,
+		applied: float, damage: int) -> void:
+	var name := str(t["name"])
+	match resolution:
+		SCRIPTS.RESOLUTION_WON:
+			gs.log_activity("%s comes off end to end. +$%d, heat +%.1f."
+				% [name, credited, applied], GREEN)
+		SCRIPTS.RESOLUTION_ESCAPED:
+			if credited > 0:
+				gs.log_activity("You take $%d off %s and leave the rest sitting."
+					% [credited, name], AMBER)
+			else:
+				# Watched, banked nothing, left — an hour of casing that never
+				# became a robbery, and the room still noticed somebody was in it.
+				gs.log_activity("You read %s for a while and let it be." % name, AMBER)
+		SCRIPTS.RESOLUTION_SURRENDERED:
+			gs.log_activity("You drop the take at %s and buy the door." % name, AMBER)
+		_:
+			gs.log_activity("%s comes apart. Heat +%.1f, -%d health, nothing kept."
+				% [name, applied, damage], RED)

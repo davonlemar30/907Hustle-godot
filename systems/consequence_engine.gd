@@ -89,8 +89,18 @@ const KIND_RETALIATION := "retaliation"
 ## runtime adapter registry. What a fourth kind actually costs is this constant
 ## and one `resolve_consequence` method on the system that opens it.
 const KIND_WANDER := "wander_encounter"
+## The fifth kind: the multi-round resolution loop (design name "Squared Up";
+## the player never reads either name). A confrontation is still one chain —
+## what makes it a loop is that its DECISION stage re-presents itself round by
+## round instead of resolving on the first commit. The round mechanics live in
+## `systems/confrontation_loop.gd` and the authored scripts in
+## `data/confrontation_scripts.gd`; the engine's whole contribution is the
+## round-keyed commit receipt in `_resolve_choice` and the `loop_summary()`
+## projection, because everything else the loop needs the chain already had.
+const KIND_CONFRONTATION := "confrontation"
 const KNOWN_KINDS: Array[String] = [
 	KIND_BOOST_CAUGHT, KIND_STICK_BOOKING, KIND_RETALIATION, KIND_WANDER,
+	KIND_CONFRONTATION,
 ]
 
 var gs: Node
@@ -345,6 +355,12 @@ func _decision_block(authored: Dictionary) -> Dictionary:
 		"arrest_risks": authored.get("arrest_risks", {}),
 		"resolved_tier": str(authored.get("resolved_tier", "")),
 		"result": authored.get("result", {}),
+		# The loop's two fields, normalised with the rest so a confrontation
+		# chain has them from birth and every other kind carries the neutral
+		# values. `round` keys the commit receipt (see `_resolve_choice`);
+		# `loop` is the round state `confrontation_loop.gd` owns.
+		"round": int(authored.get("round", 0)),
+		"loop": authored.get("loop", {}),
 	}
 
 ## Move the chain forward. Refuses any transition not in `STAGE_TRANSITIONS`, so
@@ -590,7 +606,17 @@ func _resolve_choice(payload: Dictionary) -> Dictionary:
 	# The committed-choice receipt. A reload between the mutation and the
 	# autosave cannot produce a second commit, because the receipt and the
 	# commit land in the same dispatch.
-	if not record_receipt(active_cause_id(), "%s:committed_choice" % str(chain.get("chain_kind", ""))):
+	#
+	# A multi-round chain commits once per ROUND, so the receipt is keyed on
+	# `decision.round` from round one onward. Round zero keeps the original
+	# unsuffixed key deliberately: every existing single-decision chain — and
+	# any mid-chain save written before this field existed — carries round 0
+	# and keeps exactly the receipt string it always had.
+	var commit_key := "%s:committed_choice" % str(chain.get("chain_kind", ""))
+	var commit_round: int = int(decision.get("round", 0))
+	if commit_round > 0:
+		commit_key += ":round:%d" % commit_round
+	if not record_receipt(active_cause_id(), commit_key):
 		return {"ok": false, "reason": "You already made that call."}
 
 	decision["committed_choice"] = choice_id
@@ -799,6 +825,30 @@ func result_summary() -> Dictionary:
 		"committed_choice": str(decision.get("committed_choice", "")),
 		"resolved_tier": str(decision.get("resolved_tier", "")),
 		"result": (decision.get("result", {}) as Dictionary).duplicate(true),
+	}
+
+## The multi-round chain's round state, for the scene's loop chrome. Empty for
+## every chain that is not running a loop, which is what lets the scene ask
+## unconditionally — same contract as every projection above: plain data, no
+## handles.
+func loop_summary() -> Dictionary:
+	if not has_active():
+		return {}
+	var decision: Dictionary = gs.active_consequence.get("decision", {})
+	var loop: Variant = decision.get("loop", {})
+	if not (loop is Dictionary) or (loop as Dictionary).is_empty():
+		return {}
+	var state: Dictionary = loop
+	return {
+		"sheet_title": str(state.get("sheet_title", "")),
+		"stage": int(state.get("stage", 0)),
+		"stage_count": int(state.get("stage_count", 0)),
+		"left": int(state.get("left", 0)),
+		"left_label": str(state.get("left_label", "")),
+		"banked": int(state.get("banked", 0)),
+		"beat": str(state.get("beat", "")),
+		"log": (state.get("log", []) as Array).duplicate(),
+		"mode": str(state.get("mode", "stage")),
 	}
 
 # --- District Pressure (TI-003 §8) -----------------------------------------

@@ -28,6 +28,71 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## The Rooms: stickup becomes the confrontation loop  (added 2026-08-27)
+
+The multi-round resolution loop (design name "Squared Up"; code name
+`confrontation` — the player reads neither), built on the ConsequenceEngine as
+a fifth chain kind rather than as a new engine. First consumer: tier 2-3
+stickup targets, which now play out as authored ROOMS — the till then the
+drawer, the table then the pot then the door — with the take rolled once at
+entry on the same `:take` key the single roll always used and partitioned
+across stages. Bank-or-push: TAKE AND GO is the guaranteed out from the first
+bank onward, a slipped stage becomes the exit fork (DROP IT AND RUN vs RUN
+WITH IT), and exit heat scales with the fraction actually banked. Tier 1
+deliberately keeps the shipped single-roll path byte-for-byte — a mark is one
+beat — which is also what keeps the tier-1 parity probe green untouched.
+
+**Where the pieces landed.** `data/confrontation_scripts.gd` is every script:
+the four wired rooms, plus the Lift's caught-loop beats and bribe rows, the
+two market corner scripts, the one 907List meetup scene, the tip-modifier
+table and the crew-call rules — authored now, wired in their own slices, each
+gap named. `systems/confrontation_loop.gd` is the shared chassis (verb
+burning, round log, round presentation, the tip seam). The engine grew the
+kind, a round-keyed commit receipt (round zero keeps the original key, so
+every existing chain and save is untouched), and one `loop_summary()`
+projection; the consequence scene grew the loop chrome (stage counter, #LEFT,
+banked, beat-as-situation, the SO FAR log).
+
+**The escape ruling, recorded:** Combat when the problem is the grip,
+Intelligence when the problem is the map. Mid-robbery is the grip, so RUN
+WITH IT rolls the existing `escape` shape; the open-street scripts that want
+route-picking get an additive shape when they land, and the pinned map is
+never edited. Also recorded: a failed RUN WITH IT costs the caught table's
+`run_failure`-shaped band `[4, 10]` — without it the rolled run strictly
+dominated the guaranteed drop, and a relief valve nobody should pull is not a
+choice.
+
+**One deliberate divergence from the build brief.** The brief says round
+state is transient and a reload replays from round one. This port persists
+the loop inside the chain's decision block instead — TI-003's whole
+architecture is that a reload shows the decision the player was looking at,
+snapshotted odds included, and a loop that banked $430 two rounds ago cannot
+replay honestly without persisting the bank anyway. The save validator's
+coercion leaves the loop's keys alone (asserted), no schema bump needed.
+
+**Verification.** New gate suite `tests/confrontation/` — 159 checks on the
+shared territory-asserts harness, in CI beside the other four: tier
+boundaries, exact partition sums, the entry-key take, verb burning, the
+guaranteed-out invariant at every presented round, WALK costing nothing, the
+fork receipts (`committed_choice` vs `committed_choice:round:1`), catastrophic
+booking through to the BOOKING stage, and the loop block surviving
+`validate_state`. Three parity sections that drove tier 2-3 stickup dispatches
+were updated to drive the rooms while holding their contracts — the arrest
+gate now reads SHARPER through the loop (the room applies its own exit heat
+before the gate is consulted, so a gate wired to live Heat instead of the
+pre-source snapshot would book jobs the snapshot releases), and "books" is
+read off the resolved result rather than off the chain's existence, because a
+room chain exists at every outcome.
+
+**Deliberately absent, each its own slice:** the Lift's escalation rounds and
+bribe valve (its per-tier flow is pinned by parity and ships with its own
+test updates), the market corner scripts and STASH IT, the meetup scene's
+trigger, crew calls as loop actions (no stickup script admits them — Tone
+does not start things), and every tip modifier (the loop reads `tip_effects`
+defensively; the rows arrive with the phone-tip system).
+
+---
+
 ## Batch 18 PR 2: FS-002.2, and the reason that was wrong everywhere  (added 2026-08-23)
 
 FS-002.2 is the lifecycle slice. Most of what it asked for was already shipped —

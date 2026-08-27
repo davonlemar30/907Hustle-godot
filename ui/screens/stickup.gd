@@ -81,6 +81,12 @@ func _on_hit(target_id: String) -> void:
 	var r: bool = _gm.dispatch("stickup", {"target_id": target_id})
 	if not r:
 		return
+	# A tier 2-3 target opens the room instead of resolving here — the
+	# consequence scene is about to take over, and a toast reading "it went
+	# wrong" over a robbery that has not happened yet would be a lie.
+	var engine: Object = _gm.system("consequence")
+	if engine != null and engine.has_active():
+		return
 	# The dispatch already logged it; the toast is the immediate read.
 	if gs.cash > before_cash:
 		nav.show_toast("Took $%d. Heat is %d/%d." % [gs.cash - before_cash, gs.heat_shown(), gs.heat_max])

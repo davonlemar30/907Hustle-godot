@@ -18463,7 +18463,13 @@ func _fail(label: String, detail: String) -> void:
 ## change.
 ##
 ## Ten of margin, as always.
-const MIN_CHECKS := 12524
+##
+## "Today's Take" (PR 2) takes it to 12526. Both arrived for free: adding
+## `todays_earnings` to `PERSIST_FIELDS` gives the round-trip loop
+## (`_check_save_roundtrip`) and the opening screen's no-mutation loop
+## (`_check_the_opening`) one more field apiece to walk, the same mechanism
+## FS-003.4 named for the Consequence-Encounter Engine's manifest.
+const MIN_CHECKS := 12526
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

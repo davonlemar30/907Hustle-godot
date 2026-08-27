@@ -36,13 +36,13 @@ extends Node
 ## line the load failure toast uses.
 ##
 ## What persists: every mutable run field in GameState — the clock, player
-## stats, inventory, jobs/obligations, all six hustle surfaces, crew records
-## and the wage clock, territory, the exposure substrate (npc_ledgers +
-## observation_queue) and every Curtis awareness field — plus the current
-## market prices as a {product_id: price} slice. Canon tables (districts,
-## products' static fields, stick_targets, crew_roster, …) and the UI-scaffold
-## placeholders that no system writes yet (todays_take, income_sources,
-## hustle_surfaces, active_operation, eli_report) are NOT
+## stats, inventory, jobs/obligations, all six hustle surfaces, today's
+## day-scoped earnings, crew records and the wage clock, territory, the
+## exposure substrate (npc_ledgers + observation_queue) and every Curtis
+## awareness field — plus the current market prices as a {product_id: price}
+## slice. Canon tables (districts, products' static fields, stick_targets,
+## crew_roster, …) and the UI-scaffold placeholders that no system writes yet
+## (hustle_surfaces, active_operation, eli_report) are NOT
 ## saved: a data-tuning commit must win over a stale save, and a placeholder
 ## that persists becomes a fake fact.
 
@@ -172,6 +172,8 @@ const PERSIST_FIELDS: Array[String] = [
 	"curtis_recent_watcher_lines", "curtis_phase_messages_sent",
 	# Feed
 	"activity_log",
+	# Day-scoped earnings (PR 2, playtest finding 3)
+	"todays_earnings",
 	# Money provenance + Financial Pressure (v8, TI-003 §§5-6)
 	"dirty_cash", "clean_cash", "financial_pressure",
 	# Consequence-Encounter Engine (v8, TI-003 §5). Stable IDs and state facts

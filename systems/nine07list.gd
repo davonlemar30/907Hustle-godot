@@ -297,6 +297,7 @@ func settle_holding(index: int, execution_mode: String) -> Dictionary:
 	# on a public listings board is legitimate income even when the seller is not.
 	var wallet: Object = gm.system("wallet")
 	wallet.credit(got, wallet.CLEAN, {"source_id": "list_sell"})
+	gs.record_earning("list", got)
 	gs.list_holdings.remove_at(index)
 
 	if not delegated:

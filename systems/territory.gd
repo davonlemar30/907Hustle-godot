@@ -280,6 +280,7 @@ func settle_night(_ended_day: int) -> void:
 			# TI-003 §6 classifies territory income as criminal: "current criminal
 			# Territory income once its payout caller migrates". This is that caller.
 			_wallet().credit(income, _wallet().DIRTY, {"source_id": "territory_income"})
+			gs.record_earning("territory", income)
 			gs.log_activity("The corners brought in $%d." % income, GREEN)
 
 		# Deshawn damps this the same way he damps a stickup — it is heat the

@@ -269,6 +269,7 @@ func _run(target_id: String) -> Dictionary:
 		var band: Array = t["take"]
 		var take: int = rng.seeded_int_range(gs.run_seed, key + ":take", int(band[0]), int(band[1]))
 		_wallet().credit(take, _wallet().DIRTY, {"source_id": "stickup_take"})
+		gs.record_earning("stick", take)
 		# A clean take is half the heat of a loud one: the money moved and
 		# nobody watched you struggle for it.
 		applied = _apply_heat(float(t["heat"]) * (0.5 if tier == "clean" else 1.0))

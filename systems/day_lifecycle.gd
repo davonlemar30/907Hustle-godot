@@ -411,6 +411,9 @@ func _run_day_start_step(step: String, today: int) -> void:
 		# its own step would put a name in the declared order that does nothing
 		# the first does not already do at the same moment.
 		gs.wanders_today = 0
+		# Today's Take rides the same step for the same reason: it is also
+		# "what has already happened today," cleared as today begins.
+		gs.todays_earnings = {}
 		return
 	var engine: Object = gm.system("consequence") if gm != null else null
 	if engine == null:

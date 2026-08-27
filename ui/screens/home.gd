@@ -69,12 +69,16 @@ func _wire_taps() -> void:
 			continue
 		b.text = str((ACTIONS[node_name] as Dictionary)["label"])
 		tap_connect(b, _on_post_eli if str(node_name) == "Post" else _on_lay_low)
-	# Three intents, three buttons. One button was a lever; three is a question.
-	for intent in EVENTS.INTENTS:
-		var b := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go/%s"
-			% str(intent).capitalize()) as Button
-		if b:
-			tap_connect(b, _on_wander.bind(str(intent)))
+	# One button, dispatching READ — the intent wander.gd now treats as
+	# "explore everything" rather than one of three equal choices (PR 5). A
+	# second, conditional button is pure navigation to the Jobs screen, shown
+	# only once there is a job to go back to.
+	var walk_btn := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go/Read") as Button
+	if walk_btn:
+		tap_connect(walk_btn, _on_wander.bind(EVENTS.INTENT_READ))
+	var work_btn := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go/GoToWork") as Button
+	if work_btn:
+		tap_connect(work_btn, _on_go_to_work)
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Market", _on_market)
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Turf", _on_turf)
 	make_tappable("Shell/Scroll/Pad/Content/People", _on_people)
@@ -144,6 +148,12 @@ func _wander_toast(before_day: int) -> String:
 	if gs.day > before_day:
 		line += "\nA new day. Day %d." % gs.day
 	return line
+
+## The "look for a deal, then go to work if employed" playtest finding
+## (PR 5). Existing screen, existing flow — the Jobs screen already handles
+## the approach choice and the shift itself; this is just the door to it.
+func _on_go_to_work() -> void:
+	nav.go_to(nav.JOBS)
 
 ## Eli, on the bag for the day. Batch 6b built the operation; this is the door
 ## the operation card always implied and never had.
@@ -234,15 +244,16 @@ func _bind_wander() -> void:
 	_set_text("Shell/Scroll/Pad/Content/Wander/V/Head/Where",
 		gs.time_slot.capitalize())
 	var blocked: String = str(sys.blocker())
-	for intent in EVENTS.INTENTS:
-		var b := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go/%s"
-			% str(intent).capitalize()) as Button
-		if b == null:
-			continue
-		var copy: Dictionary = EVENTS.INTENT_COPY[intent]
-		b.text = str(copy["label"]) if blocked.is_empty() else blocked.to_upper()
-		b.disabled = not blocked.is_empty()
-		b.tooltip_text = str(copy["line"])
+	var walk_btn := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go/Read") as Button
+	if walk_btn:
+		walk_btn.text = "WALK AROUND" if blocked.is_empty() else blocked.to_upper()
+		walk_btn.disabled = not blocked.is_empty()
+		walk_btn.tooltip_text = "Work, a deal, or just what's going on. You don't pick which."
+	# Pure navigation, so no blocker check of its own — a consequence in front
+	# of the player redirects any nav.go_to() the same way it always has.
+	var work_btn := get_node_or_null("Shell/Scroll/Pad/Content/Wander/V/Go/GoToWork") as Button
+	if work_btn:
+		work_btn.visible = not str(gs.active_job_id).is_empty()
 	_set_text("Shell/Scroll/Pad/Content/Wander/V/Sub", _wander_line(sys))
 
 ## What the card says under the button. Three states, and the middle one is the

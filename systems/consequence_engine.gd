@@ -107,7 +107,7 @@ func setup(game_state: Node, manager: Node) -> void:
 ## decision. The authored resolution behind it is FS-003.7's; what lives here is
 ## the revalidation every commit must pass whoever wrote the content.
 func can_handle(action: String) -> bool:
-	return action in ["resolve_consequence_choice", "consequence_continue"]
+	return action in ["resolve_consequence_choice", "consequence_continue", "post_up"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
 	match action:
@@ -115,7 +115,47 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 			return _resolve_choice(payload)
 		"consequence_continue":
 			return _continue(payload)
+		"post_up":
+			return _post_up()
 	return {"ok": false, "reason": "Unknown consequence action."}
+
+## Why Post Up cannot fire right now, or "" if it can. Public so Market can
+## preview it the same way every other slot-costing surface previews its own
+## blocker (see wander.gd::blocker()) — a screen reads this to decide a
+## button's disabled state and label without dispatching anything.
+func post_up_blocker() -> String:
+	if bool(gs.game_over):
+		return "The run is over"
+	if bool(has_active()):
+		return "Deal with what is in front of you"
+	return ""
+
+## Post Up (PR 5): stand somewhere for an hour and see who comes by. The two
+## things a wander spends its slot on — TimeSystem's clock and this engine's
+## own retaliation-surfacing check — in the order Post Up's own framing asks
+## for: the hour passes FIRST, and the corner's risk is what standing there
+## for it bought. Wander checks the other way around because a surfaced
+## encounter there has to pre-empt its OWN card draw; Post Up draws no card,
+## so there is nothing to pre-empt.
+##
+## `try_surface_delayed` re-validates `can_surface_delayed` on its own before
+## surfacing anything, so this is safe even when `advance_time` itself
+## crosses a day and DAY_START's own `surface_delayed` step already opened
+## something — the second call simply finds the engine already active and
+## declines, the same guard that stops any two callers from racing it.
+##
+## One dispatch, one notify_changed, same as every other slot-costing action
+## — never a bare time_system.handle() call from a screen, which would spend
+## the hour without telling anything downstream it had.
+func _post_up() -> Dictionary:
+	var blocked: String = post_up_blocker()
+	if not blocked.is_empty():
+		return {"ok": false, "reason": blocked + "."}
+	var time_sys: Object = gm.system("time") if gm != null else null
+	if time_sys != null:
+		time_sys.handle("advance_time", {})
+	try_surface_delayed(int(gs.day), str(gs.current_district_id))
+	return {"ok": true}
 
 # --- source adapters --------------------------------------------------------
 

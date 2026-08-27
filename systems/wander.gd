@@ -275,25 +275,33 @@ func _wander(intent: String) -> Dictionary:
 	# changed. The batch-10 sabotage log says the same thing.
 	var key := "%d:%d:%d:wander:%s" % [gs.day, gs.time_slots_today,
 		int(gs.wander_count), str(gs.current_district_id)]
-	# Only a walk that went looking for work finds work. The ramp is untouched —
-	# it still climbs on a miss and resets on a find — but a player who spends
-	# every walk reading the block does not stumble into a freight job, which is
-	# the whole point of the intent being a choice.
-	var open: Array = undiscovered() if intent == EVENTS.INTENT_WORK else []
+	# A walk that went looking for work finds work — and so, as of PR 5, does
+	# a walk that went looking for nothing in particular. The Home screen
+	# collapsed to one WALK AROUND button that always dispatches READ, so
+	# READ is now the "explore everything" intent rather than one of three
+	# equal choices: it draws from BOTH sub-pools below on top of its own
+	# full-weight card pool. WORK and DEAL still exist — a future caller can
+	# dispatch either directly, and the parity profiles do — and each still
+	# answers to ONLY its own pool, never the other's: what changed is which
+	# intents can reach a pool at all, not which pool a given intent reaches.
+	var open: Array = undiscovered() \
+		if intent in [EVENTS.INTENT_WORK, EVENTS.INTENT_READ] else []
 	# The DEAL pool, on its own key. Batch 14.
 	#
 	# It is the same roll — same ramp, same effort scaling, same one-find-per-walk
 	# rule — reached by a different intent and answered from a different pool.
-	# Deliberately not a shared "discovery" pool with a mixed draw: WORK finding a
-	# boost target would make the intent choice cosmetic, which is the exact defect
-	# batch 13 removed from Wander in the first place.
+	# Still not a WORK/DEAL mixed draw: WORK finding a boost target would make
+	# the choice between them cosmetic, which is the exact defect batch 13
+	# removed from Wander in the first place. READ reaching both (PR 5) is a
+	# different claim — READ was never one of the two named choices, it is
+	# the button that stopped asking the player to choose at all.
 	#
 	# Keyed `:deal` rather than off the bare `key`, so the two intents cannot
 	# resolve off the same draw. Sharing the key would mean a run that spent walk
 	# five looking for work and a run that spent walk five looking for a deal both
 	# hit or both missed, which is one stream pretending to be two.
 	var open_targets: Array = undiscovered_boost_targets() \
-		if intent == EVENTS.INTENT_DEAL else []
+		if intent in [EVENTS.INTENT_DEAL, EVENTS.INTENT_READ] else []
 	if not open.is_empty() \
 			and rng.seeded_random(gs.run_seed, key) < discovery_chance() * spent:
 		# WHICH one is seeded too. Taking `open[0]` made the order of a constant
@@ -310,7 +318,8 @@ func _wander(intent: String) -> Dictionary:
 	# Market discovery: fires on any intent, same ramp, its own key. Finding
 	# the corner is not something you go looking for specifically — it is
 	# something that happens while you are out for any reason at all, which
-	# is why this is not gated to one intent the way WORK/DEAL are. Playtest
+	# is why this excludes NO intent, where WORK/DEAL (even after PR 5 added
+	# READ to both) still each exclude the other's named intent. Playtest
 	# finding: Market unlocked deterministically on the FIRST wander of every
 	# run, which read as scripted rather than found. Only rolls while
 	# unfound — a one-way latch, same as `boost_targets_discovered`.

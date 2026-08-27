@@ -491,11 +491,13 @@ layout_mode = 2
 theme_override_constants/separation = 6
 
 [node name="Work" type="Button" parent="Shell/Scroll/Pad/Content/Wander/V/Go"]
+visible = false
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 theme_type_variation = &"BtnPrimary"
 
 [node name="Deal" type="Button" parent="Shell/Scroll/Pad/Content/Wander/V/Go"]
+visible = false
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 theme_type_variation = &"BtnSecondary"
@@ -503,7 +505,15 @@ theme_type_variation = &"BtnSecondary"
 [node name="Read" type="Button" parent="Shell/Scroll/Pad/Content/Wander/V/Go"]
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
+theme_type_variation = &"BtnPrimary"
+text = "WALK AROUND"
+
+[node name="GoToWork" type="Button" parent="Shell/Scroll/Pad/Content/Wander/V/Go"]
+visible = false
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
 theme_type_variation = &"BtnSecondary"
+text = "GO TO WORK"
 
 
 [node name="Actions" type="PanelContainer" parent="Shell/Scroll/Pad/Content"]

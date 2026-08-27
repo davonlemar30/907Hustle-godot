@@ -1443,40 +1443,50 @@ text = "LOCKED"
 layout_mode = 2
 theme_type_variation = &"Card"
 
-[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Foot"]
+[node name="Stack" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Foot"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Foot/H"]
+[node name="H" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Foot/Stack"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Foot/Stack/H"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 theme_override_constants/separation = 1
 
-[node name="K" type="Label" parent="Shell/Scroll/Pad/Content/Foot/H/V"]
+[node name="K" type="Label" parent="Shell/Scroll/Pad/Content/Foot/Stack/H/V"]
 layout_mode = 2
 theme_type_variation = &"Kicker"
 text = "CARGO VALUE"
 
-[node name="Val" type="Label" parent="Shell/Scroll/Pad/Content/Foot/H/V"]
+[node name="Val" type="Label" parent="Shell/Scroll/Pad/Content/Foot/Stack/H/V"]
 layout_mode = 2
 theme_type_variation = &"Mono"
 theme_override_colors/font_color = Color(0.451, 0.722, 0.404, 1)
 theme_override_font_sizes/font_size = 18
 text = "$1,428"
 
-[node name="Note" type="Label" parent="Shell/Scroll/Pad/Content/Foot/H/V"]
+[node name="Note" type="Label" parent="Shell/Scroll/Pad/Content/Foot/Stack/H/V"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 9
 text = "3 of 8 products moving at a spread"
 
-[node name="Go" type="Button" parent="Shell/Scroll/Pad/Content/Foot/H"]
+[node name="Go" type="Button" parent="Shell/Scroll/Pad/Content/Foot/Stack/H"]
 custom_minimum_size = Vector2(128, 52)
 layout_mode = 2
 size_flags_vertical = 4
 theme_type_variation = &"BtnPrimary"
 text = "PLAN A ROUTE"
+
+[node name="PostUp" type="Button" parent="Shell/Scroll/Pad/Content/Foot/Stack"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+theme_type_variation = &"BtnSecondary"
+text = "POST UP"
 
 [node name="NavBar" type="PanelContainer" parent="Shell"]
 layout_mode = 2

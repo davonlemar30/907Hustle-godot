@@ -36,6 +36,7 @@ func _bind_content() -> void:
 	_fill_tabs()
 	_fill_context()
 	_fill_products()
+	_bind_post_up()
 
 ## The district context strip: which part of town this board is, and what the
 ## neighbourhood makes of the trade.
@@ -155,6 +156,9 @@ func _connect_buttons() -> void:
 		var sell := get_node_or_null(base + "/Sell") as Button
 		if sell:
 			tap_connect(sell, _on_sell.bind(pid))
+	var post_up := get_node_or_null("Shell/Scroll/Pad/Content/Foot/Stack/PostUp") as Button
+	if post_up:
+		tap_connect(post_up, _on_post_up)
 
 func _on_buy(pid: String) -> void:
 	_show_quantity_sheet(pid, "buy")
@@ -433,3 +437,40 @@ func _fill_products() -> void:
 				if economy != null else int(p.price)
 			sell_label.visible = pays < int(p.price)
 			sell_label.text = "SELL $%d" % pays
+
+# --- Post Up (PR 5) ----------------------------------------------------------
+#
+# Standing on the corner for an hour, priced the same as a wander: a slot,
+# and whatever risk comes with being seen here that long. The dispatch
+# (systems/consequence_engine.gd::_post_up) fires the exact same
+# try_surface_delayed() call Wander does — no parallel encounter system —
+# so a hot corner is a hot corner whether it was found by walking past it or
+# by standing on it.
+
+func _bind_post_up() -> void:
+	var btn := get_node_or_null("Shell/Scroll/Pad/Content/Foot/Stack/PostUp") as Button
+	if btn == null:
+		return
+	var blocked: String = _post_up_blocker()
+	btn.text = "POST UP · %s" % gs.time_slot if blocked.is_empty() else blocked.to_upper()
+	btn.disabled = not blocked.is_empty()
+
+func _post_up_blocker() -> String:
+	var engine: Object = _gm.system("consequence") if _gm else null
+	return str(engine.post_up_blocker()) if engine != null else ""
+
+func _on_post_up() -> void:
+	var blocked: String = _post_up_blocker()
+	if not blocked.is_empty():
+		nav.show_toast(blocked + ".")
+		return
+	if not _gm.dispatch("post_up", {}):
+		return
+	# An opened chain has already redirected the screen away by the time
+	# dispatch() returns (refresh() -> blocking_route(), the same mechanism
+	# _on_wander() relies on) — its own presentation IS the announcement, so
+	# only a quiet corner gets this toast.
+	var engine: Object = _gm.system("consequence") if _gm else null
+	if engine != null and bool(engine.has_active()):
+		return
+	nav.show_toast("An hour passes on the corner.")

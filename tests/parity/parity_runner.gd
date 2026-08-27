@@ -16951,7 +16951,7 @@ func _check_adapter_copy_seam(gs: Node, gm: Node) -> void:
 #               one that matters, because the filter alone is a list you can
 #               walk around.
 # SABOTAGE: let a WORK walk read the boost pool
-#           ==> "only a walk that went looking for a deal clocks a spot" fails.
+#           ==> "a walk looking for work does not also clock a spot" fails.
 # SABOTAGE: drop the tier filter from `undiscovered_boost_targets`
 #           ==> "a tier-3 room is not something a tier-1 player notices" fails.
 # SABOTAGE: return the generic line from `home.gd::_wander_toast`
@@ -17357,8 +17357,9 @@ func _check_deal_discovery(gs: Node, gm: Node) -> void:
 	_expect_true("and a deal walk can come back empty", missed_on_deal)
 
 	# The intent gate, from the other side. Forty walks looking for WORK, and
-	# not one of them notices a shop — the same rule that keeps a READ walk from
-	# stumbling into a freight job.
+	# not one of them notices a shop — WORK still answers to its own pool
+	# only. READ is the one that changed (PR 5): it now reaches this pool too,
+	# the same broadening that let a WALK AROUND tap find a job.
 	var clocked_on_work := false
 	for day in range(1, 40):
 		_b10_ready(gs)
@@ -17370,8 +17371,22 @@ func _check_deal_discovery(gs: Node, gm: Node) -> void:
 		if not gs.boost_targets_discovered.is_empty():
 			clocked_on_work = true
 			break
-	_expect_true("only a walk that went looking for a deal clocks a spot",
+	_expect_true("a walk looking for work does not also clock a spot",
 		not clocked_on_work)
+
+	var clocked_on_read := false
+	for day in range(1, 40):
+		_b10_ready(gs)
+		gs.day = day
+		gs.boost_tier = 3
+		gs.boost_targets_discovered = []
+		if not gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ}):
+			continue
+		if not gs.boost_targets_discovered.is_empty():
+			clocked_on_read = true
+			break
+	_expect_true("but a walk that names no intent in particular can",
+		clocked_on_read)
 
 	# An exhausted pool turns the roll OFF rather than rolling for nothing: with
 	# everything clocked, a DEAL walk still draws a card and the ramp still
@@ -18615,7 +18630,28 @@ func _fail(label: String, detail: String) -> void:
 ## Boost: not a number to hand-count from the source, because a sweep's
 ## contribution depends on how many days it takes each seed to land a hit,
 ## the same disclaimer FS-003.7's Caught section carries above.
-const MIN_CHECKS := 12533
+##
+## "Walk Around UI" (PR 5) MOVES IT DOWN, to 12528 — the one deliberate
+## exception to "it only ever moves up". `_check_wander_card_is_reachable`'s
+## per-intent loop (4 checks x 3 buttons: there, a real tap target, not
+## disabled, says what it is for) asked the same four questions of Work and
+## Deal that it asked of Read, and that stopped being the right shape the
+## moment two of the three retired from the UI: "is it a real tap target"
+## about a button nobody can tap is not a check, it is a question with no
+## answer worth having. It is replaced by fewer, more PRECISE ones — Read
+## keeps its original four; Work and Deal each get one ("is it out of the
+## layout"); GO TO WORK gets three across a fresh run and an employed one
+## ("not offered yet", "arrives", "a real tap target too"). Two more sweeps
+## (`_check_wander_intents`, `_check_deal_discovery`) gained a DEAL-side or
+## READ-side counterpart apiece proving the choice PR 5 removed from the UI
+## still holds underneath it — WORK still cannot read the deal pool, DEAL
+## still cannot read the work pool — which is real coverage the count alone
+## does not show. A floor that only ever ratchets up would have made this
+## PR either pad the suite with a check nobody needed or leave a stale one
+## asking about a button that no longer exists; neither is the discipline
+## the ratchet exists to enforce, so the floor states the real number
+## instead of arguing with it.
+const MIN_CHECKS := 12528
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -20535,19 +20571,38 @@ func _check_wander_card_is_reachable(gs: Node, gm: Node) -> void:
 	_expect_true("the wander card exists on Home", card != null)
 	if card != null:
 		_expect_true("and a fresh run can see it", bool((card as Control).visible))
-	# Three buttons since batch 13, one per intent, and every one of them has to
-	# be reachable and tappable on a fresh run — the card is only worth having
-	# if the choice it offers is actually offered.
-	for intent in B10_EVENTS.INTENTS:
+	# ONE button since PR 5 — WALK AROUND, dispatching READ — reachable and
+	# tappable on a fresh run. GO TO WORK is the second, and correctly absent:
+	# a fresh run has no job to go back to.
+	var walk_btn: Button = home.get_node_or_null(
+		"Shell/Scroll/Pad/Content/Wander/V/Go/Read") as Button
+	_expect_true("the WALK AROUND button is there", walk_btn != null)
+	if walk_btn != null:
+		_expect_true("it is a real tap target", walk_btn.custom_minimum_size.y >= 44.0)
+		_expect_true("and it is not disabled on a fresh run", not walk_btn.disabled)
+		_expect_str("and it says what it is for", walk_btn.text, "WALK AROUND")
+	var work_btn: Button = home.get_node_or_null(
+		"Shell/Scroll/Pad/Content/Wander/V/Go/GoToWork") as Button
+	_expect_true("GO TO WORK is not offered before there is a job",
+		work_btn != null and not work_btn.visible)
+	# The two retired intent buttons stay in the scene, out of the layout,
+	# rather than deleted or relabelled — same rule the stale MOVE PRODUCT
+	# control below is asserted against, and the same reason: a screen that
+	# tolerates a node being absent should equally tolerate it being present.
+	for retired in ["Work", "Deal"]:
 		var b: Button = home.get_node_or_null(
-			"Shell/Scroll/Pad/Content/Wander/V/Go/%s" % str(intent).capitalize()) as Button
-		_expect_true("the %s button is there" % str(intent), b != null)
-		if b == null:
-			continue
-		_expect_true("%s is a real tap target" % str(intent),
-			b.custom_minimum_size.y >= 44.0)
-		_expect_true("and %s is not disabled on a fresh run" % str(intent), not b.disabled)
-		_expect_true("and it says what it is for: %s" % str(intent), not b.text.is_empty())
+			"Shell/Scroll/Pad/Content/Wander/V/Go/%s" % retired) as Button
+		_expect_true("%s is out of the layout" % retired, b != null and not b.visible)
+	# Employed: GO TO WORK arrives, and it is a real tap target too. Re-bound
+	# on the SAME instance rather than a second instantiation — refresh() is
+	# exactly the entry point a real state_changed would call.
+	gs.active_job_id = "wash_go"
+	home.refresh()
+	_expect_true("employed, GO TO WORK arrives",
+		work_btn != null and work_btn.visible)
+	if work_btn != null:
+		_expect_true("and it is a real tap target too",
+			work_btn.custom_minimum_size.y >= 44.0)
 	# The stale MOVE PRODUCT control is gone from the layout rather than
 	# relabelled, so nothing offers two doors onto the same walk. Batch 14 took
 	# the other two buttons off that card as well, so the assertion is now made
@@ -20659,8 +20714,11 @@ func _check_discovery_pays(gs: Node, gm: Node) -> void:
 #
 # SABOTAGE: return 1.0 unconditionally from WanderEvents.effort_for
 #           ==> "the third walk of a day is worth less than the first" fails.
-# SABOTAGE: drop the intent gate on discovery (always look for work)
-#           ==> "only a walk that went looking for work finds work" fails.
+# SABOTAGE: drop the intent gate on discovery entirely (every intent reads
+#           every pool) ==> "but a walk that went looking for a deal still
+#           does not" fails — DEAL finding work is exactly the choice-made-
+#           cosmetic defect this gate exists to prevent, PR 5's broadening of
+#           READ notwithstanding.
 # SABOTAGE: apply INTENT_MATCH to every card regardless of intent
 #           ==> "what you went out for is what you mostly get" fails.
 # SABOTAGE: return [] from WanderSystem._read_pressure
@@ -20740,9 +20798,14 @@ func _check_wander_intents(gs: Node, gm: Node) -> void:
 		not gm.dispatch("wander", {"intent": "sideways"}))
 	_expect_int("and a refused walk costs no time", int(gs.time_slots_today), 0)
 
-	# Only WORK finds work. This is the gate that makes the choice matter, and
-	# the economy instrument proved it live: the profile that stopped naming an
-	# intent found nothing and fell from 307% to 113%.
+	# WORK and READ both find work as of PR 5 — READ is the "explore
+	# everything" intent the Home screen's single WALK AROUND button
+	# dispatches, so a walk that names no intent in particular can still
+	# turn up a job (this is the change the economy instrument's `newcomer`
+	# and `worker_wanders` profiles now rely on). DEAL is the one that still
+	# cannot: it answers to its own pool only, same as it always has —
+	# the choice between WORK and DEAL still means something even though
+	# the UI stopped asking the player to make it explicitly.
 	_b10_ready(gs)
 	var found_reading := false
 	for walk in range(30):
@@ -20752,7 +20815,20 @@ func _check_wander_intents(gs: Node, gm: Node) -> void:
 		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ})
 		if (sys.undiscovered() as Array).size() < 2:
 			found_reading = true
-	_expect_true("only a walk that went looking for work finds work", not found_reading)
+	_expect_true("a walk that names no intent in particular can still find work",
+		found_reading)
+
+	_b10_ready(gs)
+	var found_on_deal := false
+	for walk in range(30):
+		gs.day = 6 + walk
+		gs.time_slots_today = 0
+		gs.wanders_today = 0
+		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_DEAL})
+		if (sys.undiscovered() as Array).size() < 2:
+			found_on_deal = true
+	_expect_true("but a walk that went looking for a deal still does not",
+		not found_on_deal)
 
 	_b10_ready(gs)
 	var found_working := false

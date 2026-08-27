@@ -22,7 +22,7 @@ append-only) and `docs/DECISIONS.md` (standing rulings).
 
 ### 0.1.0 Playtest Pass (2026-08-27)
 
-Two UX PRs addressing findings from the first 0.1.0 playtest session.
+Three UX PRs addressing findings from the first 0.1.0 playtest session.
 
 #### Fixed
 
@@ -36,6 +36,11 @@ Two UX PRs addressing findings from the first 0.1.0 playtest session.
   helper called by all seven income systems after their wallet credit, and a
   `todays_take()` derived total. Resets at DAY_START alongside `heat_gain_today`.
   Persisted for mid-day save/reload (additive, no schema bump).
+- **Market buy/sell hardcoded to quantity 1** (PR #80): the economy system
+  already validated and executed any quantity; only the UI never asked "how
+  many?" Now tapping BUY or SELL opens a bottom sheet with a live quantity
+  stepper (capped at supply/cash/cargo for buy, holdings for sell), running
+  total, and a CONFIRM button. Dispatch stays the sole authority.
 
 #### Added
 
@@ -44,6 +49,10 @@ Two UX PRs addressing findings from the first 0.1.0 playtest session.
   territory, and nine07list.
 - `GameState.todays_take()` — derived total of today's earnings.
 - Staggered tween entrance on the Opening screen (head, sub, beat cards, button).
+- `ui/components/modal_sheet.gd` — reusable bottom-sheet overlay component
+  (scrim, sliding/scaling card, swipe-down handle, `dismissed` signal,
+  self-freeing). No Market-specific knowledge; designed for reuse by the
+  encounter popup PR.
 
 #### Gates
 

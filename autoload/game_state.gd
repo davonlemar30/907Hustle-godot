@@ -439,6 +439,8 @@ func reset_to_new_game() -> void:
 	boost_daily_hits = {}
 	# Nothing clocked. Every target has to be found before it can be lifted.
 	boost_targets_discovered = []
+	# Nobody has shown you the corner yet.
+	market_discovered = false
 	crew_records = {}
 	crew_assignments = {}
 	crew_operation_state = {"discovered": [], "adapters": {}}
@@ -868,6 +870,14 @@ var boost_daily_hits: Dictionary = {}
 ##
 ## Empty is the honest start: a fresh run has never been out looking.
 var boost_targets_discovered: Array = []
+
+## Whether the player has found the street corner where product moves
+## (v17). A one-way discovery latch, same shape as `boost_targets_discovered`
+## and `districts_unlocked`: WanderSystem sets it true when the market
+## discovery event fires (playtest finding — Market unlocked on the first
+## walk of EVERY run, deterministically, which read as scripted rather than
+## found); `surface_visibility.gd` reads it to gate the Hustle row.
+var market_discovered: bool = false
 
 func boost_target_by_id(id: String) -> Dictionary:
 	for t in boost_targets:

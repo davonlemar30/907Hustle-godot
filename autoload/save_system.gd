@@ -122,7 +122,17 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## undiscovered and has to be found through play, the same as for a fresh run --
 ## the call the v11 arm made about the Night Owl and the v13 arm made about
 ## `jobs_discovered`, for the same reason.
-const SAVE_VERSION := 16
+##
+## v17: adds `market_discovered`, the Street Market discovery latch (PR 4).
+## Additive. The v16 -> v17 arm does not simply default it false: a v16 save
+## was written by a build where Market opened the moment `wander_count`
+## reached 1, so a save with a walk already behind it has EARNED the surface
+## under the rule that was live when it was written. Re-hiding it on load
+## would take away something the player already has, which is a worse
+## failure than the migration doing nothing — the same argument the v10 arm
+## makes for re-deriving `districts_unlocked` rather than defaulting it
+## empty.
+const SAVE_VERSION := 17
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -204,6 +214,8 @@ const PERSIST_FIELDS: Array[String] = [
 	# because the alternative history -- never having walked past it -- leaves
 	# exactly the same trace.
 	"boost_targets_discovered",
+	# Market's discovery latch (v17). Same shape, same reason.
+	"market_discovered",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -652,6 +664,20 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				state["territory_nodes"] = new_nodes
 				state["territory_fronts"] = new_fronts
 				state.erase("held_blocks")
+			16:
+				# v16 -> v17: `market_discovered`. A v16 save was written by a
+				# build where Market opened the instant `wander_count` reached
+				# 1 — so a save with a walk already behind it had ALREADY
+				# passed the old gate and the surface was already open. This
+				# arm stamps `market_discovered = true` for exactly that case,
+				# preserving what the player already has. A save that has
+				# never walked (`wander_count == 0`) had not found it under
+				# either rule, and comes back false — the honest history
+				# either way.
+				var walks_value: Variant = state.get("wander_count", 0)
+				var walks: int = int(walks_value) \
+					if (walks_value is int or walks_value is float) else 0
+				state["market_discovered"] = walks >= 1
 			_:
 				return {}
 		version += 1

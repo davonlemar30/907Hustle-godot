@@ -262,6 +262,7 @@ func settle_night(ended_day: int) -> void:
 			var dre_cut: int = int(round(float(interest) * gs.SHARK_DRE_CUT))
 			var returned: int = int(loan["amount"]) + interest - dre_cut
 			_wallet().credit(returned, _wallet().DIRTY, {"source_id": "shark_repaid"})
+			gs.record_earning("shark", returned)
 			loan["status"] = "repaid"
 			gs.log_activity("%s returns $%d after Dre's $%d cut." % [str(b["name"]), returned, dre_cut], GREEN)
 			# Dre gets paid out of this, so he sees it first-hand. His STREET

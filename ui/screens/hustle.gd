@@ -64,10 +64,10 @@ func _bind_content() -> void:
 			"Shell/Scroll/Pad/Content/Rows/" + str(ROW_GATES[surface_id]))
 
 func _bind_take() -> void:
-	_set_text("Shell/Scroll/Pad/Content/Take/V/Big", "$%s" % _commas(gs.todays_take))
-	_set_text("Shell/Scroll/Pad/Content/Take/V/Chips/J/V/Val", "+$%d" % int(gs.income_sources.get("jobs", 0)))
-	_set_text("Shell/Scroll/Pad/Content/Take/V/Chips/M/V/Val", "+$%d" % int(gs.income_sources.get("market", 0)))
-	_set_text("Shell/Scroll/Pad/Content/Take/V/Chips/S/V/Val", "+$%d" % int(gs.income_sources.get("stick", 0)))
+	_set_text("Shell/Scroll/Pad/Content/Take/V/Big", "$%s" % _commas(gs.todays_take()))
+	_set_text("Shell/Scroll/Pad/Content/Take/V/Chips/J/V/Val", "+$%d" % int(gs.todays_earnings.get("jobs", 0)))
+	_set_text("Shell/Scroll/Pad/Content/Take/V/Chips/M/V/Val", "+$%d" % int(gs.todays_earnings.get("market", 0)))
+	_set_text("Shell/Scroll/Pad/Content/Take/V/Chips/S/V/Val", "+$%d" % int(gs.todays_earnings.get("stick", 0)))
 
 func _bind_surfaces() -> void:
 	for i in range(min(SURFACE_ORDER.size(), gs.hustle_surfaces.size())):

@@ -191,9 +191,27 @@ var activity_log: Array = [
 ]
 
 # --- Hustle hub (canon: web HustleScreen income surfaces + Curtis) --------------
-var todays_take: int = 312
-# Source split shown as chips under Today's Take (sums to todays_take).
-var income_sources: Dictionary = {"jobs": 180, "market": 87, "stick": 45}
+## Earnings accumulated during the current day, by source category.
+## Reset at DAY_START. Persisted so a mid-day reload does not lose today's work.
+## Keys: "jobs", "market", "stick", "boost", "shark", "territory", "list"
+## (matching the hustle surface ids). The sum is what the Hustle screen shows.
+var todays_earnings: Dictionary = {}
+
+## Record an earning in a source category. Called by systems after a successful
+## income dispatch. Does not touch `cash` — the system that calls this has
+## already credited the wallet. This is bookkeeping, not a transaction.
+func record_earning(source: String, amount: int) -> void:
+	if amount <= 0:
+		return
+	todays_earnings[source] = int(todays_earnings.get(source, 0)) + amount
+
+## Today's aggregate earnings. Derived, never stored separately.
+func todays_take() -> int:
+	var total := 0
+	for v in todays_earnings.values():
+		total += int(v)
+	return total
+
 # The six income surfaces. color = the existing per-row accent (kept as-is so the
 # look is unchanged); only the data is driven from here.
 var hustle_surfaces: Array = [
@@ -439,6 +457,7 @@ func reset_to_new_game() -> void:
 	curtis_recent_watcher_lines = []
 	curtis_phase_messages_sent = []
 	activity_log = []
+	todays_earnings = {}
 	# Markets walk from the run seed, canon createRun order (initialMarket is
 	# its first stream consumer), so the opening board is deterministic.
 	init_markets()

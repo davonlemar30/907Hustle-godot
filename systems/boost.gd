@@ -540,6 +540,7 @@ func _fence() -> Dictionary:
 	gs.boost_merchandise = 0
 	gs.boost_fence_standing = clampi(gs.boost_fence_standing + 1, 0, 5)
 	_wallet().credit(payout, _wallet().DIRTY, {"source_id": "boost_fence"})
+	gs.record_earning("boost", payout)
 	gs.log_activity("Slide takes the lot for $%d." % payout, GREEN)
 	# Canon is specific here: Slide is discreet, so the sale reaches the
 	# household channel and nothing wider. Yalonda and Juan notice money that

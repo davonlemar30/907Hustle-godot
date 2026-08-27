@@ -437,6 +437,7 @@ func _sell(p: Dictionary) -> Dictionary:
 	# TI-003 §6 Dirty: "Market criminal sales".
 	var wallet: Object = gm.system("wallet")
 	wallet.credit(revenue, wallet.DIRTY, {"source_id": "market_sell_%s" % id})
+	gs.record_earning("market", revenue)
 	var left: int = have - qty
 	if left <= 0:
 		gs.inventory.erase(id)

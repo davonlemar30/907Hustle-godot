@@ -733,6 +733,7 @@ func _unlock_every_surface(gs: Node) -> void:
 	gs.job_contacts = 1
 	gs.list_flips = maxi(int(gs.list_flips), 1)
 	gs.wander_count = maxi(int(gs.wander_count), 3)
+	gs.market_discovered = true
 	gs.day = maxi(int(gs.day), 5)
 	if not gs.is_recruited("eli"):
 		gs.crew_records["eli"] = {"recruited": true, "loyalty": 6, "tier": 1,
@@ -1830,8 +1831,9 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# it on purpose. 6 → 7 in FS-001.6, 7 → 8 in FS-003.4, 8 → 9 in FS-003.13,
 	# 9 → 10 in v0.1.0, 10 → 11 in batch 7, 11 → 12 in batch 8, 12 → 13 in
 	# batch 10 (Wander), 13 → 14 in batch 13 (the wander intents), 14 → 15 in
-	# batch 14 (Boost's discovery latch).
-	_expect_int("save version is 16", saves.SAVE_VERSION, 16)
+	# batch 14 (Boost's discovery latch), 15 → 16 in Batch 18 PR 3 (FS-002.3,
+	# canonical Territory state), 16 → 17 in PR 4 (Market's discovery latch).
+	_expect_int("save version is 17", saves.SAVE_VERSION, 17)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -12957,7 +12959,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is at Batch 18 PR 3's version", saves.SAVE_VERSION, 16)
+	_expect_int("the schema is v17", saves.SAVE_VERSION, 17)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -13815,12 +13817,16 @@ const GATE_CASES: Array[Dictionary] = [
 	{"id": "home.actions", "mode": "hidden", "fact": "actions"},
 	{"id": "home.text_messages", "mode": "hidden", "fact": "phone"},
 	{"id": "home.activity_feed", "mode": "hidden", "fact": "feed"},
-	# Batch 14. The five share two facts between them, which is deliberate and
-	# is what the isolation loop below already understands: the ladder is two
-	# rules with five entrances, not five rules. Their individual thresholds are
-	# pinned in `_check_hustle_ladder`, where the shape of the claim is "this one
-	# opens HERE and not one step earlier".
-	{"id": "hustle.market", "mode": "hidden", "fact": "walks"},
+	# Batch 14. Four of the five share two facts between them, which is
+	# deliberate and is what the isolation loop below already understands:
+	# most of the ladder is two rules with entrances, not one rule each.
+	# Their individual thresholds are pinned in `_check_hustle_ladder`, where
+	# the shape of the claim is "this one opens HERE and not one step
+	# earlier" — a claim `hustle.market` no longer makes since PR 4: it does
+	# not have a step, it has a coin flip, so it carries its own fact and its
+	# own dedicated test (`_check_market_discovery`) instead of a rung on the
+	# ladder.
+	{"id": "hustle.market", "mode": "hidden", "fact": "market_discovered"},
 	{"id": "hustle.boost", "mode": "hidden", "fact": "walks"},
 	{"id": "hustle.stickup", "mode": "hidden", "fact": "days"},
 	{"id": "hustle.list", "mode": "hidden", "fact": "days"},
@@ -13854,6 +13860,10 @@ func _raise_gate_fact(gs: Node, fact: String) -> void:
 			# opens every gate that reads it — which is what the isolation loop
 			# expects of gates that share a fact.
 			gs.wander_count = 3
+		"market_discovered":
+			# The latch itself, not a walk count — raised directly, the same
+			# as `crew` or `phone` above.
+			gs.market_discovered = true
 		"days":
 			gs.day = 5
 		"actions":
@@ -13959,6 +13969,7 @@ func _check_surface_visibility(gs: Node, gm: Node) -> void:
 	gs.phone_inbox = []
 	gs.activity_log = []
 	gs.wander_count = 0
+	gs.market_discovered = false
 	gs.day = 1
 	gs.health = gs.health_max
 	gs.recovery_introduced = false
@@ -15312,6 +15323,19 @@ func _econ_ready(gs: Node, profile: Dictionary) -> void:
 	if not bool(profile.get("find_targets", false)) \
 			and not bool(profile.get("gated", false)):
 		_clock_every_boost_target(gs)
+	# Market's discovery latch (PR 4). Only a GATED profile even asks —
+	# `can.call("hustle.market")` below reads `not gated or is_unlocked(...)`,
+	# so an ungated profile's trading is unconditional either way and setting
+	# this for one would do nothing but change which wander rolls it takes
+	# (a market-discovery hit no longer competes with a card draw), which is
+	# exactly the kind of unrelated RNG noise the corridor bands exist to not
+	# false-positive on. `newcomer` is the one profile this applies to today:
+	# gated AND trading. Bookkeeping, not a bypass of what it measures — it
+	# answers "what does a ladder-respecting run earn with its surfaces
+	# open", not "how long does the market coin-flip take", and no profile
+	# in this table exists to answer the second question.
+	if bool(profile.get("gated", false)) and bool(profile.get("trade", false)):
+		gs.market_discovered = true
 	# A profile may bring crew. Written onto the record rather than recruited,
 	# for the reason the batch-6b checks do it: what is being measured is what
 	# the crew member is WORTH, not the recruiting path, which has its own
@@ -16943,6 +16967,7 @@ func _check_batch14(gs: Node, gm: Node) -> void:
 	_check_hustle_ladder(gs)
 	_check_hustle_screen(gs)
 	_check_boost_discovery(gs, gm)
+	_check_market_discovery(gs, gm)
 	_check_deal_discovery(gs, gm)
 	_check_discovery_persistence(gs, gm)
 	_check_wander_toast(gs, gm)
@@ -16991,7 +17016,11 @@ func _check_elapsed_requirements() -> void:
 
 # --- the Hustle ladder --------------------------------------------------------
 
-## Every income row on the hub, and the exact rung it arrives on.
+## Every NUMERIC-threshold income row on the hub, and the exact rung it
+## arrives on. `hustle.market` is deliberately not here as of PR 4 — it does
+## not open at a rung, it opens on a coin flip, so it has no "one step short /
+## exactly at / past it" line to assert and gets its own test instead
+## (`_check_market_discovery`).
 ##
 ## `GATE_CASES` proves each of these is closed on a fresh run and opens when its
 ## FACT is raised; it deliberately cannot prove WHERE, because gates that share a
@@ -16999,7 +17028,6 @@ func _check_elapsed_requirements() -> void:
 ## either side of the line — a gate that opens a day early and a gate that never
 ## opens are the same bug from the player's chair.
 const HUSTLE_RUNGS: Array[Dictionary] = [
-	{"id": "hustle.market", "fact": "walks", "at": 1, "what": "Street Market"},
 	{"id": "hustle.boost", "fact": "walks", "at": 3, "what": "Boost"},
 	{"id": "hustle.stickup", "fact": "days", "at": 2, "what": "Stickup"},
 	{"id": "hustle.list", "fact": "days", "at": 3, "what": "907List"},
@@ -17099,6 +17127,7 @@ func _check_hustle_screen(gs: Node) -> void:
 	_fresh_gate_run(gs)
 	gs.day = 5
 	gs.wander_count = 3
+	gs.market_discovered = true
 	gs.job_contacts = 1
 	var earned: Node = _instantiate_screen("res://ui/screens/hustle.tscn")
 	if earned == null:
@@ -17174,6 +17203,90 @@ func _check_boost_discovery(gs: Node, gm: Node) -> void:
 	_expect_int("and it is still drawn, so the ban is legible",
 		(boost.visible_targets() as Array).size(), 1)
 	gs.boost_store_bans = []
+	gs.reset_to_new_game()
+
+## The Market discovery roll (PR 4), on the same shape `_check_deal_discovery`
+## below already proves out for Boost: swept, because it is a probability —
+## what is asserted is that a walk CAN find the corner and CAN come back
+## without it, on the SAME ramp WORK and DEAL discovery share.
+##
+## SABOTAGE: drop `gs.market_discovered = true` from `_discover_market()` ->
+##           "a walk can find the corner" never sets, and the sweep exhausts
+##           without a hit.
+func _check_market_discovery(gs: Node, gm: Node) -> void:
+	var sys: Object = gm.system("wander")
+	if sys == null:
+		_fail("PR4 market", "no wander system")
+		return
+
+	# The roll itself. Seeded misses in, for the same reason
+	# `_check_deal_discovery` seeds them: asserting "the ramp reset" on a run
+	# that started at zero is an assertion that cannot fail.
+	const SEEDED_MISSES := 2
+	var found_market := false
+	var missed_market := false
+	for day in range(1, 40):
+		_b10_ready(gs)
+		gs.day = day
+		gs.market_discovered = false
+		gs.activity_log = []
+		gs.wander_misses = SEEDED_MISSES
+		if not gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ}):
+			continue
+		if not bool(gs.market_discovered):
+			if not missed_market:
+				missed_market = true
+				_expect_int("a missed market walk climbs the same drought",
+					int(gs.wander_misses), SEEDED_MISSES + 1)
+			continue
+		if found_market:
+			continue
+		found_market = true
+		_expect_int("finding the corner resets the drought", int(gs.wander_misses), 0)
+		var said := false
+		for row in gs.activity_log:
+			if str((row as Dictionary).get("text", "")).begins_with(
+					"You see where the handoffs happen"):
+				said = true
+		_expect_true("and the feed says so", said)
+	_expect_true("a walk can find the corner", found_market)
+	_expect_true("and a walk can come back without it", missed_market)
+
+	# Fires on ANY intent — WORK and DEAL both count, not just READ. The
+	# intent's own pool is starved first (every job and every boost target
+	# already known), so a hit on these sweeps can only be the market roll,
+	# never that intent's own discovery landing on the same walk and masking
+	# which roll actually fired.
+	for intent_id in [B10_EVENTS.INTENT_WORK, B10_EVENTS.INTENT_DEAL]:
+		var hit_on_intent := false
+		for day in range(1, 40):
+			_b10_ready(gs)
+			gs.day = day
+			gs.market_discovered = false
+			gs.jobs_discovered.append_array(B10_EVENTS.DISCOVERY_JOBS)
+			_clock_every_boost_target(gs)
+			if not gm.dispatch("wander", {"intent": intent_id}):
+				continue
+			if bool(gs.market_discovered):
+				hit_on_intent = true
+				break
+		_expect_true("the market can be found on a %s walk" % str(intent_id),
+			hit_on_intent)
+
+	# A ONE-WAY LATCH: once found, a later walk does not roll for it again —
+	# the elif chain never reaches the check — and it does not un-announce or
+	# re-announce itself.
+	_b10_ready(gs)
+	gs.market_discovered = true
+	gs.activity_log = []
+	gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ})
+	_expect_true("a found market stays found", bool(gs.market_discovered))
+	var re_announced := false
+	for row in gs.activity_log:
+		if str((row as Dictionary).get("text", "")).begins_with(
+				"You see where the handoffs happen"):
+			re_announced = true
+	_expect_true("and does not announce itself twice", not re_announced)
 	gs.reset_to_new_game()
 
 ## The DEAL walk, and the pool it draws from.
@@ -17264,9 +17377,16 @@ func _check_deal_discovery(gs: Node, gm: Node) -> void:
 	# everything clocked, a DEAL walk still draws a card and the ramp still
 	# climbs, which is what stops the intent becoming dead once the block is
 	# known.
+	#
+	# `market_discovered` has to be set too (PR 4): the market roll fires on
+	# ANY intent, so a DEAL walk with the boost pool exhausted but the market
+	# still unfound would roll for the corner instead of falling through to
+	# the card draw this section means to isolate — which is a real pool this
+	# test is not about, not the one it is.
 	_b10_ready(gs)
 	gs.boost_tier = 3
 	_clock_every_boost_target(gs)
+	gs.market_discovered = true
 	gs.activity_log = []
 	var before_misses: int = int(gs.wander_misses)
 	_expect_true("a deal walk on a known block still goes out",
@@ -17840,15 +17960,29 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 	_expect_int("a run that changed nothing announces nothing", quiet.size(), 0)
 	_expect_int("and writes nothing to the feed", gs.activity_log.size(), 0)
 
-	# 2. THE REAL PATH. One walk opens the market, through a real dispatch, and
+	# 2. THE REAL PATH. A walk opens the market, through a real dispatch, and
 	#    the line lands on the same feed the screen renders.
+	#
+	# Bounded retry rather than one dispatch: PR 4 turned this from a
+	# guaranteed first-walk unlock into a seeded roll (30% base, ramping to
+	# 70%), so the discovering walk is not always the first one. READ is safe
+	# to retry — every card it can draw is AMBIENT or READ
+	# (data/wander_events.gd), never an ENCOUNTER that could open a blocking
+	# chain and jam the loop — and the miss ramp is not day-scoped, so twenty
+	# walks at up to 70%/attempt makes a miss streak astronomically unlikely.
+	# The same confidence `_check_save_roundtrip`'s hiring retry already
+	# relies on for a different seeded gate.
 	_fresh_gate_run(gs)
-	gs.activity_log = []
 	_expect_true("a fresh run has no market row",
 		not access.is_unlocked("hustle.market"))
-	_expect_true("a walk dispatches", gm.dispatch("wander", {"intent": "read"}))
-	_expect_true("and the walk opened the market row",
-		access.is_unlocked("hustle.market"))
+	var discovered_on_walk := false
+	for _attempt in 20:
+		gs.activity_log = []
+		gm.dispatch("wander", {"intent": "read"})
+		if access.is_unlocked("hustle.market"):
+			discovered_on_walk = true
+			break
+	_expect_true("a walk opened the market row", discovered_on_walk)
 	var said: String = str(lines["hustle.market"])
 	var heard: int = 0
 	for row in gs.activity_log:
@@ -17948,6 +18082,7 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 	var before: Dictionary = announcer.snapshot()
 	gs.day = 9
 	gs.wander_count = 9
+	gs.market_discovered = true
 	var spoken: Array = announcer.announce_since(before)
 	_expect_true("several doors opening at once are all announced",
 		spoken.size() >= 5)
@@ -18469,7 +18604,18 @@ func _fail(label: String, detail: String) -> void:
 ## (`_check_save_roundtrip`) and the opening screen's no-mutation loop
 ## (`_check_the_opening`) one more field apiece to walk, the same mechanism
 ## FS-003.4 named for the Consequence-Encounter Engine's manifest.
-const MIN_CHECKS := 12526
+##
+## "Walk Around domain" (PR 4) takes it to 12533. `market_discovered` joining
+## `PERSIST_FIELDS` gives the same two round-trip loops one more field apiece,
+## again for free, plus one more in `_check_wander_persistence`'s own field
+## sweep. `hustle.market` leaving `HUSTLE_RUNGS` — it opens on a coin flip
+## now, not a rung, so "one step short / exactly at / past it" no longer
+## describes it — removes six. The net gain is `_check_market_discovery`, a
+## sweep in the same shape `_check_deal_discovery` already proved out for
+## Boost: not a number to hand-count from the source, because a sweep's
+## contribution depends on how many days it takes each seed to land a hit,
+## the same disclaimer FS-003.7's Caught section carries above.
+const MIN_CHECKS := 12533
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -19257,7 +19403,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v16", int(saves.SAVE_VERSION), 16)
+	_expect_int("the schema is v17", int(saves.SAVE_VERSION), 17)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -19672,7 +19818,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v16 for Heat's teeth", int(saves.SAVE_VERSION), 16)
+	_expect_int("the schema is v17 for Heat's teeth", int(saves.SAVE_VERSION), 17)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -20125,8 +20271,9 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v16 for Wander", int(saves.SAVE_VERSION), 16)
-	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent"]:
+	_expect_int("the schema is v17 for Wander", int(saves.SAVE_VERSION), 17)
+	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
+			"market_discovered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
 	var v12 := {"save_version": 12, "state": {"day": 9, "cash": 400,

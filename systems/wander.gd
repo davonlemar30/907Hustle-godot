@@ -183,6 +183,10 @@ func facts() -> Dictionary:
 		"curtis_visible": str(gs.curtis_phase) != "invisible",
 		"heat_burning": band == "BURNING",
 		"carrying_dirty": int(gs.dirty_cash) > 0,
+		# So a future card can gate on whether the corner is even known yet
+		# (PR 4) — a card about somebody asking product prices makes no
+		# sense before the player knows where the corner is.
+		"market_discovered": bool(gs.market_discovered),
 	}
 
 ## Every card that could come up right now: right district, right time of day,
@@ -303,8 +307,18 @@ func _wander(intent: String) -> Dictionary:
 		var picked_target: int = rng.seeded_int_range(gs.run_seed, key + ":deal_find",
 			0, open_targets.size() - 1)
 		report = _discover_boost_target(str(open_targets[picked_target]))
+	# Market discovery: fires on any intent, same ramp, its own key. Finding
+	# the corner is not something you go looking for specifically — it is
+	# something that happens while you are out for any reason at all, which
+	# is why this is not gated to one intent the way WORK/DEAL are. Playtest
+	# finding: Market unlocked deterministically on the FIRST wander of every
+	# run, which read as scripted rather than found. Only rolls while
+	# unfound — a one-way latch, same as `boost_targets_discovered`.
+	elif not gs.market_discovered \
+			and rng.seeded_random(gs.run_seed, key + ":market") < discovery_chance() * spent:
+		report = _discover_market()
 	else:
-		if not open.is_empty() or not open_targets.is_empty():
+		if not open.is_empty() or not open_targets.is_empty() or not gs.market_discovered:
 			# Capped where the ramp itself stops mattering. Past the ceiling the
 			# extra misses buy nothing, and letting the counter run free put the
 			# live path and the load-time validator into disagreement — a save
@@ -316,7 +330,10 @@ func _wander(intent: String) -> Dictionary:
 			# a drought of finding things, and a player who has come back with
 			# nothing four walks running has had the same drought whichever way
 			# they were looking. One counter, so "getting warmer" means one
-			# thing.
+			# thing. A missed MARKET roll is the third voice saying the same
+			# thing — the OR now covers all three pools, because a walk that
+			# only had the market left to find and did not find it is still a
+			# walk that came back with nothing.
 			gs.wander_misses = mini(int(gs.wander_misses) + 1,
 				int(EVENTS.miss_ceiling()))
 		report = _draw_card(key, intent, spent)
@@ -362,6 +379,19 @@ func _discover_boost_target(target_id: String) -> Dictionary:
 			"heard somebody got into %s clean. might be worth a look." % place.to_lower())
 	return {"ok": true, "kind": "discovery", "card_id": "",
 		"discovered_boost": target_id}
+
+## The player finds the corner. Same shape as `_discover` and
+## `_discover_boost_target` — the ramp resets because the drought is over,
+## whatever ended it, and the find goes on the map for good.
+func _discover_market() -> Dictionary:
+	gs.market_discovered = true
+	gs.wander_misses = 0
+	gs.log_activity("You see where the handoffs happen. Street Market is on the board.", GREEN)
+	var phone: Object = gm.system("phone") if gm != null else null
+	if phone != null:
+		phone.push_message("Around town",
+			"the corner off spenard road. everybody knows where it is once you know where it is.")
+	return {"ok": true, "kind": "discovery", "card_id": "", "discovered_market": true}
 
 ## One card from the eligible pool, weighted, or a breadcrumb when the pool is
 ## empty. A wander is never nothing.

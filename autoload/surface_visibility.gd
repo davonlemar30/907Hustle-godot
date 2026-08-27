@@ -223,9 +223,15 @@ const GATES := {
 	# the desperation, and the man who lends. Neither axis is a substitute for
 	# the other, which is what keeps a player who only walks and a player who
 	# only sits from converging on the same screen.
+	# fact_true rather than its WALKS-axis sibling's wander_count_min: Market
+	# used to open on the FIRST wander of every run, deterministically, which
+	# playtest read as scripted rather than found. `market_discovered` is a
+	# seeded event WanderSystem can fire on any walk (not just the first) —
+	# the requirement type had to change because the fact behind it is no
+	# longer a count, it is a coin WanderSystem flips.
 	HUSTLE_MARKET: {
 		"mode": MODE_HIDDEN,
-		"requirements": [{"type": "wander_count_min", "min": 1}],
+		"requirements": [{"type": "fact_true", "fact": "market_discovered"}],
 		"hint": "",
 		"announce": "You know where the corner is now. Street Market is on the board.",
 	},
@@ -318,6 +324,9 @@ func facts() -> Dictionary:
 		# shape as `districts_unlocked` and belongs in the one adapter rather
 		# than being reached for out of GameState by whoever needs it first.
 		"boost_targets_discovered": gs.boost_targets_discovered.size(),
+		# The Market discovery latch (PR 4). A named boolean rather than a
+		# population, for `fact_true` — HUSTLE_MARKET's own gate.
+		"market_discovered": bool(gs.market_discovered),
 		# Populations. Named for the surface that reads them, not the field
 		# that backs them, so a rename on GameState is one line here.
 		#

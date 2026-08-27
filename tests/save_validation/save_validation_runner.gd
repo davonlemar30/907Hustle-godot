@@ -23,6 +23,7 @@ func _ready() -> void:
 	_test_v10_fields()
 	_test_v15_boost_discovery()
 	_test_v16_territory_nodes()
+	_test_v17_market_discovery()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -416,6 +417,49 @@ func _test_v16_territory_nodes() -> void:
 		int((v15_nodes.get("wash_and_go_lot", {}) as Dictionary).get("soldiers", -1)) == 0)
 	_check("and the good row survives it",
 		int((v15_nodes.get("fourth_ave_strip", {}) as Dictionary).get("soldiers", -1)) == 2)
+
+## v17: the Market discovery latch. A plain bool, so there is no shape to
+## repair — the interesting case is the migration arm's inherited-history
+## rule, which the v16 -> v17 arm in save_system.gd states and this proves:
+## a v16 save whose `wander_count` had already cleared the OLD gate
+## (>= 1, PR 4's predecessor) comes back with the surface already open, not
+## re-hidden, because re-hiding something the player already has is a worse
+## failure than the migration doing nothing.
+##
+## SABOTAGE: remove the v16 -> v17 arm -> `_migrate` returns `{}` for both
+##           v16 fixtures below (falls through to the `_:` wildcard).
+## SABOTAGE: always stamp `market_discovered = true` in the arm -> the
+##           `wander_count == 0` fixture fails.
+func _test_v17_market_discovery() -> void:
+	var save_system: Node = get_node("/root/SaveSystem")
+
+	# A v16 save that had already walked had already cleared the old gate —
+	# the migration preserves what the player already has. _migrate() returns
+	# the flattened state dict directly, not a {save_version, state} wrapper.
+	var walked: Dictionary = save_system._migrate({"save_version": 16,
+		"state": _state("wander_count", 3)})
+	_check("a v16 save that had walked migrates", not walked.is_empty())
+	_check("and arrives with the market already found",
+		bool(walked.get("market_discovered", false)))
+
+	# A v16 save that never walked never cleared the old gate either — under
+	# EITHER rule it has not found the market, which is the honest history.
+	var never_walked: Dictionary = save_system._migrate({"save_version": 16,
+		"state": _state("wander_count", 0)})
+	_check("a v16 save that never walked migrates", not never_walked.is_empty())
+	_check("and arrives with the market still unfound",
+		not bool(never_walked.get("market_discovered", true)))
+
+	# A v17 payload is already current: no migration involved, and the shape
+	# validator is a no-op on a plain bool, the same contract every other
+	# v-numbered arm in this file makes.
+	var current := _state("market_discovered", true)
+	var current_result := _result(current)
+	var current_fixed: Dictionary = current_result["state"]
+	_check("valid v17 latch survives", bool(current_fixed["market_discovered"]))
+	_check("valid v17 shape is a validation no-op",
+		(current_result["repairs"] as Array).is_empty())
+	_check("valid v17 payload remains byte-shape equivalent", current_fixed == current)
 
 func _test_load_pipeline() -> void:
 	var save_system: Node = get_node("/root/SaveSystem")

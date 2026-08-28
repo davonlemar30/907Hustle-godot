@@ -42,7 +42,7 @@ extends Node
 ## awareness field — plus the current market prices as a {product_id: price}
 ## slice. Canon tables (districts, products' static fields, stick_targets,
 ## crew_roster, …) and the UI-scaffold placeholders that no system writes yet
-## (hustle_surfaces, active_operation, eli_report) are NOT
+## (hustle_surfaces, active_operation) are NOT
 ## saved: a data-tuning commit must win over a stale save, and a placeholder
 ## that persists becomes a fake fact.
 

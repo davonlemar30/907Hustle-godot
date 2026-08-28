@@ -126,11 +126,6 @@ const STREET_SHIP_CREEK := "street.ship_creek"
 ## friendly names would be one rename away from gating nothing at all.
 const GATES := {
 	# --- progression gates: LOCKED --------------------------------------
-	HOME_TURF_CREW: {
-		"mode": MODE_LOCKED,
-		"requirements": [{"type": "crew_count_min", "min": 1}],
-		"hint": "Recruit your first crew member",
-	},
 	MENU_CREW: {
 		"mode": MODE_LOCKED,
 		"requirements": [{"type": "crew_count_min", "min": 1}],
@@ -199,6 +194,16 @@ const GATES := {
 	HOME_ACTIVITY_FEED: {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "collection_non_empty", "collection": "activity_log"}],
+		"hint": "",
+	},
+
+	# 0.1.2 playtest: a padlocked Turf & Crew card on Day 1 promised territory
+	# and a roster the player cannot act on yet -- recruiting crew is the gate,
+	# not a countdown to it, so this follows Market Snapshot's HIDDEN argument
+	# rather than staying LOCKED.
+	HOME_TURF_CREW: {
+		"mode": MODE_HIDDEN,
+		"requirements": [{"type": "crew_count_min", "min": 1}],
 		"hint": "",
 	},
 

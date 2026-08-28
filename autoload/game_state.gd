@@ -170,7 +170,6 @@ var home_snapshot: Array = ["weed", "meth", "pills"]
 # blocks actually held -- see spenard_blocks / held_blocks further down, which
 # the territory system owns. This used to be three hardcoded names.
 var map_cells: int = 12
-var eli_report: String = "One corner stayed quiet, one got pressured."
 
 # --- Tonight's Operation ---------------------------------------------------------
 var active_operation: Dictionary = {

@@ -603,6 +603,13 @@ func _resolve_choice(payload: Dictionary) -> Dictionary:
 	if not choice_id in (decision.get("allowed_choices", []) as Array):
 		return {"ok": false, "reason": "That is not one of your options."}
 
+	# Ask BEFORE the commit receipt is claimed below, not after -- see
+	# `choice_blocked`'s own header for why refusing post-commit would strand
+	# the round.
+	var blocked := choice_blocked(choice_id)
+	if not blocked.is_empty():
+		return {"ok": false, "reason": blocked}
+
 	# The committed-choice receipt. A reload between the mutation and the
 	# autosave cannot produce a second commit, because the receipt and the
 	# commit land in the same dispatch.
@@ -753,6 +760,18 @@ func _adapter_copy(choice_id: String, method: String, fallback: String) -> Strin
 func choice_description(choice_id: String, fallback: String) -> String:
 	return _adapter_copy(choice_id, "choice_copy", fallback)
 
+## Per-choice reason a choice cannot be committed right now, or "" when it can
+## be. Same seam as the label and description above: only the source system
+## knows a choice's own gating (a store already bought this run, an amount
+## the wallet cannot cover), and the engine has no business guessing at it.
+## `_resolve_choice` checks this BEFORE claiming the commit receipt, which is
+## the whole reason this exists rather than the adapter simply refusing from
+## inside `resolve_consequence` -- by then the round's one commit is already
+## spent, and a refusal there would leave the chain committed to a choice
+## that never happened, with no way to try again this round.
+func choice_blocked(choice_id: String) -> String:
+	return _adapter_copy(choice_id, "choice_blocked", "")
+
 func choice_summaries() -> Array:
 	if not has_active():
 		return []
@@ -765,6 +784,7 @@ func choice_summaries() -> Array:
 	for entry in (decision.get("allowed_choices", []) as Array):
 		var choice_id := str(entry)
 		var is_deterministic: bool = choice_id in deterministic
+		var blocked_reason := choice_blocked(choice_id)
 		rows.append({
 			"choice_id": choice_id,
 			# The source adapter names its own choices when it has an opinion,
@@ -781,8 +801,12 @@ func choice_summaries() -> Array:
 			"success_probability": float(shown.get(choice_id, 0.0)),
 			"has_odds": not is_deterministic and shown.has(choice_id),
 			"committed": not committed.is_empty() and choice_id == committed,
-			# Any commit disables every button, not only the one pressed.
-			"disabled": not committed.is_empty(),
+			# Any commit disables every button, not only the one pressed --
+			# and so does the choice's own gating (e.g. a bribe short of its
+			# price), so the button never dispatches a commit the engine
+			# would have to refuse.
+			"disabled": not committed.is_empty() or not blocked_reason.is_empty(),
+			"blocked_reason": blocked_reason,
 			# PX-003 §19 point 8: a known booking gate is surfaced BEFORE the
 			# player commits. The code says which kind; the copy lives in the
 			# scene, and neither reveals the threshold.

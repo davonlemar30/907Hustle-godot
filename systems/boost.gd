@@ -271,6 +271,12 @@ func _mark_criminal_activity() -> void:
 # resolves it after a load (TI-003 §1, §26).
 
 const RULES := preload("res://data/consequence_rules.gd")
+## The Lift's caught-loop data (LIFT_BEATS/LIFT_ESCALATION/LIFT_BRIBE/
+## LIFT_CHOICE_LABELS/LIFT_CHOICE_COPY) and the shared loop chassis. Same
+## names as stickup.gd's own SCRIPTS/LOOP, deliberately -- two adapters riding
+## one machine should not each invent their own vocabulary for it.
+const SCRIPTS := preload("res://data/confrontation_scripts.gd")
+const LOOP := preload("res://systems/confrontation_loop.gd")
 
 func _rules() -> RefCounted:
 	return RULES.new()
@@ -316,6 +322,8 @@ func _open_caught(target: Dictionary, tier: int, contested: int,
 		shown[choice_id] = resolver.success_probability(
 			action_type, rules.base_chance(tier, str(choice_id)), raw, 0)
 
+	var choices: Dictionary = _lift_choices(tier, str(target["id"]))
+
 	return engine.open_chain(engine.KIND_BOOST_CAUGHT, {
 		"district_id": gs.current_district_id,
 		"return_route": "BOOST",
@@ -337,8 +345,8 @@ func _open_caught(target: Dictionary, tier: int, contested: int,
 		},
 		"decision": {
 			"definition_id": "boost_caught",
-			"allowed_choices": rules.CAUGHT_CHOICES.duplicate(),
-			"deterministic_choices": rules.CAUGHT_DETERMINISTIC.duplicate(),
+			"allowed_choices": choices["allowed"],
+			"deterministic_choices": choices["deterministic"],
 			"resolver_inputs": inputs,
 			"shown_probabilities": shown,
 			"arrest_risks": risks,
@@ -362,6 +370,18 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	var contested: int = int(source.get("contested_take", 0))
 	var pre_heat: float = float(source.get("pre_encounter_heat", 0.0))
 
+	# SETTLE IT is not a rolled verb and never reaches CAUGHT_EFFECTS at all --
+	# its own resolution, entirely.
+	if choice_id == "bribe":
+		return _resolve_bribe(chain, source, cause_id, boost_tier, contested)
+
+	# How many escalations this encounter has already survived. Round 0 is the
+	# original decision at the authored base chance; every escalation past it
+	# degrades what is rolled by the same amount `shown_probabilities` was
+	# already degraded by when this round was presented, so what the player
+	# saw and what gets rolled never disagree. See `_lift_chance`.
+	var prior_round: int = int((chain.get("decision", {}) as Dictionary).get("round", 0))
+
 	# 1. Resolve the tier, or take Yield's single authored row.
 	var tier_name: String = "deterministic"
 	if not rules.is_deterministic(choice_id):
@@ -370,9 +390,27 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 		var attribute: String = resolver.attribute_for(action_type)
 		var raw: int = int(gs.attributes.get(attribute, 0))
 		var outcome: Dictionary = resolver.resolve_action(
-			action_type, rules.base_chance(boost_tier, choice_id), raw,
+			action_type, _lift_chance(boost_tier, choice_id, prior_round), raw,
 			gs.run_seed, "consequence:%s:boost_caught:%s:outcome" % [cause_id, choice_id])
 		tier_name = str(outcome["tier"])
+
+	# ESCALATION (Q1/Q3): a plain failure grows the round instead of resolving
+	# here, up through LIFT_ESCALATION's round cap. Every success tier and
+	# catastrophic exit round 1 exactly as authored, through the unedited
+	# CAUGHT_EFFECTS rows below -- including the pinned talk/messy ban
+	# anomaly (D-4). Fixing that is not this slice.
+	#
+	# round_cap counts TOTAL attempts (three rolled verbs, three chances), not
+	# escalations -- `< round_cap - 1` so the round_cap-th failure (the last
+	# remaining verb, since each burns on its own failure) resolves through
+	# CAUGHT_EFFECTS directly instead of escalating into a round with no
+	# rolled verb left to offer. With exactly three verbs and round_cap 3 this
+	# is also what makes the cap and verb exhaustion land on the same
+	# attempt, which is what "the last failed verb's failure row" describes.
+	if tier_name == "failure" \
+			and prior_round < int(SCRIPTS.LIFT_ESCALATION["round_cap"]) - 1:
+		return _escalate_caught(chain, LOOP.loop_of(chain), choice_id, boost_tier,
+			cause_id, prior_round)
 
 	var effects: Dictionary = rules.effects_for(choice_id, tier_name)
 	var result: Dictionary = {
@@ -482,6 +520,177 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 
 	gs.log_activity(_caught_line(source, choice_id, tier_name, result), _caught_tone(tier_name))
 	return {"ok": true, "tier": tier_name, "arrested": arrested}
+
+# --- the Lift's caught-loop (0.1.2) ------------------------------------------
+
+## The choice surface for one tier: the authored four (`RULES.CAUGHT_CHOICES`,
+## untouched) plus SETTLE IT when it is on the table. `RULES` is never edited
+## to carry BRIBE itself -- it is Lift-specific, and CAUGHT_CHOICES is the
+## table every other caught-chain reader still assumes is exactly four ids.
+func _lift_choices(tier: int, target_id: String) -> Dictionary:
+	var rules: RefCounted = _rules()
+	var allowed: Array = rules.CAUGHT_CHOICES.duplicate()
+	var deterministic: Array = rules.CAUGHT_DETERMINISTIC.duplicate()
+	if _bribe_eligible(tier, target_id):
+		allowed.append("bribe")
+		deterministic.append("bribe")
+	return {"allowed": allowed, "deterministic": deterministic}
+
+## Tiers 1-2 only -- the Armed Guard not taking money is the tier-3 tell --
+## and once per store per run: a bribe that worked becomes extortion if
+## repeated.
+func _bribe_eligible(tier: int, target_id: String) -> bool:
+	if not (tier in (SCRIPTS.LIFT_BRIBE["tiers"] as Array)):
+		return false
+	return not (target_id in gs.boost_bribes_used)
+
+## The rolled chance for one verb at one tier, degraded by LIFT_ESCALATION's
+## verb_penalty once per escalation already survived. `round_number` is
+## `decision.round` at the moment of the roll -- 0 on the original decision,
+## where this returns the authored base chance unchanged.
+func _lift_chance(tier: int, choice_id: String, round_number: int) -> float:
+	var base: float = _rules().base_chance(tier, choice_id)
+	if round_number <= 0:
+		return base
+	return clampf(base + float(round_number) * float(SCRIPTS.LIFT_ESCALATION["verb_penalty"]),
+		0.0, 1.0)
+
+## A plain failure grows the round instead of ending it: the verb burns, what
+## remains gets worse (`_lift_chance` above), the price of trying again is
+## Heat, and the beat moves to the next one authored for this tier. Nothing is
+## banked and nothing is arrested here -- a failure that has not reached the
+## round cap has not actually finished happening to the player yet, only to
+## the clerk's patience.
+func _escalate_caught(chain: Dictionary, loop: Dictionary, choice_id: String,
+		tier: int, cause_id: String, prior_round: int) -> Dictionary:
+	var engine: Object = _engine()
+	var esc: Dictionary = SCRIPTS.LIFT_ESCALATION
+	var next_round: int = prior_round + 1
+
+	LOOP.burn(loop, choice_id)
+	var beats: Array = SCRIPTS.LIFT_BEATS.get(tier, [])
+	var beat_text: String = str(beats[prior_round]) if prior_round < beats.size() else ""
+	loop["beat"] = beat_text
+	loop["round"] = next_round
+	LOOP.append_log(loop, beat_text)
+
+	# The shared stakes-strip chrome (`consequence.gd::_build_situation`)
+	# renders STAGE/#LEFT/BANKED for ANY non-empty loop, stickup's vocabulary
+	# or not. There is no bank here to show, so it stays honestly $0; ROUNDS
+	# LEFT overrides the generic "LEFT" label for a countdown that means
+	# something in this fiction (how many more chances before the cap ends
+	# it), rather than shipping a #LEFT chip with nothing behind it.
+	var round_cap: int = int(esc["round_cap"])
+	loop["stage"] = next_round - 1
+	loop["stage_count"] = round_cap
+	loop["left_label"] = "ROUNDS LEFT"
+	loop["left"] = round_cap - next_round
+	loop["banked"] = 0
+
+	# Priced once per escalation, receipted so a reload mid-round cannot
+	# charge it twice.
+	if engine.record_receipt(cause_id, "boost_caught:escalate:%d" % next_round):
+		_heat().apply_gain(float(esc["heat_per_round"]), _heat().FAMILY_BOOST,
+			str(chain.get("district_id", "")), {"source_id": "boost_caught_escalate"})
+
+	var source: Dictionary = chain.get("source", {})
+	var choices: Dictionary = _lift_choices(tier, str(source.get("target_id", "")))
+	var allowed: Array = LOOP.without_burned(loop, choices["allowed"])
+	var deterministic: Array = choices["deterministic"]
+
+	var rules: RefCounted = _rules()
+	var resolver: Object = gm.system("outcome_resolver")
+	var shown: Dictionary = {}
+	for entry in allowed:
+		var cid := str(entry)
+		if cid in deterministic:
+			continue
+		var action_type: String = rules.resolver_for(cid)
+		var attribute: String = resolver.attribute_for(action_type)
+		var raw: int = int(gs.attributes.get(attribute, 0))
+		shown[cid] = resolver.success_probability(action_type,
+			_lift_chance(tier, cid, next_round), raw, 0)
+
+	LOOP.present_round(chain, loop, allowed, deterministic, shown)
+	return {"ok": true, "escalated": true, "round": next_round}
+
+## What SETTLE IT costs at this tier for this take: 2x the contested take,
+## floored per tier so a near-empty jacket does not make the door free.
+func _bribe_cost(tier: int, contested: int) -> int:
+	var bribe: Dictionary = SCRIPTS.LIFT_BRIBE
+	var floor_cost: int = int((bribe["floors"] as Dictionary).get(tier, 0))
+	return maxi(floor_cost, int(ceil(float(contested) * float(bribe["multiplier"]))))
+
+## SETTLE IT, resolved. Deterministic: no roll, no injury. The goods go back
+## with no ban -- what this buys is the door, not the merchandise -- and it
+## still counts as caught everywhere that matters: District Pressure at
+## yield's own authored rate, a half-Heat price tag, and the negotiation/messy
+## observation footprint Exposure's visibility model expects from an
+## encounter, even though nothing here was actually negotiated.
+func _resolve_bribe(chain: Dictionary, source: Dictionary, cause_id: String,
+		tier: int, contested: int) -> Dictionary:
+	var engine: Object = _engine()
+	var bribe: Dictionary = SCRIPTS.LIFT_BRIBE
+	var target_id := str(source.get("target_id", ""))
+	var cost: int = _bribe_cost(tier, contested)
+
+	var result: Dictionary = {
+		"choice_id": "bribe", "tier": "bribed",
+		"cash": -cost, "goods": 0, "health": 0, "heat": 0.0,
+		"banned": false, "arrested": false, "take_disposition": "return",
+	}
+
+	if engine.record_receipt(cause_id, "boost_caught:bribe"):
+		_wallet().spend(cost, _wallet().ROUTINE_DIRTY_FIRST,
+			{"source_id": "boost_caught_bribe"})
+		if not target_id.is_empty() and not target_id in gs.boost_bribes_used:
+			gs.boost_bribes_used.append(target_id)
+		result["heat"] = _heat().apply_gain(float(bribe["heat"]), _heat().FAMILY_BOOST,
+			str(chain.get("district_id", "")), {"source_id": "boost_caught_bribe"})
+		_add_district_pressure(str(chain.get("district_id", "")), "boost",
+			float(bribe["pressure"]), cause_id)
+		result["pressure"] = float(bribe["pressure"])
+		var resolver_obs: Object = gm.system("outcome_resolver")
+		resolver_obs.broadcast_outcome(str(bribe["observation_shape"]),
+			str(bribe["observation_tier"]), str(chain.get("district_id", "")))
+
+	var decision: Dictionary = chain.get("decision", {})
+	decision["resolved_tier"] = "bribed"
+	decision["result"] = result
+	chain["decision"] = decision
+
+	engine.advance_stage(engine.STAGE_RESULT)
+	gs.log_activity("Paid your way out at %s." % str(source.get("target_name", "the store")),
+		AMBER)
+	return {"ok": true, "tier": "bribed", "arrested": false}
+
+## The engine's adapter-copy seam: the loop's vocabulary is this file's, not
+## the engine's fallback table's. `fight`/`run`/`talk`/`yield` are unlisted in
+## LIFT_CHOICE_LABELS/COPY on purpose -- they fall through to the engine's own
+## `choice_id.capitalize()` default, exactly as before this file implemented
+## either method.
+func choice_label(choice_id: String) -> String:
+	return str(SCRIPTS.LIFT_CHOICE_LABELS.get(choice_id, ""))
+
+func choice_copy(choice_id: String) -> String:
+	return str(SCRIPTS.LIFT_CHOICE_COPY.get(choice_id, ""))
+
+## The one choice with gating of its own: SETTLE IT short of its price. See
+## `ConsequenceEngine.choice_blocked`'s header for why this must never be
+## answered by `resolve_consequence` returning `ok: false` instead.
+func choice_blocked(choice_id: String) -> String:
+	if choice_id != "bribe":
+		return ""
+	var engine: Object = _engine()
+	if engine == null or not engine.has_active():
+		return ""
+	var chain: Dictionary = gs.active_consequence
+	var source: Dictionary = chain.get("source", {})
+	var cost: int = _bribe_cost(int(source.get("target_tier", 1)),
+		int(source.get("contested_take", 0)))
+	if int(gs.cash) < cost:
+		return "Need $%d." % cost
+	return ""
 
 ## Write a District Pressure gain, through the owner.
 ##

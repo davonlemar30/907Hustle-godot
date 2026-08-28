@@ -132,7 +132,7 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## failure than the migration doing nothing — the same argument the v10 arm
 ## makes for re-deriving `districts_unlocked` rather than defaulting it
 ## empty.
-const SAVE_VERSION := 17
+const SAVE_VERSION := 18
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -216,6 +216,10 @@ const PERSIST_FIELDS: Array[String] = [
 	"boost_targets_discovered",
 	# Market's discovery latch (v17). Same shape, same reason.
 	"market_discovered",
+	# The Lift's SETTLE IT valve (v18). Same shape as boost_store_bans, same
+	# reason: a store already bought this run cannot be reconstructed from
+	# anything else.
+	"boost_bribes_used",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -678,6 +682,11 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				var walks: int = int(walks_value) \
 					if (walks_value is int or walks_value is float) else 0
 				state["market_discovered"] = walks >= 1
+			17:
+				# v17 -> v18: `boost_bribes_used`. Purely additive -- SETTLE IT
+				# did not exist before this build, so no v17 save has bought a
+				# walk from anywhere, and every one comes back empty.
+				state["boost_bribes_used"] = []
 			_:
 				return {}
 		version += 1

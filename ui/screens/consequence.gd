@@ -347,7 +347,18 @@ func _choice_card(row: Dictionary) -> Control:
 	if bool(row["disabled"]):
 		var inert := Button.new()
 		inert.theme_type_variation = &"BtnSecondary"
-		inert.text = "COMMITTED" if committed else "—"
+		# Three reasons a lane can be inert, and only one is silent: locked in
+		# is its own label above, some OTHER lane being committed says nothing
+		# about THIS one so a dash is honest, and a choice blocked on its own
+		# terms (a bribe short of its price) says so rather than pretending to
+		# be the same case as a plain "not what you picked".
+		var blocked_reason := str(row.get("blocked_reason", ""))
+		if committed:
+			inert.text = "COMMITTED"
+		elif not blocked_reason.is_empty():
+			inert.text = blocked_reason
+		else:
+			inert.text = "—"
 		inert.disabled = true
 		inert.custom_minimum_size = Vector2(0, 46)
 		inert.modulate = Color(1, 1, 1, 0.85 if committed else 0.45)

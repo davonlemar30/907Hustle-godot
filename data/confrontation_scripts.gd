@@ -355,6 +355,17 @@ const LIFT_BEATS := {
 	],
 }
 
+## BRIBE's copy only. `fight`/`run`/`talk`/`yield` are unlisted on purpose --
+## boost.gd's adapter methods fall back to the engine's own
+## `choice_id.capitalize()` for them, unchanged from before this file existed.
+const LIFT_CHOICE_LABELS := {
+	"bribe": "SETTLE IT",
+}
+
+const LIFT_CHOICE_COPY := {
+	"bribe": "Money for the walk. You keep the door.",
+}
+
 # --- market corner scripts (Q4, resolved) ------------------------------------
 #
 # `corner_stiff`: trigger on a market sell in a district whose Market Pressure

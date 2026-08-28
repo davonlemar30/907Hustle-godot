@@ -31,7 +31,8 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 
 ## The check floor: a suite that returned early is a suite that failed.
 ## Updated whenever checks are added; the report call enforces it.
-const MIN_CHECKS := 159
+## 0.1.2: +40 for the Lift's caught-loop escalation + BRIBE (check block 10).
+const MIN_CHECKS := 199
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -58,6 +59,8 @@ func _ready() -> void:
 	_check_catastrophic_booking()
 	_check_watch_and_talk()
 	_check_reload_shape()
+	_check_lift_escalation()
+	_check_lift_bribe()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -502,3 +505,203 @@ func _check_reload_shape() -> void:
 	# Close it out so the suite ends with no chain on the board.
 	_commit("take_and_go")
 	_close_out()
+
+# --- 10. the Lift's caught-loop escalation + BRIBE (0.1.2) ------------------
+
+## Opens a boost_caught chain, retrying days until one actually opens. Boost
+## has no day-scan predictor the way stickup's rooms do above -- the outcome
+## key depends on a cause_id allocated only once the chain opens -- so this is
+## the same bounded retry the parity suite's own caught-loop probes use.
+func _open_lift_chain(tier: int, target_id: String) -> bool:
+	gs.boost_tier = tier
+	for day in range(1, 300):
+		gs.day = day
+		gs.heat = 0.0
+		gs.health = gs.health_max
+		gs.active_consequence = {}
+		if gm.dispatch("boost", {"target_id": target_id}) \
+				and not (gs.active_consequence as Dictionary).is_empty():
+			return true
+	return false
+
+## A lift needs a target the run has clocked (batch 14) -- the parity
+## runner's `_clock_every_boost_target`, copied rather than shared since this
+## suite does not import that file.
+func _clock_every_boost_target() -> void:
+	for target in gs.boost_targets:
+		var target_id := str((target as Dictionary)["id"])
+		if not target_id in gs.boost_targets_discovered:
+			gs.boost_targets_discovered.append(target_id)
+
+## `gs.run_seed` defaults to the literal "907hustle" (game_state.gd:37) and
+## `reset_to_new_game()` never touches it, so it is the same in every reset in
+## every context -- this suite, a live session, anywhere. That makes the
+## caught-outcome roll ("consequence:%s:boost_caught:%s:outcome" %
+## [cause_id, choice_id]) fully predictable from the cause_id alone, and
+## cause_id is allocated sequentially off `gs.next_cause_sequence` -- so
+## PRE-SETTING that counter steers which cause_id the next opened chain gets,
+## rather than retrying fresh days hoping to land on a roll nobody chose.
+## `34` (set the counter to one less, per how `open_chain` allocates) is the
+## first sequence, verified live against this exact seed and these exact
+## attributes, at which fight, talk AND run all fail in turn at tier 1 --
+## letting this drive the whole escalation ladder to its cap deterministically
+## in one pass instead of gambling on a blind day search finding "caught AND
+## fails" together, which this build measures at roughly one day in 800.
+const _LIFT_ALL_FAIL_CAUSE_SEQ := 33
+
+func _check_lift_escalation() -> void:
+	gs.reset_to_new_game()
+	gs.attributes = {"combat": 1, "charisma": 1, "intelligence": 1}
+	gs.boost_store_bans = []
+	gs.boost_bribes_used = []
+	_clock_every_boost_target()
+	var engine: Object = gm.system("consequence")
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+
+	gs.next_cause_sequence = _LIFT_ALL_FAIL_CAUSE_SEQ
+	var opened := _open_lift_chain(1, "night_owl")
+	a.check("a tier-1 chain opens for the escalation probe", opened)
+	if not opened:
+		return
+	var cause_id := str(engine.active_summary().get("cause_id", ""))
+	a.eq_str("the probe landed on the predicted cause",
+		cause_id, "cause:%08d" % (_LIFT_ALL_FAIL_CAUSE_SEQ + 1))
+
+	# Round zero: five choices at tier 1 (SETTLE IT joins the authored four).
+	var decision0: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+	var allowed0: Array = decision0.get("allowed_choices", [])
+	a.eq_int("the fresh tier-1 decision offers five choices", allowed0.size(), 5)
+	a.check("bribe is among them", "bribe" in allowed0)
+	var base_run_odds: float = float(
+		(decision0.get("shown_probabilities", {}) as Dictionary).get("run", -1.0))
+	var base_talk_odds: float = float(
+		(decision0.get("shown_probabilities", {}) as Dictionary).get("talk", -1.0))
+
+	# Round 1: fight fails and burns.
+	a.check("fight commits", _commit("fight"))
+	a.eq_str("fight's failure escalates rather than resolving",
+		engine.active_stage(), engine.STAGE_DECISION)
+	var decision1: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+	var allowed1: Array = decision1.get("allowed_choices", [])
+	var shown1: Dictionary = decision1.get("shown_probabilities", {})
+	var loop1: Dictionary = LOOP.loop_of(gs.active_consequence)
+	a.check("a fight failure burns fight out of the choice list",
+		not "fight" in allowed1)
+	a.check("run and talk remain available", "run" in allowed1 and "talk" in allowed1)
+	a.check("bribe remains available through the escalation", "bribe" in allowed1)
+	a.near("run's odds drop by one round of LIFT_ESCALATION's verb_penalty",
+		float(shown1.get("run", -1.0)), base_run_odds - 0.10)
+	a.near("talk's odds drop by the same one round",
+		float(shown1.get("talk", -1.0)), base_talk_odds - 0.10)
+	a.check("the loop carries a beat for the round just presented",
+		not str(loop1.get("beat", "")).is_empty())
+	a.check("fight is recorded as burned", LOOP.is_burned(loop1, "fight"))
+	a.eq_int("the loop is on round 1", int(loop1.get("round", -1)), 1)
+
+	# Round 2: talk fails and burns too.
+	a.check("talk commits", _commit("talk"))
+	a.eq_str("talk's failure escalates a second time",
+		engine.active_stage(), engine.STAGE_DECISION)
+	var decision2: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+	var allowed2: Array = decision2.get("allowed_choices", [])
+	var shown2: Dictionary = decision2.get("shown_probabilities", {})
+	a.check("talk is burned alongside fight",
+		not "fight" in allowed2 and not "talk" in allowed2)
+	a.check("only run is left to roll", "run" in allowed2)
+	a.near("run's odds now carry two rounds of degradation",
+		float(shown2.get("run", -1.0)), base_run_odds - 0.20)
+	a.eq_int("the loop is on round 2",
+		int(LOOP.loop_of(gs.active_consequence).get("round", -1)), 2)
+
+	# Round 3: run is the last verb standing. Its failure resolves through
+	# CAUGHT_EFFECTS directly -- the cap and the exhaustion are the same
+	# attempt by construction, since there is no fourth rolled verb to offer.
+	a.check("run commits", _commit("run"))
+	a.eq_str("the last verb's failure resolves instead of escalating a fourth time",
+		engine.active_stage(), engine.STAGE_RESULT)
+	var outcome: Dictionary = engine.result_summary()
+	a.eq_str("the terminal tier is failure, exactly as predicted",
+		str(outcome.get("resolved_tier", "")), "failure")
+	var expected_row: Dictionary = rules.effects_for("run", "failure")
+	var result: Dictionary = outcome.get("result", {})
+	a.eq_str("the terminal take disposition matches run/failure's unedited row",
+		str(result.get("take_disposition", "")), str(expected_row.get("take", "")))
+	a.eq_bool("the terminal ban matches run/failure's unedited row",
+		bool(result.get("banned", false)), bool(expected_row.get("ban", false)))
+	if engine.active_stage() == engine.STAGE_BOOKING:
+		_close_out()
+	gs.active_consequence = {}
+
+## SETTLE IT: cost, no-ban resolution, once-per-store, and tier-3 absence.
+func _check_lift_bribe() -> void:
+	gs.reset_to_new_game()
+	gs.attributes = {"combat": 1, "charisma": 1, "intelligence": 1}
+	gs.boost_store_bans = []
+	gs.boost_bribes_used = []
+	_clock_every_boost_target()
+	var engine: Object = gm.system("consequence")
+	var boost: Object = gm.system("boost")
+
+	var opened := _open_lift_chain(1, "night_owl")
+	a.check("a tier-1 chain opens for the bribe probe", opened)
+	if not opened:
+		gs.active_consequence = {}
+		return
+	var source: Dictionary = (gs.active_consequence as Dictionary).get("source", {})
+	var contested: int = int(source.get("contested_take", 0))
+	var expected_cost: int = maxi(40, int(ceil(float(contested) * 2.0)))
+
+	# Short of the price: the engine's own pre-commit gate refuses it (the
+	# choice_blocked seam), not resolve_consequence returning ok:false after
+	# the round's one commit is already spent.
+	gs.cash = expected_cost - 1
+	gs.clean_cash = gs.cash
+	gs.dirty_cash = 0
+	a.check("bribe reads blocked when short of its price",
+		not boost.choice_blocked("bribe").is_empty())
+	a.check("an unaffordable bribe is refused rather than committed",
+		not gm.dispatch("resolve_consequence_choice", {"choice_id": "bribe"}))
+	a.eq_str("a refused bribe leaves the round uncommitted",
+		str((gs.active_consequence as Dictionary).get("decision", {}).get("committed_choice", "x")), "")
+
+	# Affordable: resolves deterministically, no ban, goods back, cash spent,
+	# the store remembered.
+	gs.cash = expected_cost + 500
+	gs.clean_cash = gs.cash
+	gs.dirty_cash = 0
+	var cash_before: int = int(gs.cash)
+	a.check("an affordable bribe commits",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "bribe"}))
+	var outcome: Dictionary = engine.result_summary()
+	a.eq_str("the bribe resolves to its own tier",
+		str(outcome.get("resolved_tier", "")), "bribed")
+	a.eq_int("the bribe costs exactly 2x the contested take, floored",
+		cash_before - int(gs.cash), expected_cost)
+	a.check("the bribe carries no ban",
+		not bool((outcome.get("result", {}) as Dictionary).get("banned", false)))
+	a.check("the store is remembered as bribed",
+		str(source.get("target_id", "")) in (gs.boost_bribes_used as Array))
+	a.eq_str("the chain settles at the result stage",
+		engine.active_stage(), engine.STAGE_RESULT)
+	gs.active_consequence = {}
+
+	# Once per store: a second lift on the same store no longer offers it.
+	opened = _open_lift_chain(1, "night_owl")
+	a.check("a second chain opens on the same store", opened)
+	if opened:
+		var decision2: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+		a.check("a store already bribed this run does not offer it again",
+			not "bribe" in (decision2.get("allowed_choices", []) as Array))
+	gs.active_consequence = {}
+
+	# Tier 3: the Armed Guard does not take money.
+	gs.boost_bribes_used = []
+	opened = _open_lift_chain(3, "warehouse_club")
+	a.check("a tier-3 chain opens for the absence probe", opened)
+	if opened:
+		var decision3: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+		a.eq_int("tier 3 offers the authored four with no bribe",
+			(decision3.get("allowed_choices", []) as Array).size(), 4)
+		a.check("bribe is absent at tier 3",
+			not "bribe" in (decision3.get("allowed_choices", []) as Array))
+	gs.active_consequence = {}

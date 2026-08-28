@@ -355,15 +355,18 @@ const LIFT_BEATS := {
 	],
 }
 
-## BRIBE's copy only. `fight`/`run`/`talk`/`yield` are unlisted on purpose --
+## The two choices this file adds beyond the shared caught table (BRIBE,
+## HAND IT BACK). `fight`/`run`/`talk`/`yield` are unlisted on purpose --
 ## boost.gd's adapter methods fall back to the engine's own
 ## `choice_id.capitalize()` for them, unchanged from before this file existed.
 const LIFT_CHOICE_LABELS := {
 	"bribe": "SETTLE IT",
+	"hand_it_back": "HAND IT BACK",
 }
 
 const LIFT_CHOICE_COPY := {
 	"bribe": "Money for the walk. You keep the door.",
+	"hand_it_back": "Give up what's in your hands. No ban -- the door's still yours next time.",
 }
 
 # --- market corner scripts (Q4, resolved) ------------------------------------

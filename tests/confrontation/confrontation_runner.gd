@@ -31,8 +31,9 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 
 ## The check floor: a suite that returned early is a suite that failed.
 ## Updated whenever checks are added; the report call enforces it.
-## 0.1.2: +40 for the Lift's caught-loop escalation + BRIBE (check block 10).
-const MIN_CHECKS := 199
+## 0.1.2: +40 for the Lift's caught-loop escalation + BRIBE (check block 10),
+## +13 for the HAND IT BACK guaranteed-out follow-up.
+const MIN_CHECKS := 212
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -61,6 +62,7 @@ func _ready() -> void:
 	_check_reload_shape()
 	_check_lift_escalation()
 	_check_lift_bribe()
+	_check_lift_hand_it_back()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -548,6 +550,10 @@ func _clock_every_boost_target() -> void:
 ## in one pass instead of gambling on a blind day search finding "caught AND
 ## fails" together, which this build measures at roughly one day in 800.
 const _LIFT_ALL_FAIL_CAUSE_SEQ := 33
+## Same technique, needing only fight to fail once (one escalation is enough
+## to reach round 1, where HAND IT BACK first becomes available) -- verified
+## live the same way, against the same seed and attributes.
+const _LIFT_FIGHT_FAIL_CAUSE_SEQ := 14
 
 func _check_lift_escalation() -> void:
 	gs.reset_to_new_game()
@@ -704,4 +710,48 @@ func _check_lift_bribe() -> void:
 			(decision3.get("allowed_choices", []) as Array).size(), 4)
 		a.check("bribe is absent at tier 3",
 			not "bribe" in (decision3.get("allowed_choices", []) as Array))
+	gs.active_consequence = {}
+
+## HAND IT BACK: absent on the original decision, on offer once escalation
+## starts, and resolves as a real guaranteed out -- goods back, no ban, no
+## arrest, the store left bribable and re-liftable exactly as if this run
+## had never touched it.
+func _check_lift_hand_it_back() -> void:
+	gs.reset_to_new_game()
+	gs.attributes = {"combat": 1, "charisma": 1, "intelligence": 1}
+	gs.boost_store_bans = []
+	gs.boost_bribes_used = []
+	_clock_every_boost_target()
+	var engine: Object = gm.system("consequence")
+
+	gs.next_cause_sequence = _LIFT_FIGHT_FAIL_CAUSE_SEQ
+	var opened := _open_lift_chain(1, "night_owl")
+	a.check("a tier-1 chain opens for the hand-it-back probe", opened)
+	if not opened:
+		return
+	var decision0: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+	a.check("hand_it_back is absent from the original decision",
+		not "hand_it_back" in (decision0.get("allowed_choices", []) as Array))
+
+	a.check("fight commits", _commit("fight"))
+	a.eq_str("fight's failure escalates", engine.active_stage(), engine.STAGE_DECISION)
+	var decision1: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+	var allowed1: Array = decision1.get("allowed_choices", [])
+	a.check("hand_it_back joins the offer once escalation starts",
+		"hand_it_back" in allowed1)
+	a.check("hand_it_back is flagged deterministic",
+		"hand_it_back" in (decision1.get("deterministic_choices", []) as Array))
+
+	a.check("hand_it_back commits", _commit("hand_it_back"))
+	a.eq_str("hand_it_back resolves immediately",
+		engine.active_stage(), engine.STAGE_RESULT)
+	var outcome: Dictionary = engine.result_summary()
+	a.eq_str("the tier is handed_back", str(outcome.get("resolved_tier", "")), "handed_back")
+	var result: Dictionary = outcome.get("result", {})
+	a.eq_str("the goods come back", str(result.get("take_disposition", "")), "return")
+	a.eq_bool("no ban", bool(result.get("banned", false)), false)
+	a.eq_bool("no arrest", bool(result.get("arrested", false)), false)
+	a.check("the store is not remembered as bribed or banned",
+		not "night_owl" in (gs.boost_bribes_used as Array)
+		and not "night_owl" in (gs.boost_store_bans as Array))
 	gs.active_consequence = {}

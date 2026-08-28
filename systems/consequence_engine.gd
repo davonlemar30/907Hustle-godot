@@ -478,6 +478,55 @@ func expire_stale(today: int) -> int:
 			owner.note_expiries(expired)
 	return expired.size()
 
+## Drop what the consequence layer is provably done with: queue rows whose
+## status is terminal (`resolved` / `expired`), and history rows for Causes
+## nothing can address again. Called at day-start BEFORE `expire_stale`, so a
+## row expired tonight keeps its terminal status on the queue until tomorrow —
+## the same one-night grace the shark ledger gives a settled note, and for the
+## same reason: whatever asserted or narrated the transition has already run,
+## but nothing same-tick is surprised by a vanishing row.
+##
+## ## Why a dead Cause is dead — the audit this rule stands on
+##
+## Every `record_receipt` / `has_receipt` call site in the build (this file's
+## commit path, `arrest.gd`'s booking steps, `stickup.gd`'s room resolution,
+## `boost.gd`'s caught loop including BRIBE and HAND IT BACK, and
+## `retaliation.gd`'s encounter effects) takes its cause_id from the ACTIVE
+## chain, or from the dispatch that allocated the Cause moments earlier.
+## `has_scheduled_actor` is consulted only by `retaliation.schedule()`, which
+## only ever receives the cause_id of the robbery resolving in that same
+## dispatch. No code path holds a cause_id across days except the active chain
+## and the delayed queue — so a Cause that is not the active chain's and has no
+## `pending`/`surfaced` queue row cannot be addressed again, and its receipts
+## guard effects that can no longer fire. Pruning runs at day-cross, never
+## mid-dispatch, so even the same-dispatch window cannot be caught out.
+##
+## Without this, `consequence_history` grew one row per Cause for the whole
+## run (~1-3 a criminal day) and the queue kept every threat it ever carried —
+## the two arrays the v22 memory fix measured and named. The v21 → v22
+## migration arm applies this same rule once to a loading save.
+func prune_settled() -> Dictionary:
+	var live_causes: Dictionary = {}
+	var active_cause := active_cause_id()
+	if not active_cause.is_empty():
+		live_causes[active_cause] = true
+	var kept_rows: Array = []
+	var queue_dropped: int = 0
+	for row in gs.consequence_queue:
+		var r: Dictionary = row
+		if str(r.get("status", "pending")) in ["resolved", "expired"]:
+			queue_dropped += 1
+			continue
+		live_causes[str(r.get("cause_id", ""))] = true
+		kept_rows.append(r)
+	gs.consequence_queue = kept_rows
+	var history_dropped: int = 0
+	for cause_id in gs.consequence_history.keys():
+		if not live_causes.has(str(cause_id)):
+			gs.consequence_history.erase(cause_id)
+			history_dropped += 1
+	return {"queue_dropped": queue_dropped, "history_dropped": history_dropped}
+
 ## Today's one ambient warning, if a live threat is standing where the player is.
 ##
 ## Forwarded rather than implemented here for the same reason `expire_stale`

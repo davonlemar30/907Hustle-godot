@@ -16,7 +16,7 @@ extends Node
 ## Registered as an autoload so a screen can reach it by path (`/root/Version`)
 ## the same way it reaches GameState, without preloading a script for a string.
 
-const VERSION := "0.1.2"
+const VERSION := "0.1.3"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

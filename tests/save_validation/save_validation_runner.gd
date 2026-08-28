@@ -28,6 +28,7 @@ func _ready() -> void:
 	_test_v19_tips()
 	_test_v20_dre_lending()
 	_test_v21_dre_intro_offered()
+	_test_v22_growth_caps()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -725,6 +726,122 @@ func _test_v17_market_discovery() -> void:
 	_check("valid v17 shape is a validation no-op",
 		(current_result["repairs"] as Array).is_empty())
 	_check("valid v17 payload remains byte-shape equivalent", current_fixed == current)
+
+## The scrolling-degradation fix (v22): both inbox halves hold
+## `GameState.PHONE_INBOX_MAX`, `shark_loans` sheds terminal notes, and the
+## consequence layer sheds terminal queue rows and dead-Cause history rows
+## (the liveness audit lives on `ConsequenceEngine.prune_settled`).
+## The validator clamp is the load-time backstop for the inboxes; the
+## v21 -> v22 arm is the one-time application of all of it to a long run's
+## save.
+##
+## SABOTAGE: remove the cap clamp in `_validate_phone_messages` -> "an
+## over-cap inbox is trimmed" fails; remove the v21 -> v22 arm -> `_migrate`
+## returns `{}` for the v21 payload and every "through the real chain" check
+## here fails.
+func _test_v22_growth_caps() -> void:
+	var cap: int = preload("res://autoload/game_state.gd").PHONE_INBOX_MAX
+
+	var big_inbox: Array = []
+	for i in range(cap + 5):
+		big_inbox.append({"id": "m%d" % i, "from": "Eli", "text": "line %d" % i,
+			"day": i, "slot": 0, "read": false})
+	var inbox_result := _result(_state("phone_inbox", big_inbox))
+	var trimmed: Array = (inbox_result["state"] as Dictionary)["phone_inbox"]
+	_check("an over-cap inbox is trimmed", trimmed.size() == cap)
+	_check("the inbox keeps its front — newest-first order",
+		str((trimmed[0] as Dictionary)["id"]) == "m0")
+	_check("the trim is named in repairs", not (inbox_result["repairs"] as Array).is_empty())
+
+	var held_result := _result(_state("phone_held_inbox", big_inbox.duplicate(true)))
+	var held: Array = (held_result["state"] as Dictionary)["phone_held_inbox"]
+	_check("an over-cap held inbox is trimmed", held.size() == cap)
+	_check("the held inbox keeps its back — oldest-first order",
+		str((held[0] as Dictionary)["id"]) == "m5")
+
+	var at_cap := _result(_state("phone_inbox", big_inbox.slice(0, cap)))
+	_check("an at-cap inbox is a validation no-op",
+		(at_cap["repairs"] as Array).is_empty())
+
+	# The migration itself, through the real chain: a v21 save carrying more
+	# than the cap and every loan status comes back bounded, with only the
+	# terminal notes gone. A note with no status at all (the pre-canonical
+	# fixture shape) is not guessed terminal and survives.
+	var save_system: Node = get_node("/root/SaveSystem")
+	var v21 := _state("phone_inbox", big_inbox.duplicate(true))
+	v21["phone_held_inbox"] = big_inbox.duplicate(true)
+	v21["shark_loans"] = [
+		{"id": 1, "borrower_id": "nora", "amount": 200, "term": 2,
+			"opened_day": 1, "due_day": 3, "status": "active", "risk_label": "STEADY"},
+		{"id": 2, "borrower_id": "rico", "amount": 300, "term": 4,
+			"opened_day": 1, "due_day": 5, "status": "repaid", "risk_label": "STEADY"},
+		{"id": 3, "borrower_id": "vera", "amount": 150, "term": 2,
+			"opened_day": 2, "due_day": 4, "status": "defaulted", "risk_label": "SHAKY"},
+		{"id": 4, "borrower_id": "nora", "amount": 100, "term": 7,
+			"opened_day": 2, "due_day": 9, "status": "enforced", "risk_label": "STEADY"},
+		{"id": 5, "borrower": "nora", "principal": 100, "due_day": 3, "term": 2},
+	]
+	v21["active_consequence"] = {"cause_id": "cause:00000009", "stage": "decision"}
+	v21["consequence_queue"] = [
+		{"queue_id": "q1", "cause_id": "cause:00000007", "actor_id": "cousin",
+			"status": "pending", "trigger_day": 3, "expires_end_day": 6,
+			"created_sequence": 1},
+		{"queue_id": "q2", "cause_id": "cause:00000005", "actor_id": "cousin",
+			"status": "resolved", "trigger_day": 1, "expires_end_day": 4,
+			"created_sequence": 2},
+		{"queue_id": "q3", "cause_id": "cause:00000003", "actor_id": "cousin",
+			"status": "expired", "trigger_day": 1, "expires_end_day": 2,
+			"created_sequence": 3},
+	]
+	v21["consequence_history"] = {
+		"cause:00000009": {"effect_receipts": ["commit:x"],
+			"resolved_consequence_ids": [], "scheduled_actor_ids": []},
+		"cause:00000007": {"effect_receipts": [],
+			"resolved_consequence_ids": [], "scheduled_actor_ids": ["cousin"]},
+		"cause:00000005": {"effect_receipts": ["room:cash"],
+			"resolved_consequence_ids": ["consequence:00000005"],
+			"scheduled_actor_ids": ["cousin"]},
+		"cause:00000001": {"effect_receipts": ["room:heat"],
+			"resolved_consequence_ids": [], "scheduled_actor_ids": []},
+	}
+	var migrated: Dictionary = save_system._migrate({"save_version": 21, "state": v21})
+	_check("a v21 save over the caps migrates", not migrated.is_empty())
+	_check("and its inbox arrives at the cap",
+		(migrated.get("phone_inbox", []) as Array).size() == cap)
+	_check("and its inbox kept the newest — the front",
+		str(((migrated["phone_inbox"] as Array)[0] as Dictionary)["id"]) == "m0")
+	_check("and its held inbox arrives at the cap",
+		(migrated.get("phone_held_inbox", []) as Array).size() == cap)
+	_check("and its held inbox kept the newest — the back",
+		str(((migrated["phone_held_inbox"] as Array)[0] as Dictionary)["id"]) == "m5")
+	var loans: Array = migrated.get("shark_loans", [])
+	var kept_ids: Array = []
+	for loan in loans:
+		kept_ids.append(int((loan as Dictionary).get("id", -1)))
+	_check("terminal notes are gone from a migrated save",
+		not 2 in kept_ids and not 4 in kept_ids)
+	_check("an active note survives migration", 1 in kept_ids)
+	_check("a defaulted note survives migration — it is an open decision", 3 in kept_ids)
+	_check("a status-less legacy note survives migration", 5 in kept_ids)
+
+	# The consequence layer's half of the arm, same fixture: terminal queue
+	# rows leave, and a history row survives only for a Cause something can
+	# still address — the active chain's or a pending row's.
+	var queue_ids: Array = []
+	for row in (migrated.get("consequence_queue", []) as Array):
+		queue_ids.append(str((row as Dictionary).get("queue_id", "")))
+	_check("a pending queue row survives migration", "q1" in queue_ids)
+	_check("resolved and expired queue rows are gone",
+		not "q2" in queue_ids and not "q3" in queue_ids)
+	var kept_history: Dictionary = migrated.get("consequence_history", {})
+	_check("the active chain's history row survives", kept_history.has("cause:00000009"))
+	_check("a pending row's history row survives", kept_history.has("cause:00000007"))
+	_check("a resolved Cause's history row is gone", not kept_history.has("cause:00000005"))
+	_check("an unreferenced Cause's history row is gone",
+		not kept_history.has("cause:00000001"))
+	_check("a surviving row keeps its receipts untouched",
+		str((kept_history.get("cause:00000009", {}) as Dictionary).get(
+			"effect_receipts", [])) == str(["commit:x"]))
 
 func _test_load_pipeline() -> void:
 	var save_system: Node = get_node("/root/SaveSystem")

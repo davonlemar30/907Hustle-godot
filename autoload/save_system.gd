@@ -147,7 +147,19 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## only guessed at, and this migration does not guess.
 ## v21: `dre_intro_offered` (Dre Lending PR B) -- purely additive, one bool
 ## latching whether Juan's day-start mention has fired yet.
-const SAVE_VERSION := 21
+## v22: no new fields — the scrolling-degradation fix. The arrays that grew
+## without bound (measured to ~1,400 Phone-screen nodes and a six-figure-byte
+## save by a driven day 60) are bounded at runtime from this build on:
+## `phone_inbox`/`phone_held_inbox` hold `GameState.PHONE_INBOX_MAX` each
+## (newest kept); `shark_loans` sheds terminal notes (repaid / forgiven /
+## enforced) on each night's settle; and the consequence layer sheds what it is
+## provably done with each morning — terminal queue rows (resolved / expired)
+## and history rows for Causes nothing can address again (not the active
+## chain's, no pending/surfaced queue row; the liveness audit lives on
+## `ConsequenceEngine.prune_settled`). The arm applies all of it once to a
+## loading v21 save, so a long run's save gets its relief at load rather than
+## trickling in push by push.
+const SAVE_VERSION := 22
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -780,6 +792,66 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# the mention already happened; anything else comes back
 				# false, the honest history either way.
 				state["dre_intro_offered"] = bool(state.get("dre_introduced", false))
+			21:
+				# v21 -> v22: no new fields — the caps land (see the version
+				# header). Trims are one-time transforms of state the runtime
+				# now bounds; each keeps the NEWEST messages, honouring each
+				# half's own order (inbox newest-first keeps the front, held
+				# oldest-first keeps the back). Terminal shark notes drop under
+				# the same rule `settle_night` now applies every night; a note
+				# with no status at all (the pre-canonical shape older
+				# round-trip fixtures carry) is not guessed terminal and stays.
+				var cap: int = preload("res://autoload/game_state.gd").PHONE_INBOX_MAX
+				var live_inbox: Variant = state.get("phone_inbox")
+				if live_inbox is Array and (live_inbox as Array).size() > cap:
+					state["phone_inbox"] = (live_inbox as Array).slice(0, cap)
+				var held_inbox: Variant = state.get("phone_held_inbox")
+				if held_inbox is Array and (held_inbox as Array).size() > cap:
+					state["phone_held_inbox"] = (held_inbox as Array).slice(
+						(held_inbox as Array).size() - cap)
+				var notes: Variant = state.get("shark_loans")
+				if notes is Array:
+					var open_notes: Array = []
+					for entry in (notes as Array):
+						if entry is Dictionary and str((entry as Dictionary).get(
+								"status", "active")) in ["repaid", "forgiven", "enforced"]:
+							continue
+						open_notes.append(entry)
+					state["shark_loans"] = open_notes
+				# The consequence layer's half of the same cleanup, mirroring
+				# `ConsequenceEngine.prune_settled` (the liveness audit is on
+				# that function): terminal queue rows go, and a history row
+				# survives only for a Cause something can still address — the
+				# active chain's, or one a pending/surfaced queue row names.
+				# A malformed row (no Dictionary, no status) is left for the
+				# validator, whose job that is; this arm only applies the
+				# retention rule to rows it can read.
+				var live_causes: Dictionary = {}
+				var carried_active: Variant = state.get("active_consequence")
+				if carried_active is Dictionary:
+					var active_cause := str((carried_active as Dictionary).get("cause_id", ""))
+					if not active_cause.is_empty():
+						live_causes[active_cause] = true
+				var queue: Variant = state.get("consequence_queue")
+				if queue is Array:
+					var live_rows: Array = []
+					for entry in (queue as Array):
+						if not (entry is Dictionary):
+							live_rows.append(entry)
+							continue
+						var queue_row: Dictionary = entry
+						if str(queue_row.get("status", "pending")) in ["resolved", "expired"]:
+							continue
+						live_causes[str(queue_row.get("cause_id", ""))] = true
+						live_rows.append(queue_row)
+					state["consequence_queue"] = live_rows
+				var history: Variant = state.get("consequence_history")
+				if history is Dictionary:
+					var kept_history: Dictionary = {}
+					for cause_id in (history as Dictionary):
+						if live_causes.has(str(cause_id)):
+							kept_history[cause_id] = (history as Dictionary)[cause_id]
+					state["consequence_history"] = kept_history
 			_:
 				return {}
 		version += 1

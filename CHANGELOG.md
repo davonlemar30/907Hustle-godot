@@ -18,6 +18,31 @@ a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
 
+## 0.1.3 — the long-run memory fix (2026-08-28)
+
+Long runs were getting slower to scroll and slower to tap, and the further
+into a run you were the worse it got. Measured on a driven 60-day run: the
+phone's inbox kept every text it was ever sent (about 1,400 UI nodes by day
+60, rebuilt on every action), and the save the game rewrites after every move
+had grown to six figures of bytes.
+
+Fixed by teaching the game to let go of what is finished:
+
+- **Texts** — the inbox keeps your newest 30 (each of its two halves, live
+  and held-for-service); the oldest drop off the bottom, the same way the
+  activity log has always kept 12.
+- **Shark notes** — a note that is repaid, forgiven, or enforced leaves the
+  ledger on the next night's settle. Open and defaulted notes stay.
+- **The consequence ledger** — each morning the engine sheds threats that
+  resolved or expired and the bookkeeping for incidents nothing can revisit.
+  Anything still live — an open chain, a threat still waiting for you — is
+  untouched.
+
+Save schema moves to v22; loading an older save applies the same cleanup
+once, so an existing long run gets its speed back immediately. Nothing about
+odds, prices, or outcomes changes — the parity suite's market-stream drift
+check proves the boards match day-for-day either way.
+
 ## 0.1.2 — She Said Get a Job (2026-08-28)
 
 *Draft — this entry was written from the build's own record of what shipped,

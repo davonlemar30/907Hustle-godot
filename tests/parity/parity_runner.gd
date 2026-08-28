@@ -13944,7 +13944,6 @@ func _check_version_stamp(gs: Node) -> void:
 ## Every registered gate, and the fact that opens it. `raise` puts the run one
 ## step past the threshold; `lower` puts it one step short.
 const GATE_CASES: Array[Dictionary] = [
-	{"id": "home.turf_crew", "mode": "locked", "fact": "crew"},
 	{"id": "menu.crew", "mode": "locked", "fact": "crew"},
 	{"id": "menu.jobs", "mode": "locked", "fact": "job_contacts"},
 	{"id": "street.downtown", "mode": "locked", "fact": "downtown"},
@@ -13954,6 +13953,7 @@ const GATE_CASES: Array[Dictionary] = [
 	{"id": "home.actions", "mode": "hidden", "fact": "actions"},
 	{"id": "home.text_messages", "mode": "hidden", "fact": "phone"},
 	{"id": "home.activity_feed", "mode": "hidden", "fact": "feed"},
+	{"id": "home.turf_crew", "mode": "hidden", "fact": "crew"},
 	# Batch 14. Four of the five share two facts between them, which is
 	# deliberate and is what the isolation loop below already understands:
 	# most of the ladder is two rules with entrances, not one rule each.
@@ -14192,30 +14192,17 @@ func _check_surface_visibility(gs: Node, gm: Node) -> void:
 		# on. See `SurfaceVisibility.GATES` for both arguments.
 		"Shell/Scroll/Pad/Content/Columns/Market": "the market snapshot",
 		"Shell/Scroll/Pad/Content/Actions": "the actions card",
+		# 0.1.2 PR A: Turf & Crew followed the same argument -- see
+		# `SurfaceVisibility.GATES`'s `HOME_TURF_CREW` comment.
+		"Shell/Scroll/Pad/Content/Columns/Turf": "Turf & Crew",
 	}
 	for path in hidden_paths:
 		var node := home.get_node_or_null(str(path)) as Control
 		_expect_true("a fresh Home hides %s" % str(hidden_paths[path]),
 			node != null and not node.visible)
-	var locked_paths := {
-		"Shell/Scroll/Pad/Content/Columns/Turf": "Turf & Crew",
-	}
-	for path in locked_paths:
-		var node := home.get_node_or_null(str(path)) as Control
-		var what := str(locked_paths[path])
-		if node == null:
-			_fail("surface visibility", "%s is missing from Home" % what)
-			continue
-		_expect_true("%s stays on a fresh Home" % what, node.visible)
-		_expect_true("%s is dimmed while locked" % what, node.modulate.a < 1.0)
-		_expect_true("%s refuses a tap while locked" % what,
-			bool(node.get_meta("surface_locked", false)))
-		var badge: Node = _find_lock_badge(node)
-		_expect_true("%s carries a lock hint" % what, badge != null)
-		if badge != null:
-			var hint := badge.get_node_or_null("Hint") as Label
-			_expect_true("%s's hint says something" % what,
-				hint != null and not hint.text.is_empty())
+	# Home has no LOCKED-mode surface as of 0.1.2 PR A (Turf & Crew, the last
+	# one, moved to HIDDEN above). The dim/hint/tap-refusal checks that used to
+	# run here return when a locked card does.
 	_free_screen(home)
 
 	# The unlocked pass: the same screen, past every gate, renders everything at
@@ -14237,15 +14224,6 @@ func _check_surface_visibility(gs: Node, gm: Node) -> void:
 		var node := open_home.get_node_or_null(str(path)) as Control
 		_expect_true("an earned Home shows %s" % str(hidden_paths[path]),
 			node != null and node.visible)
-	for path in locked_paths:
-		var node := open_home.get_node_or_null(str(path)) as Control
-		var what := str(locked_paths[path])
-		_expect_true("%s is undimmed once earned" % what,
-			node != null and is_equal_approx(node.modulate.a, 1.0))
-		_expect_true("%s takes a tap once earned" % what,
-			node != null and not bool(node.get_meta("surface_locked", false)))
-		_expect_true("%s drops its lock hint once earned" % what,
-			node != null and _find_lock_badge(node) == null)
 	_free_screen(open_home)
 
 ## The lock row `screen_base` appends, wherever in the surface it landed.
@@ -18788,7 +18766,17 @@ func _fail(label: String, detail: String) -> void:
 ## asking about a button that no longer exists; neither is the discipline
 ## the ratchet exists to enforce, so the floor states the real number
 ## instead of arguing with it.
-const MIN_CHECKS := 12530
+##
+## 0.1.2 PR A (Hide Turf & Crew) takes it to 12524, the second deliberate move
+## down. Turf & Crew leaving `GATES` for HIDDEN retires section 8's
+## `locked_paths` loop -- five fresh-pass and three unlocked-pass checks
+## asking whether the card was dimmed, tap-refused, and hint-badged, none of
+## which means anything once the card is out of the layout instead of merely
+## greyed -- and folds it into `hidden_paths` instead, which asks one question
+## per pass ("hides it" / "shows it once earned"). Net six down. `locked_paths`
+## retires with it: Home has no LOCKED-mode card left to ask those three
+## questions about, and a loop with nothing in it is not coverage.
+const MIN_CHECKS := 12524
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

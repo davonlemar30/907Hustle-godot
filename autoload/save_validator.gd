@@ -19,8 +19,8 @@ const TIP_EVENTS := preload("res://data/tip_events.gd")
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v23. Older saves are
-## migrated before this validator runs, so every arm below reads a v23 shape.
+## repaired payload back to disk. The save schema is v24. Older saves are
+## migrated before this validator runs, so every arm below reads a v24 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -61,6 +61,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_opportunity_history(state, repairs)
 	# Reads the two arrays above, so it runs after both are already clean.
 	_validate_opportunity_next_instance_id(state, repairs)
+	_validate_dre_pending_penance(state, repairs)
 	return {"state": state, "repairs": repairs}
 
 func _repair(repairs: Array[String], path: String, reason: String) -> void:
@@ -1015,6 +1016,17 @@ func _validate_opportunity_next_instance_id(state: Dictionary, repairs: Array[St
 	if int(state["opportunity_next_instance_id"]) < floor_id:
 		_repair(repairs, "opportunity_next_instance_id", "behind a live instance id; raised")
 		state["opportunity_next_instance_id"] = floor_id
+
+## PR D restitution latch. Same shape as `_validate_dre_intro_offered` --
+## manual wrong-type check, not the shared `_bool` helper, because `_bool`
+## injects its own "missing; defaulted" repair unconditionally and this
+## field is legitimately absent from every fixture that predates it.
+func _validate_dre_pending_penance(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("dre_pending_penance"):
+		return
+	if not state["dre_pending_penance"] is bool:
+		state["dre_pending_penance"] = false
+		_repair(repairs, "dre_pending_penance", "wrong type; defaulted")
 
 ## v16 (FS-002.3). Drop rows whose id the authored board does not carry, clamp
 ## soldiers non-negative, and cap a posted sum that exceeds the capacity those

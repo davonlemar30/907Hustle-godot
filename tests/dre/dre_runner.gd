@@ -29,10 +29,22 @@ extends Node
 ## late), that a failed dispatch cannot advance an objective, decline, the
 ## qualifying-load catch-up's three branches plus the legacy pre-PR-A edge
 ## case, and the closed completion-effect allowlist failing closed.
+##
+## PR D: DRE-ARC-03 (A Reminder) through both resolution roads -- negotiate
+## (no chain, a direct roll) and hard (a real `KIND_CONFRONTATION` chain,
+## PRESS rolled, WALK deterministic) -- the disposition gate, and the
+## player-default ultimatum `dre_lender.gd`'s old flat overdue timer now
+## opens instead: PAY NOW clearing the account, stalling suspending it for
+## real, and the restitution -> penance follow-up once payment clears a
+## suspension. `tests/confrontation/` owns the chassis itself (rounds,
+## receipts, stage transitions); this suite only proves Dre's own content
+## drives it correctly, the same division PR B already draws for
+## `requirements.gd`'s pure evaluator versus this suite's own fixtures.
 
 const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
+const SCRIPTS := preload("res://data/confrontation_scripts.gd")
 
-const MIN_CHECKS := 257
+const MIN_CHECKS := 299
 
 var a: RefCounted
 var gs: Node
@@ -65,6 +77,13 @@ func _ready() -> void:
 	_test_opportunity_effect_allowlist_fails_closed()
 	_test_opportunity_offer_is_not_duplicated_by_a_repeat_check()
 	_test_opportunity_accepted_commitment_cap()
+	_test_a_reminder_offer_and_disposition_gate()
+	_test_a_reminder_negotiate_road()
+	_test_a_reminder_hard_road_walk()
+	_test_a_reminder_hard_road_press()
+	_test_player_default_ultimatum_pay_now()
+	_test_player_default_ultimatum_stall_suspends()
+	_test_restitution_then_penance()
 
 	a.report("dre", get_tree(), MIN_CHECKS)
 
@@ -137,15 +156,23 @@ func _test_full_state_machine_walk() -> void:
 		str(gs.dre_account.get("status", "")), "overdue")
 	a.check("debt_due_days reads negative once overdue", gs.debt_due_days < 0)
 
-	# The authored grace, then suspension.
+	# The authored delay, then Dre's own response (PR D) -- a real
+	# collection encounter, not an automatic flip. See dre_collector.gd;
+	# the fuller version of this walk lives in
+	# _test_player_default_ultimatum_stall_suspends.
 	var dre: Object = _dre()
-	var grace: int = int(dre.OVERDUE_GRACE_DAYS)
-	for day_index in range(grace):
-		a.eq_str("still overdue during the grace window (day %d of %d)"
-				% [day_index + 1, grace],
+	var delay: int = int(dre.OVERDUE_RESPONSE_DELAY_DAYS)
+	var engine: Object = gm.system("consequence")
+	for day_index in range(delay):
+		a.eq_str("still overdue during the delay (day %d of %d)"
+				% [day_index + 1, delay],
 			str(gs.dre_account.get("status", "")), "overdue")
 		_cross_day()
-	a.eq_str("the grace window's end suspends the account",
+	a.eq_bool("the delay's end opens Dre's own response instead of "
+		+ "auto-suspending", engine.has_active(), true)
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "stall"})
+	gm.dispatch("consequence_continue", {})
+	a.eq_str("stalling is what actually suspends the account",
 		str(gs.dre_account.get("status", "")), "suspended")
 	a.eq_int("suspension keeps the debt outstanding, not forgiven", gs.debt, 1200)
 
@@ -313,8 +340,22 @@ func _test_save_load_at_every_state() -> void:
 
 	_introduced()
 	gm.dispatch("dre_borrow", {})
-	while str(gs.dre_account.get("status", "")) != "suspended":
+	while str(gs.dre_account.get("status", "")) != "overdue":
 		_cross_day()
+	# PR D: suspension is a real collection encounter now, not a pure day
+	# count -- see dre_lender.gd's settle_night "overdue" branch. Walk to
+	# where the encounter opens, then stall it, the same round trip
+	# _test_full_state_machine_walk and _test_player_default_ultimatum_
+	# stall_suspends both drive.
+	var engine: Object = gm.system("consequence")
+	for _i in range(6):
+		if engine.has_active():
+			break
+		_cross_day()
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "stall"})
+	gm.dispatch("consequence_continue", {})
+	a.eq_str("stalling reaches suspended before this round trip",
+		str(gs.dre_account.get("status", "")), "suspended")
 	_round_trip()  # suspended
 
 # --- 7. migration fixtures -------------------------------------------------
@@ -780,14 +821,233 @@ func _test_opportunity_accepted_commitment_cap() -> void:
 	_opportunities()._maybe_offer("dre_first_money")
 	a.eq_int("First Money can still be offered at the cap -- offering is free",
 		gs.opportunity_offers.size(), 1)
-	_opportunities()._accept("dre_first_money")
+	_opportunities().accept("dre_first_money")
 	a.eq_int("but accepting it at the cap is refused",
 		gs.opportunity_offers.size(), 1)
 	a.eq_int("active_opportunities does not grow past the cap",
 		gs.active_opportunities.size(), 3)
 
 	gs.active_opportunities = []
-	_opportunities()._accept("dre_first_money")
+	_opportunities().accept("dre_first_money")
 	a.eq_int("freeing a slot lets the same still-offered instance accept",
 		gs.active_opportunities.size(), 1)
+	gs.reset_to_new_game()
+
+# --- 16. DRE-ARC-03, A Reminder (PR D) ---------------------------------------
+
+func _collector() -> Object:
+	return gm.system("dre_collector")
+
+func _consequence() -> Object:
+	return gm.system("consequence")
+
+## Trusted Customer, resolved account, no Dre history yet -- exactly the
+## three OPP-D requirements `dre_a_reminder` authors, satisfied by
+## construction rather than by playing First Money out for real (already
+## proven end to end by _test_opportunity_first_money_lifecycle).
+func _trusted_customer() -> void:
+	_fresh()
+	gs.dre_introduced = true
+	gs.dre_access_tier = 2
+
+func _test_a_reminder_offer_and_disposition_gate() -> void:
+	_trusted_customer()
+	_opportunities()._maybe_offer("dre_a_reminder")
+	a.eq_bool("A Reminder offers itself at Trusted Customer with a clear "
+		+ "account and no Dre history", _collector().collect_blocker().is_empty(), true)
+
+	# The gate, isolated: same tier and account, disposition pushed
+	# negative. Ledger written directly (record_observation refuses outside
+	# a live dispatch) -- a repeated walked_a_debt-shaped row, the same
+	# event PR A already authors, is enough to carry the score well under
+	# the floor without inventing a new fixture event.
+	_trusted_customer()
+	gs.npc_ledgers["dre"] = [{"key": "test:walked_a_debt", "type": "financial",
+		"event": "walked_a_debt", "location": "", "source": "direct", "count": 3, "day": 1}]
+	var exposure := get_node("/root/Exposure")
+	a.check("the fixture actually pushes disposition negative",
+		exposure.disposition("dre") < 0.0)
+	_opportunities()._maybe_offer("dre_a_reminder")
+	a.eq_bool("but a cold-or-worse disposition keeps Dre from offering it",
+		_collector().collect_blocker().is_empty(), false)
+	gs.reset_to_new_game()
+
+## Searches days/slots for a negotiate outcome in `wanted` (["clean","messy"]
+## for success, ["failure","catastrophic"] for failure), the same technique
+## `tests/confrontation/confrontation_runner.gd`'s own `_find_day` uses:
+## compute the tier with the exact call the production code makes, off a
+## candidate day/slot, before ever touching real dispatch state.
+func _find_negotiate_day(wanted: Array) -> Dictionary:
+	var resolver: Object = gm.system("outcome_resolver")
+	var attrs: Object = gm.system("attributes")
+	for day in range(1, 200):
+		for slot in range(4):
+			var key := "%d:%d:dre_collection:negotiate" % [day, slot]
+			var tier: String = str(resolver.resolve_action("negotiation",
+				SCRIPTS.DRE_COLLECTION_NEGOTIATE_CHANCE, attrs.effective("charisma"),
+				gs.run_seed, key)["tier"])
+			if tier in wanted:
+				return {"day": day, "slot": slot, "tier": tier}
+	return {}
+
+func _test_a_reminder_negotiate_road() -> void:
+	var success := _find_negotiate_day(["clean", "messy"])
+	a.check("a negotiate success day/slot exists in the search window",
+		not success.is_empty())
+	_trusted_customer()
+	gs.day = int(success.get("day", 1))
+	gs.time_slots_today = int(success.get("slot", 0))
+	_opportunities()._maybe_offer("dre_a_reminder")
+	var cash_before: int = gs.cash
+	a.eq_bool("negotiating dispatches", gm.dispatch("dre_collect_negotiate", {}), true)
+	a.check("a successful negotiate pays the player's fee",
+		gs.cash > cash_before)
+	a.eq_int("and Collector is earned", int(gs.dre_access_tier), 3)
+	a.eq_str("recorded completed",
+		str((gs.opportunity_history["dre_a_reminder"] as Dictionary)["outcome"]), "completed")
+
+	var failure := _find_negotiate_day(["failure", "catastrophic"])
+	a.check("a negotiate failure day/slot exists in the search window",
+		not failure.is_empty())
+	_trusted_customer()
+	gs.day = int(failure.get("day", 1))
+	gs.time_slots_today = int(failure.get("slot", 0))
+	_opportunities()._maybe_offer("dre_a_reminder")
+	var cash_before2: int = gs.cash
+	gm.dispatch("dre_collect_negotiate", {})
+	a.eq_int("a failed negotiate pays nothing", gs.cash, cash_before2)
+	a.eq_int("and Collector is not earned on a failed road", int(gs.dre_access_tier), 2)
+	a.eq_str("recorded failed",
+		str((gs.opportunity_history["dre_a_reminder"] as Dictionary)["outcome"]), "failed")
+	gs.reset_to_new_game()
+
+func _test_a_reminder_hard_road_walk() -> void:
+	_trusted_customer()
+	_opportunities()._maybe_offer("dre_a_reminder")
+	a.eq_bool("going hard opens a chain", gm.dispatch("dre_collect_hard", {}), true)
+	a.eq_bool("and the engine agrees one is active", _consequence().has_active(), true)
+	var cash_before: int = gs.cash
+	a.eq_bool("walking away resolves the chain",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "walk"}), true)
+	a.eq_int("walking pays nothing", gs.cash, cash_before)
+	a.eq_int("and does not promote Collector", int(gs.dre_access_tier), 2)
+	a.eq_str("recorded failed, not completed",
+		str((gs.opportunity_history["dre_a_reminder"] as Dictionary)["outcome"]), "failed")
+	var exposure := get_node("/root/Exposure")
+	var found_refused := false
+	for row in exposure.ledger_of("dre"):
+		if str((row as Dictionary)["event"]) == "refused_work":
+			found_refused = true
+	a.eq_bool("walking away is refused_work to Dre, by name", found_refused, true)
+	gm.dispatch("consequence_continue", {})
+	a.eq_bool("continuing closes the chain out", _consequence().has_active(), false)
+	gs.reset_to_new_game()
+
+## PRESS's own cause_id is a monotonic counter, not a function of day/slot
+## (ConsequenceEngine.allocate_cause_id), so unlike negotiate this cannot be
+## searched for a specific tier by walking the calendar. Assert on whichever
+## tier the one live roll actually lands on instead -- still fully
+## deterministic and reproducible for a fixed run_seed and cause sequence,
+## just not aimed at one tier in particular.
+func _test_a_reminder_hard_road_press() -> void:
+	_trusted_customer()
+	_opportunities()._maybe_offer("dre_a_reminder")
+	gm.dispatch("dre_collect_hard", {})
+	var cash_before: int = gs.cash
+	var health_before: int = gs.health
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+	var result: Dictionary = gs.active_consequence.get("decision", {}).get("result", {})
+	var tier := str(result.get("resolution", ""))
+	a.check("press resolves to one of the four authored tiers",
+		tier in ["clean", "messy", "failure", "catastrophic"])
+	var collected: bool = bool(result.get("collected", false))
+	if collected:
+		a.check("a collecting tier pays the player's fee", gs.cash > cash_before)
+		a.eq_int("and promotes Collector", int(gs.dre_access_tier), 3)
+		a.eq_str("recorded completed",
+			str((gs.opportunity_history["dre_a_reminder"] as Dictionary)["outcome"]), "completed")
+	else:
+		a.eq_int("a non-collecting tier pays nothing", gs.cash, cash_before)
+		a.eq_int("and does not promote Collector", int(gs.dre_access_tier), 2)
+		a.eq_str("recorded failed",
+			str((gs.opportunity_history["dre_a_reminder"] as Dictionary)["outcome"]), "failed")
+	if tier == "catastrophic":
+		a.check("catastrophic is the one tier that can cost health",
+			gs.health <= health_before)
+	gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+# --- 17. the player-default ultimatum (PR D) ---------------------------------
+
+## Walks a fresh loan all the way to the point `dre_lender.gd`'s old flat
+## timer used to auto-suspend at, then a bounded few nights further --
+## `OVERDUE_RESPONSE_DELAY_DAYS` more settles -- for `dre_collector.gd` to
+## actually open the ultimatum. Bounded rather than an exact day count on
+## purpose: the arithmetic is easy to get one settle off by rewriting it
+## from scratch in a comment, and a bounded loop proves the real behaviour
+## instead of a second copy of it.
+func _reach_ultimatum() -> void:
+	_trusted_customer()
+	gm.dispatch("dre_borrow", {})
+	while str(gs.dre_account.get("status", "")) != "overdue":
+		_cross_day()
+	for _i in range(6):
+		if _consequence().has_active():
+			break
+		_cross_day()
+
+func _test_player_default_ultimatum_pay_now() -> void:
+	_reach_ultimatum()
+	a.eq_bool("the overdue account eventually opens Dre's own ultimatum",
+		_consequence().has_active(), true)
+	var decision: Dictionary = gs.active_consequence.get("decision", {})
+	a.eq_str("with exactly the two authored choices",
+		str(decision.get("allowed_choices", [])), str(["pay_now", "stall"]))
+	_fund(5000)
+	a.eq_bool("paying now dispatches",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "pay_now"}), true)
+	a.eq_str("and the account clears", str(gs.dre_account.get("status", "")), "clear")
+	gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+func _test_player_default_ultimatum_stall_suspends() -> void:
+	_reach_ultimatum()
+	a.eq_bool("stalling is refused nothing -- no cash check on the choice that "
+		+ "does not need one", _collector().choice_blocked("stall").is_empty(), true)
+	a.eq_bool("stalling dispatches",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "stall"}), true)
+	a.eq_str("and the account actually suspends",
+		str(gs.dre_account.get("status", "")), "suspended")
+	var exposure := get_node("/root/Exposure")
+	var found_walked := false
+	for row in exposure.ledger_of("dre"):
+		if str((row as Dictionary)["event"]) == "walked_a_debt":
+			found_walked = true
+	a.eq_bool("walked_a_debt still fires, now from the real encounter",
+		found_walked, true)
+	gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+func _test_restitution_then_penance() -> void:
+	_reach_ultimatum()
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "stall"})
+	gm.dispatch("consequence_continue", {})
+	a.eq_bool("suspended and nothing pending yet",
+		gs.dre_pending_penance, false)
+
+	_fund(5000)
+	a.eq_bool("paying off a suspended account still succeeds -- D-4/D-7, "
+		+ "unchanged by PR D", gm.dispatch("dre_repay", {}), true)
+	a.eq_str("and clears the account the same as any other repay",
+		str(gs.dre_account.get("status", "")), "clear")
+	a.eq_bool("but this time it leaves the penance latch behind",
+		gs.dre_pending_penance, true)
+
+	_opportunities()._maybe_offer("dre_penance")
+	a.eq_str("penance is not blocked now that it is pending",
+		gm.system("dre").penance_blocker(), "")
+	a.eq_bool("making it right dispatches", gm.dispatch("dre_do_penance", {}), true)
+	a.eq_bool("and clears the latch", gs.dre_pending_penance, false)
+	a.eq_str("dre_penance is recorded completed",
+		str((gs.opportunity_history["dre_penance"] as Dictionary)["outcome"]), "completed")
 	gs.reset_to_new_game()

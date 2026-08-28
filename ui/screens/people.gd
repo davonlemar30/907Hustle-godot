@@ -39,13 +39,21 @@ func _band_colour(band: String, inverted: bool) -> Color:
 		"cold": return AMBER
 	return RED
 
-## Dre Lending & Loan-Shark Progression, PR B + C (First Money, DRE-ARC-02).
-## The rest of this screen is read-only evidence — this is the one card that
-## can act, because Dre is the one relationship on it with a real account
-## behind it rather than just a disposition score. Read-only itself where
-## Phone already has the live PAY/ASK FOR 2 MORE DAYS buttons
-## (`_bind_dre_debt_card` on his own texts) — this card states the account
-## and offers what has no text to live on yet: SEEK HIM OUT, and now BORROW.
+## Dre Lending & Loan-Shark Progression, PR B + C + D (First Money,
+## DRE-ARC-02; A Reminder, DRE-ARC-03; restitution). The rest of this screen
+## is read-only evidence — this is the one card that can act, because Dre is
+## the one relationship on it with a real account behind it rather than just
+## a disposition score. Read-only itself where Phone already has the live
+## PAY/ASK FOR 2 MORE DAYS buttons (`_bind_dre_debt_card` on his own texts)
+## — this card states the account and offers what has no text to live on
+## yet: SEEK HIM OUT, BORROW, the two collection roads, and penance.
+##
+## The offer checks below are independent `if`s, not an `if`/`elif` chain —
+## First Money and A Reminder are mutually exclusive by their own
+## requirements (see `opportunities.gd`'s comment on `accept()`), but
+## `dre_pending_penance` is not tied to either, so a returning player could
+## in principle see A Reminder's offer and an outstanding penance in the
+## same render.
 func _bind_dre_extras(v: VBoxContainer) -> void:
 	if not gs.dre_intro_offered:
 		return
@@ -63,7 +71,7 @@ func _bind_dre_extras(v: VBoxContainer) -> void:
 		v.add_child(label("Debt to Dre: $%d, due Day %d" \
 				% [gs.debt, gs.day + gs.debt_due_days],
 			"Mono", 10, AMBER))
-	elif _first_money_offered():
+	if _offer_exists("dre_first_money"):
 		# Numbers read off the lender itself, not restated here — the same
 		# rule every other figure on this card already follows.
 		var dre_system: Object = _gm.system("dre")
@@ -74,15 +82,33 @@ func _bind_dre_extras(v: VBoxContainer) -> void:
 					% [principal, total, int(dre_system.FIRST_LOAN_TERM_DAYS)],
 				"Muted", 11, MUTED, true))
 			v.add_child(button("BORROW $%d" % principal, true, _on_borrow_dre, 40))
+	if _offer_exists("dre_a_reminder"):
+		v.add_child(label("Dontae Wells owes Dre. He'd like it handled.",
+			"Muted", 11, MUTED, true))
+		v.add_child(button("TALK IT LOOSE", true, _on_collect_negotiate, 40))
+		v.add_child(button("GO COLLECT", true, _on_collect_hard, 40))
+	if gs.dre_pending_penance:
+		v.add_child(label("The money's square. He still wants to hear it from you.",
+			"Muted", 11, MUTED, true))
+		v.add_child(button("MAKE IT RIGHT", true, _on_do_penance, 40))
 
-func _first_money_offered() -> bool:
+func _offer_exists(definition_id: String) -> bool:
 	for entry in gs.opportunity_offers:
-		if str((entry as Dictionary).get("definition_id", "")) == "dre_first_money":
+		if str((entry as Dictionary).get("definition_id", "")) == definition_id:
 			return true
 	return false
 
 func _on_seek_dre() -> void:
 	_gm.dispatch("dre_seek_out", {})
+
+func _on_collect_negotiate() -> void:
+	_gm.dispatch("dre_collect_negotiate", {})
+
+func _on_collect_hard() -> void:
+	_gm.dispatch("dre_collect_hard", {})
+
+func _on_do_penance() -> void:
+	_gm.dispatch("dre_do_penance", {})
 
 func _on_borrow_dre() -> void:
 	_gm.dispatch("dre_borrow", {})

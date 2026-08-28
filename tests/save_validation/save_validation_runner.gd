@@ -30,6 +30,7 @@ func _ready() -> void:
 	_test_v21_dre_intro_offered()
 	_test_v22_growth_caps()
 	_test_v23_opportunities()
+	_test_v24_dre_pending_penance()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -936,6 +937,28 @@ func _test_v23_opportunities() -> void:
 	var v22 := _state("day", 9)
 	var migrated: Dictionary = save_system._migrate({"save_version": 22, "state": v22})
 	_check("a v22 save with no opportunity fields migrates", not migrated.is_empty())
+
+func _test_v24_dre_pending_penance() -> void:
+	# Same shape as _validate_dre_intro_offered -- manual wrong-type check,
+	# not the shared _bool helper, so an absent field stays absent rather
+	# than picking up a spurious "missing; defaulted" repair on every
+	# fixture that predates this field. See the validator's own comment.
+	var wrong_type := _fixed(_state("dre_pending_penance", "not a bool"))
+	_check("a wrong-type dre_pending_penance defaults to false",
+		wrong_type["dre_pending_penance"] == false)
+	var valid_true := _result(_state("dre_pending_penance", true))
+	_check("a valid true value is a validation no-op",
+		(valid_true["repairs"] as Array).is_empty())
+	_check("and survives untouched", _fixed(_state("dre_pending_penance", true)) \
+		["dre_pending_penance"] == true)
+
+	# The real migration chain: a v23 save (PR C's own predecessor) carries
+	# no restitution latch at all, and the v23 -> v24 arm is purely
+	# additive, same as v22 -> v23 immediately above.
+	var save_system: Node = get_node("/root/SaveSystem")
+	var v23 := _state("day", 9)
+	var migrated: Dictionary = save_system._migrate({"save_version": 23, "state": v23})
+	_check("a v23 save with no restitution latch migrates", not migrated.is_empty())
 
 func _test_load_pipeline() -> void:
 	var save_system: Node = get_node("/root/SaveSystem")

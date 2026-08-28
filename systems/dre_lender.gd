@@ -26,16 +26,18 @@ extends RefCounted
 ## correct in PR A; PR B only had to open a door onto a room that already
 ## worked.
 ##
-## ## The overdue → suspended edge is provisional
+## ## The overdue → suspended edge is a real event, not a timer (PR D)
 ##
 ## The design doc's own state diagram fires `Overdue --> Suspended` on
-## "Collection/default resolves" — an EVENT, not a timer. PR D is what
-## builds that event (the real collection encounter, through the shared
-## consequence chassis). Until it lands, `OVERDUE_GRACE_DAYS` stands in: a
-## flat two-day window after `walked_a_debt` where suspension has not yet
-## landed but the account is already unmistakably late, so an overdue
-## account does not sit forever with nothing answering it. PR D deletes
-## this constant and replaces the whole branch with a real chain.
+## "Collection/default resolves" — an EVENT. `settle_night`'s `"overdue"`
+## branch now opens that event directly: once `OVERDUE_RESPONSE_DELAY_DAYS`
+## has passed with nothing paid, it asks `dre_collector` to open a chain
+## — if one is not already open elsewhere (`ConsequenceEngine.has_active()`)
+## — through the same `KIND_CONFRONTATION` chassis DRE-ARC-03 uses: two
+## deterministic choices, PAY NOW or accept the suspension, no roll (see
+## `systems/dre_collector.gd`). If a chain is already open (some other
+## consequence has the floor), this branch simply retries the next night;
+## `"overdue"` status does not itself decay, so nothing is lost by waiting.
 ##
 ## ## Numbers are provisional
 ##
@@ -61,8 +63,10 @@ const FIRST_LOAN_TERM_DAYS := 5
 const EXTENSION_TERM_DAYS := 2
 const EXTENSION_FEE := 100
 
-## Provisional — see the header. PR D deletes this.
-const OVERDUE_GRACE_DAYS := 2
+## The window after "overdue" before Dre's response opens — see the header.
+## No longer a substitute for the real event; it IS the authored delay
+## before it.
+const OVERDUE_RESPONSE_DELAY_DAYS := 2
 
 var gs: Node
 var gm: Node
@@ -74,7 +78,8 @@ func setup(game_state: Node, manager: Node, time_sys: RefCounted) -> void:
 	time_system = time_sys
 
 func can_handle(action: String) -> bool:
-	return action in ["dre_borrow", "dre_repay", "dre_request_extension", "dre_seek_out"]
+	return action in ["dre_borrow", "dre_repay", "dre_request_extension", "dre_seek_out",
+		"dre_do_penance"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
 	match action:
@@ -84,6 +89,8 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 			return _repay()
 		"dre_request_extension":
 			return _request_extension()
+		"dre_do_penance":
+			return _do_penance()
 		"dre_seek_out":
 			return _seek_out()
 	return {"ok": false, "reason": "Unknown Dre action."}
@@ -96,6 +103,9 @@ func _exposure() -> Node:
 
 func _phone() -> Object:
 	return gm.system("phone") if gm != null else null
+
+func _collector() -> Object:
+	return gm.system("dre_collector") if gm != null else null
 
 # --- introduction (DRE-D1, PR B) ----------------------------------------------
 
@@ -146,6 +156,28 @@ func _seek_out() -> Dictionary:
 	gs.dre_access_tier = maxi(int(gs.dre_access_tier), 1)
 	gs.log_activity("You find Dre outside the Mini-Mart. He already knew you'd come.", AMBER)
 	time_system.handle("advance_time", {})
+	return {"ok": true}
+
+# --- penance (restitution follow-up, PR D) -----------------------------------
+
+## "" if the small penance contract is there to do, the reason otherwise.
+func penance_blocker() -> String:
+	if gs.game_over:
+		return "The run is over."
+	if not gs.dre_pending_penance:
+		return "There's nothing to make right."
+	return ""
+
+## Symbolic, not mechanical: the account already cleared on payment (D-4/
+## D-7). This is the conversation that closes the relationship side of it,
+## costs no slot, and completes `dre_penance` (data/dre_contracts.gd) through
+## the ordinary action_result path.
+func _do_penance() -> Dictionary:
+	var blocked := penance_blocker()
+	if not blocked.is_empty():
+		return {"ok": false, "reason": blocked}
+	gs.dre_pending_penance = false
+	gs.log_activity("You tell Dre it won't happen again. He hears it.", AMBER)
 	return {"ok": true}
 
 # --- borrow ------------------------------------------------------------------
@@ -209,7 +241,16 @@ func _repay() -> Dictionary:
 	var interest: int = int(account.get("interest", 0))
 	var fee: int = int(account.get("fee", 0))
 	var total: int = int(account.get("principal", 0)) + interest + fee
+	var was_suspended: bool = str(account.get("status", "")) == "suspended"
 	_wallet().spend(total, _wallet().ROUTINE_DIRTY_FIRST, {"source_id": "dre_repay"})
+
+	# D-4/D-7 still rules full repayment alone clears the account (unchanged
+	# by PR D) — but a suspension is a bigger break than a late payment, and
+	# the relationship repair for it is a small authored follow-up, not
+	# silent. See `dre_pending_penance`'s own header in game_state.gd and
+	# `dre_penance` in data/dre_contracts.gd.
+	if was_suspended:
+		gs.dre_pending_penance = true
 
 	var history: Dictionary = gs.dre_account_history
 	history["total_interest_paid"] = int(history.get("total_interest_paid", 0)) + interest + fee
@@ -308,25 +349,11 @@ func settle_night(ended_day: int) -> void:
 					"We should talk before this becomes a different conversation.",
 					{"kind": "dre_debt"})
 		"overdue":
-			if ended_day - due_day >= OVERDUE_GRACE_DAYS:
-				account["status"] = "suspended"
-				gs.dre_account = account
-				gs.log_activity("Dre stops answering. Make this right before you ask him for anything else.", RED)
-				if phone != null:
-					phone.push_message("Dre",
-						"This is what happens now. Straighten this out and we can go back " \
-						+ "to how it was.", {"kind": "dre_debt"})
-				var exposure: Node = _exposure()
-				if exposure != null:
-					# `record_observation` only, not also `broadcast_observation`
-					# on the network channel: `NPC_CHANNELS["dre"]` already
-					# includes "network", so a broadcast would reach him a
-					# second time (delayed a day) for the exact same fact he
-					# already knows immediately as his own business, doubling
-					# the count `record_observation` would otherwise merge to
-					# one. Word reaching OTHER NPCs is a real design-doc line
-					# ("Dre direct/network as authored") left for a later
-					# slice that can exclude him from that broadcast rather
-					# than double-count him to get it.
-					exposure.record_observation("dre", {"type": "financial",
-						"event": "walked_a_debt", "source": "direct"})
+			if ended_day - due_day >= OVERDUE_RESPONSE_DELAY_DAYS:
+				var collector: Object = _collector()
+				if collector != null:
+					collector.open_player_default_encounter()
+				# No `else`, no fallback write here: if the collector is
+				# somehow unregistered, or a chain already has the floor
+				# tonight, this branch just runs again tomorrow -- "overdue"
+				# does not decay on its own, so retrying costs nothing.

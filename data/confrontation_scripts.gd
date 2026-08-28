@@ -517,3 +517,69 @@ const CREW_CALLS := {
 		"copy": "His voice, not yours. Everybody walks.",
 	},
 }
+
+# --- Dre's collection encounters (Dre Lending & Loan-Shark Progression, -----
+# PR D, DRE-ARC-03 / restitution) -------------------------------------------
+#
+# Two distinct authored encounters sharing one adapter
+# (`systems/dre_collector.gd`) and one `KIND_CONFRONTATION` chain kind, per
+# the build prompt: "the same chassis." DRE-ARC-03 is the player collecting
+# from one of DRE'S OWN borrowers — an authored NPC, deliberately not from
+# `GameState.shark_borrowers` (the design doc's own words). The player-
+# default encounter is the reverse: Dre collecting from the PLAYER, once an
+# account sits overdue past `dre_lender.OVERDUE_RESPONSE_DELAY_DAYS`.
+
+## DRE-ARC-03's target. A name, not a number — `shark_borrowers`' own rows
+## (game_state.gd) give every borrower a name and a reason, and Dre's own
+## borrower deserves the same rather than being "the borrower" throughout.
+const DRE_COLLECTION_TARGET := {
+	"id": "dontae", "name": "Dontae Wells",
+	"desc": "Behind on what he owes Dre. Everyone in Spenard knows where to find him.",
+}
+
+## Base success chance for each rolled road, before `outcome_resolver.gd`'s
+## own attribute-advantage math. Flat, like `CAUGHT_EFFECTS`' per-opponent
+## values — one authored NPC, not a tiered list, needs no dynamic formula.
+const DRE_COLLECTION_PRESS_CHANCE := 0.55
+const DRE_COLLECTION_NEGOTIATE_CHANCE := 0.55
+
+## PRESS's tiers — Combat-keyed, `outcome_resolver.gd`'s existing
+## "confrontation" shape (clean/messy success, failure/catastrophic
+## failure), no new authoring needed there. Same authoring shape as
+## `CAUGHT_EFFECTS` (data/consequence_rules.gd): one row per tier, read
+## generically by the adapter. WALK carries no row here — it is
+## deterministic, resolved directly by the adapter, never rolled.
+const DRE_COLLECTION_PRESS_EFFECTS := {
+	"clean": {"collect": true, "heat": 1.5},
+	"messy": {"collect": true, "heat": 3.0},
+	"failure": {"collect": false, "heat": 1.5},
+	"catastrophic": {"collect": false, "heat": 3.0, "injury_band": [3, 7]},
+}
+
+## The player's own fee for a successful collection, by tier and by road —
+## PRESS pays better than a quiet NEGOTIATE, the same "riskier road, better
+## take" shape `CAUGHT_EFFECTS` already carries in reverse (a failed fight
+## costs more than a failed talk). Provisional, like every other number in
+## this build — see `dre_lender.gd`'s own header on why.
+const DRE_COLLECTION_PRESS_FEE := {"clean": 80, "messy": 50}
+const DRE_COLLECTION_NEGOTIATE_FEE := {"clean": 60, "messy": 40}
+
+const DRE_COLLECTION_CHOICE_LABELS := {
+	"press": "PRESS HIM", "walk": "WALK AWAY",
+}
+const DRE_COLLECTION_CHOICE_COPY := {
+	"press": "Make it clear you're not leaving without it.",
+	"walk": "Not worth it today.",
+}
+
+## The player-default ultimatum: Dre's own response once an account has sat
+## overdue past the authored delay. Two deterministic choices — paying is
+## just paying and stalling is just stalling, neither needs a roll, which is
+## why this is the lighter of the two tables above.
+const DRE_ULTIMATUM_CHOICE_LABELS := {
+	"pay_now": "PAY NOW", "stall": "I CAN'T RIGHT NOW",
+}
+const DRE_ULTIMATUM_CHOICE_COPY := {
+	"pay_now": "Clear it in full, right now.",
+	"stall": "You don't have it. He's not going to like that.",
+}

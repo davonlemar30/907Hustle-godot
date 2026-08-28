@@ -47,6 +47,8 @@ func _build_body() -> void:
 	body.add_child(button("BACK TO MORE", false, _on_back, 44))
 
 func _card(heading: String, text: String) -> Control:
+	# Built on surface_base.gd's card(), so TOUCH-D3a's PASS fix already
+	# applies here -- nothing to change in this file.
 	var c := card()
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)

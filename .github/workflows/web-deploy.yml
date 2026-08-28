@@ -130,11 +130,19 @@ jobs:
           godot --headless --path . res://tests/dre/dre_runner.tscn 2>&1 | tee dre.log
           grep -q "^dre: PASS" dre.log
 
+      # TOUCH-D5's structural gate (fix/touch-scroll-transparency): every
+      # screen's ScrollContainer subtree must come back with no Control stuck
+      # at MOUSE_FILTER_STOP and no BaseButton wired via `pressed`. Same N/N
+      # backreference style as the instantiation check above, for the same
+      # reason -- a screen growing more checks does not fail CI, only a
+      # regression that leaves one of them stuck does.
       - name: Run screen smoke
         run: |
           godot --headless --path . res://tests/smoke/screen_smoke.tscn 2>&1 | tee smoke.log
           grep -qE "screen smoke: ([0-9]+)/\1 instantiated" smoke.log
+          grep -qE "screen smoke: touch checks ([0-9]+)/\1 passed" smoke.log
           ! grep -q "LOAD FAILED" smoke.log
+          ! grep -q "TOUCH FAILED" smoke.log
 
       # The crash gate (86bbjxthk). Every harness above asserts its own PASS
       # line, and a PASS line only says the checks that RAN all passed.

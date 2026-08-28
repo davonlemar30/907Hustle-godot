@@ -37,7 +37,7 @@ One place to orient before reading anything else below.
 | Tips suite | **93 checks, 0 failures** — a CI gate as of 0.1.2 PR E (`tests/tips/`), Word of Mouth's own harness on the shared territory asserts |
 | Dre suite | **331 checks, 0 failures** — a CI gate since Dre Lending PR A (`tests/dre/`), seconds rather than parity's ~10 minutes; PR E adds the full-arc integration drive (Juan through Junior Lender), the gate-opens-only-through-the-arc and locked-borrowers-refuse checks, and bond-term parity |
 | Save validation | **229 checks, 0 failures** — a CI gate as of batch 12; gained `_test_v18_boost_bribes_used` and `_test_v19_tips` in 0.1.2, and the Dre arms through v24 (`_test_v20`..`_test_v24`, one per schema bump above) |
-| Screen smoke | 23/23 screens instantiate **with their scripts attached** — a CI gate as of batch 12, script-attachment added in batch 15; `opening.tscn` retired in 0.1.2 PR C (Yalonda replaces it) |
+| Screen smoke | 23/23 screens instantiate **with their scripts attached** — a CI gate as of batch 12, script-attachment added in batch 15; `opening.tscn` retired in 0.1.2 PR C (Yalonda replaces it). **1093/1093 touch checks** as of `fix/touch-scroll-transparency` (TOUCH-D5): every `ScrollContainer` on every screen is walked for a stuck `MOUSE_FILTER_STOP` Control or a `pressed`-wired `BaseButton` |
 | Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` |
 | Screens | 23 (`opening.tscn` retired in 0.1.2 PR C) |
 | Systems | 34 registered in `GameManager` (Dre Lending arc added `dre`, `opportunities`, `dre_collector` — PR A/C/D respectively) |

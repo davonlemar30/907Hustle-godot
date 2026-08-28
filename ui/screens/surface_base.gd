@@ -54,6 +54,12 @@ func _bind_content() -> void:
 func card() -> PanelContainer:
 	var p := PanelContainer.new()
 	p.theme_type_variation = &"Card"
+	# TOUCH-D3a: PanelContainer is the one Container subtype that defaults to
+	# MOUSE_FILTER_STOP (every layout Container defaults to PASS), which is why
+	# a drag starting on a card never reached the ScrollContainer above it.
+	# PASS here does not make the card tappable -- see tap_connect/make_tappable
+	# for that, an entirely separate opt-in.
+	p.mouse_filter = Control.MOUSE_FILTER_PASS
 	return p
 
 ## `wrap` is opt-in: a wrapping label inside an HBox with an expanding sibling

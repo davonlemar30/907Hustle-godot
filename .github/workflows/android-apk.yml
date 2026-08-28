@@ -1,0 +1,86 @@
+name: Build Android debug APK
+
+# Produces an installable arm64 debug APK as a CI artifact (ANDR-D2). Additive
+# to the Web pipeline: this file never touches web-deploy.yml, and the preset
+# it exports (export_presets.cfg's preset.1) never touches preset.0 (ANDR-D1).
+#
+# Debug-signed only -- no release keystore, no store packaging, no signing
+# secrets. The debug keystore is generated fresh every run at Android's own
+# conventional path (~/.android/debug.keystore, user androiddebugkey, password
+# android) rather than committed: export_presets.cfg's keystore/debug fields
+# are deliberately left blank so Godot falls back to that convention.
+#
+# workflow_dispatch + push to main only, not pull_request: this job produces
+# an artifact and gates nothing, so it does not need to run on every PR the
+# way the suites in web-deploy.yml do.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  build:
+    name: Export Android debug APK
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.7.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Place export templates
+        # Same step as web-deploy.yml's build job: the image ships templates
+        # under /root, but Actions overrides HOME to /github/home, so Godot
+        # looks somewhere they aren't. One template bundle covers every
+        # platform, so this is unchanged from the Web job.
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates
+          if [ -d "/root/.local/share/godot/export_templates/${GODOT_VERSION}.stable" ] \
+             && [ ! -d ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable ]; then
+            cp -r "/root/.local/share/godot/export_templates/${GODOT_VERSION}.stable" \
+                  ~/.local/share/godot/export_templates/
+          fi
+          ls ~/.local/share/godot/export_templates/
+
+      - name: Drop editor-only MCP addon
+        # godot_ai is editor tooling. Its autoload dials a local WebSocket that
+        # will never exist on a phone, so strip it from the shipped build --
+        # same two lines as every other job in this repo that exports.
+        run: |
+          sed -i '/_mcp_game_helper/d' project.godot
+          sed -i '/addons\/godot_ai\/plugin.cfg/d' project.godot
+
+      - name: Generate a throwaway debug keystore
+        # ANDR-D2: no committed keystore of any kind. Android's own
+        # conventional debug keystore path/credentials, so export_presets.cfg
+        # can leave keystore/debug blank and let Godot's built-in fallback
+        # find it -- nothing here is meant to survive past this run.
+        run: |
+          mkdir -p ~/.android
+          keytool -genkeypair -v \
+            -keystore ~/.android/debug.keystore \
+            -storepass android -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=907Hustle CI,O=907Hustle,C=US"
+
+      - name: Import resources
+        # First import builds the .godot cache. It reports missing-dependency
+        # noise on a cold cache; the export step is the real gate.
+        run: godot --headless --import || true
+
+      - name: Export debug APK
+        run: |
+          mkdir -p build
+          godot --headless --export-debug "Android" build/907hustle-debug.apk
+          test -f build/907hustle-debug.apk
+          ls -lh build/907hustle-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: build/907hustle-debug.apk

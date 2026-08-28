@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `0.1.2`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `0.2.1`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,32 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 0.2.1 — In Hand: the touch fix and the phone build (2026-08-28)
+
+The game scrolls from anywhere now. On almost every screen, a thumb had to
+land on bare space between the cards to scroll at all — starting a drag on a
+card, a button, or a line of text just stopped it dead, because that was the
+one thing on the block that could actually stop something. Market, Jobs,
+Phone, the works: touch any card and drag, and the screen moves with your
+hand the way it always should have.
+
+And 907Hustle finally has a phone build. Not the browser tab it's been
+tested through this whole time — an installable Android APK, built fresh in
+CI on every merge to `main`.
+
+#### Added
+
+- **Touch scroll transparency**: cards are transparent to a drag now,
+  everywhere, while staying exactly as tappable as they always were — nothing
+  that used to be inert became a button, and nothing that used to fire a
+  handler stopped firing one. A CI gate walks every screen's scrollable area
+  and fails the build if a card ever swallows a drag again.
+- **Android debug build**: an installable arm64 APK, debug-signed, produced
+  as a CI artifact on every push to `main` and on demand
+  (`.github/workflows/android-apk.yml`). The Web build and its Pages deploy
+  are untouched — this is a second target bolted on beside the first, not a
+  replacement for it.
 
 ## 0.2.0 — Dre Lending & Loan-Shark Progression (2026-08-28)
 

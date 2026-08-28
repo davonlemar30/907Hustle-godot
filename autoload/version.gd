@@ -20,7 +20,12 @@ extends Node
 ## relationship system, authored contracts, and an earned hustle surface
 ## (THE BOOK) — the clearest "ships new surfaces or systems" case since this
 ## file's own MINOR rule was written, so this is the bump that uses it.
-const VERSION := "0.2.0"
+##
+## 0.2.1 (TOUCH-D7): the touch-scroll pass-through fix and the first Android
+## debug build. Neither ships a player-facing surface or system against the
+## rule above — the game plays the same, it just scrolls correctly now and
+## also runs natively on a phone — so this is PATCH, not MINOR.
+const VERSION := "0.2.1"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

@@ -370,10 +370,12 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	var contested: int = int(source.get("contested_take", 0))
 	var pre_heat: float = float(source.get("pre_encounter_heat", 0.0))
 
-	# SETTLE IT is not a rolled verb and never reaches CAUGHT_EFFECTS at all --
-	# its own resolution, entirely.
+	# SETTLE IT and HAND IT BACK are not rolled verbs and never reach
+	# CAUGHT_EFFECTS at all -- each is its own resolution, entirely.
 	if choice_id == "bribe":
 		return _resolve_bribe(chain, source, cause_id, boost_tier, contested)
+	if choice_id == "hand_it_back":
+		return _resolve_hand_it_back(chain, source, cause_id)
 
 	# How many escalations this encounter has already survived. Round 0 is the
 	# original decision at the authored base chance; every escalation past it
@@ -598,6 +600,13 @@ func _escalate_caught(chain: Dictionary, loop: Dictionary, choice_id: String,
 	var allowed: Array = LOOP.without_burned(loop, choices["allowed"])
 	var deterministic: Array = choices["deterministic"]
 
+	# The guaranteed out, once the encounter has actually started escalating
+	# -- the round-zero decision keeps its original four-or-five choices,
+	# unedited, and this is not one of them. Never burned (nothing ever calls
+	# LOOP.burn with it), so it stays on offer every round from here on.
+	allowed.append("hand_it_back")
+	deterministic.append("hand_it_back")
+
 	var rules: RefCounted = _rules()
 	var resolver: Object = gm.system("outcome_resolver")
 	var shown: Dictionary = {}
@@ -663,6 +672,36 @@ func _resolve_bribe(chain: Dictionary, source: Dictionary, cause_id: String,
 	gs.log_activity("Paid your way out at %s." % str(source.get("target_name", "the store")),
 		AMBER)
 	return {"ok": true, "tier": "bribed", "arrested": false}
+
+## HAND IT BACK, resolved. The guaranteed out mid-escalation: goods return,
+## no ban -- the door stays open for next time -- no arrest, no new injury or
+## Heat beyond whatever the escalation already cost getting here. Same
+## District Pressure gain as YIELD's authored precedent (deterministic, no
+## observation footprint either): giving up reads the same to the ledger
+## regardless of which guaranteed-out flavor produced it.
+func _resolve_hand_it_back(chain: Dictionary, source: Dictionary,
+		cause_id: String) -> Dictionary:
+	var engine: Object = _engine()
+	var result: Dictionary = {
+		"choice_id": "hand_it_back", "tier": "handed_back",
+		"cash": 0, "goods": 0, "health": 0, "heat": 0.0,
+		"banned": false, "arrested": false, "take_disposition": "return",
+	}
+
+	if engine.record_receipt(cause_id, "boost_caught:hand_it_back"):
+		_add_district_pressure(str(chain.get("district_id", "")), "boost",
+			RULES.YIELD_PRESSURE_GAIN, cause_id)
+		result["pressure"] = RULES.YIELD_PRESSURE_GAIN
+
+	var decision: Dictionary = chain.get("decision", {})
+	decision["resolved_tier"] = "handed_back"
+	decision["result"] = result
+	chain["decision"] = decision
+
+	engine.advance_stage(engine.STAGE_RESULT)
+	gs.log_activity("Handed the bag back and walked out, after all that.",
+		AMBER)
+	return {"ok": true, "tier": "handed_back", "arrested": false}
 
 ## The engine's adapter-copy seam: the loop's vocabulary is this file's, not
 ## the engine's fallback table's. `fight`/`run`/`talk`/`yield` are unlisted in

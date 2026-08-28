@@ -270,7 +270,16 @@ const GATES := {
 	},
 	HUSTLE_SHARK: {
 		"mode": MODE_HIDDEN,
-		"requirements": [{"type": "day_min", "min": 5}],
+		# Replaces the elapsed-day gate (design doc: "time passing does not
+		# explain why Dre trusts the player with his borrower network").
+		# Junior Lender only — deliberately not combined with
+		# `dre_account_clear`; see `requirements.gd`'s header on why a route
+		# gate never reads a field that moves backward. `announce`/
+		# `card_title` stay the day-5 placeholder copy on purpose: PR E
+		# re-copies this entry in Dre's own voice when it ships the real
+		# reveal ("THE BOOK IS YOURS"), and rewriting it twice would be
+		# copy nobody ever saw.
+		"requirements": [{"type": "dre_access_tier_min", "min": 4}],
 		"hint": "",
 		"announce": "You know who lends now, and who they lend to.",
 		"card_title": "THE SHARK WILL SEE YOU",
@@ -355,6 +364,13 @@ func facts() -> Dictionary:
 		"phone_messages": gs.phone_inbox.size() + gs.phone_held_inbox.size() \
 			+ (0 if gs.phone_active else 1),
 		"activity_log": gs.activity_log.size(),
+		# Dre Lending & Loan-Shark Progression, PR B. `dre_access_tier` gates
+		# `HUSTLE_SHARK` (design doc §16); `dre_account_status` backs
+		# `dre_account_clear` for non-route checks that are allowed to move
+		# backward, unlike a route gate — see `requirements.gd`'s own header
+		# on why the two are never combined on the same gate.
+		"dre_access_tier": gs.dre_access_tier,
+		"dre_account_status": str(gs.dre_account.get("status", "clear")),
 		"operation_card_live": not str(operation_card_reason()).is_empty(),
 		# A population rather than a boolean, because the SCREEN needs the list
 		# and the gate needs its size — and deriving them separately is how a

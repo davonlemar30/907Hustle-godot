@@ -39,6 +39,34 @@ func _band_colour(band: String, inverted: bool) -> Color:
 		"cold": return AMBER
 	return RED
 
+## Dre Lending & Loan-Shark Progression, PR B. The rest of this screen is
+## read-only evidence — this is the one card that can act, because Dre is
+## the one relationship on it with a real account behind it rather than
+## just a disposition score. Read-only itself where Phone already has the
+## live PAY/ASK FOR 2 MORE DAYS buttons (`_bind_dre_debt_card` on his own
+## texts) — this card states the account, Phone is where you act on it,
+## except for SEEK HIM OUT, which has no text to live on yet.
+func _bind_dre_extras(v: VBoxContainer) -> void:
+	if not gs.dre_intro_offered:
+		return
+	if not gs.dre_introduced:
+		v.add_child(label("Juan mentioned him. Word is he's easy to find in Spenard.",
+			"Muted", 11, MUTED, true))
+		var seek := button("SEEK HIM OUT", true, _on_seek_dre, 40)
+		v.add_child(seek)
+		return
+	var status := str(gs.dre_account.get("status", "clear"))
+	var status_line := "Clear what you owe before asking again." if status != "clear" \
+		else "He'll put up money if you need it."
+	v.add_child(label(status_line, "Muted", 11, MUTED, true))
+	if gs.debt > 0:
+		v.add_child(label("Debt to Dre: $%d, due Day %d" \
+				% [gs.debt, gs.day + gs.debt_due_days],
+			"Mono", 10, AMBER))
+
+func _on_seek_dre() -> void:
+	_gm.dispatch("dre_seek_out", {})
+
 func _person_row(E: Node, entry: Dictionary) -> Control:
 	var id: String = str(entry["id"])
 	var inverted: bool = E.is_inverted(id)
@@ -58,6 +86,9 @@ func _person_row(E: Node, entry: Dictionary) -> Control:
 
 	if inverted:
 		v.add_child(label("Reads backwards — for him, quiet is good.", "Muted", 10, MUTED, true))
+
+	if id == "dre":
+		_bind_dre_extras(v)
 
 	# `ledger_of` is the public READ. PR #40 split the private accessor into
 	# `_ledger_for_write` as part of making Exposure read-only during

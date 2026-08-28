@@ -27,6 +27,7 @@ func _ready() -> void:
 	_test_v18_boost_bribes_used()
 	_test_v19_tips()
 	_test_v20_dre_lending()
+	_test_v21_dre_intro_offered()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -542,6 +543,41 @@ func _test_v20_dre_lending() -> void:
 	_check("and arrives with an active account carrying the whole amount as principal",
 		int((v19_positive.get("dre_account", {}) as Dictionary).get("principal", -1)) == 900)
 	_check("and arrives introduced", bool(v19_positive.get("dre_introduced", false)))
+
+## Dre Lending & Loan-Shark Progression, PR B (0.1.2, v21): `dre_intro_offered`.
+func _test_v21_dre_intro_offered() -> void:
+	var valid_result := _result(_state("dre_intro_offered", true))
+	_check("a valid dre_intro_offered survives",
+		(valid_result["state"] as Dictionary)["dre_intro_offered"] == true)
+	_check("a valid shape is a validation no-op",
+		(valid_result["repairs"] as Array).is_empty())
+
+	var wrong_fixed: Dictionary = _fixed(_state("dre_intro_offered", "yes"))
+	_check("a non-bool dre_intro_offered defaults false, not a crash",
+		wrong_fixed["dre_intro_offered"] == false)
+
+	var absent_result := _result(_state("day", 4))
+	_check("an absent dre_intro_offered stays absent",
+		not (absent_result["state"] as Dictionary).has("dre_intro_offered"))
+
+	# The migration itself: a v20 save (PR A already shipped, PR B had not)
+	# comes back with the latch derived from whether it already carries an
+	# introduction -- see the v20 -> v21 arm's own comment for why that is
+	# the honest read rather than a blind default.
+	var save_system: Node = get_node("/root/SaveSystem")
+	var never_met := _state("dre_introduced", false)
+	var v20_never_met: Dictionary = save_system._migrate({"save_version": 20,
+		"state": never_met})
+	_check("a v20 save that never met Dre migrates", not v20_never_met.is_empty())
+	_check("and arrives with no mention on record",
+		not bool(v20_never_met.get("dre_intro_offered", true)))
+
+	var already_met := _state("dre_introduced", true)
+	var v20_already_met: Dictionary = save_system._migrate({"save_version": 20,
+		"state": already_met})
+	_check("a v20 save that already met Dre migrates", not v20_already_met.is_empty())
+	_check("and arrives with the mention implied by the meeting it already had",
+		bool(v20_already_met.get("dre_intro_offered", false)))
 
 ## FS-002.3 (`86bbj1jpm`): the first Territory arm in this validator, and the
 ## root-cause fix for `86bbjxtab` — nothing validated the ids in a loaded

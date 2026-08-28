@@ -1,20 +1,30 @@
 extends Node
-## Dre Lending & Loan-Shark Progression, PR A's own suite (`tests/dre/`), same
-## shape as `tests/tips/` and `tests/confrontation/`: seconds rather than the
-## parity runner's ten minutes, on the shared `territory_asserts.gd` harness.
+## Dre Lending & Loan-Shark Progression, PR A + PR B's own suite
+## (`tests/dre/`), same shape as `tests/tips/` and `tests/confrontation/`:
+## seconds rather than the parity runner's ten minutes, on the shared
+## `territory_asserts.gd` harness.
 ##
-## Covers the build prompt's own PR A acceptance list: the full state-machine
-## walk clear -> active -> due -> extended -> overdue -> suspended -> clear,
-## save/load at every state, idempotent repay, wallet provenance (borrow is
-## dirty, never earnings), the v19 -> v20 migration's three fixture shapes
-## (legacy debt zero / positive / corrupt), and `dre`'s position in
-## `DayLifecycle.SETTLE_ORDER`. Save-validation gets its own arms in
+## PR A: the full state-machine walk clear -> active -> due -> extended ->
+## overdue -> suspended -> clear, save/load at every state, idempotent
+## repay, wallet provenance (borrow is dirty, never earnings), the
+## v19 -> v20 migration's three fixture shapes (legacy debt zero / positive
+## / corrupt), and `dre`'s position in `DayLifecycle.SETTLE_ORDER`.
+##
+## PR B: Juan's mention trigger (DRE-D1) fires under its exact conditions and
+## nowhere else, `dre_seek_out`'s one-slot meeting, and the two new
+## `requirements.gd` types this build adds, tested directly against the pure
+## evaluator rather than through a screen. The `hustle.shark` gate swap
+## itself (day_min -> dre_access_tier_min) is proven in
+## `tests/parity/parity_runner.gd`'s `GATE_CASES`/`HUSTLE_RUNGS` tables, not
+## duplicated here.
+##
+## Save-validation gets its own arms in
 ## `tests/save_validation/save_validation_runner.gd` alongside this suite,
 ## not duplicated here.
 
 const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
 
-const MIN_CHECKS := 183
+const MIN_CHECKS := 216
 
 var a: RefCounted
 var gs: Node
@@ -35,6 +45,10 @@ func _ready() -> void:
 	_test_lifecycle_ordering()
 	_test_debt_getter_compatibility()
 	_test_blockers()
+	_test_intro_trigger()
+	_test_seek_out()
+	_test_requirement_types()
+	_test_decline_path_leaves_everything_else_reachable()
 
 	a.report("dre", get_tree(), MIN_CHECKS)
 
@@ -396,3 +410,170 @@ func _test_blockers() -> void:
 	gs.cash = 50
 	a.eq_str("repaying without enough cash names the exact amount",
 		gm.system("dre").repay_blocker(), "You don't have $1200.")
+
+# --- 11. Juan's mention, DRE-D1's exact trigger --------------------------
+
+func _dre_texts_from_juan() -> int:
+	var n := 0
+	for m in gs.phone_inbox:
+		if str((m as Dictionary).get("from", "")) == "Juan" \
+				and str((m as Dictionary).get("text", "")).contains("Dre"):
+			n += 1
+	return n
+
+func _test_intro_trigger() -> void:
+	# Day 1: never fires, however broke.
+	_fresh()
+	gs.day = 1
+	gs.cash = 0
+	gm.system("dre").push_intro_offer(1)
+	a.eq_bool("day 1 never mentions Dre, however broke",
+		gs.dre_intro_offered, false)
+
+	# Day 2+, comfortable cash, rent nowhere near due: does not fire.
+	_fresh()
+	gs.day = 3
+	gs.cash = 500
+	gs.rent_due_day = 20
+	gm.system("dre").push_intro_offer(3)
+	a.eq_bool("a comfortable player with no rent pressure hears nothing",
+		gs.dre_intro_offered, false)
+
+	# The broke clause, isolated: cash <= 80, rent far off.
+	_fresh()
+	gs.day = 2
+	gs.cash = 80
+	gs.rent_due_day = 20
+	gm.system("dre").push_intro_offer(2)
+	a.eq_bool("cash at or under 80 mentions Dre on its own", gs.dre_intro_offered, true)
+	a.eq_int("exactly one Juan text about Dre lands", _dre_texts_from_juan(), 1)
+
+	# The rent-pressure clause, isolated: cash between 80 and the weekly
+	# rent, rent due within a day. Neither clause alone would fire this.
+	_fresh()
+	gs.day = 5
+	gs.cash = 100
+	gs.rent_due_day = 6
+	gm.system("dre").push_intro_offer(5)
+	a.eq_bool("rent due tomorrow with cash short of it mentions Dre too",
+		gs.dre_intro_offered, true)
+
+	# Rent due soon, but enough cash to cover it: neither clause fires.
+	_fresh()
+	gs.day = 5
+	gs.cash = int(gs.WEEKLY_RENT)
+	gs.rent_due_day = 6
+	gm.system("dre").push_intro_offer(5)
+	a.eq_bool("rent due soon with enough cash to cover it stays quiet",
+		gs.dre_intro_offered, false)
+
+	# Rent due in two days is not "within one day" -- the clause is narrow
+	# on purpose, matching DRE-D1's literal wording.
+	_fresh()
+	gs.day = 5
+	gs.cash = 100
+	gs.rent_due_day = 7
+	gm.system("dre").push_intro_offer(5)
+	a.eq_bool("rent two days out does not count as due within one day",
+		gs.dre_intro_offered, false)
+
+	# Once per run: a second day-start check does not re-fire or push a
+	# second text, even if the trigger conditions are still true.
+	_fresh()
+	gs.day = 2
+	gs.cash = 10
+	gm.system("dre").push_intro_offer(2)
+	gs.day = 3
+	gm.system("dre").push_intro_offer(3)
+	a.eq_int("the mention is a one-shot, not a nightly nag", _dre_texts_from_juan(), 1)
+
+# --- 12. dre_seek_out, the one-slot meeting -------------------------------
+
+func _test_seek_out() -> void:
+	_fresh()
+	a.eq_str("seeking Dre out before anyone's mentioned him refuses by name",
+		gm.system("dre").seek_out_blocker(), "Nobody's mentioned him to you.")
+	a.eq_bool("and the dispatch itself is refused",
+		gm.dispatch("dre_seek_out", {}), false)
+
+	gs.dre_intro_offered = true
+	var slot_before: int = int(gs.time_slots_today)
+	a.eq_bool("seeking him out succeeds once he's been mentioned",
+		gm.dispatch("dre_seek_out", {}), true)
+	a.eq_bool("the meeting sets dre_introduced", gs.dre_introduced, true)
+	a.eq_int("and opens Borrower access", int(gs.dre_access_tier), 1)
+	a.check("the meeting costs the one authored slot (DRE-D2)",
+		int(gs.time_slots_today) != slot_before or int(gs.day) > 2)
+
+	a.eq_str("seeking him out again refuses -- you already know him",
+		gm.system("dre").seek_out_blocker(), "You already know him.")
+
+	# A player already past Borrower keeps their tier -- the meeting only
+	# ever raises it to 1, never lowers an access already earned by a
+	# later PR's own milestones.
+	_fresh()
+	gs.dre_intro_offered = true
+	gs.dre_access_tier = 2
+	gm.dispatch("dre_seek_out", {})
+	a.eq_int("the meeting never lowers an already-earned tier",
+		int(gs.dre_access_tier), 2)
+
+# --- 13. the two new requirement types, against the pure evaluator ------
+
+func _test_requirement_types() -> void:
+	var req := preload("res://systems/requirements.gd").new()
+
+	var below := req.evaluate_requirement(
+		{"type": "dre_access_tier_min", "min": 4}, {"dre_access_tier": 1})
+	a.eq_bool("tier 1 fails a tier-4 requirement", bool(below["ok"]), false)
+	a.eq_str("and names itself as the blocker",
+		str(below["blocker_code"]), "dre_access_tier_min")
+	a.near("current reports where the player is",
+		float(below["current"]), 1.0)
+	a.near("required reports where the line is",
+		float(below["required"]), 4.0)
+
+	var at := req.evaluate_requirement(
+		{"type": "dre_access_tier_min", "min": 4}, {"dre_access_tier": 4})
+	a.eq_bool("tier 4 clears a tier-4 requirement", bool(at["ok"]), true)
+
+	var missing := req.evaluate_requirement(
+		{"type": "dre_access_tier_min", "min": 4}, {})
+	a.eq_bool("an absent fact reads as tier 0 and fails closed",
+		bool(missing["ok"]), false)
+
+	var clear_ok := req.evaluate_requirement(
+		{"type": "dre_account_clear"}, {"dre_account_status": "clear"})
+	a.eq_bool("a clear account passes dre_account_clear", bool(clear_ok["ok"]), true)
+
+	var clear_blocked := req.evaluate_requirement(
+		{"type": "dre_account_clear"}, {"dre_account_status": "suspended"})
+	a.eq_bool("a suspended account fails dre_account_clear",
+		bool(clear_blocked["ok"]), false)
+	a.eq_str("current reports the actual status",
+		str(clear_blocked["current"]), "suspended")
+
+	var clear_absent := req.evaluate_requirement({"type": "dre_account_clear"}, {})
+	a.eq_bool("an absent fact reads as clear -- a fresh run has no account yet",
+		bool(clear_absent["ok"]), true)
+
+	var unknown := req.evaluate_requirement({"type": "not_a_real_type"}, {})
+	a.eq_bool("an unknown requirement type still fails closed", bool(unknown["ok"]), false)
+
+# --- 14. declining Dre leaves everything else reachable -------------------
+
+func _test_decline_path_leaves_everything_else_reachable() -> void:
+	var access: Node = get_node("/root/SurfaceVisibility")
+	_fresh()
+	gs.day = 5
+	gs.wander_count = 3
+	gs.market_discovered = true
+	gs.job_contacts = 1
+	# Deliberately never seek Dre out -- everything else on the ladder that
+	# does not read dre_access_tier still opens on its own facts.
+	for surface_id in ["hustle.market", "hustle.boost", "hustle.stickup",
+			"hustle.list", "menu.jobs"]:
+		a.check("%s is reachable without ever meeting Dre" % surface_id,
+			access.is_unlocked(surface_id))
+	a.eq_bool("but the shark stays shut", access.is_unlocked(access.HUSTLE_SHARK), false)
+	gs.reset_to_new_game()

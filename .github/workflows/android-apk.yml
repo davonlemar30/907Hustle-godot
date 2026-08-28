@@ -73,6 +73,20 @@ jobs:
         # noise on a cold cache; the export step is the real gate.
         run: godot --headless --import || true
 
+      - name: Locate the JDK
+        # The Android export refuses with "A valid Java SDK path is required
+        # in Editor Settings" on a container with no prior editor settings
+        # file -- that setting has no default and nothing else in this
+        # workflow implies one. The image carries a JDK (keytool above needed
+        # one); JAVA_HOME just isn't exported for Godot's own env lookup to
+        # find it. Detected here rather than hardcoded, since the exact JDK
+        # path is an image implementation detail, not something this repo
+        # should pin.
+        run: |
+          JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+          echo "Detected JAVA_HOME=$JAVA_HOME"
+
       - name: Export debug APK
         run: |
           mkdir -p build

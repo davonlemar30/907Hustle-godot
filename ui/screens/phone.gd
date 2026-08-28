@@ -37,11 +37,13 @@ extends "res://ui/screens/surface_base.gd"
 ##     outright, so there is no evicted-and-still-playing state to hide it in.
 ##     Ported anyway, as a `game_over` check, so it stays correct if that
 ##     changes.
-##   - **The debt row is wired but dormant.** Canon reads `state.lender` (Dre's
-##     note); no lender system is ported, and `GameState.debt` is 0 on every run
-##     the build can currently start. Gating on `debt > 0` means it shows
-##     nothing today rather than a fabricated bill, and lights up the day the
-##     lender lands.
+##   - **The debt row lit up in PR A (0.1.2, Dre Lending & Loan-Shark
+##     Progression).** `systems/dre_lender.gd` owns a real account now;
+##     `GameState.debt`/`debt_due_days` are computed off it, so this row
+##     never needed an edit to start showing something real. Still not
+##     player-reachable this build: `dre_borrow` refuses anyone who is not
+##     `dre_introduced`, and nothing sets that flag yet — PR B's Juan-mention
+##     arc is the door. Until then the row is wired, tested, and waiting.
 ##
 ## Not ported: the `job_offer` answer buttons on a text. The descriptor is
 ## carried through the substrate, but `jobs.gd` hires directly and has no
@@ -195,7 +197,51 @@ func _message_card(message: Dictionary) -> Control:
 		v.add_child(label("OFFER ATTACHED", "Kicker", 10, AMBER))
 	elif not action.is_empty() and str(action.get("kind", "")) == "tip":
 		v.add_child(label(_tip_stamp(action), "Kicker", 10, AMBER))
+	elif not action.is_empty() and str(action.get("kind", "")) == "dre_debt":
+		_bind_dre_debt_card(v)
 	return c
+
+## Reads `gs.dre_account` live rather than anything carried on the message —
+## the same text sitting unread for three days has to show today's true
+## number, not the number the day it arrived. Buttons disappear once
+## `gs.debt` is actually zero (paid through this same card, most likely),
+## which is what keeps a stale reminder from offering a dead action.
+func _bind_dre_debt_card(v: VBoxContainer) -> void:
+	v.add_child(label(_dre_debt_stamp(), "Kicker", 10, AMBER))
+	if gs.debt <= 0:
+		return
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	v.add_child(row)
+	var repay := button("PAY $%d" % gs.debt, true, _on_dre_repay, 40)
+	repay.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(repay)
+	var status := str(gs.dre_account.get("status", "clear"))
+	var extension_used: bool = bool(gs.dre_account.get("extension_used", false))
+	if status in ["active", "due"] and not extension_used:
+		var extend := button("ASK FOR 2 MORE DAYS", false, _on_dre_extension, 40)
+		extend.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(extend)
+
+func _dre_debt_stamp() -> String:
+	var status := str(gs.dre_account.get("status", "clear"))
+	match status:
+		"clear":
+			return "SETTLED"
+		"suspended":
+			return "SUSPENDED"
+		"overdue":
+			return "OVERDUE"
+		"due":
+			return "DUE TODAY"
+		_:
+			return "DUE DAY %d" % int(gs.dre_account.get("due_day", gs.day))
+
+func _on_dre_repay() -> void:
+	_gm.dispatch("dre_repay", {})
+
+func _on_dre_extension() -> void:
+	_gm.dispatch("dre_request_extension", {})
 
 ## GOOD TONIGHT while a windowed tip's slots have not passed yet, GOOD TODAY
 ## for a standing feed's day (no window at all — Pherris and Eli read the
@@ -333,12 +379,14 @@ func _bills() -> Array:
 			wage_row["paid"] = true
 		rows.append(wage_row)
 
-	# Dre's note. Dormant until a lender system exists — see the file header.
+	# Dre's note — live since PR A (0.1.2). The actual PAY/EXTEND buttons live
+	# on his own text (`_bind_dre_debt_card`), not on a Finances row, so this
+	# points there rather than at a screen the account has no presence on yet.
 	if gs.debt > 0:
 		var due_day: int = gs.day + gs.debt_due_days
 		var debt_row: Dictionary = {
 			"id": "debt", "name": "Debt to Dre", "amount": gs.debt,
-			"where": "Pay in Finances", "due": "Day %d" % due_day,
+			"where": "Pay via his text", "due": "Day %d" % due_day,
 		}
 		if gs.debt_due_days < 0:
 			debt_row["status"] = "Overdue"

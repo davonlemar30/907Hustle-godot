@@ -132,7 +132,20 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## failure than the migration doing nothing — the same argument the v10 arm
 ## makes for re-deriving `districts_unlocked` rather than defaulting it
 ## empty.
-const SAVE_VERSION := 19
+## v20: replaces the dormant `debt`/`debt_due_days` pair with a structured
+## `dre_account` (Dre Lending & Loan-Shark Progression, PR A). Those two
+## fields leave PERSIST_FIELDS entirely — `GameState.debt`/`debt_due_days`
+## are computed properties now, so writing them back through the generic
+## `gs.set(field, ...)` loop would hit a read-only property and fail. The
+## v19 -> v20 arm reads them out of the RAW state dict one last time (they
+## are still real keys in a v19 payload), builds the account they describe,
+## and erases them from the dict rather than leaving two unread keys sitting
+## in every save henceforth. A zero legacy debt becomes a clear account,
+## honestly never having met Dre; a positive one becomes an active/due/
+## overdue account carrying the whole flat amount as principal, because a
+## principal/interest split the old field never recorded cannot be repaired,
+## only guessed at, and this migration does not guess.
+const SAVE_VERSION := 20
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -146,7 +159,7 @@ const PERSIST_FIELDS: Array[String] = [
 	# Markets + the stream cursor (v2)
 	"markets", "rng_state",
 	# Player stats
-	"cash", "heat", "health", "debt", "debt_due_days", "respect", "crew_power",
+	"cash", "heat", "health", "respect", "crew_power",
 	"inventory",
 	# Attributes (v4)
 	"attributes", "attribute_progress",
@@ -227,6 +240,10 @@ const PERSIST_FIELDS: Array[String] = [
 	# name.
 	"tip_effects",
 	"tip_misses",
+	# Dre Lending & Loan-Shark Progression, PR A (v20). Replaces the dormant
+	# `debt`/`debt_due_days` pair -- see the migration arm and GameState's
+	# computed properties of the same names.
+	"dre_introduced", "dre_access_tier", "dre_account", "dre_account_history",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -295,13 +312,22 @@ func inspect() -> Dictionary:
 	if state.is_empty():
 		return {"exists": true, "valid": false, "preview": {}}
 	var district: Dictionary = gs.district_by_id(str(state.get("current_district_id", "")))
+	# `debt` left PERSIST_FIELDS in v20 (GameState.debt is computed off
+	# `dre_account` now) -- the raw migrated dict never carries a "debt" key
+	# again, so the preview derives the same figure the live getter does
+	# rather than reading a key that no longer exists.
+	var account: Dictionary = state.get("dre_account", {})
+	var owed: int = 0
+	if str(account.get("status", "clear")) != "clear":
+		owed = int(account.get("principal", 0)) + int(account.get("interest", 0)) \
+			+ int(account.get("fee", 0))
 	return {"exists": true, "valid": true, "preview": {
 		"name": str(state.get("street_name", "")),
 		"day": int(state.get("day", 1)),
 		"part": str(state.get("time_slot", "MORNING")),
 		"district": str(district.get("name", "SPENARD")),
 		"cash": int(state.get("cash", 0)),
-		"debt": int(state.get("debt", 0)),
+		"debt": owed,
 	}}
 
 ## Restore the saved run into GameState. Returns false (state untouched) if the
@@ -701,6 +727,45 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# back at their fresh-run defaults.
 				state["tip_effects"] = []
 				state["tip_misses"] = 0
+			19:
+				# v19 -> v20: `debt`/`debt_due_days` -> `dre_account` and its
+				# three siblings. See this arm's own paragraph by SAVE_VERSION
+				# for why this reads and erases the two legacy keys instead of
+				# defaulting them in blind, same as the v16 -> v17 arm reading
+				# `wander_count` before deciding what `market_discovered`
+				# should be for a save that predates the field entirely.
+				var legacy_debt: int = int(state.get("debt", 0))
+				var legacy_due_days: int = int(state.get("debt_due_days", 0))
+				state.erase("debt")
+				state.erase("debt_due_days")
+				state["dre_introduced"] = legacy_debt > 0
+				state["dre_access_tier"] = 1 if legacy_debt > 0 else 0
+				if legacy_debt > 0:
+					var opened_day: int = int(state.get("day", 1))
+					var status := "active"
+					if legacy_due_days < 0:
+						status = "overdue"
+					elif legacy_due_days == 0:
+						status = "due"
+					state["dre_account"] = {
+						"status": status, "principal": legacy_debt,
+						"interest": 0, "fee": 0,
+						"opened_day": opened_day,
+						"due_day": opened_day + legacy_due_days,
+						"term_days": maxi(legacy_due_days, 0),
+						"extension_used": false, "offer_id": "",
+					}
+				else:
+					state["dre_account"] = {
+						"status": "clear", "principal": 0, "interest": 0,
+						"fee": 0, "opened_day": -1, "due_day": -1,
+						"term_days": 0, "extension_used": false, "offer_id": "",
+					}
+				state["dre_account_history"] = {
+					"loans_taken": 0, "repaid_on_time": 0, "repaid_late": 0,
+					"extensions": 0, "defaults": 0,
+					"total_principal_borrowed": 0, "total_interest_paid": 0,
+				}
 			_:
 				return {}
 		version += 1

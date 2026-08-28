@@ -120,6 +120,16 @@ jobs:
           godot --headless --path . res://tests/tips/tips_runner.tscn 2>&1 | tee tips.log
           grep -q "^tips: PASS" tips.log
 
+      # Dre Lending & Loan-Shark Progression's own harness (`tests/dre/`),
+      # same shape and same shared asserts as the other three. Guards the
+      # full account state machine, save/load at every state, idempotent
+      # repay, wallet provenance, the v19 -> v20 migration's three legacy-
+      # debt shapes, and `dre`'s declared position in `SETTLE_ORDER`.
+      - name: Run dre suite
+        run: |
+          godot --headless --path . res://tests/dre/dre_runner.tscn 2>&1 | tee dre.log
+          grep -q "^dre: PASS" dre.log
+
       - name: Run screen smoke
         run: |
           godot --headless --path . res://tests/smoke/screen_smoke.tscn 2>&1 | tee smoke.log
@@ -143,7 +153,7 @@ jobs:
       # above already tee'd, so this adds no runtime.
       - name: No script errors in any harness
         run: |
-          if grep -nE "SCRIPT ERROR|Invalid access" parity.log sv.log territory.log confrontation.log tips.log smoke.log; then
+          if grep -nE "SCRIPT ERROR|Invalid access" parity.log sv.log territory.log confrontation.log tips.log dre.log smoke.log; then
             echo "::error::A harness raised a script error. A suite that crashed part-way is not a green suite - see the matched lines above."
             exit 1
           fi

@@ -348,6 +348,75 @@ a migrated Curtis-secure holding survives with its capture marked consumed; an
 untouched one gets no fronts entry; a neutral migrated holding gets no fronts
 entry either.
 
+## D-7 — Dre Lending & Loan-Shark Progression: the closed design rulings
+
+**Decided** 2026-08-28 · **Ships in** 0.1.2 PR A · **Design doc**
+`docs/DRE_LENDING_AND_LOAN_SHARK_SYSTEM_DESIGN.md` §22 · **Sources:** the
+design doc's own recommended defaults, the ClickUp "Dre Smooth (Story /
+Utility)" character page, and the running code as of PR A
+
+### The question
+
+The design doc closes with twelve open questions (§22, "Open design
+decisions") and a note that exact numbers "remain balance parameters and
+must be selected through measurement." Section 22 gives a recommended
+default for each; this entry is where those recommendations become rulings
+this build actually carries, plus the two repo-specific facts (the
+provisional first-loan numbers, and where `boost.gd`'s pinned-neutral Dre
+bond term goes live) neither the design doc nor Section 22 could name
+without reading the running code.
+
+### The rulings
+
+Referenced from code as `DRE-D1` through `DRE-D12`, matching the design
+doc's own numbering so a comment naming one can be traced straight back to
+the question it answers.
+
+| ID | Ruling |
+|---|---|
+| DRE-D1 | **Juan mentions Dre** — canon (ClickUp), not Word Around Town or elapsed time. Trigger: `day >= 2` AND no prior introduction AND (`cash <= 80` OR rent is due within 1 day and `cash` is under the weekly rent). Delivered as a phone text from Juan, once per run, latched. The rent-pressure clause is a deliberate addition to canon's flat cash check: a player doing fine on cash but about to miss rent still needs an honest way in. |
+| DRE-D2 | First meeting costs one slot (the trip to the Mini-Mart lot). Repay and extension-request are cash/phone actions and cost no slot. |
+| DRE-D3 | Full repayment only. No partials, in the MVP. |
+| DRE-D4 | Access tiers are monotonic latches. A serious default sets the account `suspended`, which blocks services without erasing the tier the player already earned; restitution (full repayment) clears it. |
+| DRE-D5 | Borrow-to-lend is legal. PR E's economy pass must include a leveraged-lender profile and assert no combination is risk-free positive carry. |
+| DRE-D6 | Overdue schedules exactly one authored collection response through the consequence chassis — never an instant game over. PR A stands up a provisional flat-grace substitute (`OVERDUE_GRACE_DAYS`) for the real event-driven version PR D builds; see `dre_lender.gd`'s own header. |
+| DRE-D7 | Junior Lender (The Book) unlocks on the design doc's lighter chain: one resolved Dre loan milestone + one collection milestone + the sponsored first Book loan. **This supersedes the ClickUp character page's heavier gate** (trust 3 + 3 missions + 2 loans) — repo decisions win; the ClickUp page needs updating to match once PR E ships it. |
+| DRE-D8 | No visible numeric rank or trust bar. Access reads through role labels, terms offered, and dialogue. |
+| DRE-D9 | No mission currency. Rewards are cash, access, relationship, information. |
+| DRE-D10 | Surfaces: "DRE" for the relationship/account; "THE BOOK" for player-funded loans. "Note" survives only in flavor dialogue. Finances shows two sections, never merged: **DEBT TO DRE — YOU OWE** and **THE BOOK — THEY OWE YOU**. |
+| DRE-D11 | `SETTLE_ORDER` becomes `crew, territory, shark, dre, jobs, obligations` — Dre's account transition settles after shark receivables (money due back that night is in hand before Dre calls the player late) and before jobs/obligations. Pinned by `tests/parity/parity_runner.gd`'s `LIFECYCLE_EXPECTED_TRACE` and `tests/dre/dre_runner.gd`'s own ordering check. |
+| DRE-D12 | Post-chain repeatable contracts: max three offered/active, at most one new offer per in-game day start. **Deferred past PR E** — the authored chain ships first. |
+| Tier names | Mechanical tiers 0-4 stay as the design doc has them (Unknown → Borrower → Trusted Customer → Collector → Junior Lender). ClickUp's Stranger/Reliable/Earner/Inner Circle are Dre's *dialogue* vocabulary at roughly tiers 0/2/3/4 — copy only, never a second state. The ClickUp character page needs this mapping recorded once PR B lands tier progression. |
+| First-loan numbers | Canon (ClickUp): **$1,000 principal, $1,200 total due, 5-day term.** Extension: +2 days, +$100, once. Trusted Customer offer band (design doc §7, tier 2+): up to $2,000 at the same 20%/5-day pricing, plus a short $500/$600/2-day option — PR B/E's to wire. **All provisional pending PR E's economy-profile pass** — `dre_lender.gd`'s header says so explicitly, and nothing here should be read as balance-final. Note the poetry: `GameState.debt`'s dead initial value had been `1200` all along. |
+| Dre bond | The pinned-neutral `"bonded with Dre → false"` term in `systems/shark.gd::default_probability` (see that function's own header) goes live in PR E: bonded == `dre_access_tier >= 3`. A named divergence closing on purpose, not by accident — `shark.gd`'s header and parity's shark section both need a deliberate update when it happens, not a silent drift. |
+
+### Two properties that must survive across every later PR
+
+Not new rulings — restated here because PR A through E all depend on both
+holding, and a violation would not show up as a failing assertion until
+something else broke first.
+
+1. **Route-gate monotonicity.** `surface_visibility.gd`'s `ROUTE_GATES` are
+   monotonic — a route never re-closes once open. Suspension must NOT be
+   expressed by re-closing a gate: a suspended account keeps every earned
+   surface visible, and the *systems* refuse the actions (`dre_lender`
+   refuses new borrowing; PR E's `shark.fund_blocker` gains a suspension
+   clause) while the screens render the real reason.
+2. **The dispatch seam is `GameManager.dispatch()`'s existing post-handler
+   reconciliation point**, not a second one built beside it. PR C's
+   opportunity tracker observes `action`/`payload`/`result` there, the same
+   seam `crew_ops.reconcile()` already uses — it does not invent its own.
+
+### Why PR A carries this entry rather than a later PR
+
+The build prompt is explicit: these rulings are Slice 0 of the design
+doc's own recommended implementation order (§20) and are recorded "as part
+of PR A. No production behavior" rides on Slice 0 itself, but PR A's own
+account/state-machine code already depends on DRE-D2 (slot costs),
+DRE-D3 (full repayment only), DRE-D6 (the provisional grace substitute),
+and the first-loan numbers — so the rulings this file records had to exist
+before the code that implements them, not after.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

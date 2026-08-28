@@ -19,8 +19,8 @@ const TIP_EVENTS := preload("res://data/tip_events.gd")
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v19. Older saves are
-## migrated before this validator runs, so every arm below reads a v19 shape.
+## repaired payload back to disk. The save schema is v20. Older saves are
+## migrated before this validator runs, so every arm below reads a v20 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -50,6 +50,10 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_boost_bribes_used(state, repairs)
 	_validate_tip_effects(state, repairs)
 	_validate_tip_misses(state, repairs)
+	_validate_dre_introduced(state, repairs)
+	_validate_dre_access_tier(state, repairs)
+	_validate_dre_account(state, repairs)
+	_validate_dre_account_history(state, repairs)
 	_validate_territory_nodes(state, repairs)
 	return {"state": state, "repairs": repairs}
 
@@ -782,6 +786,105 @@ func _validate_tip_misses(state: Dictionary, repairs: Array[String]) -> void:
 	if int(state["tip_misses"]) > ceiling:
 		_repair(repairs, "tip_misses", "beyond the cap (%d); clamped" % int(state["tip_misses"]))
 		state["tip_misses"] = ceiling
+
+## Dre Lending & Loan-Shark Progression, PR A (0.1.2, v20).
+##
+## Defaults rather than coerces on a wrong type -- same as every other
+## `_bool` arm in this file. GDScript's `bool()` constructor has no String
+## overload, so `bool(state["dre_introduced"])` raises outright on exactly
+## the kind of hand-edited or corrupted value ("yes", "1") a repair arm
+## exists to survive.
+func _validate_dre_introduced(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("dre_introduced"):
+		return
+	if not state["dre_introduced"] is bool:
+		state["dre_introduced"] = false
+		_repair(repairs, "dre_introduced", "wrong type; defaulted")
+
+## Tier is a milestone latch, 0 (Unknown) through 5 (Operator) -- design doc
+## section 7. Clamped rather than defaulted on out-of-range, same reasoning
+## as stick_tier's ceiling: a save claiming tier 9 is closer to "the highest
+## real tier" than to "Unknown", and clamping says so.
+func _validate_dre_access_tier(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("dre_access_tier"):
+		return
+	if not (state["dre_access_tier"] is int or state["dre_access_tier"] is float):
+		state["dre_access_tier"] = 0
+		_repair(repairs, "dre_access_tier", "wrong type; defaulted")
+		return
+	var tier: int = clampi(int(state["dre_access_tier"]), 0, 5)
+	if tier != int(state["dre_access_tier"]):
+		_repair(repairs, "dre_access_tier", "out of range; clamped")
+	state["dre_access_tier"] = tier
+
+const DRE_ACCOUNT_STATUSES := ["clear", "active", "due", "extended", "overdue", "suspended"]
+
+## The one loan a player can carry (design doc section 10.1, section 9).
+## `status` is a closed six-state machine, unlike a tip's open-ended `type`
+## -- an unrecognised status is repaired to "clear" and its amounts zeroed
+## with it, because a status the game does not know how to settle is a debt
+## the player can never resolve otherwise.
+func _validate_dre_account(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("dre_account"):
+		return
+	if not state["dre_account"] is Dictionary:
+		state["dre_account"] = {
+			"status": "clear", "principal": 0, "interest": 0, "fee": 0,
+			"opened_day": -1, "due_day": -1, "term_days": 0,
+			"extension_used": false, "offer_id": "",
+		}
+		_repair(repairs, "dre_account", "wrong type; defaulted")
+		return
+	var account: Dictionary = state["dre_account"]
+	_string(account, "status", "clear", "dre_account.status", repairs)
+	if not str(account["status"]) in DRE_ACCOUNT_STATUSES:
+		_repair(repairs, "dre_account.status", "unrecognised; defaulted to clear")
+		account["status"] = "clear"
+	_int(account, "principal", 0, "dre_account.principal", repairs)
+	_int(account, "interest", 0, "dre_account.interest", repairs)
+	_int(account, "fee", 0, "dre_account.fee", repairs)
+	for money_field in ["principal", "interest", "fee"]:
+		if int(account[money_field]) < 0:
+			_repair(repairs, "dre_account.%s" % money_field, "negative; defaulted")
+			account[money_field] = 0
+	_int(account, "opened_day", -1, "dre_account.opened_day", repairs)
+	_int(account, "due_day", -1, "dre_account.due_day", repairs)
+	_int(account, "term_days", 0, "dre_account.term_days", repairs)
+	if int(account["term_days"]) < 0:
+		_repair(repairs, "dre_account.term_days", "negative; defaulted")
+		account["term_days"] = 0
+	_bool(account, "extension_used", false, "dre_account.extension_used", repairs)
+	_string(account, "offer_id", "", "dre_account.offer_id", repairs)
+	if str(account["status"]) == "clear":
+		for zeroed_field in ["principal", "interest", "fee"]:
+			if int(account[zeroed_field]) != 0:
+				_repair(repairs, "dre_account.%s" % zeroed_field,
+					"nonzero on a clear account; zeroed")
+				account[zeroed_field] = 0
+	state["dre_account"] = account
+
+## Lifetime counters, all non-negative -- design doc section 10.1. Structural
+## only, same shape as _validate_active_consequence's nested-dict arms.
+func _validate_dre_account_history(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("dre_account_history"):
+		return
+	if not state["dre_account_history"] is Dictionary:
+		state["dre_account_history"] = {
+			"loans_taken": 0, "repaid_on_time": 0, "repaid_late": 0,
+			"extensions": 0, "defaults": 0,
+			"total_principal_borrowed": 0, "total_interest_paid": 0,
+		}
+		_repair(repairs, "dre_account_history", "wrong type; defaulted")
+		return
+	var history: Dictionary = state["dre_account_history"]
+	var fields := ["loans_taken", "repaid_on_time", "repaid_late", "extensions",
+		"defaults", "total_principal_borrowed", "total_interest_paid"]
+	for field in fields:
+		_int(history, field, 0, "dre_account_history.%s" % field, repairs)
+		if int(history[field]) < 0:
+			_repair(repairs, "dre_account_history.%s" % field, "negative; defaulted")
+			history[field] = 0
+	state["dre_account_history"] = history
 
 ## v16 (FS-002.3). Drop rows whose id the authored board does not carry, clamp
 ## soldiers non-negative, and cap a posted sum that exceeds the capacity those

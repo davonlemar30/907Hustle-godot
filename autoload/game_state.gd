@@ -381,6 +381,7 @@ func reset_to_new_game() -> void:
 		"priors": 0, "last_arrest_day": -1, "charges": [], "cooldown_until_day": -1,
 	}
 	boost_store_bans = []
+	boost_bribes_used = []
 	district_pressure = {}
 	pressure_bleed_pending = []
 	pressure_clean_credits = {}
@@ -1244,6 +1245,12 @@ var arrest_record: Dictionary = {
 ## reason as everything else in this block: it has to survive a reload, and
 ## TI-003 regression #11 is "Boost bans disappear on day-cross or reload".
 var boost_store_bans: Array = []
+
+## Which stores SETTLE IT has already bought a walk from, this run (0.1.2).
+## Once per store per run — a bribe that worked becomes extortion if
+## repeated, and this is what keeps the door a one-time favor rather than
+## standing protection. Same shape and same reason as `boost_store_bans`.
+var boost_bribes_used: Array = []
 
 ## district_id -> family -> {score, last_gain_day, quiet_days, market_gain_day,
 ## market_gain_today}. TI-003 §8. Separate storage from global `heat` on

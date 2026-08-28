@@ -16,8 +16,8 @@ const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v16. Older saves are
-## migrated before this validator runs, so every arm below reads a v16 shape.
+## repaired payload back to disk. The save schema is v18. Older saves are
+## migrated before this validator runs, so every arm below reads a v18 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -44,6 +44,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_heat_day(state, repairs)
 	_validate_wander(state, repairs)
 	_validate_boost_discovery(state, repairs)
+	_validate_boost_bribes_used(state, repairs)
 	_validate_territory_nodes(state, repairs)
 	return {"state": state, "repairs": repairs}
 
@@ -689,6 +690,38 @@ func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> voi
 			continue
 		cleaned.append(str(entry))
 	state["boost_targets_discovered"] = cleaned
+
+## 0.1.2. Same shape as `_validate_boost_discovery`, same reason: every entry
+## must be a real target id, and a store cannot be bought from twice.
+func _validate_boost_bribes_used(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("boost_bribes_used"):
+		return
+	if not state["boost_bribes_used"] is Array:
+		state["boost_bribes_used"] = []
+		_repair(repairs, "boost_bribes_used", "wrong type; defaulted")
+		return
+	var authored: Dictionary = {}
+	for target in (GAME_STATE.new().boost_targets as Array):
+		if target is Dictionary:
+			authored[str((target as Dictionary).get("id", ""))] = true
+	var found: Array = state["boost_bribes_used"]
+	var cleaned: Array = []
+	for index in range(found.size()):
+		var entry: Variant = found[index]
+		if not entry is String or str(entry).is_empty():
+			_repair(repairs, "boost_bribes_used[%d]" % index,
+				"not a target id; dropped")
+			continue
+		if not authored.has(str(entry)):
+			_repair(repairs, "boost_bribes_used[%d]" % index,
+				"no such boost target; dropped")
+			continue
+		if str(entry) in cleaned:
+			_repair(repairs, "boost_bribes_used[%d]" % index,
+				"duplicate; dropped")
+			continue
+		cleaned.append(str(entry))
+	state["boost_bribes_used"] = cleaned
 
 ## v16 (FS-002.3). Drop rows whose id the authored board does not carry, clamp
 ## soldiers non-negative, and cap a posted sum that exceeds the capacity those

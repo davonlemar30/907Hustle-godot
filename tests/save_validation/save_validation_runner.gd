@@ -24,6 +24,7 @@ func _ready() -> void:
 	_test_v15_boost_discovery()
 	_test_v16_territory_nodes()
 	_test_v17_market_discovery()
+	_test_v18_boost_bribes_used()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -313,6 +314,59 @@ func _test_v15_boost_discovery() -> void:
 	_check("and arrives with nothing clocked",
 		not v14.has("boost_targets_discovered")
 		or (v14["boost_targets_discovered"] as Array).is_empty())
+
+## 0.1.2 PR D: `_validate_boost_bribes_used`, same shape as
+## `_validate_boost_discovery` above and for the same reason -- every entry
+## must be a real target id, and (unlike a discovery latch) a store bought
+## from twice would be a bribe that quietly worked as extortion.
+##
+## SABOTAGE: drop the `authored.has()` branch -> "an unknown target id drops"
+##           fails and a fabricated id survives into the run.
+## SABOTAGE: return early instead of defaulting on a wrong type -> "a wrong-type
+##           latch defaults to nothing bought" fails.
+func _test_v18_boost_bribes_used() -> void:
+	var valid := _state("boost_bribes_used", ["night_owl", "northern_value"])
+	var valid_result := _result(valid)
+	var valid_fixed: Dictionary = valid_result["state"]
+	_check("valid v18 latch survives",
+		valid_fixed["boost_bribes_used"] == ["night_owl", "northern_value"])
+	_check("valid v18 shape is a validation no-op",
+		(valid_result["repairs"] as Array).is_empty())
+	_check("valid v18 payload remains byte-shape equivalent", valid_fixed == valid)
+
+	var wrong := _fixed(_state("boost_bribes_used", "night_owl"))
+	_check("a wrong-type latch defaults to nothing bought",
+		wrong["boost_bribes_used"] is Array
+		and (wrong["boost_bribes_used"] as Array).is_empty())
+
+	var rows := _fixed(_state("boost_bribes_used",
+		["night_owl", 7, "night_owl", "", null, "a_shop_that_never_was",
+		"spenard_fuel"]))
+	var bought: Array = rows["boost_bribes_used"]
+	_check("a non-string target id drops", not 7 in bought)
+	_check("an empty target id drops", not "" in bought)
+	_check("a duplicate target id drops", bought.count("night_owl") == 1)
+	_check("an unknown target id drops", not "a_shop_that_never_was" in bought)
+	_check("real target ids survive the sweep",
+		"night_owl" in bought and "spenard_fuel" in bought)
+	_check("the sweep keeps only what it should", bought.size() == 2)
+
+	var absent_result := _result(_state("day", 4))
+	_check("an absent v18 latch stays absent",
+		not (absent_result["state"] as Dictionary).has("boost_bribes_used"))
+	_check("an absent v18 latch needs no repair",
+		(absent_result["repairs"] as Array).is_empty())
+
+	# The migration itself: a v17 payload comes through the real chain with an
+	# empty latch, not a missing one and not a guessed one -- purely additive,
+	# since SETTLE IT did not exist before this build.
+	var save_system: Node = get_node("/root/SaveSystem")
+	var v17: Dictionary = save_system._migrate({"save_version": 17,
+		"state": _state("market_discovered", true)})
+	_check("a v17 save migrates", not v17.is_empty())
+	_check("and arrives with nothing bought",
+		not v17.has("boost_bribes_used")
+		or (v17["boost_bribes_used"] as Array).is_empty())
 
 ## FS-002.3 (`86bbj1jpm`): the first Territory arm in this validator, and the
 ## root-cause fix for `86bbjxtab` — nothing validated the ids in a loaded

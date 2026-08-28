@@ -1833,7 +1833,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# batch 10 (Wander), 13 → 14 in batch 13 (the wander intents), 14 → 15 in
 	# batch 14 (Boost's discovery latch), 15 → 16 in Batch 18 PR 3 (FS-002.3,
 	# canonical Territory state), 16 → 17 in PR 4 (Market's discovery latch).
-	_expect_int("save version is 17", saves.SAVE_VERSION, 17)
+	_expect_int("save version is 18", saves.SAVE_VERSION, 18)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -8765,21 +8765,30 @@ func _check_caught_decision_surface(gs: Node, gm: Node, engine: RefCounted,
 		_fail("caught decision surface", "no failed lift found")
 		return
 	var rows: Array = engine.choice_summaries()
-	_expect_int("the decision offers four responses", rows.size(), 4)
+	# Tier 1: SETTLE IT joins the authored four (LIFT_BRIBE's tiers are [1, 2]
+	# — its absence at tier 3 is its own check, `_check_caught_bribe`).
+	_expect_int("the decision offers five responses at tier 1", rows.size(), 5)
 	var ids: Array = []
 	for row in rows:
 		ids.append(str((row as Dictionary)["choice_id"]))
-	_expect_str("the four responses are fight, run, talk, yield", str(ids),
-		str(["fight", "run", "talk", "yield"]))
+	_expect_str("the five responses are fight, run, talk, yield, bribe", str(ids),
+		str(["fight", "run", "talk", "yield", "bribe"]))
 
 	# The shown odds are the projection's, computed from the authored base
 	# chance and the player's RAW attribute. Compared against a fresh call to
 	# the projection rather than against a hardcoded number, because the run's
 	# attributes are what `_frozen_ready` left them at — but the ACTION TYPE and
 	# BASE CHANCE come from the authored table, so a wrong mapping still fails.
+	# BRIBE is deterministic like YIELD but is not in RULES.CAUGHT_DETERMINISTIC
+	# (it is Lift-specific, not part of the shared caught table), so it is
+	# checked by choice_id rather than through `rules.is_deterministic`.
 	for row in rows:
 		var entry: Dictionary = row
 		var choice := str(entry["choice_id"])
+		if choice == "bribe":
+			_expect_true("bribe shows no odds", not bool(entry["has_odds"]))
+			_expect_true("bribe is flagged deterministic", bool(entry["deterministic"]))
+			continue
 		if rules.is_deterministic(choice):
 			_expect_true("yield shows no odds", not bool(entry["has_odds"]))
 			_expect_true("yield is flagged deterministic", bool(entry["deterministic"]))
@@ -8793,10 +8802,15 @@ func _check_caught_decision_surface(gs: Node, gm: Node, engine: RefCounted,
 				rules.base_chance(1, choice), raw, 0))
 		_expect_true("%s is flagged as rolled" % choice, bool(entry["has_odds"]))
 
-	# Nothing is committed yet, so nothing is disabled.
+	# Nothing is committed yet, so nothing is disabled -- except possibly
+	# bribe, whose gating is its price rather than the commit lock and is
+	# exercised on its own in `_check_caught_bribe`.
 	for row in rows:
-		_expect_true("%s starts enabled" % str((row as Dictionary)["choice_id"]),
-			not bool((row as Dictionary)["disabled"]))
+		var entry: Dictionary = row
+		if str(entry["choice_id"]) == "bribe":
+			continue
+		_expect_true("%s starts enabled" % str(entry["choice_id"]),
+			not bool(entry["disabled"]))
 	gs.active_consequence = {}
 
 	# --- RAW attribute, not the compatibility offset ---
@@ -9055,9 +9069,53 @@ func _check_caught_effects_applied(gs: Node, gm: Node, engine: RefCounted,
 ## which does NOT arrest, while Run/Failure at tier 1 adds +2 raw — so the live
 ## meter reads 8.0 by the time the gate is evaluated, which WOULD arrest. If the
 ## adapter passed `gs.heat` instead of the snapshot, this flips.
+## Drives a caught chain by committing, each round, the highest-priority verb
+## in `priority` still in `allowed_choices` -- reaching a SPECIFIC verb's
+## terminal failure row (0.1.2's escalation ladder) now generally means
+## burning through whichever higher-priority verbs come first, since each
+## verb gets exactly one attempt before it burns. Stops at the first terminal
+## stage or when no verb in `priority` remains to try. `before_final`, when
+## given, is called immediately before the LAST available verb is committed
+## -- the roll that actually resolves the chain -- so a caller can re-stage
+## state (e.g. re-pin `gs.heat`) right before it, undoing whatever drifted
+## during the earlier verbs' own escalation costs.
+func _drive_caught_priority(gs: Node, gm: Node, engine: RefCounted,
+		priority: Array, before_final: Callable = Callable()) -> Dictionary:
+	for _round_attempt in range(priority.size() + 1):
+		var decision: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+		var allowed: Array = decision.get("allowed_choices", [])
+		var verb := ""
+		var others_remain := false
+		for candidate in priority:
+			if not (candidate in allowed):
+				continue
+			if verb.is_empty():
+				verb = candidate
+			else:
+				others_remain = true
+		if verb.is_empty():
+			return {"terminal": false, "last_choice": ""}
+		if not others_remain and before_final.is_valid():
+			before_final.call()
+		if not gm.dispatch("resolve_consequence_choice", {"choice_id": verb}):
+			return {"terminal": false, "last_choice": verb}
+		if engine.active_stage() == engine.STAGE_DECISION:
+			continue
+		return {"terminal": true, "last_choice": verb}
+	return {"terminal": false, "last_choice": ""}
+
 func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
 		rules: RefCounted) -> void:
 	var found := false
+	# 0.1.2: run/failure escalates instead of resolving outright (LIFT_ESCALATION),
+	# so reaching it now generally means fight and talk both failing (and
+	# burning) first. Driven through `_drive_caught_priority` with run saved
+	# for last; `before_final` re-pins the boundary heat right before run's
+	# roll, undoing whatever fight/talk's own escalation heat cost along the
+	# way -- the snapshot this probe is actually testing is immutable from
+	# chain-open regardless, but the LIVE-heat assertion below needs 6.0 to
+	# still mean exactly 6.0 at the moment run is the one rolling.
+	var pin_heat := func() -> void: gs.heat = 6.0
 	for attempt in range(1, 220):
 		_caught_ready(gs, attempt, 1)
 		gs.health = gs.health_max
@@ -9069,7 +9127,9 @@ func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
 			continue
 		_expect_float("the chain snapshotted the boundary heat",
 			float((engine.active_summary() as Dictionary)["pre_encounter_heat"]), 6.0)
-		if not gm.dispatch("resolve_consequence_choice", {"choice_id": "run"}):
+		var drive := _drive_caught_priority(gs, gm, engine,
+			["fight", "talk", "run"], pin_heat)
+		if not bool(drive["terminal"]) or str(drive["last_choice"]) != "run":
 			gs.active_consequence = {}
 			continue
 		var outcome: Dictionary = engine.result_summary()
@@ -9104,7 +9164,8 @@ func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
 		_caught_carry(gs)
 		if not lifted3 or (gs.active_consequence as Dictionary).is_empty():
 			continue
-		if not gm.dispatch("resolve_consequence_choice", {"choice_id": "run"}):
+		var drive3 := _drive_caught_priority(gs, gm, engine, ["fight", "talk", "run"])
+		if not bool(drive3["terminal"]) or str(drive3["last_choice"]) != "run":
 			gs.active_consequence = {}
 			continue
 		var outcome3: Dictionary = engine.result_summary()
@@ -9277,24 +9338,46 @@ func _check_caught_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
 		_expect_true("the reloaded chain still owes its source time",
 			engine.source_time_owed())
 
-		# Resolve, save, reload: the committed result must not reroll.
-		_expect_true("the reloaded chain resolves",
-			gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"}))
-		var resolved: Dictionary = engine.result_summary()
-		var tier_name := str(resolved["resolved_tier"])
-		var heat_at_resolve: float = float(gs.heat)
-		saves.save_run()
-		gs.active_consequence = {}
-		_expect_true("a resolved chain reloads", saves.load_run())
-		_expect_str("the committed choice survives",
-			str((engine.result_summary() as Dictionary)["committed_choice"]), "fight")
-		_expect_str("the resolved tier survives — it does not reroll",
-			str((engine.result_summary() as Dictionary)["resolved_tier"]), tier_name)
-		_expect_float("the applied heat is not re-applied on reload",
-			float(gs.heat), heat_at_resolve)
-		# The receipts came back too, so the effects still cannot replay.
-		_expect_true("the heat receipt survives the reload",
-			engine.has_receipt(cause_id, "boost_caught:heat"))
+		# Resolve, save, reload: the committed result must not reroll. Fight
+		# might ESCALATE instead of resolving terminally (0.1.2,
+		# LIFT_ESCALATION) -- a fresh round-one failure always does -- so this
+		# retries fresh chains until fight settles on its first commit, the
+		# same technique every other probe here uses to reach a specific
+		# settled tier.
+		var settled := false
+		var dispatched := false
+		for retry in range(40):
+			if retry > 0:
+				gs.active_consequence = {}
+				if not _open_failed_lift(gs, gm, "night_owl", 1):
+					continue
+				cause_id = str((engine.active_summary() as Dictionary)["cause_id"])
+			dispatched = gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"})
+			if not dispatched:
+				continue
+			if engine.active_stage() == engine.STAGE_DECISION:
+				continue  # escalated; a fresh chain's round one might not
+			settled = true
+			break
+		_expect_true("the reloaded chain resolves", dispatched)
+		if not settled:
+			_fail("caught reload", "fight never resolved terminally on a fresh chain")
+		else:
+			var resolved: Dictionary = engine.result_summary()
+			var tier_name := str(resolved["resolved_tier"])
+			var heat_at_resolve: float = float(gs.heat)
+			saves.save_run()
+			gs.active_consequence = {}
+			_expect_true("a resolved chain reloads", saves.load_run())
+			_expect_str("the committed choice survives",
+				str((engine.result_summary() as Dictionary)["committed_choice"]), "fight")
+			_expect_str("the resolved tier survives — it does not reroll",
+				str((engine.result_summary() as Dictionary)["resolved_tier"]), tier_name)
+			_expect_float("the applied heat is not re-applied on reload",
+				float(gs.heat), heat_at_resolve)
+			# The receipts came back too, so the effects still cannot replay.
+			_expect_true("the heat receipt survives the reload",
+				engine.has_receipt(cause_id, "boost_caught:heat"))
 		gs.active_consequence = {}
 
 	if previous_save.is_empty():
@@ -9557,6 +9640,19 @@ func _check_arrest_release_projection(arrest: RefCounted) -> void:
 ## Derived rather than seeded, for the same reason `_open_failed_lift` is: a
 ## pinned day may resolve to a success or an unarrested tier, and every
 ## assertion afterwards would then be measuring a chain that does not exist.
+## Fight failure and Fight catastrophic used to both arrest unconditionally on
+## round one, which is what made "commit fight" alone a reliable way to reach
+## an arrest without depending on the Heat gate. 0.1.2 makes a plain fight
+## failure ESCALATE instead (LIFT_ESCALATION) -- catastrophic is untouched and
+## still arrests immediately, but a failure now only arrests once the round
+## cap is hit, burning fight along the way and forcing whatever verb the
+## chain still offers for the round after. This drives the highest-priority
+## verb still allowed each round (fight, then its authored fallbacks) rather
+## than assuming fight stays available for as many rounds as it takes, and
+## reads the real `arrested` flag off the settled result instead of assuming
+## a failure always means one.
+const _BOOST_BOOKING_VERB_PRIORITY := ["fight", "run", "talk"]
+
 func _open_boost_booking(gs: Node, gm: Node, engine: RefCounted, tier: int,
 		target_id: String, priors: int, cash: int) -> bool:
 	for attempt in range(1, 260):
@@ -9571,13 +9667,27 @@ func _open_boost_booking(gs: Node, gm: Node, engine: RefCounted, tier: int,
 		_caught_carry(gs)
 		if not lifted or (gs.active_consequence as Dictionary).is_empty():
 			continue
-		# Fight failure and Fight catastrophic both arrest unconditionally, so
-		# this response reaches an arrest without depending on the Heat gate.
-		if not gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"}):
+		var settled := false
+		for round_attempt in range(4):
+			var decision: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+			var allowed: Array = decision.get("allowed_choices", [])
+			var verb := ""
+			for candidate in _BOOST_BOOKING_VERB_PRIORITY:
+				if candidate in allowed:
+					verb = candidate
+					break
+			if verb.is_empty() \
+					or not gm.dispatch("resolve_consequence_choice", {"choice_id": verb}):
+				break
+			if engine.active_stage() == engine.STAGE_DECISION:
+				continue  # escalated to another round; keep pressing
+			settled = true
+			break
+		if not settled:
 			gs.active_consequence = {}
 			continue
 		var outcome: Dictionary = engine.result_summary()
-		if not bool((outcome["result"] as Dictionary)["arrested"]):
+		if not bool((outcome.get("result", {}) as Dictionary).get("arrested", false)):
 			gs.active_consequence = {}
 			continue
 		if not gm.dispatch("consequence_continue", {}):
@@ -12505,7 +12615,7 @@ func _check_arrest_risk_projection(gs: Node, gm: Node, engine: RefCounted) -> vo
 		_fail("arrest risk projection", "no failed lift found")
 		return
 	var rows: Array = engine.choice_summaries()
-	_expect_true("every response carries an arrest-risk field", rows.size() == 4)
+	_expect_true("every response carries an arrest-risk field", rows.size() == 5)
 	for entry in rows:
 		var row: Dictionary = entry
 		_expect_true("%s carries an arrest-risk field" % str(row["choice_id"]),
@@ -12514,6 +12624,8 @@ func _check_arrest_risk_projection(gs: Node, gm: Node, engine: RefCounted) -> vo
 		str((_choice_row(rows, "fight") as Dictionary)["arrest_risk"]), "on_loss")
 	_expect_str("yield's projection carries no warning",
 		str((_choice_row(rows, "yield") as Dictionary)["arrest_risk"]), "")
+	_expect_str("bribe's projection carries no warning",
+		str((_choice_row(rows, "bribe") as Dictionary)["arrest_risk"]), "")
 
 	# It survives a reload, because it was persisted with the odds rather than
 	# re-derived against state that has since moved.
@@ -12681,7 +12793,7 @@ func _check_consequence_scene(gs: Node, gm: Node, engine: RefCounted) -> void:
 			if bool(row["disabled"]):
 				disabled += 1
 		_expect_int("exactly one response reads as committed", committed, 1)
-		_expect_int("every response reads as disabled", disabled, 4)
+		_expect_int("every response reads as disabled", disabled, 5)
 		gs.active_consequence = {}
 
 	# --- booking and release ---
@@ -13096,7 +13208,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v17", saves.SAVE_VERSION, 17)
+	_expect_int("the schema is v18", saves.SAVE_VERSION, 18)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -18793,7 +18905,22 @@ func _fail(label: String, detail: String) -> void:
 ## fresh run's `rent_due_day` happened to be. The route-table assertions have
 ## no replacement -- a flow-sheet spec is not a route, so "is it reachable
 ## from the nav bar" is not a question this screen can even be asked anymore.
-const MIN_CHECKS := 12518
+##
+## 0.1.2 PR D (Lift caught-loop + BRIBE) takes it to 12528. Tier 1-2 SETTLE IT
+## turns `_check_caught_decision_surface`'s and two other decision-surface
+## checks' fixed four-response assumption into five, each gaining a bribe-
+## specific odds/disabled/arrest-risk assertion alongside the count change.
+## `_check_caught_arrest_snapshot`'s two probes and the caught-reload check
+## now drive fight/talk/run through `_drive_caught_priority` instead of
+## committing one verb and reading the result directly -- a plain failure
+## escalates instead of resolving (LIFT_ESCALATION), so reaching a SPECIFIC
+## verb's terminal row costs however many intermediate rounds it takes this
+## seed to burn through the higher-priority verbs first, which is why this
+## batch is not a fixed number the way most are: the retry margin absorbs it,
+## same disclaimer every seeded sweep in this file already carries. Five
+## hardcoded `SAVE_VERSION == 17` assertions become 18, one per schema-version
+## check this file pins independently rather than through one shared constant.
+const MIN_CHECKS := 12528
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.
@@ -19581,7 +19708,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v17", int(saves.SAVE_VERSION), 17)
+	_expect_int("the schema is v18", int(saves.SAVE_VERSION), 18)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -19996,7 +20123,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v17 for Heat's teeth", int(saves.SAVE_VERSION), 17)
+	_expect_int("the schema is v18 for Heat's teeth", int(saves.SAVE_VERSION), 18)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -20449,7 +20576,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v17 for Wander", int(saves.SAVE_VERSION), 17)
+	_expect_int("the schema is v18 for Wander", int(saves.SAVE_VERSION), 18)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

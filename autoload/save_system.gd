@@ -167,7 +167,12 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## seen an opportunity offered, so empty arrays/dict and a fresh counter are
 ## that save's honest history, the same call the v3 -> v4 and v4 -> v5 arms
 ## make for their own untouched-until-now fields.
-const SAVE_VERSION := 23
+## v24: `dre_pending_penance` (Dre Lending PR D, DRE-ARC-03 / restitution) --
+## purely additive, one bool latching whether a cleared-by-payment suspension
+## still owes its follow-up penance contract. No v23 save has ever suspended
+## through the real collection encounter this build adds, so `false` is that
+## save's honest history.
+const SAVE_VERSION := 24
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -273,6 +278,8 @@ const PERSIST_FIELDS: Array[String] = [
 	# Dre's first two authored contracts run on -- see systems/opportunities.gd.
 	"opportunity_offers", "active_opportunities", "opportunity_history",
 	"opportunity_next_instance_id",
+	# PR D (v24): the restitution latch. See its own header in game_state.gd.
+	"dre_pending_penance",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -878,6 +885,10 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# v22 -> v23: opportunity_offers / active_opportunities /
 				# opportunity_history / opportunity_next_instance_id. Purely
 				# additive -- see this arm's own paragraph by SAVE_VERSION.
+				pass
+			23:
+				# v23 -> v24: dre_pending_penance. Purely additive -- see this
+				# arm's own paragraph by SAVE_VERSION.
 				pass
 			_:
 				return {}

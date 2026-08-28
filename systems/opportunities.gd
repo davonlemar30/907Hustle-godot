@@ -45,8 +45,21 @@ extends RefCounted
 ## whole integration surface a single consumer needs. No procedural
 ## generation, no unified Score presentation, no `opportunity_accept` dispatch
 ## action — nothing in this build's content ever needs one; the domain action
-## that begins the work (`dre_borrow`) is authored to double as acceptance,
-## per OPP-D3's "an authored meeting that both accepts and begins work."
+## that begins the work (`dre_borrow`, `dre_collect_negotiate`,
+## `dre_collect_hard`) is authored to double as acceptance, per OPP-D3's "an
+## authored meeting that both accepts and begins work."
+##
+## ## `accept()`/`resolve()`/`fail()` are public — PR D's second consumer
+##
+## `systems/dre_collector.gd` (PR D) calls these directly rather than going
+## through `reconcile()`'s generic action-name matcher: its "hard" road and
+## the player-default encounter both resolve on `"resolve_consequence_
+## choice"`, an action name shared by every confrontation in the game, so
+## the generic matcher cannot safely tell one chain's resolution from
+## another's. See `data/dre_contracts.gd`'s header on `dre_a_reminder` for
+## the full reasoning. `fail()` exists for the same PR: a `repeatable: false`
+## definition can now genuinely fail (walking away from a collection,
+## botching a negotiation) rather than only ever completing.
 
 const DRE_CONTRACTS := preload("res://data/dre_contracts.gd")
 const REQUIREMENTS := preload("res://systems/requirements.gd")
@@ -98,7 +111,15 @@ func reconcile(action: String, _payload: Dictionary, result: Dictionary) -> void
 		_record_introduction_once()
 		_maybe_offer("dre_first_money")
 	elif action == "dre_borrow":
-		_accept("dre_first_money")
+		accept("dre_first_money")
+	elif action == "dre_do_penance":
+		# The conversation IS the acceptance, same as dre_seek_out/dre_borrow
+		# above — accept() here, in the same pass, so the generic matcher
+		# right below finds dre_penance already active and resolves it off
+		# this same action_result. Without this, dre_penance sits offered
+		# forever: _advance_action_result_objectives only ever scans
+		# active_opportunities, never opportunity_offers.
+		accept("dre_penance")
 	_advance_action_result_objectives(action, result)
 
 ## Qualifying load — the crew_operations precedent in `SaveSystem.load_run()`
@@ -154,15 +175,28 @@ func _record_introduction_once() -> void:
 
 ## Called from `DayLifecycle` after every other night settlement — see the
 ## comment on `opportunities`'s place in `SETTLE_ORDER` for why it sits last.
-## A no-op every night in this build: `dre_first_money`'s objective is
-## `action_result`, not `state_fact`, because nothing in the current Dre
-## state machine reaches "clear" except through a live `dre_repay` dispatch
-## (reconciled at the point in `GameManager.dispatch()` instead). Declared
-## and tested now so a later PR's settlement-driven objective — the design
-## doc's own example is "a debt that resolved overnight" — needs no new
-## SETTLE_ORDER entry, only a new `state_fact` row in its own data file.
+##
+## Two jobs. First, `state_fact` objectives — a no-op for every definition
+## authored so far (`dre_first_money`'s objective is `action_result`, not
+## `state_fact`, because nothing in the Dre state machine reaches "clear"
+## except through a live `dre_repay` dispatch, reconciled at the point in
+## `GameManager.dispatch()` instead); declared and exercised by tests now so
+## a later PR's settlement-driven objective needs no new SETTLE_ORDER entry,
+## only a new `state_fact` row in its own data file.
+##
+## Second (PR D), offer eligibility for every declared definition — OPP-D7:
+## "Offer generation only at declared lifecycle points... never on screen
+## open." `_maybe_offer` is already idempotent (`_resolved_or_live` skips
+## anything offered, live, or resolved), so checking a definition nightly
+## that was ALSO offered reactively elsewhere (`dre_first_money`, off
+## `dre_seek_out`) costs nothing — it only ever fires for something actually
+## newly eligible, like DRE-ARC-03 becoming visible once Trusted Customer,
+## a clear account, and an acceptable Dre disposition line up on the same
+## night.
 func settle_night(_ended_day: int) -> void:
 	_advance_state_fact_objectives()
+	for definition_id in (DRE_CONTRACTS.DEFINITIONS as Dictionary):
+		_maybe_offer(str(definition_id))
 
 func _advance_state_fact_objectives() -> void:
 	var facts: Dictionary = _facts()
@@ -174,11 +208,11 @@ func _advance_state_fact_objectives() -> void:
 			if str(spec.get("class", "")) != "state_fact" or not spec.has("fact"):
 				continue
 			if facts.get(str(spec["fact"]), null) == spec.get("equals", null):
-				_resolve(str(inst["definition_id"]), {})
+				resolve(str(inst["definition_id"]), {})
 
 # --- generic objective advancement ------------------------------------------
 
-## `.duplicate()`: `_resolve()` mutates `gs.active_opportunities` when an
+## `.duplicate()`: `resolve()` mutates `gs.active_opportunities` when an
 ## objective completes, and this loop must keep walking the instances that
 ## were live when the action happened rather than the array it is editing
 ## out from under itself.
@@ -190,7 +224,7 @@ func _advance_action_result_objectives(action: String, result: Dictionary) -> vo
 			var spec: Dictionary = objective
 			if str(spec.get("class", "")) == "action_result" \
 					and str(spec.get("action", "")) == action:
-				_resolve(str(inst["definition_id"]), result)
+				resolve(str(inst["definition_id"]), result)
 
 # --- generic instance lifecycle ----------------------------------------------
 
@@ -214,10 +248,18 @@ func _find(array: Array, definition_id: String) -> Variant:
 	return null
 
 func _facts() -> Dictionary:
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
 	return {
 		"current_day": gs.day,
 		"dre_access_tier": gs.dre_access_tier,
 		"dre_account_status": str(gs.dre_account.get("status", "clear")),
+		# PR D (DRE-ARC-03): "acceptable Dre disposition" has no shape
+		# `requirements.gd` can read on its own -- that evaluator is pure,
+		# no GameState/autoload access by design (its own header). Computing
+		# it here, once, and handing it in as a plain float is what keeps
+		# that purity real rather than nominal.
+		"dre_disposition": exposure.disposition("dre") if exposure != null else 0.0,
+		"dre_pending_penance": gs.dre_pending_penance,
 	}
 
 func _maybe_offer(definition_id: String) -> void:
@@ -225,6 +267,12 @@ func _maybe_offer(definition_id: String) -> void:
 		return
 	var definition: Dictionary = _definition(definition_id)
 	if definition.is_empty():
+		return
+	# `dre_the_introduction` (and anything else authored history-only) opts
+	# out here — its own empty `requirements` would otherwise pass trivially
+	# and mint a real offer for a definition this system deliberately never
+	# tracks as one. See its own entry in data/dre_contracts.gd.
+	if not bool(definition.get("offerable", true)):
 		return
 	var verdict: Dictionary = REQUIREMENTS.new().evaluate_requirements(
 		definition.get("requirements", []), _facts())
@@ -248,17 +296,22 @@ func _new_instance(definition_id: String, state: String) -> Dictionary:
 
 ## The domain action that begins the work doubles as acceptance — OPP-D3.
 ## No-ops once the offer is gone (declined, or already accepted by an
-## earlier call), so a second `dre_borrow` after the first loan's whole arc
-## resolves does not reopen a `repeatable: false` milestone. Also no-ops at
-## the accepted-commitment cap (OPP-D2) — this build's own content can never
-## reach it (First Money is the only thing that can ever be offered), so the
-## guard exists purely so a later repeatable-contract PR cannot ship without
-## it already enforced. Note what this can and cannot do: `dre_borrow` has
-## already succeeded by the time this runs (reconcile fires after the
-## handler, never before it), so the cap can refuse to TRACK the milestone,
-## never the underlying loan — exactly the "a contract observes; a domain
-## system settles" pillar (design doc section 5.4).
-func _accept(definition_id: String) -> void:
+## earlier call), so a second `dre_borrow`/`dre_collect_*` after a
+## `repeatable: false` milestone's whole arc resolves does not reopen it.
+## Also no-ops at the accepted-commitment cap (OPP-D2) — this build's own
+## content stays well under it (First Money and DRE-ARC-03 can never be live
+## together, since DRE-ARC-03 requires the resolved-and-promoted state only
+## First Money's own completion grants; DRE-ARC-03 and the penance follow-up
+## CAN overlap, two of three), so the cap is not something this build's
+## content is expected to hit; the guard exists purely so a later
+## repeatable-contract PR cannot ship without it already enforced.
+## Note what this can and cannot do: the domain action has already succeeded
+## by the time this runs (reconcile fires after the handler, never before
+## it, and `dre_collector`'s own bespoke callers run inside that same
+## already-succeeded dispatch), so the cap can refuse to TRACK the
+## milestone, never the underlying action — exactly the "a contract
+## observes; a domain system settles" pillar (design doc section 5.4).
+func accept(definition_id: String) -> void:
 	if (gs.active_opportunities as Array).size() >= MAX_ACCEPTED_COMMITMENTS:
 		return
 	var offers: Array = gs.opportunity_offers
@@ -278,7 +331,15 @@ func _accept(definition_id: String) -> void:
 ## mutation, the same idempotency contract `ConsequenceEngine.record_receipt`
 ## uses for the same reason: a double dispatch of the completing action
 ## (or a reload replaying one) must not pay the completion effects twice.
-func _resolve(definition_id: String, result: Dictionary) -> void:
+## `resolved_result` is stored as the caller hands it — First Money's own
+## `{"late": bool}` from `dre_repay`'s result, a collection road's own
+## `{"road": ..., "tier": ...}`, whatever the resolving moment actually
+## determined. Nothing here forces one canonical vocabulary onto it; the
+## umbrella's own shape (section 9.2) makes no such promise either, and nothing
+## currently reads `resolved_result` back out after the fact — it survives
+## only for the life of the instance, compacted away by `_write_history`
+## the moment this call ends.
+func resolve(definition_id: String, result: Dictionary) -> void:
 	var active: Array = gs.active_opportunities
 	var inst: Variant = _find(active, definition_id)
 	if inst == null:
@@ -286,14 +347,36 @@ func _resolve(definition_id: String, result: Dictionary) -> void:
 	var entry: Dictionary = inst
 	if not str(entry.get("receipt_id", "")).is_empty():
 		return
-	var outcome := "late" if bool(result.get("late", false)) else "on_time"
 	entry["receipt_id"] = "opportunity:%d:complete" % int(entry["instance_id"])
-	entry["resolved_result"] = {"outcome": outcome}
+	entry["resolved_result"] = result
 	entry["state"] = "completed"
 	active.erase(inst)
 	gs.active_opportunities = active
 	_apply_effects(_definition(definition_id).get("completion_effects", []))
 	_write_history(definition_id, "completed", gs.day)
+
+## The failure counterpart (PR D) — a `repeatable: false` definition can
+## genuinely fail now: walking away from a collection, a botched
+## negotiation. No `completion_effects` apply; the underlying action already
+## owns its own real consequences (heat, cash, Exposure), and a failed
+## milestone does not also grant its success reward. Same receipt-guard
+## idempotency contract as `resolve()`, and the same `.duplicate()`-free
+## direct mutation, since only one caller (`dre_collector.gd`, so far) ever
+## calls this on a given instance.
+func fail(definition_id: String, result: Dictionary) -> void:
+	var active: Array = gs.active_opportunities
+	var inst: Variant = _find(active, definition_id)
+	if inst == null:
+		return
+	var entry: Dictionary = inst
+	if not str(entry.get("receipt_id", "")).is_empty():
+		return
+	entry["receipt_id"] = "opportunity:%d:failed" % int(entry["instance_id"])
+	entry["resolved_result"] = result
+	entry["state"] = "failed"
+	active.erase(inst)
+	gs.active_opportunities = active
+	_write_history(definition_id, "failed", gs.day)
 
 ## Compact terminal record — umbrella section 9.4/20.1: "a definition ID,
 ## outcome key, count, and last-resolved day answer every future question."

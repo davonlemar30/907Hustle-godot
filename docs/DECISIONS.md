@@ -522,6 +522,46 @@ content has no deadline to project (see that row), so the shared helper it
 calls for is deferred to whichever PR first has a real caller, rather than
 built once against zero live uses.
 
+## D-9 — A Reminder and restitution: the collection encounter rulings
+
+**Decided** 2026-08-28 · **Ships in** PR D · **Design doc**
+`docs/DRE_LENDING_AND_LOAN_SHARK_SYSTEM_DESIGN.md` §13.2 (DRE-ARC-03), §17
+(failure, collections, recovery) · **Sources:** the design doc's own text,
+D-7/D-8 above, and the running code as of PR C
+
+### The question
+
+Neither D-7 nor D-8 rules on the collection encounter itself, because
+neither PR A/B (structured debt, the door) nor PR C (the opportunity
+substrate, First Money) needed a real confrontation. PR D is the first PR
+that actually opens one — DRE-ARC-03, and the player-default path §17.1
+asks for through "the same chassis" — so this is where those judgment calls
+get recorded, the same Slice-0-before-the-code discipline D-7 and D-8 both
+follow.
+
+### The rulings
+
+| Decision | Ruling |
+|---|---|
+| One adapter, two encounters | `systems/dre_collector.gd` is `consequence_engine`'s one registered adapter for `action_id == "dre_collection"`, serving BOTH DRE-ARC-03 (the player collecting from Dre's own borrower) and the player-default ultimatum (Dre collecting from the player). `chain.source.kind` (`"borrower_collection"` vs `"player_default"`) tells `resolve_consequence()` which is live — not two adapter keys, since both are Dre's voice on the same chassis and neither needs a second registration to stay distinct. |
+| The borrower's name | Dontae Wells — authored for this build (`data/confrontation_scripts.gd`'s `DRE_COLLECTION_TARGET`), deliberately not drawn from `GameState.shark_borrowers`, per the design doc's own words: "an authored NPC." |
+| Two rolled roads, one deterministic each | DRE-ARC-03: NEGOTIATE (Charisma, `outcome_resolver.gd`'s existing "negotiation" shape, no chain — nothing to observe beyond one roll) and PRESS (Combat, "confrontation" shape, inside a chain whose other choice, WALK, is deterministic and refuses the job for `refused_work`). The player-default ultimatum: PAY NOW and stalling, both deterministic — paying is just paying, stalling is just stalling, and inventing a roll for either would manufacture drama the design doc never asks for. |
+| `collected_hard`'s two audiences | Fires as two separate calls on a successful PRESS — `record_observation` direct to Dre, and a SEPARATE `broadcast_observation` on the `"neighborhood"` channel. Not one call doing double duty: `NPC_CHANNELS["dre"]` has no `"neighborhood"` entry, so the two audiences never overlap and neither call risks double-counting the other. This is the inverse of `walked_a_debt`'s own PR A ruling (direct-only, because THAT event's audience already includes `"network"`) — same principle, opposite fact pattern, so the different shape is deliberate, not an inconsistency. |
+| `botched_mission`'s channel | Broadcasts on `"network"` only, per the build prompt's own words ("can travel on the network channel") — reaches Dre AND Curtis in one call, no separate direct write. |
+| "Acceptable Dre disposition" | `Exposure.disposition("dre") >= 0.0` — neutral or better on the existing band ladder (`autoload/exposure.gd`'s `BAND_FLOORS`), not the visible NEUTRAL label specifically, which is a wider band than the floor. A fresh run with no Dre history reads exactly 0.0 and passes; DRE-D8's "no visible numeric rank" is unaffected, since this is a fact `requirements.gd` reads, never a number the player is shown. |
+| Restitution does not gate on penance | D-4/D-7 already ruled full repayment alone clears a suspended account — PR D does not reopen that. `dre_pending_penance` (game_state.gd) latches the moment payment clears a suspension and `dre_penance` (data/dre_contracts.gd) is the follow-up relationship repair, not a second lock stacked on top of the account's own clear. The build prompt's "restitution (pay remaining + small authored penance contract) clearing suspension visibly" is read as sequence, not conjunction: pay clears the account (already visible), penance repairs the relationship after. |
+| `OVERDUE_GRACE_DAYS` is gone, not repurposed under its old name | The build prompt says PR D deletes it. `dre_lender.gd` now has `OVERDUE_RESPONSE_DELAY_DAYS` instead — same authored number (2 days), but naming the delay before Dre's real response opens, not a stand-in grace period before a fake auto-suspend. The rename is the point: nothing named `OVERDUE_GRACE_DAYS` survives in this codebase. |
+| `Opportunities.accept()`/`resolve()`/`fail()` are public | PR C shipped them private (`_accept`/`_resolve`, no `_fail`). PR D's `dre_collector.gd` is a second real caller with a concrete reason the generic `reconcile()` matcher cannot serve it: both `dre_collect_hard` and the player-default ultimatum resolve on `"resolve_consequence_choice"`, an action name shared by every confrontation in the game, so routing through the generic action-name matcher risks an unrelated chain resolving the wrong instance. `fail()` is new outright — DRE-ARC-03 is the first definition that can genuinely fail (walking away, a botched negotiation) rather than only ever completing. |
+
+### Why PR D carries this entry rather than a later PR
+
+Same reasoning as D-7 and D-8's own closing notes: `dre_collector.gd` and
+the rewritten `dre_lender.gd` overdue branch already depend on every row
+above — which chain kind to reuse, how the two audiences of `collected_hard`
+divide, what "acceptable disposition" means operationally, whether
+restitution gates on penance — so the rulings had to exist before the code
+that implements them, not after.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

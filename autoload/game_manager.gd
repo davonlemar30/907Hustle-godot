@@ -124,6 +124,14 @@ func _ready() -> void:
 	opportunities.setup(_gs, self)
 	register_system("opportunities", opportunities)
 
+	# PR D: DRE-ARC-03 and the player-default collection response, both
+	# through the confrontation/consequence chassis. Registered as a system
+	# (for its two player-dispatched actions) AND, below alongside the other
+	# source adapters, as consequence_engine's adapter for "dre_collection".
+	var dre_collector = preload("res://systems/dre_collector.gd").new()
+	dre_collector.setup(_gs, self, rng, attributes)
+	register_system("dre_collector", dre_collector)
+
 	var nine07list = preload("res://systems/nine07list.gd").new()
 	nine07list.setup(_gs, rng, time, attributes, self)
 	register_system("list", nine07list)
@@ -229,6 +237,12 @@ func _ready() -> void:
 	# as a retaliation does and for the same reason: the walk that produced it
 	# is over, and there is no source system holding a table about it.
 	consequence_engine.register_source_adapter("wander", wander)
+	# PR D: both of dre_collector's chains (DRE-ARC-03's "hard" road and the
+	# player-default ultimatum) open with source.action_id == "dre_collection"
+	# — one adapter serving two authored encounters, told apart inside
+	# resolve_consequence() by chain.source.kind, not by two separate keys
+	# here.
+	consequence_engine.register_source_adapter("dre_collection", dre_collector)
 	register_system("consequence", consequence_engine)
 
 func register_system(sys_name: String, instance: Object) -> void:

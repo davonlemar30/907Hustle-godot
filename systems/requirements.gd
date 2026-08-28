@@ -310,6 +310,15 @@ func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dicti
 			var clear: bool = status == "clear"
 			return _result(req, clear, status, "clear")
 
+		# PR D (DRE-ARC-03): "acceptable Dre disposition" gating a collection
+		# offer -- monotonic-safe like `dre_access_tier_min` in the sense that
+		# it gates an OFFER, not a route (same carve-out `dre_account_clear`
+		# already has). An absent fact reads as 0.0 (neutral floor), the same
+		# permissive default a fresh run with no Dre history should get.
+		"dre_disposition_min":
+			var disposition: float = _num(facts.get("dre_disposition"))
+			return _result(req, disposition >= min_value, disposition, min_value)
+
 	return {
 		"ok": false,
 		"blocker_code": "unsupported_requirement",

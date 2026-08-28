@@ -1850,7 +1850,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
 	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
 	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
-	_expect_int("save version is 23", saves.SAVE_VERSION, 23)
+	_expect_int("save version is 24", saves.SAVE_VERSION, 24)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -7652,13 +7652,18 @@ func _check_engine_adapters(gs: Node, gm: Node, engine: RefCounted) -> void:
 	# GameManager registered these in `_ready()`, which runs on every boot
 	# including after a load. That is the mechanism the whole rule rests on.
 	_expect_str("the source adapters registered at boot",
-		str(engine.registered_adapter_ids()), str(["boost", "retaliation", "stickup", "wander"]))
+		str(engine.registered_adapter_ids()),
+		str(["boost", "dre_collection", "retaliation", "stickup", "wander"]))
 	_expect_true("the boost adapter resolves to a system",
 		engine.source_adapter("boost") != null)
 	_expect_true("the boost adapter is the boost system",
 		engine.source_adapter("boost") == gm.system("boost"))
 	_expect_true("the stickup adapter is the stickup system",
 		engine.source_adapter("stickup") == gm.system("stickup"))
+	# Dre Lending PR D: one adapter, "dre_collection", serves both DRE-ARC-03
+	# and the player-default ultimatum -- see dre_collector.gd's own header.
+	_expect_true("the dre_collection adapter is the dre_collector system",
+		engine.source_adapter("dre_collection") == gm.system("dre_collector"))
 	# An unknown id resolves to null rather than erroring — a chain can outlive
 	# an adapter if a save is loaded by a build that no longer registers it, and
 	# that has to read as "cannot act".
@@ -13283,7 +13288,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v23", saves.SAVE_VERSION, 23)
+	_expect_int("the schema is v24", saves.SAVE_VERSION, 24)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -19808,7 +19813,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v23", int(saves.SAVE_VERSION), 23)
+	_expect_int("the schema is v24", int(saves.SAVE_VERSION), 24)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -20223,7 +20228,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v23 for Heat's teeth", int(saves.SAVE_VERSION), 23)
+	_expect_int("the schema is v24 for Heat's teeth", int(saves.SAVE_VERSION), 24)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -20676,7 +20681,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v23 for Wander", int(saves.SAVE_VERSION), 23)
+	_expect_int("the schema is v24 for Wander", int(saves.SAVE_VERSION), 24)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

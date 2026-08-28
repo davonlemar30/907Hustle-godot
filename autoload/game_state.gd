@@ -395,6 +395,7 @@ func reset_to_new_game() -> void:
 		"extensions": 0, "defaults": 0,
 		"total_principal_borrowed": 0, "total_interest_paid": 0,
 	}
+	dre_pending_penance = false
 	opportunity_offers = []
 	active_opportunities = []
 	opportunity_history = {}
@@ -829,6 +830,14 @@ var dre_account_history: Dictionary = {
 	"extensions": 0, "defaults": 0,
 	"total_principal_borrowed": 0, "total_interest_paid": 0,
 }
+## PR D (DRE-ARC-03 / restitution): true from the moment a suspended
+## account clears by payment until the small authored penance contract
+## (`dre_penance`, `data/dre_contracts.gd`) completes. Deliberately NOT what
+## gates the account back to "clear" -- D-4/D-7 already ruled full repayment
+## alone clears status, and this build does not reopen that ruling. Penance
+## is the follow-up relationship repair, offered because the account cleared,
+## not a second lock on top of it.
+var dre_pending_penance: bool = false
 
 # --- Opportunities (Street Opportunity and Mission System, PR C, design doc -
 # docs/STREET_OPPORTUNITY_AND_MISSION_SYSTEM_DESIGN.md, umbrella section 9) --

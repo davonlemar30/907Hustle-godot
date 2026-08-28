@@ -73,19 +73,28 @@ jobs:
         # noise on a cold cache; the export step is the real gate.
         run: godot --headless --import || true
 
-      - name: Locate the JDK
+      - name: Point the editor at the container's JDK
         # The Android export refuses with "A valid Java SDK path is required
         # in Editor Settings" on a container with no prior editor settings
-        # file -- that setting has no default and nothing else in this
-        # workflow implies one. The image carries a JDK (keytool above needed
-        # one); JAVA_HOME just isn't exported for Godot's own env lookup to
-        # find it. Detected here rather than hardcoded, since the exact JDK
-        # path is an image implementation detail, not something this repo
-        # should pin.
+        # file. Confirmed by trying JAVA_HOME alone first: Godot's own
+        # config-validation reads the java_sdk_path *editor setting*
+        # directly, not the environment -- setting JAVA_HOME changed nothing.
+        # The image carries a JDK (keytool above needed one); it just has no
+        # EditorSettings resource yet to record where. Writing a minimal one
+        # ahead of the export is the actual fix. Path detected rather than
+        # hardcoded, since the exact JDK location is an image implementation
+        # detail, not something this repo should pin.
         run: |
           JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
           echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
           echo "Detected JAVA_HOME=$JAVA_HOME"
+          mkdir -p "$HOME/.config/godot"
+          SETTINGS_FILE="$HOME/.config/godot/editor_settings-4.7.tres"
+          printf '%s\n' '[gd_resource type="EditorSettings" format=3]' > "$SETTINGS_FILE"
+          printf '\n' >> "$SETTINGS_FILE"
+          printf '%s\n' '[resource]' >> "$SETTINGS_FILE"
+          printf 'export/android/java_sdk_path = "%s"\n' "$JAVA_HOME" >> "$SETTINGS_FILE"
+          cat "$SETTINGS_FILE"
 
       - name: Export debug APK
         run: |

@@ -164,6 +164,8 @@ func _build_flow_sheet_content(spec: Dictionary) -> Control:
 				return null
 			var card: Dictionary = access.card_for(str(spec.get("surface_id", "")))
 			return null if card.is_empty() else FlowSheets.build_discovery(card)
+		"intro":
+			return FlowSheets.build_intro(gs)
 	return null
 
 ## How far a finger may travel and still count as a tap rather than a scroll.

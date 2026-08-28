@@ -74,9 +74,12 @@ func _refresh_begin() -> void:
 func _on_begin() -> void:
 	if not _gm.dispatch("start_run", {"street_name": _name.text}):
 		return
-	# Through the opening rather than straight to Home (batch 15). This is the
-	# ONE route to that screen, which is what makes "shown once per run" a
-	# property of the flow rather than a flag somebody has to remember to clear:
-	# naming yourself happens once, and CONTINUE RUN on the title screen calls
-	# `go_to_game()` directly and never passes through it.
-	nav.go_to(nav.OPENING)
+	# Yalonda's welcome replaces the Opening screen (0.1.2). Enqueued before
+	# go_to_game(), not that it matters here: start_run's reset just closed
+	# every gate, so the dispatch announced nothing and the intro sheet is
+	# alone in the queue. "Shown once per run" stays a property of the flow
+	# rather than a flag somebody has to remember to clear -- naming yourself
+	# happens once, and CONTINUE RUN on the title screen calls go_to_game()
+	# directly and never enqueues it.
+	nav.enqueue_flow_sheet({"kind": "intro"})
+	nav.go_to_game()

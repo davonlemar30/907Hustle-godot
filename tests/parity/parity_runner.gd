@@ -17804,7 +17804,7 @@ func _check_batch15(gs: Node, gm: Node) -> void:
 	_check_route_button_parity(gs, gm)
 	_check_rebuild_is_a_rebuild(gs)
 	_check_unlock_announcements(gs, gm)
-	_check_the_opening(gs)
+	_check_the_yalonda_intro(gs)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -17984,79 +17984,84 @@ func _check_rebuild_is_a_rebuild(gs: Node) -> void:
 	_free_screen(screen)
 	gs.reset_to_new_game()
 
-# --- the opening --------------------------------------------------------------
+# --- the Yalonda intro --------------------------------------------------------
 
-## The screen between naming yourself and the first morning.
+## The welcome between naming yourself and the first morning (0.1.2, replacing
+## the old Opening screen with a flow sheet -- `ui/components/flow_sheets.gd`'s
+## `build_intro()`, queued by `name_entry.gd` and drained by `screen_base.gd`
+## the same way a discovery card is).
 ##
 ## Two claims, and the second is the one that matters. It has to SAY the run's
-## real numbers — a screen that promises a rent the obligations system will not
-## charge is worse than no screen — and it has to CHANGE NOTHING, because it is
+## real numbers — a sheet that promises a rent the obligations system will not
+## charge is worse than no sheet — and it has to CHANGE NOTHING, because it is
 ## introducing a run that has already been reset and is the one thing positioned
 ## to make a fresh run not fresh.
-func _check_the_opening(gs: Node) -> void:
+func _check_the_yalonda_intro(gs: Node) -> void:
+	var flow_sheets := preload("res://ui/components/flow_sheets.gd")
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 	var before: Dictionary = (get_node("/root/SaveSystem") as Node).capture()
 
-	var screen: Node = _instantiate_screen("res://ui/screens/opening.tscn")
-	if screen == null:
-		_fail("batch15 opening", "the opening would not instantiate")
+	var content: Control = flow_sheets.build_intro(gs)
+	if content == null:
+		_fail("yalonda intro", "build_intro returned null")
 		return
-	# A script that failed to parse leaves the scene instantiable and inert —
-	# which is how `_set` shadowing `Object._set` shipped for one commit. Asked
-	# here as well as in the smoke gate, because this is the check that reads
-	# what the screen SAYS and it would otherwise read an empty screen as a
-	# copy failure rather than as a broken script.
-	_expect_true("the opening has its script attached", screen.get_script() != null)
-	(screen as Control).size = FS001_VIEWPORT
-	if screen.has_method("refresh"):
-		screen.refresh()
 	var lines: Array[String] = []
-	_collect_labels(screen, lines)
+	_collect_labels(content, lines)
 	var text: String = "\n".join(lines)
 
-	_expect_true("the opening says who you are", text.contains("PARITY"))
-	_expect_true("and where the run opens",
-		text.contains(str(gs.current_district().get("name", ""))))
-	_expect_true("and what day it is", text.contains("DAY %d" % int(gs.day)))
-	# The two numbers it would be worst to invent, read rather than authored.
-	_expect_true("and what is in the pocket", text.contains("$%d" % int(gs.cash)))
+	_expect_true("the intro says who you are", text.contains(str(gs.street_name)))
 	_expect_true("and what the rent is", text.contains("$%d" % int(gs.WEEKLY_RENT)))
-	_expect_true("and when it lands",
-		text.contains("%d days" % maxi(0, int(gs.rent_due_day) - int(gs.day))))
-	# The one instruction. After batch 14 it is very nearly the only thing a
-	# Day 1 player can do, so the screen has to name it.
-	_expect_true("and tells the player the one thing they can do",
-		text.to_lower().contains("walk the block"))
-	var go := screen.get_node_or_null("Pad/V/Go") as Button
-	_expect_true("the opening has a way out", go != null and go.visible)
+	# The direction beat. After batch 14 the Chevron is very nearly the only
+	# legit door a Day 1 player is told about, so the sheet has to name it.
+	_expect_true("and the honest way in", text.to_lower().contains("chevron"))
+
+	var buttons: Array = []
+	_collect_buttons(content, buttons)
+	var dismiss: Button = null
+	for entry in buttons:
+		if str((entry as Button).name) == "Dismiss":
+			dismiss = entry
+	_expect_true("the intro has a way out", dismiss != null and dismiss.visible)
 	_expect_true("and it is a real tap target",
-		go != null and go.custom_minimum_size.y >= 44.0)
-	_expect_true("and it says what it does", go != null and not go.text.is_empty())
-	_free_screen(screen)
+		dismiss != null and dismiss.custom_minimum_size.y >= 44.0)
+	_expect_true("and it says what it does", dismiss != null and not dismiss.text.is_empty())
+
+	var controls: Array = []
+	_fs001_controls(content, controls)
+	var widest: float = 0.0
+	for entry in controls:
+		widest = maxf(widest, (entry as Control).custom_minimum_size.x)
+	_expect_true("yalonda intro: nothing declares a width past the phone",
+		widest <= FS001_VIEWPORT.x)
+	content.free()
+
+	# The three due-day framings, `opening.gd::_rent_line()`'s old branches
+	# (today / tomorrow / N days out) carried into a sentence instead of a
+	# card label. Built fresh per case rather than re-reading `content`, which
+	# is already freed above.
+	var real_due_day: int = gs.rent_due_day
+	var day_cases := [
+		{"due_day": int(gs.day), "want": "due today"},
+		{"due_day": int(gs.day) + 1, "want": "due tomorrow"},
+		{"due_day": int(gs.day) + 5, "want": "due in 5 days"},
+	]
+	for one_case in day_cases:
+		gs.rent_due_day = int((one_case as Dictionary)["due_day"])
+		var one: Control = flow_sheets.build_intro(gs)
+		var one_lines: Array[String] = []
+		_collect_labels(one, one_lines)
+		_expect_true("the intro's due-day framing (%s)" % str((one_case as Dictionary)["want"]),
+			"\n".join(one_lines).contains(str((one_case as Dictionary)["want"])))
+		one.free()
+	gs.rent_due_day = real_due_day
 
 	# It wrote nothing. Compared field by field through the save capture, which
 	# is the same shape the round-trip check compares.
 	var after: Dictionary = (get_node("/root/SaveSystem") as Node).capture()
 	for field in before:
-		_expect_str("the opening does not change %s" % str(field),
+		_expect_str("the intro does not change %s" % str(field),
 			str(after.get(field)), str(before[field]))
-
-	# The route. It is reachable, it is not a nav destination, and CONTINUE RUN
-	# does not pass through it — a player resuming day 12 is not told where they
-	# woke up on day 1.
-	var nav: Node = get_node("/root/ScreenManager")
-	_expect_str("the opening resolves to itself",
-		nav.resolved_route(nav.OPENING), nav.OPENING)
-	var in_nav := false
-	for cell in nav.NAV_ROUTES:
-		if str(nav.NAV_ROUTES[cell]) == str(nav.OPENING):
-			in_nav = true
-	_expect_true("the opening is not a bottom-nav destination", not in_nav)
-	_expect_str("and continuing a run goes straight to the game",
-		nav.resolved_route(nav.HOME), nav.HOME)
-	# The 375 rule and the 44pt rule, through the one owner of both.
-	_fs001_render("res://ui/screens/opening.tscn", "day one")
 	gs.reset_to_new_game()
 
 # --- the news -----------------------------------------------------------------
@@ -18776,7 +18781,19 @@ func _fail(label: String, detail: String) -> void:
 ## per pass ("hides it" / "shows it once earned"). Net six down. `locked_paths`
 ## retires with it: Home has no LOCKED-mode card left to ask those three
 ## questions about, and a loop with nothing in it is not coverage.
-const MIN_CHECKS := 12524
+##
+## 0.1.2 PR C (Yalonda replaces the Opening) takes it to 12518. The Opening
+## screen's own check (`_check_the_opening`, instantiate + read every label +
+## a fixed no-mutation loop + three route-table assertions) is gone with the
+## screen; `_check_the_yalonda_intro` asks the same two questions -- does it
+## say the run's real numbers, does it change nothing -- of `build_intro()`'s
+## returned content instead of a scene, plus a sweep the old check never ran
+## at all: the three due-day framings (today / tomorrow / N days out) built
+## and asserted as three separate cases rather than read once off whatever a
+## fresh run's `rent_due_day` happened to be. The route-table assertions have
+## no replacement -- a flow-sheet spec is not a route, so "is it reachable
+## from the nav bar" is not a question this screen can even be asked anymore.
+const MIN_CHECKS := 12518
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

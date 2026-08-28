@@ -13,10 +13,6 @@ extends Node
 ## parse time instead of a silent failed load at runtime.
 const TITLE := "res://ui/screens/title.tscn"
 const NAME_ENTRY := "res://ui/screens/name_entry.tscn"
-## The opening (batch 15). Not in NAV_ROUTES and never returned to: it sits
-## between naming yourself and the first morning, and `name_entry.gd` is its
-## only caller.
-const OPENING := "res://ui/screens/opening.tscn"
 const HOME := "res://ui/screens/home.tscn"
 const STREET := "res://ui/screens/street.tscn"
 const MARKET := "res://ui/screens/market.tscn"

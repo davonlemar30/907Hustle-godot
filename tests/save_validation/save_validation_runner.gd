@@ -25,6 +25,7 @@ func _ready() -> void:
 	_test_v16_territory_nodes()
 	_test_v17_market_discovery()
 	_test_v18_boost_bribes_used()
+	_test_v19_tips()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -367,6 +368,66 @@ func _test_v18_boost_bribes_used() -> void:
 	_check("and arrives with nothing bought",
 		not v17.has("boost_bribes_used")
 		or (v17["boost_bribes_used"] as Array).is_empty())
+
+## 0.1.2 (Word of Mouth): `tip_effects` (a row per active payload) and
+## `tip_misses` (the ramp counter), same two-field split as v9's arrest
+## record and v18's latch -- one array of rows, one clamped int.
+func _test_v19_tips() -> void:
+	var valid_row := {"type": "fat_night", "target_id": "rec_center_dice",
+		"day": 12, "slots": [2, 3], "multiplier": 2.5}
+	var valid_result := _result(_state("tip_effects", [valid_row]))
+	var valid_fixed: Dictionary = valid_result["state"]
+	_check("a valid tip_effects row survives",
+		(valid_fixed["tip_effects"] as Array) == [valid_row])
+	_check("a valid tip_effects shape is a validation no-op",
+		(valid_result["repairs"] as Array).is_empty())
+
+	var wrong := _fixed(_state("tip_effects", "fat_night"))
+	_check("a wrong-type tip_effects defaults to no active tips",
+		wrong["tip_effects"] is Array and (wrong["tip_effects"] as Array).is_empty())
+
+	var swept := _fixed(_state("tip_effects", [
+		"not_a_row",
+		{"type": "fat_night", "target_id": "goodie_stash", "day": 9,
+			"slots": ["two", 3, null], "multiplier": "a lot"},
+	]))
+	var rows: Array = swept["tip_effects"]
+	_check("a non-dictionary row drops", rows.size() == 1)
+	var repaired: Dictionary = rows[0]
+	_check("target_id survives on the kept row",
+		str(repaired.get("target_id", "")) == "goodie_stash")
+	_check("a wrong-type multiplier defaults rather than dropping the row",
+		float(repaired.get("multiplier", -1.0)) == 1.0)
+	var slots: Array = repaired.get("slots", [])
+	_check("bad slot entries drop, the real one survives",
+		slots.size() == 1 and int(slots[0]) == 3)
+
+	var ceiling: int = int(preload("res://data/tip_events.gd").miss_ceiling())
+	_check("tip_misses within range passes untouched",
+		int(_fixed(_state("tip_misses", 1))["tip_misses"]) == 1)
+	_check("a negative tip_misses defaults to zero",
+		int(_fixed(_state("tip_misses", -3))["tip_misses"]) == 0)
+	_check("tip_misses beyond the ramp's own ceiling clamps",
+		int(_fixed(_state("tip_misses", ceiling + 50))["tip_misses"]) == ceiling)
+	_check("a wrong-type tip_misses defaults to zero",
+		int(_fixed(_state("tip_misses", "a lot"))["tip_misses"]) == 0)
+
+	var absent_result := _result(_state("day", 4))
+	_check("an absent tip_effects stays absent",
+		not (absent_result["state"] as Dictionary).has("tip_effects"))
+	_check("an absent tip_misses stays absent",
+		not (absent_result["state"] as Dictionary).has("tip_misses"))
+
+	# Purely additive, same as v18: Word of Mouth did not exist before this
+	# build, so a v18 save never had a live window or a drought running.
+	var save_system: Node = get_node("/root/SaveSystem")
+	var v18: Dictionary = save_system._migrate({"save_version": 18,
+		"state": _state("boost_bribes_used", [])})
+	_check("a v18 save migrates", not v18.is_empty())
+	_check("and arrives with no active tip",
+		v18.has("tip_effects") and (v18["tip_effects"] as Array).is_empty())
+	_check("and arrives with no drought yet",
+		v18.has("tip_misses") and int(v18["tip_misses"]) == 0)
 
 ## FS-002.3 (`86bbj1jpm`): the first Territory arm in this validator, and the
 ## root-cause fix for `86bbjxtab` — nothing validated the ids in a loaded

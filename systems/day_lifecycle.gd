@@ -184,6 +184,12 @@ const DAY_START_ORDER: Array[String] = [
 	"expire_retaliation",
 	"surface_delayed",
 	"retaliation_ambient",
+	# Word of Mouth (0.1.2). Last, on purpose: a tip that named a target
+	# `surface_delayed`/`retaliation_ambient` were about to expose, or graded
+	# a district against a pressure reading from before the day's other
+	# resets settled, would be describing a board that had not finished
+	# becoming today's yet.
+	"tips",
 ]
 
 ## The settlement order, declared. Each entry is the system name as registered
@@ -414,6 +420,16 @@ func _run_day_start_step(step: String, today: int) -> void:
 		# Today's Take rides the same step for the same reason: it is also
 		# "what has already happened today," cleared as today begins.
 		gs.todays_earnings = {}
+		return
+	if step == "tips":
+		# Handled here rather than past the engine guard below: Pherris' route
+		# push and the budget roll itself need no consequence engine at all,
+		# and a build without one registered must still be able to text the
+		# player about a market route rather than losing the whole step to an
+		# unrelated system's absence.
+		var tips: Object = gm.system("tips") if gm != null else null
+		if tips != null:
+			tips.push_tip(today)
 		return
 	var engine: Object = gm.system("consequence") if gm != null else null
 	if engine == null:

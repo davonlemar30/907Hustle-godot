@@ -194,6 +194,14 @@ func _ready() -> void:
 	announcer.setup(_gs, self)
 	register_system("announcer", announcer)
 
+	# Word of Mouth (0.1.2). Built the same way and for the same reason: it
+	# reaches economy, the consequence engine and the phone at call time
+	# rather than at construction, so registration order in front of it does
+	# not matter.
+	var tips = preload("res://systems/tips.gd").new()
+	tips.setup(_gs, self, rng)
+	register_system("tips", tips)
+
 	var consequence_engine = preload("res://systems/consequence_engine.gd").new()
 	consequence_engine.setup(_gs, self)
 	consequence_engine.register_source_adapter("boost", boost)

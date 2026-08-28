@@ -1,6 +1,6 @@
 # 907Hustle — Godot Port: Session Handoff
 
-_Last updated: 2026-08-27. Living doc — update as screens land._
+_Last updated: 2026-08-28. Living doc — update as screens land._
 
 > **This file is one of four.** `HANDOFF.md` (here) carries current, living
 > reference — orientation, design system, canon tables, working notes, and the
@@ -29,17 +29,18 @@ One place to orient before reading anything else below.
 
 | | |
 | --- | --- |
-| Build version | `0.1.0` (`autoload/version.gd`) |
-| Save schema | **v16** (Batch 18 PR 3, FS-002.3) — migration ladder walks v1 → v16. `held_blocks`/`spenard_blocks` retired; `territory_nodes`/`territory_fronts` off `data/territory_definitions.gd` |
-| Parity | **12,530 checks, 0 failures**, floor `MIN_CHECKS := 12530` — five sections that drove tier 2-3 stickups now drive the rooms (confrontation loop) |
+| Build version | `0.1.2` — "She Said Get a Job" (`autoload/version.gd`) |
+| Save schema | **v19** (0.1.2 PR E, Word of Mouth) — migration ladder walks v1 → v19. `boost_bribes_used` (v18, the Lift's BRIBE), `tip_effects`/`tip_misses` (v19, Word of Mouth's payloads + drought counter) |
+| Parity | **12,533 checks, 0 failures**, floor `MIN_CHECKS := 12533` — `DAY_START_ORDER` trace gained `DAY_START:tips`; five sections that drove tier 2-3 stickups drive the rooms (confrontation loop) |
 | Territory suite | **169 checks, 0 failures** — a CI gate as of Batch 18 PR 1 (`tests/territory/`), FS-002's own harness, seconds rather than the parity runner's ~2 minutes |
-| Confrontation suite | **159 checks, 0 failures** — a CI gate as of the rooms build (`tests/confrontation/`), the loop's own harness on the shared territory asserts |
-| Save validation | 121 checks, 0 failures — a CI gate as of batch 12 |
-| Screen smoke | 24/24 screens instantiate **with their scripts attached** — a CI gate as of batch 12, script-attachment added in batch 15 |
+| Confrontation suite | **212 checks, 0 failures** — a CI gate as of the rooms build (`tests/confrontation/`), the loop's own harness on the shared territory asserts; grew through 0.1.2 PR D (the Lift's caught loop) and the HAND IT BACK follow-up |
+| Tips suite | **93 checks, 0 failures** — a CI gate as of 0.1.2 PR E (`tests/tips/`), Word of Mouth's own harness on the shared territory asserts |
+| Save validation | **151 checks, 0 failures** — a CI gate as of batch 12; gained `_test_v18_boost_bribes_used` and `_test_v19_tips` in 0.1.2 |
+| Screen smoke | 23/23 screens instantiate **with their scripts attached** — a CI gate as of batch 12, script-attachment added in batch 15; `opening.tscn` retired in 0.1.2 PR C (Yalonda replaces it) |
 | Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` |
-| Screens | 24 |
-| Systems | 30 registered in `GameManager` (Batch 18 PR 0 added `run`) |
+| Screens | 23 (`opening.tscn` retired in 0.1.2 PR C) |
+| Systems | 31 registered in `GameManager` (0.1.2 PR E added `tips`) |
 | Discovery axes | **2** — `jobs_discovered` (WORK walks) and `boost_targets_discovered` (DEAL walks, batch 14) |
 | Territory operating cost | **$20/soldier/night** on the full roster (Batch 18 PR 4, D-1) — the first recurring cost Territory has ever had |
 | Branches | Stale remote branches accumulate; every merged PR's branch is deleted at merge time as of Batch 18 (see the feedback note on stacked-PR merges — never delete a branch another open PR is based on). |
-| Latest PRs | **#79** (Today's Take truth, 2026-08-27), **#78** (Opening calibration, 2026-08-27) |
+| Latest PRs | **0.1.2** — five PRs off `BUILD_0.1.2_PROMPT.md`: hide Turf/Crew, the discovery card, Yalonda's opening, the Lift's BRIBE (+ a same-day HAND IT BACK follow-up), Word of Mouth slice 1 (2026-08-28) |

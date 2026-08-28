@@ -1,10 +1,15 @@
 extends "res://ui/screens/surface_base.gd"
-## Shark — lend money, wait, find out.
+## THE BOOK — lend money, wait, find out. Renamed from "Shark" (DRE-D10);
+## the file/scene names stay as-is, the same "code identifiers don't chase
+## player-facing copy" call every other relabel in this build makes.
 ##
-## Two halves: notes already out (with whatever decision a default is waiting
-## on), and the borrowers who will take a new one. The odds shown are the real
-## default probability, because the whole surface is a bet the player should be
-## able to price.
+## Three parts, top to bottom: what the player owes DRE (a read-only summary
+## — Phone owns the actual repay/extension actions, DRE-D2), notes already
+## out (with whatever decision a default is waiting on), and the borrowers
+## who will take a new one — locked behind earned access or Dre's one
+## sponsorship exception (PR E, DRE-ARC-04) until then. The odds shown on a
+## fundable row are the real default probability, because the whole surface
+## is a bet the player should be able to price.
 
 ## Canon terms: shorter is dearer. Order matters — this drives the picker.
 const TERMS := [2, 4, 7]
@@ -17,13 +22,19 @@ func _build_body() -> void:
 	if sys == null:
 		return
 
+	# Design doc §15.2 / DRE-D10: two separate sections, never merged into
+	# one "notes" total. This is the half that is not the Book at all — see
+	# `_dre_debt_card()`.
+	body.add_child(section("DEBT TO DRE — YOU OWE"))
+	body.add_child(_dre_debt_card())
+
 	var open_notes: Array = []
 	for l in gs.shark_loans:
 		if str(l["status"]) in ["active", "extended", "defaulted"]:
 			open_notes.append(l)
 
+	body.add_child(section("THE BOOK — THEY OWE YOU"))
 	if not open_notes.is_empty():
-		body.add_child(section("NOTES OUT"))
 		for l in open_notes:
 			body.add_child(_note_row(sys, l))
 
@@ -32,7 +43,64 @@ func _build_body() -> void:
 
 	body.add_child(section("WHO'S ASKING"))
 	for b in gs.shark_borrowers:
-		body.add_child(_borrower_row(sys, b))
+		if sys.is_locked(str(b["id"])):
+			body.add_child(_locked_borrower_row(b))
+		else:
+			body.add_child(_borrower_row(sys, b))
+
+## Design doc §15.2 / DRE-D10's other half. Read-only on purpose: Phone
+## already owns repay and extension-request (`phone.gd::_bind_dre_debt_card`,
+## DRE-D2 — cash transfers, no slot), so this states the number rather than
+## opening a second door to pay it.
+func _dre_debt_card() -> Control:
+	var c := card()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 5)
+	c.add_child(v)
+
+	if gs.debt <= 0:
+		v.add_child(label("Clear. Dre's not owed anything right now.", "Muted", 11, MUTED))
+		return c
+
+	var head := HBoxContainer.new()
+	v.add_child(head)
+	var nm := label("Dre", "CardTitle", 13, CREAM)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(nm)
+	head.add_child(label("$%d" % gs.debt, "Mono", 13, AMBER))
+
+	var status := str(gs.dre_account.get("status", "clear"))
+	if status == "suspended":
+		v.add_child(label("SUSPENDED — clear it before he lets you run a book.", "Muted", 11, RED))
+	elif gs.debt_due_days < 0:
+		var days_over: int = -gs.debt_due_days
+		v.add_child(label("OVERDUE by %d day%s" % [days_over, "" if days_over == 1 else "s"], "Muted", 11, RED))
+	elif gs.debt_due_days == 0:
+		v.add_child(label("Due tonight.", "Muted", 11, AMBER))
+	else:
+		v.add_child(label("Due in %d day%s." % [gs.debt_due_days, "" if gs.debt_due_days == 1 else "s"], "Muted", 11, MUTED))
+	return c
+
+## Canon's "card locked" pattern (see ui/screens/recovery.gd's own doctor
+## card) — the relationship reads as a goal before it is a requirement. Name
+## and blurb still show; odds, amount, and the LEND button do not, since
+## none of them mean anything until the tier opens or Dre vouches.
+func _locked_borrower_row(b: Dictionary) -> Control:
+	var c := card()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 5)
+	c.add_child(v)
+
+	var head := HBoxContainer.new()
+	v.add_child(head)
+	var nm := label(str(b["name"]), "CardTitle", 13, MUTED)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(nm)
+	head.add_child(label("LOCKED", "Mono", 11, MUTED))
+
+	v.add_child(label(str(b["desc"]), "Muted", 11, MUTED, true))
+	v.add_child(label("Dre hasn't opened the Book to you yet.", "Muted", 11, MUTED))
+	return c
 
 func _term_row() -> Control:
 	var h := HBoxContainer.new()

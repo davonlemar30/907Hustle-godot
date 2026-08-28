@@ -310,6 +310,16 @@ func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dicti
 			var clear: bool = status == "clear"
 			return _result(req, clear, status, "clear")
 
+		# PR E (DRE-ARC-04): "Collector + not suspended" is deliberately
+		# wider than `dre_account_clear` -- the design doc's own words. An
+		# active/due/extended/overdue account still passes; only a
+		# suspended one blocks. Same monotonic-safe carve-out as
+		# `dre_account_clear` above: gates an offer, never a route.
+		"dre_account_not_suspended":
+			var account_status: String = str(facts.get("dre_account_status", "clear"))
+			var ok: bool = account_status != "suspended"
+			return _result(req, ok, account_status, "not suspended")
+
 		# PR D (DRE-ARC-03): "acceptable Dre disposition" gating a collection
 		# offer -- monotonic-safe like `dre_access_tier_min` in the sense that
 		# it gates an OFFER, not a route (same carve-out `dre_account_clear`

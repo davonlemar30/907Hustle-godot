@@ -35,6 +35,22 @@ extends RefCounted
 ## payment (`dre_pending_penance`, game_state.gd) — real content, resolved
 ## through the generic matcher like `dre_first_money`, because
 ## `dre_do_penance` is a name nothing else in the game dispatches.
+##
+## `dre_book_sponsorship` (DRE-ARC-04, PR E) is the last milestone: Dre
+## sponsors Priya Osei (`GameState.shark_borrowers`, the one row whose
+## `introduction_key` matches this definition's own id) as one fundable
+## exception before Junior Lender itself opens the Book. Accepted by
+## dispatching `fund_shark` against her specifically — the loan IS the
+## acceptance, same as First Money's `dre_borrow` — and resolved when
+## THAT loan reaches a terminal state (repaid, or defaulted then enforced
+## or forgiven; extending leaves it open). None of that goes through the
+## generic matcher: `fund_shark`/`enforce_shark`/`forgive_shark` are
+## action names shared by every Book loan a player will ever touch, not
+## just the sponsored one, so `systems/shark.gd` calls
+## `Opportunities.accept/resolve/fail` directly, keyed off the loan's own
+## `borrower_id` matching the catalogue row's `introduction_key` — no
+## `source_context` needed, since the sponsored borrower is authored, not
+## chosen at offer time.
 
 const DEFINITIONS := {
 	"dre_the_introduction": {
@@ -133,6 +149,44 @@ const DEFINITIONS := {
 		"presentation": {
 			"title": "Making It Right",
 			"offered_body": "The money's square. Dre still wants to hear it from you.",
+		},
+	},
+	"dre_book_sponsorship": {
+		"id": "dre_book_sponsorship",
+		"kind": "mission",
+		"giver_id": "dre",
+		"family": "dre_credit",
+		"repeatable": false,
+		"requirements": [
+			{"type": "dre_access_tier_min", "min": 3},
+			# Deliberately wider than dre_account_clear -- design doc: "Collector
+			# + not suspended." A player mid-loan with Dre still qualifies.
+			{"type": "dre_account_not_suspended"},
+		],
+		# Documentation only, and NOT the real dispatch action on purpose --
+		# see this file's own header. `fund_shark`/`enforce_shark` are real,
+		# frequently-dispatched action names shared by every Book loan; if
+		# this named one of them, `opportunities._advance_action_result_
+		# objectives` (the generic matcher, unconditional on every dispatch)
+		# would find this instance still ACTIVE the moment `fund_shark`
+		# accepts it and resolve it on the spot, with an empty result,
+		# before Priya's loan has settled at all -- caught by
+		# `dre_runner.gd`'s own full-arc test. A name nothing ever
+		# dispatches means the generic scan can never match it, so only
+		# `systems/shark.gd`'s bespoke accept/resolve calls (matching the
+		# resolving loan's own borrower_id against GameState.shark_
+		# borrowers' introduction_key) ever touch this instance.
+		"objectives": [
+			{"class": "action_result", "action": "dre_book_sponsorship_resolved"},
+		],
+		"completion_mode": "auto",
+		"completion_effects": [
+			{"type": "access_milestone", "field": "dre_access_tier", "min": 4},
+		],
+		"presentation": {
+			"title": "Your First Name in the Book",
+			"offered_body": "Dre's putting a name forward: Priya Osei. Fund her, " \
+				+ "see it through, and the Book is yours.",
 		},
 	},
 }

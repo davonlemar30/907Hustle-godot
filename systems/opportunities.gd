@@ -60,6 +60,15 @@ extends RefCounted
 ## the full reasoning. `fail()` exists for the same PR: a `repeatable: false`
 ## definition can now genuinely fail (walking away from a collection,
 ## botching a negotiation) rather than only ever completing.
+##
+## ## `is_offered_or_active()` — PR E's third consumer, a narrower question
+##
+## `systems/shark.gd` (PR E) reads this to gate a locked borrower row's one
+## fundable exception (`dre_book_sponsorship`, DRE-ARC-04). Narrower than
+## `_resolved_or_live()` on purpose: a RESOLVED sponsorship must read false
+## here, since by then the milestone already promoted Junior Lender, which
+## opens the borrower through the ordinary tier gate instead — exactly the
+## distinction `_resolved_or_live()` cannot make.
 
 const DRE_CONTRACTS := preload("res://data/dre_contracts.gd")
 const REQUIREMENTS := preload("res://systems/requirements.gd")
@@ -246,6 +255,18 @@ func _find(array: Array, definition_id: String) -> Variant:
 		if str((entry as Dictionary).get("definition_id", "")) == definition_id:
 			return entry
 	return null
+
+## Public — PR E's `shark.fund_blocker` reads this to know whether a
+## normally tier-locked borrower has a live sponsorship covering them
+## right now (offered or accepted; a terminal one no longer applies,
+## which is exactly what `_resolved_or_live` cannot tell apart and this
+## can). Narrower than `_resolved_or_live` on purpose: a resolved
+## `dre_book_sponsorship` means the milestone already paid out Junior
+## Lender, which opens the borrower through the ordinary tier gate
+## instead — this method correctly reads false once that happens.
+func is_offered_or_active(definition_id: String) -> bool:
+	return _find(gs.opportunity_offers, definition_id) != null \
+		or _find(gs.active_opportunities, definition_id) != null
 
 func _facts() -> Dictionary:
 	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")

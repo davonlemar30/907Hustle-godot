@@ -67,7 +67,7 @@ func _build_body() -> void:
 	var finance_row: Control = _menu_row(
 		"Finances",
 		_finance_summary(),
-		"Cash, debt, Shark notes, and financial risk." if gs.debt > 0 else "Cash and financial risk.",
+		"Cash, debt to Dre, the Book, and financial risk." if gs.debt > 0 else "Cash, the Book, and financial risk.",
 		nav.SHARK)
 	body.add_child(finance_row)
 	apply_surface_gate(ACCESS.HUSTLE_SHARK, finance_row)

@@ -16,7 +16,11 @@ extends Node
 ## Registered as an autoload so a screen can reach it by path (`/root/Version`)
 ## the same way it reaches GameState, without preloading a script for a string.
 
-const VERSION := "0.1.3"
+## Dre Lending & Loan-Shark Progression (PR A-E) closes here: a new
+## relationship system, authored contracts, and an earned hustle surface
+## (THE BOOK) — the clearest "ships new surfaces or systems" case since this
+## file's own MINOR rule was written, so this is the bump that uses it.
+const VERSION := "0.2.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

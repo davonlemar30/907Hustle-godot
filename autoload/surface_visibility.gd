@@ -272,17 +272,29 @@ const GATES := {
 		"mode": MODE_HIDDEN,
 		# Replaces the elapsed-day gate (design doc: "time passing does not
 		# explain why Dre trusts the player with his borrower network").
-		# Junior Lender only — deliberately not combined with
+		# Junior Lender, OR the one PR E exception a live `dre_book_
+		# sponsorship` opens early — `dre_book_visible` folds both into one
+		# fact (see its own comment above). Deliberately not combined with
 		# `dre_account_clear`; see `requirements.gd`'s header on why a route
-		# gate never reads a field that moves backward. `announce`/
-		# `card_title` stay the day-5 placeholder copy on purpose: PR E
-		# re-copies this entry in Dre's own voice when it ships the real
-		# reveal ("THE BOOK IS YOURS"), and rewriting it twice would be
-		# copy nobody ever saw.
-		"requirements": [{"type": "dre_access_tier_min", "min": 4}],
+		# gate never reads a field that moves backward.
+		"requirements": [{"type": "fact_true", "fact": "dre_book_visible"}],
 		"hint": "",
-		"announce": "You know who lends now, and who they lend to.",
-		"card_title": "THE SHARK WILL SEE YOU",
+		# PR E re-copy, Dre's own voice (DRE-ARC-04) — the old day-5
+		# placeholder ("You know who lends now...") never shipped where a
+		# player could see it.
+		#
+		# Fires the moment `dre_book_visible` flips, which is now the
+		# sponsorship offer for a Collector on that road, not only true
+		# tier-4 completion — deliberate, not an early-fire bug. Every other
+		# card in this table already celebrates a SURFACE becoming reachable
+		# (a discovery), not a mastery milestone: `HUSTLE_MARKET` fires on
+		# one seeded wander, `HUSTLE_BOOST` on a wander count, neither on
+		# some later "and you used it well." A player who sees this the
+		# moment Priya's offer lands is seeing an honest, earlier truth —
+		# the screen really is reachable now, four locked strangers and one
+		# name he vouched for — not a lie the milestone has to catch up to.
+		"announce": "Your name's in the Book now. That's not nothing.",
+		"card_title": "THE BOOK IS YOURS",
 	},
 }
 
@@ -371,12 +383,43 @@ func facts() -> Dictionary:
 		# on why the two are never combined on the same gate.
 		"dre_access_tier": gs.dre_access_tier,
 		"dre_account_status": str(gs.dre_account.get("status", "clear")),
+		# PR E (DRE-ARC-04): the milestone itself IS the borrower's temporary
+		# eligibility — design doc §13.2, "ordinary Book access is not
+		# required, so the gate is not circular." A Collector with Priya's
+		# sponsorship live has to be able to reach the Shark screen to fund
+		# her; the ordinary tier-4 latch alone would strand them on a route
+		# that refuses the one action their own offer requires. Folded into
+		# one precomputed OR here rather than a new requirement type, because
+		# `Requirements.evaluate_requirements` ANDs its list and cannot
+		# express the OR itself — see `fact_true`'s own header on why this is
+		# the escape hatch for exactly that shape, the same move
+		# `operation_card_live` already makes two rows up.
+		"dre_book_visible": int(gs.dre_access_tier) >= 4 or _dre_book_sponsored(),
 		"operation_card_live": not str(operation_card_reason()).is_empty(),
 		# A population rather than a boolean, because the SCREEN needs the list
 		# and the gate needs its size — and deriving them separately is how a
 		# card ends up visible with nothing on it.
 		"home_actions": home_actions().size(),
 	}
+
+# --- DRE-ARC-04's route exception -------------------------------------------
+
+## True while `dre_book_sponsorship` (data/dre_contracts.gd) is offered or
+## active — see the `dre_book_visible` fact above for why this exists.
+## Monotonicity caveat, named rather than hidden: this can only run
+## true-to-false if the offer is DECLINED before it resolves (resolving
+## always raises the tier to 4 in the same call that clears the offer — see
+## `Opportunities.resolve()` — so that road never dips). Nothing in this
+## build's UI currently offers a decline door for this specific definition
+## (no People card exists for it — funding IS the acceptance, same as First
+## Money), so the flip side is unreachable today. A future PR that adds one
+## must re-examine this the moment it does.
+func _dre_book_sponsored() -> bool:
+	var manager: Node = get_node_or_null("/root/GameManager")
+	if manager == null:
+		return false
+	var opportunities: Object = manager.system("opportunities")
+	return opportunities != null and opportunities.is_offered_or_active("dre_book_sponsorship")
 
 # --- Home's operation card -------------------------------------------------
 

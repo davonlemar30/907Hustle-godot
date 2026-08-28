@@ -18,6 +18,70 @@ a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
 
+## 0.2.0 — Dre Lending & Loan-Shark Progression (2026-08-28)
+
+Dre fronts money now, and the debt is real. Juan puts you onto him when
+things get tight — not on a clock, on whether you actually need it — and the
+first loan is a plain number with a plain deadline: what you get, what you
+owe back, and the day it's due. Pay it and Dre trusts you with more. Miss it
+and he doesn't come for you himself; he sends somebody, and that's its own
+conversation.
+
+Trust him enough and he starts handing you work: a name to collect from,
+talked loose or taken the hard way, your call. Handle it clean and he'll put
+your own name forward — one borrower, his vouch, funded through the same
+book everybody else's money runs through. See that loan through and the Book
+opens for real: THE BOOK is yours to run, other people's money at your own
+interest, THE SHARK surface retired under a name that actually says what it
+is. It was never a Day 5 unlock. You earn it, in order, or you don't see it
+at all.
+
+Finances now says the two things it always meant to say as two things: DEBT
+TO DRE, what you owe him, and THE BOOK, what they owe you. Never one number
+pretending to be both.
+
+#### Next up
+
+The authored chain is the whole of Dre's content for now — repeatable
+contracts after Junior Lender (max three live, one new offer a day) are
+deliberately deferred past this build, the same discipline that kept this
+arc from becoming a second game before the first chain proved itself.
+
+#### Added
+
+- **Dre, the relationship**: `dre_introduced`, `dre_access_tier` (Unknown →
+  Borrower → Trusted Customer → Collector → Junior Lender), and a structured
+  `dre_account` replacing the old dormant flat-debt fields. Juan's mention
+  fires on a real trigger — low cash or rent pressure past Day 2 — never on
+  elapsed time alone.
+- **First Money**: Dre's first loan, $1,000 for $1,200 back in 5 days, one
+  extension (+2 days, +$100), full repayment only. Pay late and restitution
+  is a real, separate road back from a suspended account.
+- **A Reminder**: Dre's first real contract — collect from a borrower who
+  owes him, talked loose (a Charisma read) or taken hard (a real
+  confrontation chain, press or walk away). Either road changes what Dre and
+  the neighborhood think of you.
+- **Your First Name in the Book**: Dre sponsors one borrower — Priya Osei —
+  as a fundable exception before the Book itself opens. Fund her, see her
+  loan through, and Junior Lender opens for real: the Book, earned, with the
+  discovery card to match.
+- **The Book, relabeled and gated by access**: borrower rows lock until
+  Junior Lender (or Priya's own sponsorship window), and Dre's own
+  relationship discount — bonded borrowers default 8 points less often —
+  goes live for a Collector or better.
+- New systems `dre_lender`, `dre_collector`, and `opportunities` (the shared
+  substrate this arc's contracts run on); new gate suite `tests/dre/` (331
+  checks) in CI beside the other five.
+
+#### Changed
+
+- Finances (More → Finances, same screen as the Book) now shows DEBT TO DRE
+  and THE BOOK as two separate sections — never merged into one "notes"
+  total.
+- The economy instrument gained a leveraged-lender profile and a standing
+  check that no combination of the shipped numbers lets a player borrow from
+  Dre and fund the Book for a guaranteed profit.
+
 ## 0.1.3 — the long-run memory fix (2026-08-28)
 
 Long runs were getting slower to scroll and slower to tap, and the further

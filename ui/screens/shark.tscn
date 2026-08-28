@@ -409,13 +409,13 @@ theme_override_constants/separation = 2
 layout_mode = 2
 theme_type_variation = &"Brand"
 theme_override_font_sizes/font_size = 26
-text = "SHARK"
+text = "THE BOOK"
 
 [node name="Sub" type="Label" parent="Shell/Scroll/Pad/Content/Title"]
 layout_mode = 2
 theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 12
-text = "Other people's problems, at interest."
+text = "What you owe. What they owe you."
 
 [node name="Gap" type="Control" parent="Shell/Scroll/Pad/Content"]
 custom_minimum_size = Vector2(0, 12)

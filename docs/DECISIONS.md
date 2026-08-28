@@ -603,6 +603,46 @@ Status line from "Proposed" to "Approved with rulings; see DECISIONS.md" in
 this same PR, which only makes sense once every ruling either doc's open
 questions produced is actually written down somewhere.
 
+## D-11 — Touch scroll transparency: the In Hand rulings
+
+**Decided** 2026-08-28 · **Ships in** `fix/touch-scroll-transparency` (0.2.1) ·
+**Source:** `BUILD_IN_HAND_PROMPT.md`
+
+### The question
+
+On every screen except parts of Home, a touch that started on a card, button,
+or label never reached the `ScrollContainer` above it — only a drag starting
+on bare background scrolled. Root cause: `card()`/`_card()`
+(`ui/screens/surface_base.gd`, `ui/screens/jobs.gd`) return a bare
+`PanelContainer`, and `PanelContainer` is the one Container subtype that
+defaults to `MOUSE_FILTER_STOP` — every layout Container (`VBoxContainer`,
+`HBoxContainer`, `MarginContainer`, generic `Container`) defaults to `PASS`
+instead, confirmed directly against a live instance rather than assumed. The
+fix mechanism (`tap_connect`/`make_tappable`, `ui/screens/screen_base.gd`) was
+already correct; it had only ever been wired onto 7 of 70+ card call sites.
+
+### The rulings
+
+| Decision | Ruling |
+|---|---|
+| Pass-through is the default, not the exception | Inside any screen's `ScrollContainer`, no Control sits at `MOUSE_FILTER_STOP`. Interactivity is added via the measured-tap pattern (`tap_connect`), never via `STOP` + `pressed`. |
+| Transparency and tappability are separate concerns | The fix makes cards *transparent to drags* (`PASS`); it does not make previously-inert cards tappable. `make_tappable()` stays the opt-in door to tappability — no handler was wired onto a card that never had one. |
+| Fix at the source plus one backstop, not 70 patches | `card()` (`surface_base.gd`) and `jobs.gd::_card()` set `mouse_filter = PASS` on the panel they return (`help.gd::_card()` already inherits this — it calls `card()`). `screen_base.gd::_normalize_scroll_mouse_filters()` runs after every `_bind_content()`/`refresh()` and demotes any remaining `STOP` Control inside a `ScrollContainer` to `PASS`, catching every `.tscn`-authored panel the helpers never touch (Home's Wander/Actions/OpCard/Activity columns, and more found once the gate ran — Hustle's Rival/Take cards, Market's Rows/Districts/Foot, Recovery's progress row). The sweep never demotes a `BaseButton` or a Control with its own `gui_input` connections — those are findings for the structural gate, fixed by hand via `tap_connect`, never silently. In this codebase, none existed: every `pressed`-wired button found by a full-repo audit lives on a non-scrolling screen (`title`, `name_entry`, `game_over`) or inside a `ModalSheet`/flow-sheet overlay parented outside the `ScrollContainer` entirely — so no button conversions were needed this PR, only panel fixes. |
+| Tap semantics are frozen | `TAP_SLOP := 12.0`, the `LOCKED_META` silent-swallow rule, and "no `pressed` inside a scroll" all survive unchanged. `tap_connect` itself was not touched. |
+| The structural gate lives in screen smoke | `tests/smoke/screen_smoke.gd::_check_scroll_transparency()` walks every `ScrollContainer`'s descendants on the same `refresh()` the suite already calls, failing on any Control at `STOP` or any `BaseButton` wired via `pressed`. Allowlisted by a named `SCROLL_STOP_ALLOWLIST` constant (empty today — `ModalSheet`'s scrim/card and flow-sheet content are built at runtime as siblings of `Shell`, never actual `ScrollContainer` descendants), not by skipping screens. Proved live: disabling the sweep before merge produced 37 real `TOUCH FAILED` violations across Home, Hustle, Market, and Recovery; re-enabling it returned the suite to clean. |
+| Live-scroll verification is an exit criterion, not a CI check | Synthetic drag injection headless is flaky; the structural gate covers CI, and driving the real running game via `godot-ai` MCP (reading `scroll_vertical`/`get_global_rect()` before and after an injected drag) covers reality. No headless drag simulator was built. |
+| Version `0.2.0 → 0.2.1`, PATCH | `version.gd`'s own definition: bug fixes against an unchanged feature set. |
+
+### Measured results
+
+`tests/smoke/screen_smoke.gd` now reports `touch checks 1093/1093 passed`
+across the 23 real screens (a 24th, `opening.tscn`, is unrelated in-progress
+work from a concurrent session with no script attached yet — pre-existing in
+the shared checkout, not part of this PR, and absent from this branch's own
+history). Every other gate suite held its existing floor unchanged: parity,
+confrontation (212), territory (170), tips (93), dre (331), save-validation
+(229).
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

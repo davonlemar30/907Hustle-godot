@@ -44,6 +44,9 @@ static func build_intro(gs: Node) -> VBoxContainer:
 ## The avatar-styled portrait, `home.tscn`'s Avatar/Pic pattern (PanelContainer
 ## clipping a TextureRect, `SB_avatar`'s exact style) at a size that reads as a
 ## portrait rather than the Home card's small thumbnail.
+## Default MOUSE_FILTER_STOP is left as-is: this only ever sits inside a
+## ModalSheet's card (screen_base.gd's show_sheet/drain), never inside a
+## ScrollContainer, so TOUCH-D1's pass-through rule does not apply to it.
 static func _portrait() -> PanelContainer:
 	var avatar := PanelContainer.new()
 	avatar.custom_minimum_size = Vector2(96, 128)

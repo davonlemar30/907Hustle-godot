@@ -178,6 +178,11 @@ func _slots_text(job: Dictionary) -> String:
 func _card() -> PanelContainer:
 	var p := PanelContainer.new()
 	p.theme_type_variation = &"Card"
+	# TOUCH-D3a: PanelContainer alone among Containers defaults to
+	# MOUSE_FILTER_STOP, which swallowed a scroll drag starting on any card.
+	# PASS lets the drag reach the ScrollContainer above; it does not make the
+	# card itself tappable.
+	p.mouse_filter = Control.MOUSE_FILTER_PASS
 	return p
 
 func _label(text: String, variation: String, size: int, col: Color, wrap: bool = false) -> Label:

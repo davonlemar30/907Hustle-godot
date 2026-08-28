@@ -106,6 +106,7 @@ func refresh() -> void:
 			return
 	_fill_chrome()
 	_bind_content()
+	_normalize_scroll_mouse_filters()
 	_drain_flow_sheets.call_deferred()
 
 ## Show the next queued flow sheet, if this is a safe moment for one.
@@ -230,6 +231,32 @@ func make_tappable(path: String, handler: Callable) -> Control:
 		return null
 	tap_connect(card, handler)
 	return card
+
+## TOUCH-D3b's backstop, run after every `_bind_content()`/`refresh()`: demote
+## any Control still sitting at MOUSE_FILTER_STOP inside a ScrollContainer back
+## to PASS. `card()`/`_card()` fix the panels those helpers build, but a
+## `.tscn`-authored PanelContainer (Home's Wander/Actions/OpCard/Activity
+## columns) never goes through them -- this is what catches those, and
+## whatever the next screen author forgets to route through the helpers too.
+##
+## Never demotes a BaseButton, nor a Control with its own gui_input wiring:
+## either one still sitting at STOP is a real finding for the structural gate
+## in screen_smoke.gd, meant to be fixed by hand via tap_connect, not silently
+## papered over here.
+func _normalize_scroll_mouse_filters() -> void:
+	var stack: Array[Node] = find_children("*", "ScrollContainer", true, false)
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if node is BaseButton:
+			continue
+		var control := node as Control
+		if control == null or control.mouse_filter != Control.MOUSE_FILTER_STOP:
+			continue
+		if control.gui_input.get_connections().size() > 0:
+			continue
+		control.mouse_filter = Control.MOUSE_FILTER_PASS
 
 ## Build and show a `ModalSheet` around `content`, parented to this screen.
 ##

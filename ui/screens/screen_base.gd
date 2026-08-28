@@ -106,6 +106,65 @@ func refresh() -> void:
 			return
 	_fill_chrome()
 	_bind_content()
+	_drain_flow_sheets.call_deferred()
+
+## Show the next queued flow sheet, if this is a safe moment for one.
+##
+## Deferred from `refresh()` because the guards below read state (the current
+## scene, the blocking route) that is not necessarily settled yet mid-refresh
+## -- the same reason `go_to()` defers `_change()`.
+##
+## Guards, in order: this screen must actually be the live one (the
+## `consequence.gd::_is_live()` pattern -- a headless test's root is never
+## `current_scene`, so this is inert in every suite by construction); nothing
+## may be blocking (a consequence chain defers every queued card until the
+## player lands back somewhere ordinary); and no sheet may already be up.
+## `spec.is_empty()` covers both "the queue is empty" and "the drain has
+## nothing to show" the same way, since `take_next_flow_sheet()` returns {}
+## for the former and this returns early on the latter.
+func _drain_flow_sheets() -> void:
+	# `is_inside_tree()` BEFORE `get_tree()`, not after: a suite that creates
+	# and frees a screen within one frame (no frame pumped in between, as
+	# parity's `_instantiate_screen`/`_free_screen` do thousands of times)
+	# lets this deferred call fire against a node that is no longer in the
+	# tree at all -- `get_tree()` on that node returns null, and chaining
+	# `.current_scene` off it is a crash, not a false answer, per node.
+	if nav == null or not is_inside_tree() or get_tree().current_scene != self:
+		return
+	if not nav.blocking_route().is_empty():
+		return
+	if nav.flow_sheet_active():
+		return
+	var spec: Dictionary = nav.take_next_flow_sheet()
+	if spec.is_empty():
+		return
+	var content: Control = _build_flow_sheet_content(spec)
+	if content == null:
+		# An unknown or stale spec (e.g. `card_for` found nothing to say):
+		# nothing to show, try the next one.
+		_drain_flow_sheets.call_deferred()
+		return
+	var sheet: ModalSheet = show_sheet(content)
+	# The "Dismiss" contract: every flow_sheets.gd builder names its button
+	# this, so the drain can wire it without knowing which builder ran.
+	var dismiss := content.get_node_or_null("Dismiss") as Button
+	if dismiss != null:
+		dismiss.pressed.connect(sheet.exit)
+	nav.register_flow_sheet(sheet)
+	sheet.dismissed.connect(_drain_flow_sheets, CONNECT_DEFERRED)
+
+## Resolve one flow-sheet spec to content, or null when there is nothing to
+## show. The one place a `spec["kind"]` is read -- `flow_sheets.gd` never sees
+## the spec, only the copy this resolves it to.
+func _build_flow_sheet_content(spec: Dictionary) -> Control:
+	match str(spec.get("kind", "")):
+		"discovery":
+			var access: Node = get_node_or_null("/root/SurfaceVisibility")
+			if access == null:
+				return null
+			var card: Dictionary = access.card_for(str(spec.get("surface_id", "")))
+			return null if card.is_empty() else FlowSheets.build_discovery(card)
+	return null
 
 ## How far a finger may travel and still count as a tap rather than a scroll.
 const TAP_SLOP := 12.0
@@ -170,6 +229,24 @@ func make_tappable(path: String, handler: Callable) -> Control:
 	tap_connect(card, handler)
 	return card
 
+## Build and show a `ModalSheet` around `content`, parented to this screen.
+##
+## `market.gd`'s quantity sheet does this dance inline (PR 3); this is that
+## dance, extracted so the flow-sheet drain does not have to invent its own
+## copy of it. Market is left as it is for this PR -- adopting this helper
+## there is a separate change, not a side effect of this one.
+func show_sheet(content: Control) -> ModalSheet:
+	var sheet := ModalSheet.new()
+	sheet.setup(content)
+	add_child(sheet)
+	# Above Shell so it overlays the scroll content, below Atmosphere so
+	# grain/vignette still shows on top of it (`modal_sheet.gd` header).
+	var atmo := get_node_or_null("Atmosphere")
+	if atmo != null:
+		move_child(sheet, atmo.get_index())
+	sheet.enter()
+	return sheet
+
 # --- surface gates (v0.1.0) -------------------------------------------------
 #
 # One renderer for both modes, so every gated surface on every screen looks and
@@ -182,6 +259,10 @@ func make_tappable(path: String, handler: Callable) -> Control:
 ## were both converted away from, and the one `scripts/check_glyph_coverage.py`
 ## exists to catch.
 const LOCK_ICON := preload("res://assets/icons/ui/icon-lock.svg")
+## Content builders for the flow-sheet queue. No `class_name` on the callee
+## (the stale-cache gotcha), so it is reached through this preload the same
+## way LOCK_ICON is.
+const FlowSheets := preload("res://ui/components/flow_sheets.gd")
 ## Name of the appended lock row, so a re-bind updates it instead of stacking
 ## another one under the card every time GameState changes.
 const LOCK_BADGE := "SurfaceLockRow"

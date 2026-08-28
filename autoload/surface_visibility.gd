@@ -136,12 +136,15 @@ const GATES := {
 		"requirements": [{"type": "job_contacts_min", "min": 1}],
 		"hint": "Find work on the block, or meet someone who hires",
 		"announce": "Somebody will vouch for you now. There is work on the board.",
+		"card_title": "WORK IS ON THE BOARD",
 	},
 	STREET_DOWNTOWN: {
 		"mode": MODE_LOCKED,
 		"requirements": [{"type": "district_discovered", "district_id": "downtown"}],
 		"hint": "Hold a corner before the city opens up",
 		"announce": "Downtown is worth the bus fare now. Different prices, different people.",
+		"card_title": "DOWNTOWN UNLOCKED",
+		"card_icon": "res://assets/icons/nav/icon-street.webp",
 	},
 	STREET_SHIP_CREEK: {
 		"mode": MODE_LOCKED,
@@ -149,6 +152,8 @@ const GATES := {
 			"district_id": "airport_industrial"}],
 		"hint": "Hold two corners before the port is worth the trip",
 		"announce": "Ship Creek is on the map. The yards run all night out there.",
+		"card_title": "SHIP CREEK UNLOCKED",
+		"card_icon": "res://assets/icons/nav/icon-street.webp",
 	},
 
 	# --- population / feature flags: HIDDEN -----------------------------
@@ -239,30 +244,36 @@ const GATES := {
 		"requirements": [{"type": "fact_true", "fact": "market_discovered"}],
 		"hint": "",
 		"announce": "You know where the corner is now. Street Market is on the board.",
+		"card_title": "STREET MARKET UNLOCKED",
+		"card_icon": "res://assets/icons/nav/icon-market.svg",
 	},
 	HUSTLE_LIST: {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "day_min", "min": 3}],
 		"hint": "",
 		"announce": "People are posting things worth having. 907List is on the board.",
+		"card_title": "907LIST UNLOCKED",
 	},
 	HUSTLE_BOOST: {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "wander_count_min", "min": 3}],
 		"hint": "",
 		"announce": "You have walked past enough doors to know which ones are loose.",
+		"card_title": "BOOST UNLOCKED",
 	},
 	HUSTLE_STICKUP: {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "day_min", "min": 2}],
 		"hint": "",
 		"announce": "Rent does not wait. Stickup is on the board, for what that is worth.",
+		"card_title": "STICKUP UNLOCKED",
 	},
 	HUSTLE_SHARK: {
 		"mode": MODE_HIDDEN,
 		"requirements": [{"type": "day_min", "min": 5}],
 		"hint": "",
 		"announce": "You know who lends now, and who they lend to.",
+		"card_title": "THE SHARK WILL SEE YOU",
 	},
 }
 
@@ -435,6 +446,26 @@ func unlocked_snapshot() -> Dictionary:
 	for surface_id in announceable():
 		out[str(surface_id)] = is_unlocked(str(surface_id))
 	return out
+
+## Copy for a discovery card, or {} for a surface with nothing to celebrate
+## (unregistered, or registered with no `announce`).
+##
+## `line` IS the `announce` sentence, not a second line written for the
+## card -- one author, so the card a player sees and the activity-feed row
+## for the same unlock can never disagree with each other.
+func card_for(surface_id: String) -> Dictionary:
+	var gate: Variant = GATES.get(surface_id)
+	if not (gate is Dictionary):
+		return {}
+	var rule: Dictionary = gate
+	var line := str(rule.get("announce", ""))
+	if line.is_empty():
+		return {}
+	return {
+		"title": str(rule.get("card_title", "")),
+		"line": line,
+		"icon": str(rule.get("card_icon", "")),
+	}
 
 # --- Home's standing actions -----------------------------------------------
 

@@ -74,6 +74,64 @@ func show_toast(text: String) -> void:
 	if is_instance_valid(_toast):
 		_toast.show_message(text)
 
+# --- flow sheets (0.1.2) -----------------------------------------------------
+#
+# A queue of plain-data specs -- {"kind": "discovery", "surface_id": "..."} or
+# {"kind": "intro"} -- drained one at a time by whichever live game screen is
+# current when it is safe to show one (`screen_base.gd::_drain_flow_sheets`).
+# Specs are data, never nodes: copy resolves at SHOW time through
+# `ui/components/flow_sheets.gd`, so a spec can sit queued across a screen
+# change with nothing to free and nothing that can go stale.
+#
+# A toast (above) is fire-and-forget and asks nothing of its caller. A flow
+# sheet has to wait its turn behind a consequence chain and only ever shows
+# one at a time, which is what the queue and the active-sheet handle are for.
+
+var _flow_queue: Array = []
+var _active_flow_sheet: ModalSheet = null
+
+func _ready() -> void:
+	var gm: Node = get_node_or_null("/root/GameManager")
+	if gm != null and gm.has_signal("surfaces_announced"):
+		gm.surfaces_announced.connect(_on_surfaces_announced)
+
+## One discovery spec per surface that just opened, registry order (the same
+## order `announce_since()` reported them in).
+func _on_surfaces_announced(surface_ids: Array) -> void:
+	for id in surface_ids:
+		enqueue_flow_sheet({"kind": "discovery", "surface_id": str(id)})
+
+func enqueue_flow_sheet(spec: Dictionary) -> void:
+	_flow_queue.append(spec)
+
+## Pop and return the front spec, or {} when the queue is empty.
+func take_next_flow_sheet() -> Dictionary:
+	if _flow_queue.is_empty():
+		return {}
+	return _flow_queue.pop_front()
+
+func has_pending_flow_sheets() -> bool:
+	return not _flow_queue.is_empty()
+
+## Run-boundary reset. `_change()` below calls this on the way into TITLE or
+## NAME_ENTRY, so a dead run's pending cards never pop over a fresh one.
+func clear_flow_sheets() -> void:
+	_flow_queue.clear()
+
+## Whether a sheet is up right now. `is_instance_valid` rather than a plain
+## null check: a forced scene swap frees the sheet along with the screen that
+## owned it, and a stale reference here would wedge the queue behind a sheet
+## that no longer exists.
+func flow_sheet_active() -> bool:
+	return _active_flow_sheet != null and is_instance_valid(_active_flow_sheet)
+
+## The drain calls this once it has actually shown a sheet. Stores the handle
+## `flow_sheet_active()` reads, and clears it back out on `dismissed` so a
+## sheet mid-exit-tween does not read as still blocking the next drain.
+func register_flow_sheet(sheet: ModalSheet) -> void:
+	_active_flow_sheet = sheet
+	sheet.dismissed.connect(func(): _active_flow_sheet = null)
+
 ## The global screen priority, TI-003 §18:
 ##
 ##   1. game over
@@ -147,6 +205,11 @@ func go_to_game() -> void:
 	go_to(HOME)
 
 func _change(scene_path: String) -> void:
+	# Pending popups are a property of a run, not of the app. Routing back to
+	# either boot screen means the run that queued them is gone or ending, so
+	# a dead run's cards must not pop up over the one that replaces it.
+	if scene_path == TITLE or scene_path == NAME_ENTRY:
+		clear_flow_sheets()
 	var err := get_tree().change_scene_to_file(scene_path)
 	if err != OK:
 		push_error("ScreenManager: could not load %s (error %d)" % [scene_path, err])

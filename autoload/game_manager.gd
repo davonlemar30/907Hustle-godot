@@ -7,6 +7,11 @@ extends Node
 ## (insufficient cash, full cargo, etc.) and leaves state untouched.
 
 signal action_failed(action: String, reason: String)
+## Fired after a successful dispatch that opened one or more gates, with the
+## surface ids `announcer.gd::announce_since()` just spoke about (registry
+## order). Emitted before `notify_changed()`, so `ScreenManager`'s queue is
+## populated before any screen's refresh runs. Not fired when nothing opened.
+signal surfaces_announced(surface_ids: Array)
 
 var _systems: Array = []
 var _gs: Node
@@ -251,7 +256,9 @@ func dispatch(action: String, payload: Dictionary = {}) -> bool:
 				# line the player reads about a surface arriving is on the same
 				# render as the surface.
 				if announcer != null:
-					announcer.announce_since(gates_before)
+					var spoken: Array = announcer.announce_since(gates_before)
+					if not spoken.is_empty():
+						surfaces_announced.emit(spoken)
 				_gs.notify_changed()
 				_dispatch_depth = maxi(0, _dispatch_depth - 1)
 				return true

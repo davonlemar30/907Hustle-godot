@@ -49,3 +49,14 @@ enabled=PackedStringArray("res://addons/godot_ai/plugin.cfg")
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+# ANDR-D3: the rendering METHOD stays untouched above (still
+# gl_compatibility, same as before this preset existed) -- this is a texture
+# IMPORT flag, not a rendering-method or display change. Godot's Android
+# export refuses outright without an ETC2/ASTC-compressed variant available
+# for at least one texture; the project has only ever imported the
+# desktop-oriented S3TC/BPTC variant (Web's preset.0 already opts into that
+# one explicitly via vram_texture_compression/for_desktop). Purely additive:
+# it adds a second compressed variant at import time and changes nothing
+# about which variant an existing preset requests -- Web's preset.0 still
+# reads for_desktop=true/for_mobile=false and is unaffected.
+textures/vram_compression/import_etc2_astc=true

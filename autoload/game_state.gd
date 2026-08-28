@@ -239,7 +239,7 @@ var hustle_surfaces: Array = [
 	{"id": "market", "label": "STREET MARKET", "desc": "Buy, sell, and finish a market session.", "status": "12 SOLD", "detail": "SESSION OPEN ›", "color": Color(0.882, 0.651, 0.227)},
 	{"id": "boost", "label": "BOOST", "desc": "Store lifts, targets, and the fence.", "status": "TIER 1", "detail": "FENCE: DOWNTOWN ›", "color": Color(0.475, 0.733, 0.757)},
 	{"id": "stick", "label": "STICKUP", "desc": "Street robbery, registers, and organized work.", "status": "TIER 1", "detail": "2 SUCCESSES ›", "color": Color(1, 0.29, 0.239)},
-	{"id": "shark", "label": "SHARK", "desc": "Fund borrowers and resolve defaults.", "status": "1 OPEN", "detail": "$250 OUT ›", "color": Color(0.62, 0.5, 0.85)},
+	{"id": "shark", "label": "THE BOOK", "desc": "Fund borrowers and resolve defaults.", "status": "1 OPEN", "detail": "$250 OUT ›", "color": Color(0.62, 0.5, 0.85)},
 ]
 # Curtis's people, and how hard they are looking. Canon scale is 0-15, the same
 # as Heat, and the phase floors ratchet: once he notices you he does not fully
@@ -745,12 +745,25 @@ func stick_target_by_id(id: String) -> Dictionary:
 			return t
 	return {}
 
-# --- Shark (canon: game-core.js SHARK_BORROWERS / SHARK_TERMS) -------------
+# --- Shark / The Book (canon: game-core.js SHARK_BORROWERS / SHARK_TERMS) --
+#
+# `access_tier_min` (Dre Lending & Loan-Shark Progression, PR E, design doc
+# section 10.2): the generic per-row gate, checked by `shark.fund_blocker`
+# alongside the surface's own tier-4 route gate. Every authored borrower
+# needs one now that Book access is earned rather than day-gated.
+#
+# `priya`'s `introduction_key` is the one borrower this build sponsors
+# through DRE-ARC-04 rather than through the tier itself — a fundable
+# exception exactly as wide as this one row's own key naming an offered or
+# active `dre_book_sponsorship` instance, not a second, wider gate. See
+# `shark.fund_blocker`'s own comment on why the exception is scoped that
+# narrowly and `data/dre_contracts.gd` for the definition it reads.
 var shark_borrowers: Array = [
-	{"id": "nora", "name": "Nora Pike", "risk": 0.08, "risk_label": "LOW", "max": 100, "desc": "Food-cart owner covering a repair before the lunch rush."},
-	{"id": "jamal", "name": "Jamal Briggs", "risk": 0.18, "risk_label": "MEDIUM", "max": 250, "desc": "Dock worker bridging the week before overtime clears."},
-	{"id": "kelsey", "name": "Kelsey Roy", "risk": 0.28, "risk_label": "ELEVATED", "max": 500, "desc": "Bartender with steady cash and inconsistent timing."},
-	{"id": "leon", "name": "Leon Grant", "risk": 0.42, "risk_label": "HIGH", "max": 500, "desc": "Street runner whose next score always settles everything."},
+	{"id": "nora", "name": "Nora Pike", "risk": 0.08, "risk_label": "LOW", "max": 100, "desc": "Food-cart owner covering a repair before the lunch rush.", "access_tier_min": 4},
+	{"id": "jamal", "name": "Jamal Briggs", "risk": 0.18, "risk_label": "MEDIUM", "max": 250, "desc": "Dock worker bridging the week before overtime clears.", "access_tier_min": 4},
+	{"id": "kelsey", "name": "Kelsey Roy", "risk": 0.28, "risk_label": "ELEVATED", "max": 500, "desc": "Bartender with steady cash and inconsistent timing.", "access_tier_min": 4},
+	{"id": "leon", "name": "Leon Grant", "risk": 0.42, "risk_label": "HIGH", "max": 500, "desc": "Street runner whose next score always settles everything.", "access_tier_min": 4},
+	{"id": "priya", "name": "Priya Osei", "risk": 0.05, "risk_label": "LOW", "max": 150, "desc": "Dre's own vouch — steady hours, careful with money. Your first name in the Book.", "access_tier_min": 4, "introduction_key": "dre_book_sponsorship"},
 ]
 
 ## Interest rate by term length in days. Shorter term, higher rate.

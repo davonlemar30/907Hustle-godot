@@ -19,8 +19,15 @@ const GAME_STATE := preload("res://autoload/game_state.gd")
 ## Repaid: the borrower returns amount + interest, minus Dre's 12% of the
 ## interest. Defaulted: the note sits open until the player decides.
 ##
-## Pinned at canon neutral because their systems do not exist yet:
-##   Dre bond     → false (no relationship bands yet)
+## ## The Dre bond term (Dre Lending & Loan-Shark Progression, PR E, D-10)
+##
+## Live as of PR E: bonded == `gs.dre_access_tier >= 3` (Collector or
+## better) — his standard cut on Junior Lenders he trusts to run a clean
+## book, not a favor extended to Borrowers still proving themselves. Was
+## pinned at canon neutral (a flat `false`) through PR A-D, since nothing
+## in this build could set a relationship band before Dre Lending existed
+## at all; DECISIONS.md D-10 records this as the named divergence closing
+## on purpose, not discovered.
 ##
 ## Intelligence is LIVE as of Phase 5c. It was pinned at
 ## `ATTRIBUTE_DEFAULTS.intelligence = 1`, but canon reads `intelligenceCompat`
@@ -104,12 +111,79 @@ func has_open_note(borrower_id: String) -> bool:
 			return true
 	return false
 
+## True while `b`'s own `introduction_key` names a `dre_book_sponsorship`
+## (or any future sponsorship definition) that is currently offered or
+## accepted — the one fundable exception the tier gate below carves out,
+## and only for exactly the borrower Dre actually named. See
+## `data/dre_contracts.gd`'s header on `dre_book_sponsorship`.
+func _is_sponsored(b: Dictionary) -> bool:
+	var key := str(b.get("introduction_key", ""))
+	if key.is_empty():
+		return false
+	var opportunities: Object = gm.system("opportunities")
+	return opportunities != null and opportunities.is_offered_or_active(key)
+
+## DRE-ARC-04: the loan IS the acceptance for a sponsored borrower, the
+## same shape `dre_borrow` already gives First Money (`opportunities.
+## reconcile`) — but `fund_shark` is an action name every Book loan
+## shares, sponsored or not, so this cannot go through the generic
+## reconcile matcher without risking a completely unrelated loan (Nora's,
+## say) accepting Priya's milestone. Called directly from `_fund()`
+## instead, the same direct-call pattern `dre_collector.gd` uses for its
+## own shared action names — see `data/dre_contracts.gd`'s header on
+## `dre_book_sponsorship`. No-ops for every unsponsored borrower.
+func _accept_sponsorship(b: Dictionary) -> void:
+	var key := str(b.get("introduction_key", ""))
+	if key.is_empty():
+		return
+	var opportunities: Object = gm.system("opportunities")
+	if opportunities != null:
+		opportunities.accept(key)
+
+## The resolving half of `_accept_sponsorship`, called once a sponsored
+## loan reaches a terminal state that actually reflects on the person Dre
+## vouched for — repaid, forgiven, or enforced. NOT "extend": the note
+## stays open, so the milestone stays open with it.
+func _resolve_sponsorship(b: Dictionary, outcome: String) -> void:
+	var key := str(b.get("introduction_key", ""))
+	if key.is_empty():
+		return
+	var opportunities: Object = gm.system("opportunities")
+	if opportunities != null:
+		opportunities.resolve(key, {"outcome": outcome})
+
+## Presentation-only: true when `borrower_id`'s tier gate is not met and no
+## live sponsorship covers them right now. `ui/screens/shark.gd` reads this
+## to render a locked card instead of a fundable one — a separate question
+## from `fund_blocker`'s transactional checks (open note, amount, cash),
+## which a locked borrower never even reaches.
+func is_locked(borrower_id: String) -> bool:
+	var b: Dictionary = gs.borrower_by_id(borrower_id)
+	if b.is_empty():
+		return false
+	return int(gs.dre_access_tier) < int(b.get("access_tier_min", 0)) and not _is_sponsored(b)
+
 func fund_blocker(borrower_id: String, amount: int) -> String:
 	if gs.game_over:
 		return "The run is over."
 	var b: Dictionary = gs.borrower_by_id(borrower_id)
 	if b.is_empty():
 		return "No such borrower."
+	# PR E: the tier gate a locked borrower row carries, with the one
+	# authored exception a live sponsorship opens — design doc section
+	# 10.2 / DRE-ARC-04. Checked before the account-status clause below so
+	# a player who has never met Dre gets "hasn't opened" rather than a
+	# suspension message that presupposes an account they don't have.
+	if int(gs.dre_access_tier) < int(b.get("access_tier_min", 0)) and not _is_sponsored(b):
+		return "Dre hasn't opened the Book to you yet."
+	# Design doc section 7.1: "An unresolved default can set the Dre
+	# account to suspended, temporarily blocking borrowing, contracts, and
+	# new Book loans." Applies to every borrower, sponsored or not — a
+	# suspended relationship does not get to keep running a book through
+	# it. Not a route re-close (D-4/D-7): the Book surface itself stays
+	# visible once earned, only the funding ACTION refuses.
+	if str(gs.dre_account.get("status", "clear")) == "suspended":
+		return "Clear things with Dre before he lets you run a book."
 	if has_open_note(borrower_id):
 		return "That borrower already has an open note."
 	if amount <= 0:
@@ -142,6 +216,7 @@ func _fund(borrower_id: String, amount: int, term: int) -> Dictionary:
 	gs.shark_next_loan_id += 1
 	gs.shark_loans.append(loan)
 	gs.log_activity("%s takes $%d for %d days." % [str(b["name"]), amount, term], AMBER)
+	_accept_sponsorship(b)
 	return {"ok": true, "loan_id": int(loan["id"])}
 
 ## Canon default probability, with the unbuilt terms at neutral (see header).
@@ -151,8 +226,10 @@ func default_probability(loan: Dictionary) -> float:
 	var term: int = int(loan["term"])
 	var amount_bump: float = 0.18 if amount >= 500 else (0.08 if amount >= 250 else 0.0)
 	var term_bump: float = 0.12 if term == 2 else (0.04 if term == 4 else -0.04)
+	# The bond term, live as of PR E — see the header.
+	var bond_discount: float = 0.08 if int(gs.dre_access_tier) >= 3 else 0.0
 	var p: float = float(b["risk"]) + amount_bump + term_bump \
-		- float(attributes.compat("intelligence")) * 0.025
+		- float(attributes.compat("intelligence")) * 0.025 - bond_discount
 	return clampf(p, 0.03, 0.82)
 
 ## Interest owed on a note. Reads the authored rate for the note's term, or for
@@ -191,6 +268,7 @@ func _resolve_defaulted(loan_id: int, how: String) -> Dictionary:
 					"type": "financial", "event": "let_them_down", "source": "network",
 				})
 			gs.log_activity("You let %s off the note. Word travels." % str(b["name"]), AMBER)
+			_resolve_sponsorship(b, "forgiven")
 		"enforce":
 			# The principal comes back; the interest does not.
 			_wallet().credit(int(loan["amount"]), _wallet().DIRTY,
@@ -214,6 +292,7 @@ func _resolve_defaulted(loan_id: int, how: String) -> Dictionary:
 					"location": gs.current_district_id, "channel": "neighborhood",
 				})
 			gs.log_activity("Collected $%d from %s the hard way. Heat +%.1f." % [int(loan["amount"]), str(b["name"]), applied_heat], RED)
+			_resolve_sponsorship(b, "enforced")
 	return {"ok": true, "interest": interest}
 
 ## The shared owners. Lending out is a routine spend; principal and interest
@@ -279,6 +358,7 @@ func settle_night(ended_day: int) -> void:
 			gs.record_earning("shark", returned)
 			loan["status"] = "repaid"
 			gs.log_activity("%s returns $%d after Dre's $%d cut." % [str(b["name"]), returned, dre_cut], GREEN)
+			_resolve_sponsorship(b, "repaid")
 			# Dre gets paid out of this, so he sees it first-hand. His STREET
 			# lens weights financial at 4.0 — lending well is how you build with
 			# him without ever speaking to him.

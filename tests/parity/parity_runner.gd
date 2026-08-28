@@ -14091,7 +14091,7 @@ func _check_version_stamp(gs: Node) -> void:
 	if version == null:
 		_fail("version", "no Version autoload registered")
 		return
-	_expect_str("the build is stamped 0.1.3", str(version.VERSION), "0.1.3")
+	_expect_str("the build is stamped 0.2.0", str(version.VERSION), "0.2.0")
 
 	# Shape, not value: this half survives every future bump, so the convention
 	# README documents stays enforced rather than merely written down.
@@ -14100,9 +14100,9 @@ func _check_version_stamp(gs: Node) -> void:
 	for part in parts:
 		_expect_true("version part '%s' is numeric" % part, str(part).is_valid_int())
 	_expect_int("MAJOR reads back", version.major(), 0)
-	_expect_int("MINOR reads back", version.minor(), 1)
-	_expect_int("PATCH reads back", version.patch(), 3)
-	_expect_str("the display form prefixes a v", version.display(), "v0.1.3")
+	_expect_int("MINOR reads back", version.minor(), 2)
+	_expect_int("PATCH reads back", version.patch(), 0)
+	_expect_str("the display form prefixes a v", version.display(), "v0.2.0")
 
 	# The title screen renders it, from the singleton rather than from the
 	# scene's editor-time preview.
@@ -15557,6 +15557,16 @@ const ECON_PROFILES: Array[Dictionary] = [
 	{"name": "settler", "job": true, "trade": false, "flip": false,
 		"turf": true, "wander": true, "best_job": true, "gated": true,
 		"seed": "econ-settler"},
+	# The leveraged lender (D-10 / DRE-D5, PR E, design doc §14.5): borrows
+	# from Dre and puts it in the Book. Carries `job` for the same reason
+	# `worker_wanders` does — a survival floor independent of the strategy
+	# being measured, so the number is what leverage adds ON TOP of a
+	# working player, not what it takes to merely not go broke reaching it.
+	# See `_econ_try_dre_leverage`'s own header for the full reasoning,
+	# including why it walks the real earned-access arc instead of being
+	# handed tier 4.
+	{"name": "leveraged_lender", "job": true, "trade": false, "flip": false,
+		"best_job": true, "dre_leverage": true, "seed": "econ-dre-leverage"},
 ]
 
 ## Corridor assertions (`86bbjxth6`), Batch 18 PR 4.
@@ -15600,6 +15610,13 @@ const ECON_CORRIDORS: Dictionary = {
 	# corridor is centred on the POST-D-1 number, which is the one this build
 	# ships. The old 636% is not a floor to defend; it was the bug.
 	"settler": {"floor": 300, "ceiling": 520},
+	# PR E: measured at 91% of the day job (5 Dre loans taken, 21 Book loans
+	# funded, averaged over the 4 seeds) — leverage roughly breaks even
+	# against steady work once Dre's cut and the arc's own time cost are
+	# counted, the empirical echo of the structural proof in `_check_no_
+	# risk_free_dre_carry` that it can never be strictly better. Headroom
+	# on both sides, same as every other corridor in this table.
+	"leveraged_lender": {"floor": 70, "ceiling": 115},
 }
 
 const ECON_DAYS := 30
@@ -15746,6 +15763,10 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	var wants_wander: bool = bool(profile.get("wander", false))
 	var wants_roam: bool = bool(profile.get("roam", false))
 	var wants_turf: bool = bool(profile.get("turf", false))
+	# D-10 / DRE-D5 (PR E): borrows from Dre and puts it in the Book. See
+	# `_econ_try_dre_leverage`'s own header for why it walks the earned-access
+	# arc instead of being handed tier 4.
+	var wants_dre_leverage: bool = bool(profile.get("dre_leverage", false))
 	# Batch 16. A profile that plays only what the ladder has actually opened.
 	#
 	# Every other profile in this table reaches its surfaces by DISPATCHING —
@@ -15775,6 +15796,7 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		"clocked": 0, "workable": 0,
 		"corners": 0, "soldiers": 0, "turf_spend": 0, "turf_income": 0,
 		"shift_pay": 0, "upgrades": 0,
+		"dre_loans_taken": 0, "book_loans_funded": 0,
 		"applications": 0, "jobs": 0, "take": 0,
 	}
 	# The street stop counts on the SYSTEM HANDLE, which is boot-scoped rather
@@ -15923,6 +15945,18 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		if wants_flip and can.call("hustle.list") and _econ_try_flip(gs, gm, metrics):
 			continue
 
+		# --- the Dre-leverage leg (D-10 / DRE-D5, PR E) ---
+		#
+		# Below the job leg on purpose: this profile carries `job: true` so it
+		# has a survival floor independent of Dre, the same shape `hustler`
+		# already gives trading. A pure zero-income leverage strategy cannot
+		# outlive its own rent long enough to reach the Book at all — that is
+		# an instrument weakness, not a finding about Dre — so what this
+		# measures is a player who works AND leverages, spending whatever
+		# slots the job leg above did not already claim.
+		if wants_dre_leverage and _econ_try_dre_leverage(gs, gm, metrics):
+			continue
+
 		# --- the criminal legs ---
 		if wants_rob and can.call("hustle.stickup") \
 				and _econ_try_crime(gs, gm, metrics, "stickup"):
@@ -15995,7 +16029,17 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	metrics["dirty_cash"] = int(gs.dirty_cash)
 	metrics["heat"] = float(gs.heat)
 	metrics["inventory_value"] = _econ_inventory_value(gs)
-	metrics["net_worth"] = int(gs.cash) + int(metrics["inventory_value"])
+	# PR E: `cash` alone overstates a profile mid-leverage (Dre's principal
+	# is already counted as cash the moment it is borrowed, but the debt it
+	# creates was not subtracted) and understates one holding open Book notes
+	# (the principal left the wallet the moment it was lent, but the note is
+	# still worth something). Zero for all thirteen profiles that came before
+	# `leveraged_lender` — none of them ever touch Dre or the Book — so no
+	# other row's published pct_of_job moves; see `_econ_book_receivable`'s
+	# own header for why the receivable is valued at principal, not
+	# principal-plus-interest.
+	metrics["net_worth"] = int(gs.cash) + int(metrics["inventory_value"]) \
+		- int(gs.debt) + _econ_book_receivable(gs)
 	metrics["net_trade"] = int(metrics["earned_from_product"]) \
 		- int(metrics["spent_on_product"]) - int(metrics["fares"])
 	# Boost's binding constraint, on the record rather than in a research note.
@@ -16047,7 +16091,8 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 		"applications", "jobs", "take", "final_stick_tier", "final_boost_tier",
 		"stops", "seizures", "heat_stops", "heat_seized", "bans",
 		"wanders", "found", "shift_pay", "upgrades", "clocked", "workable",
-		"corners", "soldiers", "turf_spend", "turf_income"]
+		"corners", "soldiers", "turf_spend", "turf_income",
+		"dre_loans_taken", "book_loans_funded"]
 	for key in averaged:
 		var total: float = 0.0
 		for run in runs:
@@ -16113,6 +16158,20 @@ func _econ_inventory_value(gs: Node) -> int:
 		total += int(prices.get(str(product_id), 0)) * int(gs.inventory[product_id])
 	return total
 
+## Outstanding Book principal, valued at the guaranteed floor rather than
+## principal-plus-interest — the same "enforce never recovers the interest"
+## fact `shark.gd::_resolve_defaulted`'s header documents, and interest on a
+## note that has not resolved yet is a probabilistic hope, not a holding.
+## Zero for every profile except `leveraged_lender`, PR E's only content
+## that ever funds a Book loan.
+func _econ_book_receivable(gs: Node) -> int:
+	var total := 0
+	for entry in gs.shark_loans:
+		var loan: Dictionary = entry
+		if str(loan.get("status", "")) in ["active", "extended", "defaulted"]:
+			total += int(loan.get("amount", 0))
+	return total
+
 func _econ_try_flip(gs: Node, gm: Node, metrics: Dictionary) -> bool:
 	var lst: Object = gm.system("list")
 	if lst == null:
@@ -16128,6 +16187,92 @@ func _econ_try_flip(gs: Node, gm: Node, metrics: Dictionary) -> bool:
 		if str(lst.buy_blocker(item_id)).is_empty():
 			if gm.dispatch("list_buy", {"item_id": item_id}):
 				return true
+	return false
+
+## Borrows from Dre, then puts the loan into the Book — the leveraged-lender
+## measurement design doc §14.5 asks for and DRE-D5 requires PR E to ship.
+## One dispatch per call, the same contract every `_econ_try_*` helper keeps.
+##
+## Walks the real earned-access arc (introduction, First Money, A Reminder,
+## the sponsored Book loan) rather than being handed tier 4 directly —
+## DRE-ARC-04's own ruling is that the milestone's eligibility is
+## mission-scoped, not a shortcut past actually earning the Book (design doc
+## §13.2), so the honest cost of this strategy includes paying the same
+## slots and days every other player pays to reach it. The Collector
+## milestone is settled by NEGOTIATE only: a single dispatch, no chain — the
+## harder collection road is `dre_collector.gd`'s own coverage, not a second
+## economic question for this profile.
+##
+## Once Junior Lender opens, whatever cash is on hand goes into the
+## lowest-risk borrower with room for it, one note at a time, the same
+## "safest available return" a real leveraging player would chase. A
+## defaulted note already funded gets enforced (the guaranteed, no-roll
+## recovery road — see `shark.gd::_resolve_defaulted`'s header) rather than
+## left to sit, so a bad roll does not just strand capital for the rest of
+## the run.
+func _econ_try_dre_leverage(gs: Node, gm: Node, metrics: Dictionary) -> bool:
+	var dre: Object = gm.system("dre")
+	if dre == null:
+		return false
+	# DRE-D1's own trigger is desperation (cash <= 80, or rent pressure) --
+	# a story beat, not an economic one, and this profile's `job`/`best_job`
+	# legs keep it too well paid to ever cross it (measured: 0/4 seeds ever
+	# met Dre at 112% of the day job). What this profile measures is what
+	# leverage is worth once a player HAS Dre's access, not whether they can
+	# stumble into meeting him while comfortably employed -- so it starts
+	# already introduced, the same way every other profile in this table
+	# skips a discovery mechanic that is not the one it is measuring.
+	if not gs.dre_introduced and not gs.dre_intro_offered:
+		gs.dre_intro_offered = true
+	if str(dre.seek_out_blocker()).is_empty():
+		return gm.dispatch("dre_seek_out", {})
+	if str(dre.penance_blocker()).is_empty():
+		return gm.dispatch("dre_do_penance", {})
+	# Ahead of re-borrowing on purpose: `dre_a_reminder` requires a CLEAR
+	# account (data/dre_contracts.gd), and this dispatch is the only way this
+	# leg advances from Trusted Customer to Collector. Tried unconditionally
+	# and relying on its own internal guard to no-op before it is eligible
+	# or after it is already resolved -- the same speculative-dispatch
+	# pattern every blocker-unchecked call in this ladder already uses.
+	if int(gs.dre_access_tier) < 3 \
+			and str(gs.dre_account.get("status", "clear")) == "clear" \
+			and gm.dispatch("dre_collect_negotiate", {}):
+		return true
+	var shark_sys: Object = gm.system("shark")
+	if shark_sys == null:
+		return false
+	for entry in gs.shark_borrowers:
+		var b: Dictionary = entry
+		var amount: int = mini(int(b["max"]), int(gs.cash))
+		if amount <= 0:
+			continue
+		if not str(shark_sys.fund_blocker(str(b["id"]), amount)).is_empty():
+			continue
+		if gm.dispatch("fund_shark", {"borrower_id": str(b["id"]), "amount": amount, "term": 4}):
+			metrics["book_loans_funded"] = int(metrics.get("book_loans_funded", 0)) + 1
+			return true
+	for loan_entry in gs.shark_loans:
+		var loan: Dictionary = loan_entry
+		if str(loan.get("status", "")) == "defaulted":
+			return gm.dispatch("enforce_shark", {"loan_id": int(loan["id"])})
+	# Borrowing comes last, and skips tier 2 exactly: below tier 2 it is
+	# bootstrapping First Money (the only road to Trusted Customer), and at
+	# tier 3+ the account clearing again is what a leverage cycle looks like
+	# once there is somewhere to put the money. At EXACTLY tier 2 the account
+	# has to stay clear and idle for a night to give `opportunities.settle_
+	# night` a chance to offer `dre_a_reminder` at all (its own requirements
+	# demand a clear account) — re-borrowing the instant it clears, tried
+	# first, was measured locking this leg on First Money forever, 6 loans
+	# taken and 0 ever funding the Book.
+	if (int(gs.dre_access_tier) < 2 or int(gs.dre_access_tier) >= 3) \
+			and str(dre.borrow_blocker()).is_empty():
+		if gm.dispatch("dre_borrow", {}):
+			metrics["dre_loans_taken"] = int(metrics.get("dre_loans_taken", 0)) + 1
+			return true
+		return false
+	if int(gs.debt) > 0 and int(gs.debt_due_days) <= 0 \
+			and str(dre.repay_blocker()).is_empty():
+		return gm.dispatch("dre_repay", {})
 	return false
 
 func _econ_try_trade(gs: Node, gm: Node, metrics: Dictionary, local_only: bool) -> bool:
@@ -16472,6 +16617,9 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 				+ " \u00b7 corners paid $%.0f")
 				% [float(row["corners"]), float(row["soldiers"]),
 					float(row["turf_spend"]), float(row["turf_income"])])
+		if float(row["dre_loans_taken"]) > 0.0:
+			print("               Dre loans taken %.1f \u00b7 Book loans funded %.1f"
+				% [float(row["dre_loans_taken"]), float(row["book_loans_funded"])])
 		if float(row["bans"]) > 0.0 or float(row["clocked"]) > 0.0:
 			print("               targets clocked %.1f \u00b7 still workable %.1f \u00b7 bans %.1f"
 				% [float(row["clocked"]), float(row["workable"]), float(row["bans"])])
@@ -16514,6 +16662,8 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			"take": int(row["take"]),
 			"final_stick_tier": snappedf(float(row["final_stick_tier"]), 0.1),
 			"final_boost_tier": snappedf(float(row["final_boost_tier"]), 0.1),
+			"dre_loans_taken": snappedf(float(row["dre_loans_taken"]), 0.1),
+			"book_loans_funded": snappedf(float(row["book_loans_funded"]), 0.1),
 		}))
 
 	# --- invariants, not balance ---
@@ -16583,6 +16733,18 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			_expect_true("and actually worked", float(row["shifts"]) > 0.0)
 		if name == "wanderer":
 			_expect_true("wanderer actually wandered", float(row["wanders"]) > 0.0)
+		# Borrowing itself is unconditional once the cash-pressure trigger is
+		# crossed — no roll decides it, unlike the collection milestone that
+		# gates the Book — so this is asserted rather than only reported, the
+		# same instrument-worked claim every row above makes about its own
+		# defining action. `book_loans_funded` is NOT asserted here: reaching
+		# the Book depends on A Reminder's Charisma roll succeeding, so some
+		# seeds legitimately plateau after First Money — reported above,
+		# never asserted, the same carve-out `boost_finder`'s pool-survival
+		# figure already uses for the same reason (its own comment, above).
+		if name == "leveraged_lender":
+			_expect_true("leveraged_lender actually borrowed from Dre",
+				float(row["dre_loans_taken"]) > 0.0)
 
 	# --- corridors (86bbjxth6) ---
 	#
@@ -16604,6 +16766,8 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			% [name, pct, int(corridor["floor"]), int(corridor["ceiling"])],
 			pct >= int(corridor["floor"]) and pct <= int(corridor["ceiling"]))
 
+	_check_no_risk_free_dre_carry()
+
 	# The save goes back exactly as it was found, including having been absent —
 	# and a file this run could not read is left where it is rather than
 	# replaced by nothing. Only the absence THIS run observed earns a delete.
@@ -16617,6 +16781,42 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			restore.close()
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
+
+## Design doc §14.4 / DRE-D5: "no accessible combination may create a
+## risk-free positive carry where guaranteed Book return after Dre's cut >
+## guaranteed repayment cost to Dre." Not a simulation — `leveraged_lender`
+## above reports what one PLAYING strategy nets, but "risk-free" means
+## worst-case-guaranteed, and a structural proof of a worst case covers
+## every combination that strategy could ever try, not just the one it
+## happened to run. This is that proof, checked against the live authored
+## constants so it fails loudly if either fact it depends on ever moves,
+## rather than staying silently true only in a comment.
+##
+## The Book's own guaranteed floor: `shark.gd::_resolve_defaulted`'s
+## "enforce" arm is the only deterministic, no-roll recovery road a lender
+## can choose — repayment is a `default_probability` gamble, clamped at a
+## minimum 3% chance of failure, never a guarantee. Enforcing a defaulted
+## note recovers exactly the principal lent ("the interest does not," that
+## function's own comment) — never more. So the most any GUARANTEED
+## strategy can promise itself, on any single note, is back exactly what it
+## lent, and lending 100% of a Dre loan's principal into one note is the
+## best case for the carry, so that is the comparison this checks.
+##
+## Dre's own guaranteed cost is always principal + interest — First Money is
+## the only authored offer this build ships (Trusted Customer's wider band
+## is deferred past PR E, DRE-D12) — strictly more than what was borrowed,
+## by construction, as long as the rate stays positive. The gap between the
+## two IS the interest rate; nothing about amount, term, or borrower choice
+## closes it.
+func _check_no_risk_free_dre_carry() -> void:
+	var dre_lender_script := preload("res://systems/dre_lender.gd")
+	var guaranteed_dre_cost: int = int(dre_lender_script.FIRST_LOAN_PRINCIPAL) \
+		+ int(dre_lender_script.FIRST_LOAN_INTEREST)
+	var guaranteed_book_floor: int = int(dre_lender_script.FIRST_LOAN_PRINCIPAL)
+	_expect_true(
+		"no risk-free Dre-to-Book carry: guaranteed floor $%d < guaranteed cost $%d (design doc 14.4 / DRE-D5)"
+			% [guaranteed_book_floor, guaranteed_dre_cost],
+		guaranteed_book_floor < guaranteed_dre_cost)
 
 # =============================================================================
 # The trading path's risk term
@@ -19025,7 +19225,7 @@ func _fail(label: String, detail: String) -> void:
 ## same disclaimer every seeded sweep in this file already carries. Five
 ## hardcoded `SAVE_VERSION == 17` assertions become 18, one per schema-version
 ## check this file pins independently rather than through one shared constant.
-const MIN_CHECKS := 12528
+const MIN_CHECKS := 12578
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

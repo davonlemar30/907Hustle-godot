@@ -1,7 +1,6 @@
 # Street Opportunity and Mission System — System Design
 
-**Status:** Proposed umbrella design for evaluation; not yet an implementation
-authority  
+**Status:** Approved with rulings; see DECISIONS.md (D-8, D-9, D-10)  
 **Audience:** 907Hustle design, engineering, content, balance review, and ClickUp
 Brain  
 **Scope:** How opportunities are discovered, compared, accepted, resolved,

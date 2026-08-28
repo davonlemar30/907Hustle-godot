@@ -40,11 +40,21 @@ extends Node
 ## receipts, stage transitions); this suite only proves Dre's own content
 ## drives it correctly, the same division PR B already draws for
 ## `requirements.gd`'s pure evaluator versus this suite's own fixtures.
+##
+## PR E: DRE-ARC-04, the sponsored Book loan, end to end -- the one true
+## fresh-run walk from Juan's mention through Junior Lender rather than each
+## stage proven in isolation, the route gate opening on the sponsorship
+## offer before tier 4, the tier/suspension clauses on `fund_blocker` (the
+## exception is exactly one borrower wide, never a second gate), and the
+## Collector bond discount going live. `tests/parity/parity_runner.gd` owns
+## the economy-side proof (the leveraged-lender profile and the structural
+## no-risk-free-carry check) -- not duplicated here, the same division this
+## suite has always drawn between behavioral and economic coverage.
 
 const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
 const SCRIPTS := preload("res://data/confrontation_scripts.gd")
 
-const MIN_CHECKS := 299
+const MIN_CHECKS := 331
 
 var a: RefCounted
 var gs: Node
@@ -84,6 +94,10 @@ func _ready() -> void:
 	_test_player_default_ultimatum_pay_now()
 	_test_player_default_ultimatum_stall_suspends()
 	_test_restitution_then_penance()
+	_test_full_arc_integration_drive()
+	_test_book_gate_opens_only_through_the_arc()
+	_test_locked_borrowers_refuse()
+	_test_bond_term_parity()
 
 	a.report("dre", get_tree(), MIN_CHECKS)
 
@@ -1026,6 +1040,154 @@ func _test_player_default_ultimatum_stall_suspends() -> void:
 	a.eq_bool("walked_a_debt still fires, now from the real encounter",
 		found_walked, true)
 	gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+# --- 18. The Book, earned (PR E) ---------------------------------------------
+
+## The build prompt's own PR E test requirement: fresh run -> Juan -> borrow
+## -> repay -> collection -> sponsored loan -> Book open, driven for real
+## rather than by direct state assignment, since every earlier test in this
+## file proves one STAGE works and this is the only one that proves the
+## whole chain actually connects -- that reaching Collector through a real
+## A Reminder success leaves the account in a shape `dre_book_sponsorship`'s
+## own requirements actually evaluate true against, and so on back to Juan.
+##
+## The sponsored note's own settlement is a seeded roll like any other Book
+## note (`shark.gd::settle_night`), so this drives it with the same bounded
+## "cross days until the state changes" technique `_reach_ultimatum` uses
+## rather than searching for a specific outcome -- and handles either branch
+## it lands on, the same way `_test_a_reminder_hard_road_press` handles
+## PRESS's four unsearchable tiers, since `_resolve_sponsorship` fires on
+## repaid OR enforced alike (not extended -- see shark.gd's own header).
+func _test_full_arc_integration_drive() -> void:
+	var access := get_node("/root/SurfaceVisibility")
+	_fresh()
+	gs.day = 2
+	gs.cash = 50
+	_cross_day()
+	a.eq_bool("Juan's text fires under DRE-D1's own conditions",
+		gs.dre_intro_offered, true)
+	a.eq_bool("seeking Dre out dispatches", gm.dispatch("dre_seek_out", {}), true)
+	a.eq_int("Borrower access earned", int(gs.dre_access_tier), 1)
+
+	a.eq_bool("First Money borrows", gm.dispatch("dre_borrow", {}), true)
+	_fund(5000)
+	gs.day = int(gs.dre_account["due_day"])
+	a.eq_bool("and repays on time", gm.dispatch("dre_repay", {}), true)
+	a.eq_int("Trusted Customer earned", int(gs.dre_access_tier), 2)
+
+	var negotiate := _find_negotiate_day(["clean", "messy"])
+	a.check("a negotiate success day/slot exists in the search window",
+		not negotiate.is_empty())
+	gs.day = int(negotiate.get("day", gs.day))
+	gs.time_slots_today = int(negotiate.get("slot", 0))
+	_opportunities()._maybe_offer("dre_a_reminder")
+	a.eq_bool("A Reminder negotiates clean",
+		gm.dispatch("dre_collect_negotiate", {}), true)
+	a.eq_int("Collector earned", int(gs.dre_access_tier), 3)
+
+	a.eq_bool("the Book route stays closed before the sponsorship offer exists",
+		access.route_allowed("res://ui/screens/shark.tscn"), false)
+	_opportunities()._maybe_offer("dre_book_sponsorship")
+	a.eq_bool("Dre's sponsorship offer is live",
+		_opportunities().is_offered_or_active("dre_book_sponsorship"), true)
+	a.eq_bool("which opens the Book route early, before tier 4",
+		access.route_allowed("res://ui/screens/shark.tscn"), true)
+
+	var shark_sys: Object = gm.system("shark")
+	a.eq_str("Priya is fundable the moment the sponsorship is live",
+		shark_sys.fund_blocker("priya", 150), "")
+	var loan_id: int = int(gs.shark_next_loan_id)
+	a.eq_bool("funding Priya dispatches and accepts the milestone",
+		gm.dispatch("fund_shark", {"borrower_id": "priya", "amount": 150, "term": 4}),
+		true)
+	a.eq_bool("the milestone is active now, not yet resolved",
+		gs.opportunity_history.has("dre_book_sponsorship"), false)
+
+	for _i in range(10):
+		if str(shark_sys.loan_by_id(loan_id).get("status", "")) != "active":
+			break
+		_cross_day()
+	var final_status := str(shark_sys.loan_by_id(loan_id).get("status", ""))
+	if final_status == "defaulted":
+		a.eq_bool("a defaulted sponsored note still resolves the milestone on enforce",
+			gm.dispatch("enforce_shark", {"loan_id": loan_id}), true)
+		final_status = "enforced"
+	a.check("Priya's note reached a terminal state the milestone resolves on",
+		final_status in ["repaid", "enforced"])
+	a.eq_str("the sponsorship milestone completed",
+		str((gs.opportunity_history.get("dre_book_sponsorship", {}) as Dictionary)
+			.get("outcome", "")), "completed")
+	a.eq_int("Junior Lender earned", int(gs.dre_access_tier), 4)
+	a.eq_bool("and the Book route stays open on the ordinary tier now",
+		access.route_allowed("res://ui/screens/shark.tscn"), true)
+	gs.reset_to_new_game()
+
+## "Gate opens only through the arc" (PR E test requirement): Collector alone
+## is not enough, the sponsorship offer alone IS enough before tier 4, and
+## Junior Lender opens it with no sponsorship involved at all -- the three
+## facts `dre_book_visible` (surface_visibility.gd) is built from.
+func _test_book_gate_opens_only_through_the_arc() -> void:
+	var access := get_node("/root/SurfaceVisibility")
+	_trusted_customer()
+	gs.dre_access_tier = 3
+	a.eq_bool("Collector alone, no sponsorship offered, keeps the Book closed",
+		access.route_allowed("res://ui/screens/shark.tscn"), false)
+	_opportunities()._maybe_offer("dre_book_sponsorship")
+	a.eq_bool("the sponsorship offer alone opens it, before tier 4",
+		access.route_allowed("res://ui/screens/shark.tscn"), true)
+
+	_trusted_customer()
+	gs.dre_access_tier = 4
+	a.eq_bool("and Junior Lender opens it with no sponsorship involved at all",
+		access.route_allowed("res://ui/screens/shark.tscn"), true)
+	gs.reset_to_new_game()
+
+## "Locked borrowers refuse" (PR E test requirement): the sponsorship
+## exception is exactly one borrower wide, never a second, wider door.
+func _test_locked_borrowers_refuse() -> void:
+	_trusted_customer()
+	gs.dre_access_tier = 3
+	var shark_sys: Object = gm.system("shark")
+	a.eq_bool("every borrower reads locked before any sponsorship exists",
+		shark_sys.is_locked("nora"), true)
+	a.eq_bool("Priya too, before Dre has actually vouched for her",
+		shark_sys.is_locked("priya"), true)
+	a.check("funding a locked borrower is refused with a reason",
+		not shark_sys.fund_blocker("nora", 50).is_empty())
+
+	_opportunities()._maybe_offer("dre_book_sponsorship")
+	a.eq_bool("the sponsorship opens Priya specifically",
+		shark_sys.is_locked("priya"), false)
+	a.eq_bool("but nobody else -- the exception is exactly one borrower wide",
+		shark_sys.is_locked("nora"), true)
+	a.check("funding Nora still refuses at Collector, sponsorship notwithstanding",
+		not shark_sys.fund_blocker("nora", 50).is_empty())
+	_fund(500)
+	a.eq_str("funding Priya is not refused", shark_sys.fund_blocker("priya", 150), "")
+	gs.reset_to_new_game()
+
+## "Bond term parity" (PR E test requirement): the pinned-neutral bonded term
+## goes live at Collector, per the ruling above `default_probability`'s own
+## header.
+func _test_bond_term_parity() -> void:
+	_trusted_customer()
+	var shark_sys: Object = gm.system("shark")
+	# Leon, high risk, at the top amount/term bumps -- chosen so neither
+	# reading is anywhere near the [0.03, 0.82] clamp. Nora's low risk was
+	# tried first and clamped the BONDED reading to the 0.03 floor, which
+	# understated the delta rather than testing it.
+	var loan := {"borrower_id": "leon", "amount": 500, "term": 2}
+	gs.dre_access_tier = 2
+	var unbonded: float = shark_sys.default_probability(loan)
+	gs.dre_access_tier = 3
+	var bonded: float = shark_sys.default_probability(loan)
+	a.check("the Collector bond discount actually lowers the odds",
+		bonded < unbonded)
+	a.near("by exactly 0.08 off the unbonded reading", unbonded - bonded, 0.08)
+	gs.dre_access_tier = 4
+	var also_bonded: float = shark_sys.default_probability(loan)
+	a.near("Junior Lender keeps the same discount as Collector", also_bonded, bonded)
 	gs.reset_to_new_game()
 
 func _test_restitution_then_penance() -> void:

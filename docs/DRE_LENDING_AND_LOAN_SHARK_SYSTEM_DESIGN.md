@@ -1,6 +1,6 @@
 # Dre Lending and Loan-Shark Progression — System Design
 
-**Status:** Proposed for design review; not yet an implementation authority  
+**Status:** Approved with rulings; see DECISIONS.md (D-7, D-9, D-10)  
 **Audience:** 907Hustle design, engineering, balance review, and ClickUp Brain  
 **Scope:** The player's relationship with Dre, borrowing from Dre, Dre-led
 contracts, and progression into the existing player-funded loan-shark hustle  

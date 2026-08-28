@@ -562,6 +562,47 @@ divide, what "acceptable disposition" means operationally, whether
 restitution gates on penance — so the rulings had to exist before the code
 that implements them, not after.
 
+## D-10 — The Book, earned: PR E's closing rulings
+
+**Decided** 2026-08-28 · **Ships in** PR E · **Design doc**
+`docs/DRE_LENDING_AND_LOAN_SHARK_SYSTEM_DESIGN.md` §13.2 (DRE-ARC-04), §14
+(borrowing economics), §16 (gating changes) · **Sources:** the design doc's
+own text, DRE-D5/D7/D10 (D-7 above), and the running code as of PR D
+
+### The question
+
+PR E is the arc's capstone: the sponsored Book loan, the bond term going
+live, the leveraged-lender economy profile DRE-D5 requires, and DRE-D10's
+relabeling. Several of these had no code to hang a ruling on until this PR
+actually wrote it, the same Slice-0-before-code discipline D-7/D-8/D-9
+follow — recorded here, after the fact, because the judgment calls were made
+while writing the code rather than before it.
+
+### The rulings
+
+| Decision | Ruling |
+|---|---|
+| Sponsorship is keyed by catalogue row, not `source_context` | `dre_book_sponsorship` resolves when a Book loan's `borrower_id` matches the ONE `GameState.shark_borrowers` row carrying `introduction_key: "dre_book_sponsorship"` (Priya Osei) — not a `source_context` field on the opportunity instance. The sponsored borrower is authored, not chosen at offer time, so there is nothing an instance-scoped context would need to carry that the catalogue row does not already say. `systems/shark.gd` calls `Opportunities.accept/resolve()` directly against that key, the same direct-call pattern `dre_collector.gd` (D-9) established for action names shared across every Book loan (`fund_shark`/`enforce_shark`/`forgive_shark`), not just the sponsored one. |
+| The tier gate and the sponsorship exception live on the same check | `shark.fund_blocker` refuses funding when `dre_access_tier < b.access_tier_min` UNLESS `Opportunities.is_offered_or_active("dre_book_sponsorship")` is true for that borrower's row. `is_offered_or_active` is deliberately narrower than the existing `_resolved_or_live`: a RESOLVED sponsorship must read false (the milestone already paid out Junior Lender, which opens the borrower through the ordinary tier gate instead), which `_resolved_or_live` cannot tell apart from "offered" or "active." |
+| The route gate opens on the sponsorship, not just the tier | `HUSTLE_SHARK`'s requirement changed from `dre_access_tier_min: 4` to a single precomputed `fact_true: dre_book_visible`, where `dre_book_visible := tier >= 4 OR a live dre_book_sponsorship`. The design doc is explicit that "ordinary Book access is not required" for the milestone (§13.2) — a Collector who cannot navigate to the one screen `fund_shark` lives on could never complete the milestone the game offered them, which is circular in practice even though the design doc's own text says it is not. The discovery card ("THE BOOK IS YOURS") fires at whichever of the two conditions is met FIRST, which for a sponsored player is the offer appearing, not the milestone resolving — a deliberate reading, not an oversight: every other card in `SurfaceVisibility.GATES` already celebrates a surface becoming reachable (one seeded wander for the Market, a wander count for Boost), never a later "and you used it well," so an earlier truthful reveal is the established pattern here, not an exception to it. |
+| The bond term goes live at tier ≥ 3 | `shark.gd::default_probability`'s bonded term (`-0.08`) reads `dre_access_tier >= 3` (Collector), matching the design doc's own ruling above the header. Named divergence closed, not discovered — parity's shark section is updated deliberately in this PR. |
+| No risk-free Dre-to-Book carry, proved structurally | `tests/parity/parity_runner.gd::_check_no_risk_free_dre_carry()` checks the authored constants directly rather than relying on simulation alone: `shark.gd::_resolve_defaulted`'s "enforce" arm is the only deterministic (no-roll) recovery road the Book has, and it recovers exactly the principal lent, never the interest. Dre's own guaranteed cost is always principal + interest (First Money: $1,000 vs. $1,200). Since the Book's guaranteed floor can never exceed what was borrowed and Dre's guaranteed cost always exceeds it, no risk-free combination can exist under the current authored numbers, and the check fails loudly the moment either fact stops holding — a structural proof covers every combination a simulated profile could try, not only the one it happened to run. |
+| `leveraged_lender` carries a survival income, and walks the real arc | The new `ECON_PROFILES` entry sets `job: true, best_job: true` alongside `dre_leverage: true` — the same shape `worker_wanders` already gives Wander, a floor independent of the strategy being measured. A pure zero-income leverage profile cannot outlive its own rent long enough to reach the Book at all, which would be an instrument weakness, not a finding about Dre. The profile also walks the real earned-access arc (introduction → First Money → repay → A Reminder's NEGOTIATE road only → the sponsored loan) rather than being handed tier 4 directly, for the same reason the route-gate ruling above gives: the milestone's eligibility is mission-scoped, and the honest cost of a leverage strategy includes paying what every other player pays to reach it. `book_loans_funded` is reported, never asserted — A Reminder's Charisma roll can fail, so some seeds legitimately plateau after First Money; only `dre_loans_taken > 0` is asserted, since borrowing itself is unconditional once the cash-pressure trigger is crossed. Measured (4 seeds, mean): **91% of the day job**, 5 Dre loans taken, 21 Book loans funded — leverage roughly breaks even against steady work once Dre's cut and the arc's own time cost are counted, never strictly ahead, the empirical echo of the structural proof directly above. Getting a working measurement took two real bugs out of the first attempt, both left in the code's own comments rather than just this table: the profile initially called `gm.system("dre_lender")`, a name nothing registers (`"dre"` is correct — `dre_lender.gd`'s own file name misled the first draft), so the whole leg silently no-opped; fixed, the SECOND bug was priority order — re-borrowing was checked ahead of the Collector-milestone NEGOTIATE dispatch, and since `dre_a_reminder` requires a clear account, a profile that re-borrows the instant it clears never leaves the account clear long enough for `opportunities.settle_night` to ever offer the milestone, so it cycled First Money forever (6 loans taken, 0 ever funding the Book) instead of climbing the tier ladder. Fixed by moving the milestone dispatch ahead of re-borrowing, and by excluding borrowing entirely at exactly tier 2 (Trusted Customer) so the account has a real window to sit clear. |
+| `net_worth` now nets Dre's debt and the Book's receivables | Extended to `cash + inventory_value - debt + outstanding_book_principal` (principal only, matching the "enforce never recovers interest" fact above — an unresolved note's interest is a hope, not a holding). Zero-valued for all thirteen profiles that existed before this PR, since none of them ever touch Dre or the Book, so no previously-published `pct_of_job` figure moves; it only changes what `leveraged_lender` reads. |
+| Version bumps MINOR, not PATCH | `0.1.3 → 0.2.0`. `autoload/version.gd`'s own header defines MINOR as "a build that ships new surfaces or systems" — five PRs closing with a new relationship system, authored contracts, and an earned hustle surface (THE BOOK) is the clearest case for that rule since it was written, even though 0.1.2 (arguably comparable in scope) shipped as a PATCH under a looser reading. |
+
+### Why PR E carries this entry rather than a later PR
+
+Same reasoning as D-7/D-8/D-9's own closing notes: the route-gate widening,
+the sponsorship-matching mechanism, and the arithmetic invariant are all
+things the code now depends on, so the ruling has to be recorded where the
+dependency was created. Unlike D-7/D-8/D-9, this PR is also the arc's exit —
+`docs/DRE_LENDING_AND_LOAN_SHARK_SYSTEM_DESIGN.md` and
+`docs/STREET_OPPORTUNITY_AND_MISSION_SYSTEM_DESIGN.md` both flip their
+Status line from "Proposed" to "Approved with rulings; see DECISIONS.md" in
+this same PR, which only makes sense once every ruling either doc's open
+questions produced is actually written down somewhere.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

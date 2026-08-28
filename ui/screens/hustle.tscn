@@ -822,7 +822,7 @@ theme_override_constants/separation = 1
 [node name="Nm" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Shark/H/Mid"]
 layout_mode = 2
 theme_type_variation = &"CardTitle"
-text = "SHARK"
+text = "THE BOOK"
 
 [node name="Desc" type="Label" parent="Shell/Scroll/Pad/Content/Rows/Shark/H/Mid"]
 layout_mode = 2

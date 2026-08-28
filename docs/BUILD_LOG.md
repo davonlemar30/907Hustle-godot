@@ -28,6 +28,82 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 0.2.0 — Dre Lending & Loan-Shark Progression: five PRs  (added 2026-08-28)
+
+Five PRs against `BUILD_DRE_LENDING_PROMPT.md`, each its own branch, merged
+in order, turning `docs/DRE_LENDING_AND_LOAN_SHARK_SYSTEM_DESIGN.md` and
+`docs/STREET_OPPORTUNITY_AND_MISSION_SYSTEM_DESIGN.md` (both flipped from
+Proposed to Approved with rulings in PR E) into a played system: Dre as a
+relationship, a real debt with a real deadline, an authored contract chain,
+and the existing Shark surface re-earned as THE BOOK rather than unlocked by
+day count. `docs/DECISIONS.md` D-7 through D-10 carry the closed rulings;
+this entry is the narrative.
+
+**PR A — Structured Debt to Dre.** `dre_lender` (new system) and a real
+`dre_account` state machine — clear → active → due → extended → overdue →
+suspended → clear — replacing the dormant flat `debt`/`debt_due_days`
+fields (which now compute off the account instead of standing alone; every
+existing reader — the HUD chip, Finances, Phone's obligations list — kept
+working unchanged). Save schema v19 → v20.
+
+**PR B — Introduction and earned access.** Juan's mention (`dre_intro_
+offered`) fires on a real trigger — cash pressure or rent pressure past Day
+2, once per run — not on elapsed time. `dre_seek_out` is the one-slot
+meeting that sets `dre_introduced` and the tier-1 latch. `HUSTLE_SHARK`'s
+gate replaced its Day-5 `day_min` check with `dre_access_tier_min: 4`; two
+new `requirements.gd` types (`dre_access_tier_min`, `dre_account_clear`).
+Save schema v20 → v21.
+
+**PR C — Opportunity substrate and First Money.** `systems/opportunities.gd`
+(new), the shared offered/active/resolved lifecycle
+`docs/STREET_OPPORTUNITY_AND_MISSION_SYSTEM_DESIGN.md` specifies, wired into
+`GameManager.dispatch()`'s existing post-handler seam — one more call
+alongside `crew_ops.reconcile()`, not a second dispatch loop.
+`data/dre_contracts.gd`'s first two authored definitions:
+`dre_the_introduction` (recorded, never tracked as a live instance — DRE-
+ARC-01 already had its own authority in PR B, and giving it a second one
+would be exactly the "two authorities" the umbrella design warns against)
+and `dre_first_money`, real content start to finish. A day into this PR, a
+concurrent session's memory-cleanup fix landed on `main` as v22 — this PR
+rebased and took v23 for its own migration arm rather than colliding.
+
+**PR D — A Reminder, the collection contract.** `systems/dre_collector.gd`
+(new) — one `ConsequenceEngine` adapter serving two encounters told apart by
+`chain.source.kind`: DRE-ARC-03 (the player collecting from Dre's own
+borrower, negotiate or press) and the player-default ultimatum (Dre
+collecting from the player, pay now or stall). Both call `Opportunities.
+accept/resolve/fail()` directly rather than through the generic reconcile
+matcher, because their action names — `resolve_consequence_choice` — are
+shared by every confrontation in the game. `dre_lender.gd`'s old flat
+`OVERDUE_GRACE_DAYS` auto-suspend is gone outright (not repurposed under its
+old name); overdue now opens the real ultimatum through the same chassis.
+Save schema v23 → v24.
+
+**PR E — The Book, earned.** DRE-ARC-04: Dre sponsors one named borrower
+(Priya Osei, `GameState.shark_borrowers`' `introduction_key`) as a
+mission-scoped exception, fundable at Collector even though the ordinary
+Book route still requires Junior Lender — `SurfaceVisibility.HUSTLE_SHARK`'s
+gate folds both conditions into one precomputed `dre_book_visible` fact,
+since the evaluator ANDs a requirements list and has no way to express the
+OR on its own. Caught by the new full-arc integration test before it ever
+reached CI: `dre_book_sponsorship`'s own objective was first authored
+against the real `fund_shark` action, which let the generic reconcile
+matcher resolve the milestone the instant Priya was funded rather than when
+her loan actually settled — fixed by keying the objective to a name nothing
+ever dispatches, the same "documentation only" role `dre_the_introduction`'s
+own objective already plays. `shark.gd`'s bonded-lender discount (pinned
+neutral since Phase 3d) goes live at Collector. The economy instrument
+gained a `leveraged_lender` profile (borrows from Dre, funds the Book,
+carrying a job leg so a zero-income profile isn't measuring its own
+eviction) and a structural, non-simulated check that the shipped numbers
+never let that borrow-and-lend round trip pay for itself — enforcing a
+defaulted Book note recovers only the principal, and Dre's own loan always
+costs principal plus interest, so the gap is the interest rate itself and
+nothing about amount, term, or borrower choice closes it. No schema bump —
+nothing this PR added is persisted (`shark_borrowers`' new metadata lives in
+the authored catalogue, reset fresh every run, same as the rest of that
+table).
+
 ## 0.1.2 — She Said Get a Job: five PRs  (added 2026-08-28)
 
 Five PRs against `BUILD_0.1.2_PROMPT.md`'s appendix, each its own branch,

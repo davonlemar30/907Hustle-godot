@@ -247,6 +247,18 @@ func _find(array: Array, definition_id: String) -> Variant:
 			return entry
 	return null
 
+## Public — PR E's `shark.fund_blocker` reads this to know whether a
+## normally tier-locked borrower has a live sponsorship covering them
+## right now (offered or accepted; a terminal one no longer applies,
+## which is exactly what `_resolved_or_live` cannot tell apart and this
+## can). Narrower than `_resolved_or_live` on purpose: a resolved
+## `dre_book_sponsorship` means the milestone already paid out Junior
+## Lender, which opens the borrower through the ordinary tier gate
+## instead — this method correctly reads false once that happens.
+func is_offered_or_active(definition_id: String) -> bool:
+	return _find(gs.opportunity_offers, definition_id) != null \
+		or _find(gs.active_opportunities, definition_id) != null
+
 func _facts() -> Dictionary:
 	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
 	return {

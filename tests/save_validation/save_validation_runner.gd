@@ -29,6 +29,7 @@ func _ready() -> void:
 	_test_v20_dre_lending()
 	_test_v21_dre_intro_offered()
 	_test_v22_growth_caps()
+	_test_v23_opportunities()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -842,6 +843,99 @@ func _test_v22_growth_caps() -> void:
 	_check("a surviving row keeps its receipts untouched",
 		str((kept_history.get("cause:00000009", {}) as Dictionary).get(
 			"effect_receipts", [])) == str(["commit:x"]))
+
+func _instance(id: int, definition_id: String, state: String) -> Dictionary:
+	return {"instance_id": id, "definition_id": definition_id, "state": state,
+		"source_context": {}, "offered_day": 3, "offered_slot": -1,
+		"accepted_day": -1, "accepted_slot": -1, "deadline_day": -1,
+		"deadline_slot": -1, "objective_progress": {}, "resolved_result": {},
+		"receipt_id": ""}
+
+func _test_v23_opportunities() -> void:
+	# Wrong-type top-level fields default to their empty shape.
+	var bad_offers := _fixed(_state("opportunity_offers", "not an array"))
+	_check("a malformed opportunity_offers defaults to empty",
+		(bad_offers["opportunity_offers"] as Array).is_empty())
+	var bad_history := _fixed(_state("opportunity_history", ["not", "a", "dict"]))
+	_check("a malformed opportunity_history defaults to empty",
+		(bad_history["opportunity_history"] as Dictionary).is_empty())
+
+	# Each array only ever holds its own phase's states -- an offer sitting
+	# in `active_opportunities`, or vice versa, is exactly as inconsistent
+	# as a shark note with no status, and is repaired the same way: to the
+	# one state the array's own name promises.
+	var wrong_offer_state := _fixed(_state("opportunity_offers",
+		[_instance(1, "dre_first_money", "active")]))
+	var offers: Array = wrong_offer_state["opportunity_offers"]
+	_check("an offer row claiming 'active' is corrected to 'offered'",
+		str((offers[0] as Dictionary)["state"]) == "offered")
+
+	var wrong_active_state := _fixed(_state("active_opportunities",
+		[_instance(2, "dre_first_money", "offered")]))
+	var active: Array = wrong_active_state["active_opportunities"]
+	_check("an active row claiming 'offered' is corrected to 'active'",
+		str((active[0] as Dictionary)["state"]) == "active")
+
+	# A ready row is legal in active_opportunities but not in offers.
+	var ready_in_active := _fixed(_state("active_opportunities",
+		[_instance(3, "dre_first_money", "ready")]))
+	_check("'ready' is accepted in active_opportunities",
+		str(((ready_in_active["active_opportunities"] as Array)[0] \
+			as Dictionary)["state"]) == "ready")
+
+	# Missing nested fields default in rather than dropping the whole row.
+	var thin_row := {"instance_id": 4, "definition_id": "dre_first_money",
+		"state": "offered"}
+	var thin_result := _fixed(_state("opportunity_offers", [thin_row]))
+	var thin: Dictionary = (thin_result["opportunity_offers"] as Array)[0]
+	_check("a thin offer row is not dropped", thin.get("instance_id", -1) == 4)
+	_check("its source_context defaults to an empty dict",
+		thin.get("source_context") is Dictionary)
+	_check("its objective_progress defaults to an empty dict",
+		thin.get("objective_progress") is Dictionary)
+	_check("its offered_day defaults rather than staying absent",
+		int(thin.get("offered_day", -999)) == -1)
+
+	# opportunity_history rows: outcome is the closed terminal subset of the
+	# lifecycle enum, count is never negative.
+	var bad_outcome := _fixed(_state("opportunity_history",
+		{"dre_first_money": {"outcome": "active", "count": 1, "last_resolved_day": 4}}))
+	var history_row: Dictionary = (bad_outcome["opportunity_history"] \
+		as Dictionary)["dre_first_money"]
+	_check("a live state is not a legal history outcome; corrected to completed",
+		str(history_row["outcome"]) == "completed")
+
+	var bad_count := _fixed(_state("opportunity_history",
+		{"dre_first_money": {"outcome": "completed", "count": -3, "last_resolved_day": 4}}))
+	_check("a negative history count is corrected",
+		int(((bad_count["opportunity_history"] as Dictionary)["dre_first_money"] \
+			as Dictionary)["count"]) >= 0)
+
+	# The counter never sits behind a live instance's own id -- the same
+	# invariant shark_next_loan_id protects, checked here across both arrays.
+	var behind := _state("opportunity_next_instance_id", 1)
+	behind["active_opportunities"] = [_instance(9, "dre_first_money", "active")]
+	var behind_fixed := _fixed(behind)
+	_check("a counter behind a live instance id is raised past it",
+		int(behind_fixed["opportunity_next_instance_id"]) >= 10)
+
+	var ahead := _state("opportunity_next_instance_id", 40)
+	ahead["opportunity_offers"] = [_instance(2, "dre_first_money", "offered")]
+	var ahead_fixed := _fixed(ahead)
+	_check("a counter already ahead of every live id is left alone",
+		int(ahead_fixed["opportunity_next_instance_id"]) == 40)
+
+	# The real migration chain: a v22 save (this build's own predecessor,
+	# from the unrelated long-run-memory fix) carries none of these fields
+	# at all. The v22 -> v23 arm is purely additive -- it writes nothing
+	# itself, the same as the v3 -> v4 / v4 -> v5 arms it follows -- so the
+	# whole claim to check here is that a v22 save still migrates cleanly;
+	# the field's own empty-default value is `_apply()`'s job, proven
+	# through GameState's declared defaults, not this validator's.
+	var save_system: Node = get_node("/root/SaveSystem")
+	var v22 := _state("day", 9)
+	var migrated: Dictionary = save_system._migrate({"save_version": 22, "state": v22})
+	_check("a v22 save with no opportunity fields migrates", not migrated.is_empty())
 
 func _test_load_pipeline() -> void:
 	var save_system: Node = get_node("/root/SaveSystem")

@@ -60,6 +60,15 @@ extends RefCounted
 ## the full reasoning. `fail()` exists for the same PR: a `repeatable: false`
 ## definition can now genuinely fail (walking away from a collection,
 ## botching a negotiation) rather than only ever completing.
+##
+## ## `is_offered_or_active()` — PR E's third consumer, a narrower question
+##
+## `systems/shark.gd` (PR E) reads this to gate a locked borrower row's one
+## fundable exception (`dre_book_sponsorship`, DRE-ARC-04). Narrower than
+## `_resolved_or_live()` on purpose: a RESOLVED sponsorship must read false
+## here, since by then the milestone already promoted Junior Lender, which
+## opens the borrower through the ordinary tier gate instead — exactly the
+## distinction `_resolved_or_live()` cannot make.
 
 const DRE_CONTRACTS := preload("res://data/dre_contracts.gd")
 const REQUIREMENTS := preload("res://systems/requirements.gd")

@@ -1,10 +1,15 @@
 extends "res://ui/screens/surface_base.gd"
-## Shark — lend money, wait, find out.
+## THE BOOK — lend money, wait, find out. Renamed from "Shark" (DRE-D10);
+## the file/scene names stay as-is, the same "code identifiers don't chase
+## player-facing copy" call every other relabel in this build makes.
 ##
-## Two halves: notes already out (with whatever decision a default is waiting
-## on), and the borrowers who will take a new one. The odds shown are the real
-## default probability, because the whole surface is a bet the player should be
-## able to price.
+## Three parts, top to bottom: what the player owes DRE (a read-only summary
+## — Phone owns the actual repay/extension actions, DRE-D2), notes already
+## out (with whatever decision a default is waiting on), and the borrowers
+## who will take a new one — locked behind earned access or Dre's one
+## sponsorship exception (PR E, DRE-ARC-04) until then. The odds shown on a
+## fundable row are the real default probability, because the whole surface
+## is a bet the player should be able to price.
 
 ## Canon terms: shorter is dearer. Order matters — this drives the picker.
 const TERMS := [2, 4, 7]

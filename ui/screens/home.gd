@@ -107,6 +107,12 @@ func _on_wander(intent: String) -> void:
 	var engine: Object = _gm.system("consequence")
 	if engine != null and bool(engine.has_active()):
 		return
+	# Same reasoning as the encounter case just above: a walk that opened a
+	# surface is about to show its discovery card, carrying the exact
+	# sentence `activity_log[0]` would put in this toast. Let the card say it
+	# once instead of a toast (layer 100) floating the same line over it.
+	if nav.has_pending_flow_sheets():
+		return
 	nav.show_toast(_wander_toast(before_day))
 
 ## What the walk turned up, said to the player directly.

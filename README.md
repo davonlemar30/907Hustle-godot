@@ -12,7 +12,7 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `0.1.0`** — shown bottom-right on the title screen, and stamped into
+**Current: `0.1.2`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
@@ -29,6 +29,42 @@ literal: the title screen reads `Version.display()`, the export workflow greps
 the constant out of the file, and the parity suite asserts both the value and
 its shape. A version written down twice is a version that disagrees with itself
 the first time somebody bumps one copy.
+
+## What's new in 0.1.2 — "She Said Get a Job"
+
+*Five PRs, one release. Full technical detail in [`CHANGELOG.md`](CHANGELOG.md)
+and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
+
+**A new opening.** Yalonda introduces the run now instead of a standalone
+title-screen slideshow — you meet her in scene, same beats, less clicking.
+
+**The home screen keeps its secrets a little longer.** Turf and Crew don't
+show up greyed-out on day one anymore — they stay off the board entirely
+until you've earned them, same as Market and Boost already did.
+
+**Finding something now feels like finding something.** A new job, a Lift
+target, or the Street Market turning up on a walk gets an actual card, not a
+toast that scrolls past before you read it.
+
+**Your crew texts you now.** Word gets around. Recruit Pherris and some
+mornings she'll text the best market route before you've checked yourself.
+Recruit Eli and he'll tell you which side of town is quiet today. Nobody on
+your crew ever burns you — and most days, nobody has anything worth
+texting about. That silence is on purpose.
+
+**Getting caught is a scene now, not a coin flip.** Tier 2-3 stickups — the
+till, the register, the dice game, Goodie's stash — play out as staged rooms:
+bank what you've got and go, or push for more. And Boost's caught state has
+real outs: talk your way clear, buy off the store (once, ever, per store), or
+just hand back what you took and walk — no clean roll, but no charge either.
+
+**Some nights are fat nights.** Every so often Tone hears about a room
+that's flush that same night. Hit the window he names and the take doubles,
+sometimes better. Miss it and it's just a normal night.
+
+**Up next:** Stickup and the Lift are two versions of "take something that
+isn't yours." The next build starts folding them into one ladder — SCORES —
+petty theft up through organized crew work, one progression instead of two.
 
 ## Status
 
@@ -106,9 +142,12 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Lift stock from rooms that may be watching — once you have clocked them | Hustle → Boost |
 | Notice a room worth trying, and put it on your own map | Home → LOOK FOR A DEAL |
 | Rob marks for fast money and real Heat | Hustle → Stickup |
+| Play a staged room on the till, the register, the dice game, or Goodie's stash — bank what you've got or push for more | automatic, on a tier 2-3 stickup |
 | Have it go clean, messy, wrong, or badly wrong | automatic, on any risky action |
-| Get caught mid-lift and choose how to play it | automatic, on a blown Boost |
+| Get caught mid-lift and choose how to play it — talk your way clear, buy off the store, or hand back what you took | automatic, on a blown Boost |
 | Get booked, and trade cash against calendar time | automatic, when an answer goes badly enough |
+| Hear from Pherris and Eli when they have something worth texting about, and hear nothing most days | Phone |
+| Catch a fat-night window from Tone and double the take if you hit it in time | automatic, on a rare stickup tip |
 | Watch a district start recognising your routine, and cool off when you stop | Boost · Stickup · Market — LOCAL ATTENTION |
 | Carry Heat and have it cost you: a night with lights behind you, and money gone | automatic, above WATCHED |
 | Cool off by having a day nobody has to hear about | automatic, on any day that generates no Heat |
@@ -256,7 +295,8 @@ autoload/
   game_state.gd       # the run's state spine + reactive `state_changed`
   game_manager.gd     # dispatch(action) → systems; one notify_changed per success
   rng_manager.gd      # FNV-1a string_hash, golden-verified against the JS oracle
-  screen_manager.gd   # the only thing that swaps screens; also toasts
+  screen_manager.gd   # the only thing that swaps screens; also toasts + the
+                      # flow-sheet queue (discovery cards, the Yalonda intro)
   exposure.gd         # observation ledgers, NPC lenses, channels, disposition bands
   curtis.gd           # rival awareness phases, watchers, quiet-streak decay
   save_system.gd      # versioned autosave on every state change; title save preview
@@ -283,6 +323,10 @@ systems/              # the ONLY writers of GameState
   wallet.gd           # the only writer of cash; clean/dirty provenance
   heat.gd             # the only writer of heat; district x family scaling, relief
   consequence_engine.gd # one blocking chain, receipts, the delayed queue, Pressure
+  confrontation_loop.gd # the multi-round chassis shared by every KIND_CONFRONTATION
+                      # chain: verb burning, round log, the tip-payload seam
+  tips.gd             # Word of Mouth: the day-start tip generator (Pherris'
+                      # route push, Eli's corridor read, Tone's fat-night window)
   arrest.gd           # severity, bail, priors, processing time, the record
   retaliation.gd      # the delayed answer: schedule, ambient warnings, street crew
   list_adapter.gd     # Pherris running the board: what she buys, and why she stops
@@ -315,20 +359,39 @@ tests/save_validation/# CI gate: adversarial nested-save shapes through the real
 tests/territory/      # CI gate: FS-002's own suite. Seconds, not the parity
                       # runner's ten minutes, which is why it is separate
   territory_asserts.gd         # the shared helper every FS-002 slice reuses,
-                               # incl. the market-RNG non-drift assertion
+                               # incl. the market-RNG non-drift assertion;
+                               # confrontation and tips reuse it too
+tests/confrontation/  # CI gate: the confrontation loop's own suite (tier
+                      # boundaries, verb burning, the guaranteed out, BRIBE,
+                      # HAND IT BACK), on the shared territory asserts
+tests/tips/           # CI gate: Word of Mouth's own suite (seeded determinism,
+                      # the budget ramp, each generator's gating, a fat-night
+                      # payload consumed by a driven room), same shared harness
 tests/smoke/          # CI gate: every screen instantiates WITH its script
                       # attached, and refreshes without raising
 ```
 
-### The four gates
+```
+data/                  # authored tables the systems above read; no state, no autoloads
+  consequence_rules.gd # odds, bands, Pressure constants, arrest gates
+  confrontation_scripts.gd # every authored room/scene script, incl. the Lift's
+                      # caught-loop beats + bribe rows, and TIP_MODIFIERS
+  tip_events.gd       # Word of Mouth's budget ramp numbers (base/per-miss/cap)
+  wander_events.gd    # the discovery ramp + card pool Wander draws from
+  territory_definitions.gd # the authored board: corners, adjacency, capacity
+```
 
-All four run in CI on every push and pull request, and all four are green on
+### The six gates
+
+All six run in CI on every push and pull request, and all six are green on
 `main`. The `--script` form does **not** exit in this project; use the scene.
 
 ```bash
 godot --headless --path . --scene tests/parity/parity_runner.tscn
 godot --headless --path . --scene tests/save_validation/save_validation_runner.tscn
 godot --headless --path . --scene tests/territory/territory_runner.tscn
+godot --headless --path . --scene tests/confrontation/confrontation_runner.tscn
+godot --headless --path . --scene tests/tips/tips_runner.tscn
 godot --headless --path . --scene tests/smoke/screen_smoke.tscn
 scripts/check_glyph_coverage.py
 ```
@@ -338,6 +401,9 @@ Godot run that dies part-way still exits 0. CI additionally fails any run whose
 log carries `SCRIPT ERROR` or `Invalid access`: a PASS line only says the checks
 that RAN all passed, and `screen_smoke.gd` calls `refresh()` while ignoring
 every error it raises.
+
+Current counts: parity 12,533 · save-validation 151 · territory 169 ·
+confrontation 212 · tips 93 · smoke 23/23 screens.
 
 ## Architecture
 
@@ -405,6 +471,27 @@ every error it raises.
   it makes you quiet.
 - **Theme-driven UI** — colors, fonts, skins and type scale live in
   `hustle_theme.tres`; a change there restyles every screen.
+- **A multi-round confrontation is a fifth `ConsequenceEngine` chain kind, not
+  a second engine.** `confrontation_loop.gd` is the chassis every source
+  adapter shares — round bookkeeping, verb burning, the round log, and the
+  tip-payload read (`tip_modifiers_for`) — so a stickup room and the Lift's
+  caught loop cannot drift on the rules that make the loop one machine. Round
+  state persists inside the chain's own `decision` block rather than
+  replaying from round one on reload, a deliberate divergence from the
+  original build brief: a reload has to show the decision the player was
+  actually looking at, snapshotted odds included.
+- **A day-start generator is a declared step, not a signal listener.**
+  `day_lifecycle.gd`'s `DAY_START_ORDER` is a literal array a test reads back;
+  adding Word of Mouth's tip generator meant appending `"tips"` to that array
+  and one `match` arm, the same shape every other day-start step already
+  used. Nothing subscribes to `day_crossed` on its own to decide when it runs.
+- **A tip is a claim about state the simulation already tracks, never a
+  second roll wearing a name.** Two of Word of Mouth's three generators
+  (Pherris' route, Eli's corridor) are pure reads with no side effect at all;
+  only Tone's fat-night window writes a payload, and it writes to a seam
+  (`ConfrontationLoop.tip_modifiers_for`) the confrontation loop was already
+  reading defensively before Word of Mouth existed — the field arrived as
+  data, not as a new read path.
 
 ## Running it
 
@@ -502,6 +589,8 @@ regardless of how small the source file is.
 | Batch 18 PR 2. FS-002.2 | ✅ D-5: the shipped settlement order (`crew → territory → shark → jobs → obligations`) wins over a documented contract that had said the reverse for four batches with no test behind it. The bigger find: the stated REASON for crew-before-territory was false in four places — territory income does not read crew power at all; the real dependency is Deshawn's heat multiplier. Parity → 12,500 checks |
 | Batch 18 PR 3. FS-002.3 | ✅ the one-way door: `held_blocks`/`spenard_blocks` retired for `territory_nodes`/`territory_fronts` off a new `data/territory_definitions.gd`. Save v15 → **v16**. D-6: a migrated holding is never confiscated, even where the new board calls it Curtis-secure. Found and fixed two real bugs chasing this down — a test-fixture object-aliasing bug in the migration chain, and a forward-referenced const that hung the parity suite for over an hour. Parity → 12,505 checks |
 | Batch 18 PR 4. Territory's operating cost, D-1 | ✅ the only player-visible change in Build 18: a $20/soldier/night upkeep, charged on the full roster whether posted or idle. `settler` moves **636% → 409%** of the day job — 636% was the bug, not a floor worth defending. Every economy profile is now asserted within a floor/ceiling corridor instead of a bare `print()`. Parity → 12,524 checks |
+| The Rooms — confrontation loop | ✅ tier 2-3 stickup targets play out as authored multi-round rooms (bank-or-push, TAKE AND GO, the exit fork) on a new fifth `ConsequenceEngine` chain kind, `confrontation`. New CI gate `tests/confrontation/`. Parity → 12,530 checks |
+| **0.1.2. She Said Get a Job** | ✅ five PRs: Turf & Crew hide until earned; discovery gets a real card instead of a toast; Yalonda replaces the opening screen; the Lift's caught loop gets BRIBE and a same-day HAND IT BACK follow-up; Word of Mouth slice 1 (Pherris' route push, Eli's corridor read, Tone's fat-night window) on a new seeded day-start tip generator. Save v16 → v19. New CI gate `tests/tips/`. Parity → **12,533 checks**, floor `MIN_CHECKS := 12533` |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

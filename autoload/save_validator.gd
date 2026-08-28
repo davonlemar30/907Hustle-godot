@@ -12,12 +12,15 @@ const WANDER_EVENTS := preload("res://data/wander_events.gd")
 ## silently killing nightly settlement). Nothing validated the ids in a loaded
 ## `held_blocks`/`territory_nodes` before this.
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
+## Word of Mouth's ramp cap, for the same reason `WANDER_EVENTS` is here: the
+## clamp on a corrupt `tip_misses` has to agree with the ramp it is clamping.
+const TIP_EVENTS := preload("res://data/tip_events.gd")
 ## Nested save-shape repair for load-time payloads.
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v18. Older saves are
-## migrated before this validator runs, so every arm below reads a v18 shape.
+## repaired payload back to disk. The save schema is v19. Older saves are
+## migrated before this validator runs, so every arm below reads a v19 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -45,6 +48,8 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_wander(state, repairs)
 	_validate_boost_discovery(state, repairs)
 	_validate_boost_bribes_used(state, repairs)
+	_validate_tip_effects(state, repairs)
+	_validate_tip_misses(state, repairs)
 	_validate_territory_nodes(state, repairs)
 	return {"state": state, "repairs": repairs}
 
@@ -722,6 +727,61 @@ func _validate_boost_bribes_used(state: Dictionary, repairs: Array[String]) -> v
 			continue
 		cleaned.append(str(entry))
 	state["boost_bribes_used"] = cleaned
+
+## 0.1.2 (Word of Mouth). Structural only, same as `_validate_active_consequence`
+## — `type` is not checked against a known set because `tip_modifiers_for`
+## already degrades an unrecognised type to a no-op by design, and a validator
+## that rejected the next slice's tip type would be the thing breaking the
+## save, not the tip.
+func _validate_tip_effects(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("tip_effects"):
+		return
+	if not state["tip_effects"] is Array:
+		state["tip_effects"] = []
+		_repair(repairs, "tip_effects", "wrong type; defaulted")
+		return
+	var cleaned: Array = []
+	for index in (state["tip_effects"] as Array).size():
+		var value: Variant = (state["tip_effects"] as Array)[index]
+		if not value is Dictionary:
+			_repair(repairs, "tip_effects[%d]" % index, "invalid row dropped")
+			continue
+		var row: Dictionary = value
+		_string(row, "type", "", "tip_effects[%d].type" % index, repairs)
+		_string(row, "target_id", "", "tip_effects[%d].target_id" % index, repairs)
+		_int(row, "day", 0, "tip_effects[%d].day" % index, repairs)
+		_float(row, "multiplier", 1.0, "tip_effects[%d].multiplier" % index, repairs)
+		var slots := _array(row, "slots", [], "tip_effects[%d].slots" % index, repairs)
+		for slot_index in slots.size():
+			if not (slots[slot_index] is int or slots[slot_index] is float):
+				_repair(repairs, "tip_effects[%d].slots[%d]" % [index, slot_index],
+					"wrong type; dropped")
+				slots[slot_index] = null
+			else:
+				slots[slot_index] = int(slots[slot_index])
+		row["slots"] = slots.filter(func(entry): return entry != null)
+		cleaned.append(row)
+	state["tip_effects"] = cleaned
+
+## Same ramp, same clamp shape as `_validate_wander`'s `wander_misses` arm —
+## one owner (`TIP_EVENTS.miss_ceiling()`) so the two cannot disagree and
+## repair an honest save.
+func _validate_tip_misses(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("tip_misses"):
+		return
+	if not (state["tip_misses"] is int or state["tip_misses"] is float):
+		state["tip_misses"] = 0
+		_repair(repairs, "tip_misses", "wrong type; defaulted")
+		return
+	if int(state["tip_misses"]) < 0:
+		state["tip_misses"] = 0
+		_repair(repairs, "tip_misses", "negative; defaulted")
+		return
+	state["tip_misses"] = int(state["tip_misses"])
+	var ceiling: int = int(TIP_EVENTS.miss_ceiling())
+	if int(state["tip_misses"]) > ceiling:
+		_repair(repairs, "tip_misses", "beyond the cap (%d); clamped" % int(state["tip_misses"]))
+		state["tip_misses"] = ceiling
 
 ## v16 (FS-002.3). Drop rows whose id the authored board does not carry, clamp
 ## soldiers non-negative, and cap a posted sum that exceeds the capacity those

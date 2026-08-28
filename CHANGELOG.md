@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `0.1.0`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `0.1.2`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -18,21 +18,82 @@ a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
 
-## Unreleased
+## 0.1.2 — She Said Get a Job (2026-08-28)
 
-### The Rooms — stickup's confrontation loop (2026-08-27)
+*Draft — this entry was written from the build's own record of what shipped,
+not from an established patch-note voice sample, and is worth a pass before
+it goes out under that voice.*
+
+#### THE OPENING
+
+Yalonda replaces the old title-screen opening. You meet her in the scene now
+instead of clicking through a separate intro screen first — same beats,
+delivered where the run actually starts.
+
+#### THE HOME SCREEN
+
+Turf and Crew don't show up greyed-out on day one anymore. They stay off the
+board entirely until you've earned them, the same way Market and Boost
+already did — and the game tells you the moment that changes instead of
+leaving you to notice on your own.
+
+#### DISCOVERY FEELS LIKE SOMETHING
+
+Wander into a new job, a Lift target, or the Street Market for the first time
+and it's not just a toast anymore — you get an actual card for it.
+
+#### YOUR CREW TEXTS YOU
+
+Word gets around now. Recruit Pherris and some mornings she'll text you the
+best market route before you've even checked. Recruit Eli and he'll tell you
+which side of town is quiet today — the safest road to carry through.
+Nobody's crew ever burns you, and most days nobody has anything worth
+texting about — silence is the point as much as the tips are.
+
+#### GETTING CAUGHT IS A SCENE NOW
+
+Tier 2-3 stickups — the Chevron till, the Holiday register, the dice game
+behind the rec center, Goodie's stash — are staged rooms now, not one roll.
+Bank what you've got and go, or push for more; a slipped stage forks into
+running for it clean or running for it messy, and heat scales with how much
+of the take you actually walked out with. Tier-1 marks are still one roll,
+exactly as before, and WALK at the door still costs nothing.
+
+Getting caught lifting has real outs now too: talk your way clear, settle up
+with the store you got caught in (once a store, once a run), or just hand
+back what you took and walk — no clean roll, but no charge either.
+
+#### THE FAT NIGHT
+
+Every so often Tone hears about a room that's flush — a specific target, a
+specific window that same night. Hit it while the window's open and the take
+doubles, sometimes better. Miss the window and it's just a normal night
+again.
+
+#### Next up
+
+Stickup and the Lift are two versions of the same idea — "take something
+that isn't yours" — and the next build starts folding them into one ladder,
+SCORES: petty theft up through organized crew work, one progression instead
+of two.
 
 #### Added
 
-- **Tier 2-3 stickups are multi-round rooms.** Picking the Chevron till, the
-  Holiday register, the dice game, or Goodie's stash now opens a staged
-  confrontation: the take is split across authored stages, TAKE AND GO banks
-  what you have and leaves, a slipped stage forks into DROP IT AND RUN versus
-  RUN WITH IT, and leaving early is quieter — heat scales with the fraction
-  you actually walked out with. Tier-1 marks resolve in one roll exactly as
-  before. WALK at the door costs nothing: no slot, no attempt, no daily cap.
-- **New gate suite** `tests/confrontation/` (159 checks) in CI beside the
-  other four.
+- **Word of Mouth, slice 1** (`systems/tips.gd`): a day-start tip generator —
+  Pherris' route push, Eli's corridor read, Tone's fat-night window — on a
+  seeded drought ramp (roughly 40% of days carry nothing). New save fields
+  `tip_effects`/`tip_misses` (schema v18 → v19). New gate suite
+  `tests/tips/` (93 checks) in CI beside the other four.
+- **The Lift's caught loop**: BRIBE (buy off a store, once per store per
+  run) and HAND IT BACK (surrender the goods, no roll, no charge) as real
+  outs from a caught chain, alongside the existing talk-your-way-clear path.
+  New save field `boost_bribes_used` (schema v17 → v18).
+- **Tier 2-3 stickups are multi-round rooms.** The take is split across
+  authored stages, TAKE AND GO banks what you have and leaves, a slipped
+  stage forks into DROP IT AND RUN versus RUN WITH IT, and leaving early is
+  quieter — heat scales with the fraction you actually walked out with.
+- **New gate suites** `tests/confrontation/` (212 checks) and `tests/tips/`
+  (93 checks) in CI beside the other three.
 
 #### Changed
 

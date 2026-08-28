@@ -193,7 +193,27 @@ func _message_card(message: Dictionary) -> Control:
 	var action: Dictionary = message.get("action", {})
 	if not action.is_empty() and str(action.get("kind", "")) == "job_offer":
 		v.add_child(label("OFFER ATTACHED", "Kicker", 10, AMBER))
+	elif not action.is_empty() and str(action.get("kind", "")) == "tip":
+		v.add_child(label(_tip_stamp(action), "Kicker", 10, AMBER))
 	return c
+
+## GOOD TONIGHT while a windowed tip's slots have not passed yet, GOOD TODAY
+## for a standing feed's day (no window at all — Pherris and Eli read the
+## board, they do not name a slot), EXPIRED once the day has turned or the
+## window's last slot is behind the current one.
+func _tip_stamp(action: Dictionary) -> String:
+	var expires_day: int = int(action.get("expires_day", -1))
+	if gs.day > expires_day:
+		return "EXPIRED"
+	var slots: Array = action.get("slots", [])
+	if slots.is_empty():
+		return "GOOD TODAY"
+	var latest: int = -1
+	for slot in slots:
+		latest = maxi(latest, int(slot))
+	if int(gs.time_slots_today) > latest:
+		return "EXPIRED"
+	return "GOOD TONIGHT"
 
 func _on_dismiss(id: String) -> void:
 	_gm.dispatch("dismiss_phone_message", {"id": id})

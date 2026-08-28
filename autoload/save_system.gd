@@ -132,7 +132,7 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## failure than the migration doing nothing — the same argument the v10 arm
 ## makes for re-deriving `districts_unlocked` rather than defaulting it
 ## empty.
-const SAVE_VERSION := 18
+const SAVE_VERSION := 19
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -220,6 +220,13 @@ const PERSIST_FIELDS: Array[String] = [
 	# reason: a store already bought this run cannot be reconstructed from
 	# anything else.
 	"boost_bribes_used",
+	# Word of Mouth's active payloads and drought counter (v19). A live
+	# fat-night window is exactly as irreplaceable as a bought-off store --
+	# it names a day, a target and a multiplier nothing else in the save
+	# carries, and the ramp counter is `wander_misses` again under a new
+	# name.
+	"tip_effects",
+	"tip_misses",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -687,6 +694,13 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# did not exist before this build, so no v17 save has bought a
 				# walk from anywhere, and every one comes back empty.
 				state["boost_bribes_used"] = []
+			18:
+				# v18 -> v19: `tip_effects`, `tip_misses`. Purely additive --
+				# Word of Mouth did not exist before this build, so no v18 save
+				# has a live tip window or a drought running, and both come
+				# back at their fresh-run defaults.
+				state["tip_effects"] = []
+				state["tip_misses"] = 0
 			_:
 				return {}
 		version += 1

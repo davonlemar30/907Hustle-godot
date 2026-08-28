@@ -382,6 +382,8 @@ func reset_to_new_game() -> void:
 	}
 	boost_store_bans = []
 	boost_bribes_used = []
+	tip_effects = []
+	tip_misses = 0
 	district_pressure = {}
 	pressure_bleed_pending = []
 	pressure_clean_credits = {}
@@ -1251,6 +1253,22 @@ var boost_store_bans: Array = []
 ## repeated, and this is what keeps the door a one-time favor rather than
 ## standing protection. Same shape and same reason as `boost_store_bans`.
 var boost_bribes_used: Array = []
+
+## Active tip payloads (Word of Mouth, 0.1.2): {type, target_id, day, slots,
+## multiplier}. `ConfrontationLoop.tip_modifiers_for()` already reads this
+## defensively — the seam shipped a build early so this field could arrive as
+## data rather than as a second, competing read path. Persisted for the same
+## reason `boost_bribes_used` is: a fat-night window banked mid-run has to
+## survive a reload, or the room a save was looking at stops matching the
+## room it reloads into.
+var tip_effects: Array = []
+
+## How many day-start tip rolls in a row have come up empty. Rides the exact
+## ramp shape `wander_misses` proved out — base chance, +per-miss, capped,
+## reset on a hit — because a second drought counter with different math
+## would be a second thing to keep straight for no reason: a drought is a
+## drought whether it is a walk or a text.
+var tip_misses: int = 0
 
 ## district_id -> family -> {score, last_gain_day, quiet_days, market_gain_day,
 ## market_gain_today}. TI-003 §8. Separate storage from global `heat` on

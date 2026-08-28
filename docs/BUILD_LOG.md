@@ -28,6 +28,103 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 0.1.2 — She Said Get a Job: five PRs  (added 2026-08-28)
+
+Five PRs against `BUILD_0.1.2_PROMPT.md`'s appendix, each its own branch,
+merged in order: hide Turf/Crew until earned, the discovery card, Yalonda
+replacing the opening screen, the Lift's caught-loop BRIBE (plus a same-day
+HAND IT BACK follow-up), and Word of Mouth slice 1. Save schema moved twice,
+v17 → v18 → v19, one field-set per PR, each the same four-touch update
+(`game_state.gd` field + reset, `save_system.gd` version/PERSIST_FIELDS/
+migration arm, `save_validator.gd` arm, `save_validation_runner.gd` coverage).
+
+**PR A — hide Turf & Crew until earned.** `HOME_TURF_CREW` moved from
+`surface_visibility.gd`'s LOCKED section to HIDDEN, matching how every other
+Hustle row already behaved — a padlocked row the player cannot yet act on
+taught nothing a HIDDEN row (plus the announcer's arrival line) doesn't teach
+better. Found and dropped `GameState.eli_report`, a dead UI-scaffold field
+the build prompt's own draft still referenced; nothing in the shipped build
+ever wrote or read it.
+
+**PR B — the discovery card.** New `ui/components/flow_sheets.gd` and a flow-
+sheet queue on `ScreenManager` (`enqueue_flow_sheet`/`take_next_flow_sheet`),
+drained by `screen_base.gd::refresh()` once a screen is actually in the tree
+and nothing is already blocking or showing. A find (job, Lift target, Street
+Market) now surfaces as a real sheet instead of a toast. The queue exists
+because a discovery can land while the player is mid-navigation; the drain
+is deferred and `is_inside_tree()`-guarded because parity's rapid
+screen-create/destroy cycles found the alternative fast — thousands of
+backtraces from a `get_tree()` call against a freed node, which reads as a
+hung suite before it reads as a crash log.
+
+**PR C — Yalonda replaces the opening.** Deleted `ui/screens/opening.{gd,
+tscn}` and the `OPENING` route outright; `name_entry.gd::_on_begin()` now
+enqueues an `intro` flow sheet and goes straight to the game. Same beats,
+delivered in-scene instead of gating the run behind a separate screen.
+
+**PR D — the Lift's caught loop gets BRIBE.** `boost.gd` grew a caught-chain
+escalation (fight/run/talk, seeded verb priority, burn-on-fail) and a BRIBE
+choice — pay a store's price, once per store per run
+(`gs.boost_bribes_used`, v17 → v18). Found and fixed a real off-by-one in
+the escalation's round cap: with exactly three rollable verbs and
+`prior_round < round_cap`, the terminal "apply the last failed verb's row"
+branch was unreachable, since all three verbs were already burned by the
+time a fourth attempt could occur — corrected to `round_cap - 1`. Also added
+a pre-commit `choice_blocked()` seam on the engine: `_resolve_choice` claims
+the round's commit receipt before calling the adapter, so a bribe refused
+for insufficient cash *after* commit would have wedged the round with no way
+to re-commit. `choice_blocked` lets a choice refuse itself before that
+receipt is claimed instead.
+
+**HAND IT BACK (same-day follow-up).** Found after PR D shipped: the
+original ClickUp ticket's Architecture section named a guaranteed,
+always-available out — surrender the goods, no roll, no charge — that
+`BUILD_0.1.2_PROMPT.md`'s appendix never mentioned. Shipped as its own small
+PR: `"hand_it_back"` added to the Lift's caught-loop choices, never burned,
+offered every round alongside whatever verbs remain live.
+
+**PR E — Word of Mouth, slice 1.** New `systems/tips.gd`, a `"tips"`
+`DAY_START_ORDER` step (last, after `retaliation_ambient` — a tip describes
+the day's board, so it waits for everything else that could still change
+it). One seeded budget roll a day (`wander_misses`' ramp, renamed: base
+0.45, +0.15/miss, capped 0.85, reset on a fire), then one of three
+generators drawn seeded: Pherris' route push (her signature double-text),
+Eli's corridor read, Tone's fat-night stickup window (a T2/T3 target, a
+`gs.tip_effects` row `ConfrontationLoop.tip_modifiers_for()` was already
+reading defensively, take ×2.0/×2.5 by tier off `TIP_MODIFIERS` — single
+source, not re-declared). New fields `tip_effects`/`tip_misses`, v18 → v19.
+Phone renders a `GOOD TODAY`/`GOOD TONIGHT`/`EXPIRED` stamp off the tip's
+`action` payload, the `job_offer` precedent's sibling.
+
+Two corrections made against the build prompt, both verified against the
+originating ClickUp tickets (`86bbnzegb`, `86bbnk61z`) and the linked design
+doc before being trusted over it: Eli's tip reads
+`consequence_engine.pressure_score()` (carry-stop pressure), not market
+`availability == 0` as drafted — both tickets and the design doc say "reads
+carry-stop pressure" in as many words, and `economy.gd::resolve_carry()`
+already prices a trip off that same read. And no `phone_active` requirement
+gates generation: both tickets list "dead phone line holds tips in
+`phone_held_inbox`" as existing behaviour, which only means something if a
+tip can be generated while the line is dead — `phone.push_message()` already
+routes a dead line to the held inbox on its own.
+
+**Verification.** New gate suite `tests/tips/` — 93 checks on the shared
+`territory_asserts.gd` harness: seeded determinism, the one-generator-a-day
+budget cap, the ramp's bounds and a 60-day quiet-fraction band, each
+generator's own gating (Pherris needs a route that clears the fare, Eli
+needs a second district to name, fat-night needs T2/T3 *and* Stickup
+actually unlocked), a fat-night row consumed by an actually-driven stickup
+room (realised take checked against the same `:take` key the room's own
+entry roll uses, times the row's multiplier), the dead-line hold, and a
+real `capture()`/JSON/`_apply()` save round-trip. `tests/save_validation/`
+gained `_test_v19_tips()` alongside PR D's `_test_v18_boost_bribes_used()`.
+`tests/parity/`'s declared `DAY_START_ORDER` trace gained `DAY_START:tips`;
+five hardcoded `SAVE_VERSION == 18` / `"0.1.0"` version-stamp literals moved
+to 19 / `"0.1.2"`. All five suites (parity 12533, confrontation 212,
+territory 169, save_validation 151, tips 93) green on the merge commit.
+
+---
+
 ## The Rooms: stickup becomes the confrontation loop  (added 2026-08-27)
 
 The multi-round resolution loop (design name "Squared Up"; code name

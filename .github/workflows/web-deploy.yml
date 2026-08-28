@@ -111,6 +111,15 @@ jobs:
           godot --headless --path . res://tests/confrontation/confrontation_runner.tscn 2>&1 | tee confrontation.log
           grep -q "^confrontation: PASS" confrontation.log
 
+      # Word of Mouth's own harness (`tests/tips/`), same shape and same
+      # shared asserts as territory and confrontation. Guards the budget
+      # ramp, the three generators' gating, the fat-night payload a driven
+      # stickup room actually consumes, and the dead-line hold.
+      - name: Run tips suite
+        run: |
+          godot --headless --path . res://tests/tips/tips_runner.tscn 2>&1 | tee tips.log
+          grep -q "^tips: PASS" tips.log
+
       - name: Run screen smoke
         run: |
           godot --headless --path . res://tests/smoke/screen_smoke.tscn 2>&1 | tee smoke.log
@@ -134,7 +143,7 @@ jobs:
       # above already tee'd, so this adds no runtime.
       - name: No script errors in any harness
         run: |
-          if grep -nE "SCRIPT ERROR|Invalid access" parity.log sv.log territory.log smoke.log; then
+          if grep -nE "SCRIPT ERROR|Invalid access" parity.log sv.log territory.log confrontation.log tips.log smoke.log; then
             echo "::error::A harness raised a script error. A suite that crashed part-way is not a green suite - see the matched lines above."
             exit 1
           fi

@@ -1832,8 +1832,10 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# 9 → 10 in v0.1.0, 10 → 11 in batch 7, 11 → 12 in batch 8, 12 → 13 in
 	# batch 10 (Wander), 13 → 14 in batch 13 (the wander intents), 14 → 15 in
 	# batch 14 (Boost's discovery latch), 15 → 16 in Batch 18 PR 3 (FS-002.3,
-	# canonical Territory state), 16 → 17 in PR 4 (Market's discovery latch).
-	_expect_int("save version is 18", saves.SAVE_VERSION, 18)
+	# canonical Territory state), 16 → 17 in PR 4 (Market's discovery latch),
+	# 17 → 18 in 0.1.2 PR D (the Lift's caught-loop BRIBE), 18 → 19 in 0.1.2
+	# PR E (Word of Mouth's tip payloads and drought counter).
+	_expect_int("save version is 19", saves.SAVE_VERSION, 19)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -5205,6 +5207,10 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	"DAY_START", "DAY_START:heat_day_reset", "DAY_START:stickup_day_reset",
 	"DAY_START:expire_retaliation", "DAY_START:surface_delayed",
 	"DAY_START:retaliation_ambient",
+	# Word of Mouth (0.1.2) appends `tips` and reorders nothing above it: a
+	# tip is a claim about today's board, so it goes last, after every other
+	# step that could still change what today's board is.
+	"DAY_START:tips",
 ]
 
 func _check_day_lifecycle_order() -> void:
@@ -13208,7 +13214,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v18", saves.SAVE_VERSION, 18)
+	_expect_int("the schema is v19", saves.SAVE_VERSION, 19)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -14003,7 +14009,7 @@ func _check_version_stamp(gs: Node) -> void:
 	if version == null:
 		_fail("version", "no Version autoload registered")
 		return
-	_expect_str("the build is stamped 0.1.0", str(version.VERSION), "0.1.0")
+	_expect_str("the build is stamped 0.1.2", str(version.VERSION), "0.1.2")
 
 	# Shape, not value: this half survives every future bump, so the convention
 	# README documents stays enforced rather than merely written down.
@@ -14013,8 +14019,8 @@ func _check_version_stamp(gs: Node) -> void:
 		_expect_true("version part '%s' is numeric" % part, str(part).is_valid_int())
 	_expect_int("MAJOR reads back", version.major(), 0)
 	_expect_int("MINOR reads back", version.minor(), 1)
-	_expect_int("PATCH reads back", version.patch(), 0)
-	_expect_str("the display form prefixes a v", version.display(), "v0.1.0")
+	_expect_int("PATCH reads back", version.patch(), 2)
+	_expect_str("the display form prefixes a v", version.display(), "v0.1.2")
 
 	# The title screen renders it, from the singleton rather than from the
 	# scene's editor-time preview.
@@ -19708,7 +19714,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v18", int(saves.SAVE_VERSION), 18)
+	_expect_int("the schema is v19", int(saves.SAVE_VERSION), 19)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -20123,7 +20129,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v18 for Heat's teeth", int(saves.SAVE_VERSION), 18)
+	_expect_int("the schema is v19 for Heat's teeth", int(saves.SAVE_VERSION), 19)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -20576,7 +20582,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v18 for Wander", int(saves.SAVE_VERSION), 18)
+	_expect_int("the schema is v19 for Wander", int(saves.SAVE_VERSION), 19)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

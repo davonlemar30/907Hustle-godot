@@ -13,7 +13,7 @@ extends RefCounted
 ## ## The sequence
 ##
 ##   1. PRE_SETTLE  — `day_ending(ended_day)`, clock still reads the old day
-##   2. SETTLE      — `SETTLE_ORDER`: crew, territory, shark, jobs, obligations.
+##   2. SETTLE      — `SETTLE_ORDER`: crew, territory, shark, dre, jobs, obligations.
 ##                    Jobs and obligations run LAST. `HANDOFF.md` documented the
 ##                    reverse for four batches; see D-5 below and the ruling in
 ##                    `docs/DECISIONS.md`. The code is the contract.
@@ -219,8 +219,17 @@ const DAY_START_ORDER: Array[String] = [
 ##
 ## Obligations last because rent and the phone bill are what end a run, and
 ## everything that could still pay them has had its turn.
+##
+## **DRE-D11: `dre` sits right after `shark`, before `jobs`.** Dre's own
+## account transition (active/due → overdue) has to see money that came back
+## from the player's OWN borrowers tonight before it decides whether the
+## player is late — a note that repaid at this settlement is cash the player
+## already has by the time Dre's clock checks in, not cash still in flight.
+## Ahead of `jobs`/`obligations` for the same reason `shark` already is: Dre's
+## transition does not pay a bill or resolve a job, it only asks whether the
+## night's own money changed anything about what the player owes him.
 const SETTLE_ORDER: Array[String] = [
-	"crew", "territory", "shark", "jobs", "obligations",
+	"crew", "territory", "shark", "dre", "jobs", "obligations",
 ]
 
 var gs: Node

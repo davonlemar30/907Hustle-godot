@@ -1834,8 +1834,10 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# batch 14 (Boost's discovery latch), 15 → 16 in Batch 18 PR 3 (FS-002.3,
 	# canonical Territory state), 16 → 17 in PR 4 (Market's discovery latch),
 	# 17 → 18 in 0.1.2 PR D (the Lift's caught-loop BRIBE), 18 → 19 in 0.1.2
-	# PR E (Word of Mouth's tip payloads and drought counter).
-	_expect_int("save version is 19", saves.SAVE_VERSION, 19)
+	# PR E (Word of Mouth's tip payloads and drought counter), 19 → 20 in
+	# the Dre Lending & Loan-Shark Progression build's PR A (the dormant
+	# debt/debt_due_days pair replaced by a structured dre_account).
+	_expect_int("save version is 20", saves.SAVE_VERSION, 20)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -5164,7 +5166,8 @@ func _check_dispatch_ownership(gs: Node, gm: Node) -> void:
 ## order stops being an implementation detail and becomes the interface.
 const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	"PRE_SETTLE",
-	"SETTLE:crew", "SETTLE:territory", "SETTLE:shark", "SETTLE:jobs", "SETTLE:obligations",
+	"SETTLE:crew", "SETTLE:territory", "SETTLE:shark", "SETTLE:dre",
+	"SETTLE:jobs", "SETTLE:obligations",
 	"POST_SETTLE",
 	# v0.1.0's declared POST_SETTLE work. The HOT escape lever pays back the
 	# Pressure the day's CLEAN outcomes earned, after every gain from those same
@@ -5255,7 +5258,7 @@ func _check_lifecycle_trace(gs: Node, gm: Node, lifecycle: RefCounted) -> void:
 	# The declared order is the one the code walks, not a copy of it kept here.
 	_expect_str("lifecycle settle order is declared",
 		str(lifecycle.SETTLE_ORDER),
-		str(["crew", "territory", "shark", "jobs", "obligations"]))
+		str(["crew", "territory", "shark", "dre", "jobs", "obligations"]))
 	for system_name in lifecycle.SETTLE_ORDER:
 		var system: Object = gm.system(str(system_name))
 		_expect_true("lifecycle settler %s exists" % str(system_name), system != null)
@@ -13214,7 +13217,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v19", saves.SAVE_VERSION, 19)
+	_expect_int("the schema is v20", saves.SAVE_VERSION, 20)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -13482,7 +13485,10 @@ func _drift_ready(gs: Node) -> void:
 	# run and a nineteen-day one.
 	gs.rent_due_day = 9999
 	gs.phone_due_day = 9999
-	gs.debt = 0
+	# `gs.debt` needs no line here (and, since 0.1.2's Dre PR A, accepts
+	# none — it is computed off `dre_account`, read-only): the reset three
+	# lines up already leaves that account clear, which is what `debt == 0`
+	# was ever asserting.
 
 ## A digest of every district's board, so a comparison catches a single price.
 func _market_digest(gs: Node) -> String:
@@ -19714,7 +19720,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v19", int(saves.SAVE_VERSION), 19)
+	_expect_int("the schema is v20", int(saves.SAVE_VERSION), 20)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -20129,7 +20135,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v19 for Heat's teeth", int(saves.SAVE_VERSION), 19)
+	_expect_int("the schema is v20 for Heat's teeth", int(saves.SAVE_VERSION), 20)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -20582,7 +20588,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v19 for Wander", int(saves.SAVE_VERSION), 19)
+	_expect_int("the schema is v20 for Wander", int(saves.SAVE_VERSION), 20)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

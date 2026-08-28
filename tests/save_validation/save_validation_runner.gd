@@ -26,6 +26,7 @@ func _ready() -> void:
 	_test_v17_market_discovery()
 	_test_v18_boost_bribes_used()
 	_test_v19_tips()
+	_test_v20_dre_lending()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -428,6 +429,119 @@ func _test_v19_tips() -> void:
 		v18.has("tip_effects") and (v18["tip_effects"] as Array).is_empty())
 	_check("and arrives with no drought yet",
 		v18.has("tip_misses") and int(v18["tip_misses"]) == 0)
+
+## Dre Lending & Loan-Shark Progression, PR A (0.1.2, v20): `dre_introduced`,
+## `dre_access_tier`, `dre_account` (a closed six-state machine, unlike a
+## tip's open-ended `type`), and `dre_account_history`.
+func _test_v20_dre_lending() -> void:
+	var valid_account := {"status": "active", "principal": 1000, "interest": 200,
+		"fee": 0, "opened_day": 3, "due_day": 8, "term_days": 5,
+		"extension_used": false, "offer_id": "first_loan"}
+	var valid := _state("dre_account", valid_account)
+	valid["dre_introduced"] = true
+	valid["dre_access_tier"] = 1
+	valid["dre_account_history"] = {"loans_taken": 1, "repaid_on_time": 0,
+		"repaid_late": 0, "extensions": 0, "defaults": 0,
+		"total_principal_borrowed": 1000, "total_interest_paid": 0}
+	var valid_result := _result(valid)
+	var valid_fixed: Dictionary = valid_result["state"]
+	_check("a valid dre_account survives", valid_fixed["dre_account"] == valid_account)
+	_check("valid dre_introduced survives", valid_fixed["dre_introduced"] == true)
+	_check("valid dre_access_tier survives", int(valid_fixed["dre_access_tier"]) == 1)
+	_check("a valid dre shape is a validation no-op",
+		(valid_result["repairs"] as Array).is_empty())
+
+	# Wrong types at the top of each field.
+	var wrong := _state("dre_account", "not-a-dict")
+	wrong["dre_introduced"] = "yes"
+	wrong["dre_access_tier"] = "one"
+	wrong["dre_account_history"] = "not-a-dict-either"
+	var wrong_fixed: Dictionary = _fixed(wrong)
+	_check("a non-Dictionary dre_account defaults to clear",
+		str((wrong_fixed["dre_account"] as Dictionary)["status"]) == "clear")
+	_check("a non-bool dre_introduced coerces rather than crashing",
+		wrong_fixed["dre_introduced"] is bool)
+	_check("a non-numeric dre_access_tier defaults to 0",
+		int(wrong_fixed["dre_access_tier"]) == 0)
+	_check("a non-Dictionary dre_account_history defaults empty",
+		int((wrong_fixed["dre_account_history"] as Dictionary)["loans_taken"]) == 0)
+
+	# The tier ceiling: 0-5 (design doc section 7), clamped not defaulted.
+	_check("an out-of-range tier clamps to the ceiling",
+		int(_fixed(_state("dre_access_tier", 99))["dre_access_tier"]) == 5)
+	_check("a negative tier clamps to the floor",
+		int(_fixed(_state("dre_access_tier", -3))["dre_access_tier"]) == 0)
+
+	# The closed status enum: an unrecognised status is not just a wrong
+	# type, it is a debt the game would never be able to settle again.
+	var bad_status := valid_account.duplicate()
+	bad_status["status"] = "haunted"
+	var bad_status_fixed: Dictionary = _fixed(_state("dre_account", bad_status))
+	var repaired_account: Dictionary = bad_status_fixed["dre_account"]
+	_check("an unrecognised status repairs to clear",
+		str(repaired_account["status"]) == "clear")
+	_check("a repaired-to-clear account has its principal zeroed",
+		int(repaired_account["principal"]) == 0)
+	_check("a repaired-to-clear account has its interest zeroed",
+		int(repaired_account["interest"]) == 0)
+	_check("a repaired-to-clear account has its fee zeroed",
+		int(repaired_account["fee"]) == 0)
+
+	# Negative money on an otherwise-valid active account.
+	var negative_money := valid_account.duplicate()
+	negative_money["principal"] = -500
+	negative_money["fee"] = -10
+	var negative_fixed: Dictionary = _fixed(_state("dre_account", negative_money))
+	var negative_account: Dictionary = negative_fixed["dre_account"]
+	_check("a negative principal defaults to zero", int(negative_account["principal"]) == 0)
+	_check("a negative fee defaults to zero", int(negative_account["fee"]) == 0)
+	_check("interest untouched by the sweep survives",
+		int(negative_account["interest"]) == 200)
+
+	# Negative lifetime counters.
+	var negative_history := _fixed(_state("dre_account_history",
+		{"loans_taken": -1, "repaid_on_time": 0, "repaid_late": 0, "extensions": 0,
+			"defaults": 0, "total_principal_borrowed": -1000, "total_interest_paid": 0}))
+	var history_fixed: Dictionary = negative_history["dre_account_history"]
+	_check("a negative loans_taken defaults to zero", int(history_fixed["loans_taken"]) == 0)
+	_check("a negative lifetime total defaults to zero",
+		int(history_fixed["total_principal_borrowed"]) == 0)
+
+	# Absent is not malformed: a v19 save reaches this validator with none of
+	# the four and must come out with none of them, so `_apply()` supplies
+	# GameState's own defaults.
+	var absent_result := _result(_state("day", 4))
+	var absent_state: Dictionary = absent_result["state"]
+	_check("an absent dre_account stays absent", not absent_state.has("dre_account"))
+	_check("an absent dre_introduced stays absent", not absent_state.has("dre_introduced"))
+	_check("an absent dre_access_tier stays absent", not absent_state.has("dre_access_tier"))
+	_check("an absent dre_account_history stays absent",
+		not absent_state.has("dre_account_history"))
+	_check("absent dre fields need no repair", (absent_result["repairs"] as Array).is_empty())
+
+	# The migration itself, through the real chain: a v19 payload carrying
+	# the legacy debt fields comes back with a structured account and the
+	# two old keys gone, not lingering unread.
+	var save_system: Node = get_node("/root/SaveSystem")
+	var zero_debt := _state("day", 4)
+	zero_debt["debt"] = 0
+	zero_debt["debt_due_days"] = 0
+	var v19_zero: Dictionary = save_system._migrate({"save_version": 19, "state": zero_debt})
+	_check("a v19 save with no debt migrates", not v19_zero.is_empty())
+	_check("and arrives with a clear account",
+		str((v19_zero.get("dre_account", {}) as Dictionary).get("status", "")) == "clear")
+	_check("and the legacy keys are gone, not just unread",
+		not v19_zero.has("debt") and not v19_zero.has("debt_due_days"))
+
+	var positive_debt := _state("day", 4)
+	positive_debt["debt"] = 900
+	positive_debt["debt_due_days"] = 2
+	var v19_positive: Dictionary = save_system._migrate({"save_version": 19,
+		"state": positive_debt})
+	_check("a v19 save with positive debt migrates", not v19_positive.is_empty())
+	_check("and arrives with an active account carrying the whole amount as principal",
+		int((v19_positive.get("dre_account", {}) as Dictionary).get("principal", -1)) == 900)
+	_check("and arrives introduced", bool(v19_positive.get("dre_introduced", false)))
 
 ## FS-002.3 (`86bbj1jpm`): the first Territory arm in this validator, and the
 ## root-cause fix for `86bbjxtab` — nothing validated the ids in a loaded

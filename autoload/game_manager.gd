@@ -108,6 +108,14 @@ func _ready() -> void:
 	shark.setup(_gs, rng, self, attributes)
 	register_system("shark", shark)
 
+	# Dre Lending & Loan-Shark Progression, PR A. Registered right after
+	# shark, matching where "dre" sits in DayLifecycle.SETTLE_ORDER — Dre is
+	# the gatekeeper TO the shark hustle, so it is built beside the system it
+	# will eventually gate rather than off in an unrelated part of this list.
+	var dre_lender = preload("res://systems/dre_lender.gd").new()
+	dre_lender.setup(_gs, self)
+	register_system("dre", dre_lender)
+
 	var nine07list = preload("res://systems/nine07list.gd").new()
 	nine07list.setup(_gs, rng, time, attributes, self)
 	register_system("list", nine07list)

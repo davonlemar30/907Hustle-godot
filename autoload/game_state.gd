@@ -61,8 +61,28 @@ var heat: float = 6.0
 var heat_max: int = 15
 var health: int = 78
 var health_max: int = 100
-var debt: int = 1200
-var debt_due_days: int = 2
+## Computed off `dre_account` (declared in the Dre section below), not stored
+## — a second copy of the same number is a second place for it to be wrong.
+## Every existing reader (the HUD chip, More's Finances summary, Phone's
+## obligations list) keeps working unchanged: they read `debt`, not
+## `dre_account`, and this is the seam that makes that still true once a real
+## lender exists behind it.
+var debt: int:
+	get:
+		if str(dre_account.get("status", "clear")) == "clear":
+			return 0
+		return int(dre_account.get("principal", 0)) + int(dre_account.get("interest", 0)) \
+			+ int(dre_account.get("fee", 0))
+## Positive: due in that many days. Zero: due today. Negative: overdue by
+## that many days — the sign convention every existing reader already
+## assumed before there was a real account behind it (`phone.gd`'s obligation
+## row branches on exactly this: `< 0` overdue, `== 0` due tonight, `> 0`
+## upcoming).
+var debt_due_days: int:
+	get:
+		if str(dre_account.get("status", "clear")) == "clear":
+			return 0
+		return int(dre_account.get("due_day", day)) - day
 var cargo_max: int = 10  # canon: web cargoCapacity
 var respect: int = 4
 
@@ -362,8 +382,18 @@ func reset_to_new_game() -> void:
 	financial_pressure = 0
 	heat = 0.0
 	health = 100
-	debt = 0
-	debt_due_days = 0
+	dre_introduced = false
+	dre_access_tier = 0
+	dre_account = {
+		"status": "clear", "principal": 0, "interest": 0, "fee": 0,
+		"opened_day": -1, "due_day": -1, "term_days": 0,
+		"extension_used": false, "offer_id": "",
+	}
+	dre_account_history = {
+		"loans_taken": 0, "repaid_on_time": 0, "repaid_late": 0,
+		"extensions": 0, "defaults": 0,
+		"total_principal_borrowed": 0, "total_interest_paid": 0,
+	}
 	respect = 0
 	attributes = {"combat": 1, "charisma": 1, "intelligence": 1}
 	attribute_progress = {"combat": 0.0, "charisma": 0.0, "intelligence": 0.0}
@@ -739,6 +769,45 @@ func borrower_by_id(id: String) -> Dictionary:
 		if b.get("id", "") == id:
 			return b
 	return {}
+
+# --- Dre (Dre Lending & Loan-Shark Progression, docs/DRE_LENDING_AND_LOAN_ -
+# SHARK_SYSTEM_DESIGN.md) -----------------------------------------------------
+#
+# `dre_access_tier` and `dre_account.status` are deliberately two different
+# facts. Tier is a milestone latch — what Dre has decided the player has
+# earned — and only ever moves forward in normal play. Status is the current
+# debt's own state machine (clear/active/due/extended/overdue/suspended) and
+# moves in both directions inside a single loan's life. Access surviving a
+# suspension (D-7/DRE-D4: milestones stay recorded, only services block) is
+# the whole reason these are not one field.
+#
+# `debt`/`debt_due_days` above are computed off `dre_account` rather than
+# being written here directly — see their own headers.
+
+## Whether the player has met Dre yet at all. `false` gates the entire Dre
+## contact surface out of existence; distinct from `dre_access_tier == 0`
+## (Unknown) only in that the tier number exists for arithmetic (`>=`
+## comparisons in gates) and this exists for a single unambiguous boolean a
+## gate or a screen can read without knowing the tier ladder's numbering.
+var dre_introduced: bool = false
+## 0 Unknown · 1 Borrower · 2 Trusted Customer · 3 Collector · 4 Junior Lender
+## · 5 Operator (design doc §7). Monotonic in normal play — see D-7/DRE-D4.
+var dre_access_tier: int = 0
+## The one active-or-resolved loan a player can carry at a time (design doc
+## §10.1, MVP: no concurrent Dre debts). `status` is the state-machine value;
+## everything else is meaningless while `status == "clear"`.
+var dre_account: Dictionary = {
+	"status": "clear", "principal": 0, "interest": 0, "fee": 0,
+	"opened_day": -1, "due_day": -1, "term_days": 0,
+	"extension_used": false, "offer_id": "",
+}
+## Lifetime counters behind credit-limit projection and Dre's own read of the
+## player — never reset by a repayment, only appended to. Design doc §10.1.
+var dre_account_history: Dictionary = {
+	"loans_taken": 0, "repaid_on_time": 0, "repaid_late": 0,
+	"extensions": 0, "defaults": 0,
+	"total_principal_borrowed": 0, "total_interest_paid": 0,
+}
 
 # --- 907List (canon: src/data/market.js LISTING_ITEMS / MARKET_TIERS) -------
 # A flip market. Every item has a `buy` price and a hidden `true_value` band,

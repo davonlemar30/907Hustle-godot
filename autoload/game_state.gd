@@ -382,6 +382,7 @@ func reset_to_new_game() -> void:
 	financial_pressure = 0
 	heat = 0.0
 	health = 100
+	dre_intro_offered = false
 	dre_introduced = false
 	dre_access_tier = 0
 	dre_account = {
@@ -784,6 +785,12 @@ func borrower_by_id(id: String) -> Dictionary:
 # `debt`/`debt_due_days` above are computed off `dre_account` rather than
 # being written here directly — see their own headers.
 
+## Whether Juan has mentioned Dre yet (DRE-D1, PR B) — a latch on the
+## day-start check, not on the meeting. `dre_introduced` below is the
+## meeting itself; this is the door that has to open before that meeting
+## can happen at all. Once per run: the trigger never re-checks after this
+## flips true, whether or not the player ever acts on it.
+var dre_intro_offered: bool = false
 ## Whether the player has met Dre yet at all. `false` gates the entire Dre
 ## contact surface out of existence; distinct from `dre_access_tier == 0`
 ## (Unknown) only in that the tier number exists for arithmetic (`>=`

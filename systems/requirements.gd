@@ -288,6 +288,28 @@ func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dicti
 			var walks: float = _num(facts.get("wander_count"))
 			return _result(req, walks >= min_value, walks, min_value)
 
+		# --- Dre Lending & Loan-Shark Progression, PR B --------------------
+		#
+		# `dre_access_tier` is a milestone latch (0 Unknown through 5 Operator,
+		# design doc §7) and only ever moves forward in normal play, which is
+		# what makes it safe as a ROUTE gate: `HUSTLE_SHARK` reads
+		# `dre_access_tier_min` alone, deliberately never combined with
+		# `dre_account_clear` on the same gate. A suspended account's status
+		# is not monotonic — combining the two would re-close a route the
+		# player already earned the moment Dre suspends them, exactly the
+		# failure `surface_visibility.gd`'s own `ROUTE_GATES` header warns
+		# against. `dre_account_clear` exists for narrower, non-route checks
+		# (an offer's own availability) that are allowed to move backward.
+
+		"dre_access_tier_min":
+			var tier: float = _num(facts.get("dre_access_tier"))
+			return _result(req, tier >= min_value, tier, min_value)
+
+		"dre_account_clear":
+			var status: String = str(facts.get("dre_account_status", "clear"))
+			var clear: bool = status == "clear"
+			return _result(req, clear, status, "clear")
+
 	return {
 		"ok": false,
 		"blocker_code": "unsupported_requirement",

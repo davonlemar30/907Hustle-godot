@@ -1,26 +1,30 @@
 extends RefCounted
-## Dre Lender — Dre Lending & Loan-Shark Progression, PR A (Structured Debt to
-## Dre). Design doc: `docs/DRE_LENDING_AND_LOAN_SHARK_SYSTEM_DESIGN.md`.
-## Rulings: `docs/DECISIONS.md`, D-7 (DRE-D1 through DRE-D12).
+## Dre Lender — Dre Lending & Loan-Shark Progression, PR A + PR B (Structured
+## Debt to Dre; Introduction and earned access). Design doc:
+## `docs/DRE_LENDING_AND_LOAN_SHARK_SYSTEM_DESIGN.md`. Rulings:
+## `docs/DECISIONS.md`, D-7 (DRE-D1 through DRE-D12).
 ##
 ## Owns the ONE loan a player can carry (`gs.dre_account`, MVP: no
 ## concurrent Dre debts — design doc §10.1), the state machine that walks it
-## clear → active → due → (extended →) overdue → suspended → clear, and the
+## clear → active → due → (extended →) overdue → suspended → clear, the
 ## lifetime counters (`gs.dre_account_history`) behind every later credit
-## and access decision. Introduction, tiers, contracts, and the collection
-## encounter are later PRs — this file only proves the loan itself survives
-## the whole loop, save and reload included.
+## and access decision, and — as of PR B — the one-time introduction that is
+## the only door onto any of it. Tiers past Borrower, contracts, and the
+## collection encounter are later PRs.
 ##
-## ## PR A ships the mechanism, not the door
+## ## PR A shipped the mechanism before the door; PR B is the door
 ##
-## `dre_borrow` refuses a player who is not `dre_introduced`, and nothing in
-## this build sets that flag true yet — PR B's Juan-mention → meeting arc
-## does that. A fresh run therefore cannot reach ANY of this through play.
-## That is deliberate (the build prompt is explicit: "a debug/temporary
-## `dre_introduced` default of `true` is FORBIDDEN"), not an oversight —
-## the whole borrow/repay/extend/default loop is proven here through
-## `gm.dispatch()` calls a test or a live `game_eval` drives directly, so
-## PR B only has to open a door onto a room that already works.
+## `dre_borrow` refuses a player who is not `dre_introduced`. Through PR A
+## that flag could only be set by a test or a live `game_eval` — no path in
+## the actual game ever set it, on purpose (the build prompt is explicit: "a
+## debug/temporary `dre_introduced` default of `true` is FORBIDDEN"). PR B
+## is the door: `push_intro_offer()` is the day-start check that decides
+## whether Juan mentions Dre at all (DRE-D1), and `dre_seek_out` is the one
+## slot-costing action that turns a mention into `dre_introduced = true`
+## (DRE-D2). Nothing about the loan machinery itself changed to make this
+## true — the whole borrow/repay/extend/default loop was already proven
+## correct in PR A; PR B only had to open a door onto a room that already
+## worked.
 ##
 ## ## The overdue → suspended edge is provisional
 ##
@@ -62,13 +66,15 @@ const OVERDUE_GRACE_DAYS := 2
 
 var gs: Node
 var gm: Node
+var time_system: RefCounted
 
-func setup(game_state: Node, manager: Node) -> void:
+func setup(game_state: Node, manager: Node, time_sys: RefCounted) -> void:
 	gs = game_state
 	gm = manager
+	time_system = time_sys
 
 func can_handle(action: String) -> bool:
-	return action in ["dre_borrow", "dre_repay", "dre_request_extension"]
+	return action in ["dre_borrow", "dre_repay", "dre_request_extension", "dre_seek_out"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
 	match action:
@@ -78,6 +84,8 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 			return _repay()
 		"dre_request_extension":
 			return _request_extension()
+		"dre_seek_out":
+			return _seek_out()
 	return {"ok": false, "reason": "Unknown Dre action."}
 
 func _wallet() -> Object:
@@ -88,6 +96,57 @@ func _exposure() -> Node:
 
 func _phone() -> Object:
 	return gm.system("phone") if gm != null else null
+
+# --- introduction (DRE-D1, PR B) ----------------------------------------------
+
+## Called once from the `"dre_intro"` `DAY_START_ORDER` step, after `"tips"` —
+## a day-start signal, same shape as Word of Mouth's, so it reads the fully
+## settled day rather than a half-finished one.
+##
+## DRE-D1's trigger, verbatim: `day >= 2` AND no prior mention AND (cash at
+## or under $80, OR rent is due within a day and cash is under the weekly
+## rent). The rent-pressure clause is deliberate: canon's flat cash check
+## alone can miss a player who is doing fine on cash but about to miss rent,
+## and Dre is meant to be a second honest road in, not just a poverty flag.
+func push_intro_offer(today: int) -> void:
+	if gs.dre_intro_offered:
+		return
+	if today < 2:
+		return
+	var broke: bool = gs.cash <= 80
+	var rent_pressure: bool = (gs.rent_due_day - today <= 1) and gs.cash < gs.WEEKLY_RENT
+	if not (broke or rent_pressure):
+		return
+	gs.dre_intro_offered = true
+	var phone: Object = _phone()
+	if phone != null:
+		phone.push_message("Juan",
+			"you should talk to Dre. he fronts people money when they need it. " \
+			+ "ask around Spenard, everybody knows where to find him.")
+
+## "" if the player can go meet Dre right now, the reason otherwise.
+func seek_out_blocker() -> String:
+	if gs.game_over:
+		return "The run is over."
+	if not gs.dre_intro_offered:
+		return "Nobody's mentioned him to you."
+	if gs.dre_introduced:
+		return "You already know him."
+	return ""
+
+## The one-time meeting, DRE-D2: costs the slot the loan offer itself never
+## will again. Writes nothing about the account — `dre_introduced` and the
+## tier latch are the whole result; the offer is just what tier 1 makes
+## visible on the contact surface, not a separate write here.
+func _seek_out() -> Dictionary:
+	var blocked := seek_out_blocker()
+	if not blocked.is_empty():
+		return {"ok": false, "reason": blocked}
+	gs.dre_introduced = true
+	gs.dre_access_tier = maxi(int(gs.dre_access_tier), 1)
+	gs.log_activity("You find Dre outside the Mini-Mart. He already knew you'd come.", AMBER)
+	time_system.handle("advance_time", {})
+	return {"ok": true}
 
 # --- borrow ------------------------------------------------------------------
 

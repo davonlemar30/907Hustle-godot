@@ -113,7 +113,7 @@ func _ready() -> void:
 	# the gatekeeper TO the shark hustle, so it is built beside the system it
 	# will eventually gate rather than off in an unrelated part of this list.
 	var dre_lender = preload("res://systems/dre_lender.gd").new()
-	dre_lender.setup(_gs, self)
+	dre_lender.setup(_gs, self, time)
 	register_system("dre", dre_lender)
 
 	var nine07list = preload("res://systems/nine07list.gd").new()

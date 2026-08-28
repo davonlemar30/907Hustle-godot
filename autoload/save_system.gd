@@ -145,7 +145,9 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## overdue account carrying the whole flat amount as principal, because a
 ## principal/interest split the old field never recorded cannot be repaired,
 ## only guessed at, and this migration does not guess.
-const SAVE_VERSION := 20
+## v21: `dre_intro_offered` (Dre Lending PR B) -- purely additive, one bool
+## latching whether Juan's day-start mention has fired yet.
+const SAVE_VERSION := 21
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -244,6 +246,9 @@ const PERSIST_FIELDS: Array[String] = [
 	# `debt`/`debt_due_days` pair -- see the migration arm and GameState's
 	# computed properties of the same names.
 	"dre_introduced", "dre_access_tier", "dre_account", "dre_account_history",
+	# PR B (v21): the day-start latch deciding whether Juan's mention has
+	# fired. Separate from `dre_introduced` -- see that field's own header.
+	"dre_intro_offered",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -766,6 +771,15 @@ func _migrate(payload: Dictionary) -> Dictionary:
 					"extensions": 0, "defaults": 0,
 					"total_principal_borrowed": 0, "total_interest_paid": 0,
 				}
+			20:
+				# v20 -> v21: `dre_intro_offered`. Purely additive -- PR B did
+				# not exist before this build, so no v20 save has heard Juan's
+				# mention yet. A save already carrying `dre_introduced == true`
+				# (from a v20 run driven through a test or game_eval, never
+				# through real play -- PR A shipped no door onto it) implies
+				# the mention already happened; anything else comes back
+				# false, the honest history either way.
+				state["dre_intro_offered"] = bool(state.get("dre_introduced", false))
 			_:
 				return {}
 		version += 1

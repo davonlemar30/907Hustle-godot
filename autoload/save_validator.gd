@@ -19,8 +19,8 @@ const TIP_EVENTS := preload("res://data/tip_events.gd")
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v20. Older saves are
-## migrated before this validator runs, so every arm below reads a v20 shape.
+## repaired payload back to disk. The save schema is v21. Older saves are
+## migrated before this validator runs, so every arm below reads a v21 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -51,6 +51,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_tip_effects(state, repairs)
 	_validate_tip_misses(state, repairs)
 	_validate_dre_introduced(state, repairs)
+	_validate_dre_intro_offered(state, repairs)
 	_validate_dre_access_tier(state, repairs)
 	_validate_dre_account(state, repairs)
 	_validate_dre_account_history(state, repairs)
@@ -800,6 +801,15 @@ func _validate_dre_introduced(state: Dictionary, repairs: Array[String]) -> void
 	if not state["dre_introduced"] is bool:
 		state["dre_introduced"] = false
 		_repair(repairs, "dre_introduced", "wrong type; defaulted")
+
+## PR B (0.1.2, v21). Same defaults-not-coerces reasoning as `dre_introduced`
+## just above -- `bool()` on an arbitrary Variant is a crash, not a repair.
+func _validate_dre_intro_offered(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("dre_intro_offered"):
+		return
+	if not state["dre_intro_offered"] is bool:
+		state["dre_intro_offered"] = false
+		_repair(repairs, "dre_intro_offered", "wrong type; defaulted")
 
 ## Tier is a milestone latch, 0 (Unknown) through 5 (Operator) -- design doc
 ## section 7. Clamped rather than defaulted on out-of-range, same reasoning

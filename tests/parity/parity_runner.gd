@@ -604,6 +604,12 @@ func _check_phone_clock(gs: Node, gm: Node, clock: Dictionary) -> void:
 		_fail("phone clock", "no frames")
 		return
 	gs.reset_to_new_game()
+	# Dre Lending & Loan-Shark Progression, PR B: this fixture is oracle-minted
+	# and predates Dre, so its frames assume the inbox never fills itself on
+	# time passing alone. A fresh run left broke long enough now earns Juan's
+	# mention (DRE-D1) — real, correct behaviour, but not what this walk is
+	# measuring. Pre-latching the offer keeps the clock isolated to the bill.
+	gs.dre_intro_offered = true
 	var index := 0
 	for frame in frames:
 		var row: Dictionary = frame
@@ -735,6 +741,10 @@ func _unlock_every_surface(gs: Node) -> void:
 	gs.wander_count = maxi(int(gs.wander_count), 3)
 	gs.market_discovered = true
 	gs.day = maxi(int(gs.day), 5)
+	# Dre Lending & Loan-Shark Progression, PR B: hustle.shark reads
+	# dre_access_tier now, not day. `gs.day` above stays -- other surfaces on
+	# this list still read it.
+	gs.dre_access_tier = maxi(int(gs.dre_access_tier), 4)
 	if not gs.is_recruited("eli"):
 		gs.crew_records["eli"] = {"recruited": true, "loyalty": 6, "tier": 1,
 			"wage_due": 45, "wage_missed_since": -1, "recruited_day": 1,
@@ -1836,8 +1846,9 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# 17 → 18 in 0.1.2 PR D (the Lift's caught-loop BRIBE), 18 → 19 in 0.1.2
 	# PR E (Word of Mouth's tip payloads and drought counter), 19 → 20 in
 	# the Dre Lending & Loan-Shark Progression build's PR A (the dormant
-	# debt/debt_due_days pair replaced by a structured dre_account).
-	_expect_int("save version is 20", saves.SAVE_VERSION, 20)
+	# debt/debt_due_days pair replaced by a structured dre_account), 20 → 21
+	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch).
+	_expect_int("save version is 21", saves.SAVE_VERSION, 21)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -5214,6 +5225,9 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# tip is a claim about today's board, so it goes last, after every other
 	# step that could still change what today's board is.
 	"DAY_START:tips",
+	# Dre Lending & Loan-Shark Progression PR B appends `dre_intro` after
+	# `tips` for the same reason: Juan's mention reads the fully-settled day.
+	"DAY_START:dre_intro",
 ]
 
 func _check_day_lifecycle_order() -> void:
@@ -13217,7 +13231,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v20", saves.SAVE_VERSION, 20)
+	_expect_int("the schema is v21", saves.SAVE_VERSION, 21)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -14091,7 +14105,11 @@ const GATE_CASES: Array[Dictionary] = [
 	{"id": "hustle.boost", "mode": "hidden", "fact": "walks"},
 	{"id": "hustle.stickup", "mode": "hidden", "fact": "days"},
 	{"id": "hustle.list", "mode": "hidden", "fact": "days"},
-	{"id": "hustle.shark", "mode": "hidden", "fact": "days"},
+	# Dre Lending & Loan-Shark Progression, PR B: replaces the day-5 gate
+	# with an earned one (design doc: "time passing does not explain why
+	# Dre trusts the player with his network"). Its own fact, not shared —
+	# nothing else on the ladder reads `dre_access_tier`.
+	{"id": "hustle.shark", "mode": "hidden", "fact": "dre_access_tier"},
 ]
 
 ## Put one gate's fact past its threshold. Facts only — see `_unlock_every_surface`.
@@ -14127,6 +14145,8 @@ func _raise_gate_fact(gs: Node, fact: String) -> void:
 			gs.market_discovered = true
 		"days":
 			gs.day = 5
+		"dre_access_tier":
+			gs.dre_access_tier = 4
 		"actions":
 			# The cheaper of the card's two doors: Recovery is available the
 			# moment it is relevant, and a point of damage makes it relevant.
@@ -17270,7 +17290,9 @@ const HUSTLE_RUNGS: Array[Dictionary] = [
 	{"id": "hustle.boost", "fact": "walks", "at": 3, "what": "Boost"},
 	{"id": "hustle.stickup", "fact": "days", "at": 2, "what": "Stickup"},
 	{"id": "hustle.list", "fact": "days", "at": 3, "what": "907List"},
-	{"id": "hustle.shark", "fact": "days", "at": 5, "what": "the shark"},
+	# Dre Lending & Loan-Shark Progression, PR B: dre_access_tier 4 (Junior
+	# Lender), not day 5. See GATE_CASES's own comment for why.
+	{"id": "hustle.shark", "fact": "dre_access_tier", "at": 4, "what": "the shark"},
 ]
 
 func _check_hustle_ladder(gs: Node) -> void:
@@ -17318,6 +17340,8 @@ func _check_hustle_ladder(gs: Node) -> void:
 func _set_ladder_fact(gs: Node, fact: String, value: int) -> void:
 	if fact == "days":
 		gs.day = maxi(1, value)
+	elif fact == "dre_access_tier":
+		gs.dre_access_tier = maxi(0, value)
 	else:
 		gs.wander_count = maxi(0, value)
 
@@ -17368,6 +17392,7 @@ func _check_hustle_screen(gs: Node) -> void:
 	gs.wander_count = 3
 	gs.market_discovered = true
 	gs.job_contacts = 1
+	gs.dre_access_tier = 4
 	var earned: Node = _instantiate_screen("res://ui/screens/hustle.tscn")
 	if earned == null:
 		_fail("batch14 hustle", "the Hustle screen would not instantiate earned")
@@ -17979,27 +18004,29 @@ func _check_more_menu_rows(gs: Node) -> void:
 		_expect_true("and dimmed", crew_row.modulate.a < 1.0)
 		_expect_true("with a line saying what opens it",
 			_find_lock_badge(crew_row) != null)
-	# And the Finances row is out of the layout on day 1, because it IS the
-	# shark. Asserted on VISIBILITY rather than on absence: `apply_surface_gate`
+	# And the Finances row is out of the layout on a fresh run, because it IS
+	# the shark. Asserted on VISIBILITY rather than on absence: `apply_surface_gate`
 	# hides a node rather than freeing it — a Container skips an invisible child
 	# entirely, so the rows below close the gap — and the row has to survive to
-	# come back on day 5 without the screen rebuilding differently.
+	# come back at Junior Lender without the screen rebuilding differently.
 	var finances: Control = _row_titled(body, "FINANCES")
 	_expect_true("the Finances row exists", finances != null)
-	_expect_true("but is not a back door to the shark on day 1",
+	_expect_true("but is not a back door to the shark on a fresh run",
 		finances != null and not finances.visible)
 	_free_screen(fresh)
 
-	# Day 5 brings it back, on the same fact the Hustle row reads.
+	# Dre Lending & Loan-Shark Progression, PR B: Junior Lender brings it
+	# back, on the same fact the Hustle row reads (dre_access_tier, not day
+	# 5 — see GATE_CASES's own comment).
 	_fresh_gate_run(gs)
-	gs.day = 5
+	gs.dre_access_tier = 4
 	var later: Node = _instantiate_screen("res://ui/screens/more.tscn")
 	if later != null:
 		(later as Control).size = FS001_VIEWPORT
 		later.refresh()
 		var open_row: Control = _row_titled(
 			later.get_node("Shell/Scroll/Pad/Content/Body"), "FINANCES")
-		_expect_true("and arrives with the Hustle row on day 5",
+		_expect_true("and arrives with the Hustle row at Junior Lender",
 			open_row != null and open_row.visible)
 		_expect_true("and takes a tap once it does",
 			open_row != null and not bool(open_row.get_meta("surface_locked", false)))
@@ -18342,6 +18369,10 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 	gs.day = 9
 	gs.wander_count = 9
 	gs.market_discovered = true
+	# Dre Lending & Loan-Shark Progression, PR B: hustle.shark used to be one
+	# of the doors day=9 opened; it reads dre_access_tier now, so it needs its
+	# own bump to stay among the "several at once" this case is counting.
+	gs.dre_access_tier = 4
 	var spoken: Array = announcer.announce_since(before)
 	_expect_true("several doors opening at once are all announced",
 		spoken.size() >= 5)
@@ -19720,7 +19751,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v20", int(saves.SAVE_VERSION), 20)
+	_expect_int("the schema is v21", int(saves.SAVE_VERSION), 21)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -20135,7 +20166,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v20 for Heat's teeth", int(saves.SAVE_VERSION), 20)
+	_expect_int("the schema is v21 for Heat's teeth", int(saves.SAVE_VERSION), 21)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -20588,7 +20619,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v20 for Wander", int(saves.SAVE_VERSION), 20)
+	_expect_int("the schema is v21 for Wander", int(saves.SAVE_VERSION), 21)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

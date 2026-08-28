@@ -190,6 +190,11 @@ const DAY_START_ORDER: Array[String] = [
 	# resets settled, would be describing a board that had not finished
 	# becoming today's yet.
 	"tips",
+	# Dre Lending & Loan-Shark Progression, PR B (DRE-D1). After `tips` for
+	# the same reason `tips` is after everything else: Juan's mention reads
+	# `gs.cash`/`gs.rent_due_day` against the fully-settled day, not a
+	# half-finished one.
+	"dre_intro",
 ]
 
 ## The settlement order, declared. Each entry is the system name as registered
@@ -439,6 +444,14 @@ func _run_day_start_step(step: String, today: int) -> void:
 		var tips: Object = gm.system("tips") if gm != null else null
 		if tips != null:
 			tips.push_tip(today)
+		return
+	if step == "dre_intro":
+		# Same reasoning as "tips" just above: Juan's mention needs no
+		# consequence engine, so it is decided before the guard below would
+		# otherwise skip it whole.
+		var dre: Object = gm.system("dre") if gm != null else null
+		if dre != null:
+			dre.push_intro_offer(today)
 		return
 	var engine: Object = gm.system("consequence") if gm != null else null
 	if engine == null:

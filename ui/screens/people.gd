@@ -39,13 +39,13 @@ func _band_colour(band: String, inverted: bool) -> Color:
 		"cold": return AMBER
 	return RED
 
-## Dre Lending & Loan-Shark Progression, PR B. The rest of this screen is
-## read-only evidence — this is the one card that can act, because Dre is
-## the one relationship on it with a real account behind it rather than
-## just a disposition score. Read-only itself where Phone already has the
-## live PAY/ASK FOR 2 MORE DAYS buttons (`_bind_dre_debt_card` on his own
-## texts) — this card states the account, Phone is where you act on it,
-## except for SEEK HIM OUT, which has no text to live on yet.
+## Dre Lending & Loan-Shark Progression, PR B + C (First Money, DRE-ARC-02).
+## The rest of this screen is read-only evidence — this is the one card that
+## can act, because Dre is the one relationship on it with a real account
+## behind it rather than just a disposition score. Read-only itself where
+## Phone already has the live PAY/ASK FOR 2 MORE DAYS buttons
+## (`_bind_dre_debt_card` on his own texts) — this card states the account
+## and offers what has no text to live on yet: SEEK HIM OUT, and now BORROW.
 func _bind_dre_extras(v: VBoxContainer) -> void:
 	if not gs.dre_intro_offered:
 		return
@@ -63,9 +63,29 @@ func _bind_dre_extras(v: VBoxContainer) -> void:
 		v.add_child(label("Debt to Dre: $%d, due Day %d" \
 				% [gs.debt, gs.day + gs.debt_due_days],
 			"Mono", 10, AMBER))
+	elif _first_money_offered():
+		# Numbers read off the lender itself, not restated here — the same
+		# rule every other figure on this card already follows.
+		var dre_system: Object = _gm.system("dre")
+		if dre_system != null:
+			var principal: int = int(dre_system.FIRST_LOAN_PRINCIPAL)
+			var total: int = principal + int(dre_system.FIRST_LOAN_INTEREST)
+			v.add_child(label("First offer: $%d now, $%d back in %d days." \
+					% [principal, total, int(dre_system.FIRST_LOAN_TERM_DAYS)],
+				"Muted", 11, MUTED, true))
+			v.add_child(button("BORROW $%d" % principal, true, _on_borrow_dre, 40))
+
+func _first_money_offered() -> bool:
+	for entry in gs.opportunity_offers:
+		if str((entry as Dictionary).get("definition_id", "")) == "dre_first_money":
+			return true
+	return false
 
 func _on_seek_dre() -> void:
 	_gm.dispatch("dre_seek_out", {})
+
+func _on_borrow_dre() -> void:
+	_gm.dispatch("dre_borrow", {})
 
 func _person_row(E: Node, entry: Dictionary) -> Control:
 	var id: String = str(entry["id"])

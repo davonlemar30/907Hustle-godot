@@ -21,10 +21,18 @@ extends Node
 ## Save-validation gets its own arms in
 ## `tests/save_validation/save_validation_runner.gd` alongside this suite,
 ## not duplicated here.
+##
+## PR C: the Street Opportunity and Mission System substrate through its one
+## real content pair, DRE-ARC-01 (recorded, never tracked as an instance —
+## see `systems/opportunities.gd`'s header) and DRE-ARC-02, First Money.
+## The reconcile seam end to end (offer -> accept -> resolve, on time and
+## late), that a failed dispatch cannot advance an objective, decline, the
+## qualifying-load catch-up's three branches plus the legacy pre-PR-A edge
+## case, and the closed completion-effect allowlist failing closed.
 
 const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
 
-const MIN_CHECKS := 216
+const MIN_CHECKS := 257
 
 var a: RefCounted
 var gs: Node
@@ -49,6 +57,14 @@ func _ready() -> void:
 	_test_seek_out()
 	_test_requirement_types()
 	_test_decline_path_leaves_everything_else_reachable()
+	_test_opportunity_first_money_lifecycle()
+	_test_opportunity_late_resolution_still_promotes()
+	_test_opportunity_objective_advances_only_from_success()
+	_test_opportunity_decline()
+	_test_opportunity_reconcile_on_load()
+	_test_opportunity_effect_allowlist_fails_closed()
+	_test_opportunity_offer_is_not_duplicated_by_a_repeat_check()
+	_test_opportunity_accepted_commitment_cap()
 
 	a.report("dre", get_tree(), MIN_CHECKS)
 
@@ -576,4 +592,202 @@ func _test_decline_path_leaves_everything_else_reachable() -> void:
 		a.check("%s is reachable without ever meeting Dre" % surface_id,
 			access.is_unlocked(surface_id))
 	a.eq_bool("but the shark stays shut", access.is_unlocked(access.HUSTLE_SHARK), false)
+	gs.reset_to_new_game()
+
+# --- 15. Street Opportunity and Mission System, PR C ------------------------
+#
+# DRE-ARC-01 (recorded, not tracked -- see systems/opportunities.gd's header
+# for why) and DRE-ARC-02 (First Money, the first real instance) through the
+# real dispatch seam. `_round_trip`-style in-memory save/load already covers
+# straight persistence for `dre_account`; these tests exercise the substrate
+# itself: the reconcile seam, the qualifying-load catch-up, the closed
+# effect allowlist, and that nothing here can be advanced except through an
+# authoritative dispatch result.
+
+func _opportunities() -> Object:
+	return gm.system("opportunities")
+
+func _test_opportunity_first_money_lifecycle() -> void:
+	_fresh()
+	gs.dre_intro_offered = true
+	gm.dispatch("dre_seek_out", {})
+	a.eq_bool("DRE-ARC-01 is recorded the moment seek_out succeeds",
+		gs.opportunity_history.has("dre_the_introduction"), true)
+	a.eq_str("recorded completed", str((gs.opportunity_history["dre_the_introduction"] \
+			as Dictionary)["outcome"]), "completed")
+	a.eq_int("First Money offers itself in the same reconcile pass",
+		gs.opportunity_offers.size(), 1)
+	var offer: Dictionary = gs.opportunity_offers[0]
+	a.eq_str("the offer names First Money", str(offer["definition_id"]), "dre_first_money")
+	a.eq_str("in the offered state", str(offer["state"]), "offered")
+
+	gm.dispatch("dre_borrow", {})
+	a.eq_int("borrowing accepts it -- the offer array empties",
+		gs.opportunity_offers.size(), 0)
+	a.eq_int("and it lands in active_opportunities",
+		gs.active_opportunities.size(), 1)
+	a.eq_str("in the active state",
+		str((gs.active_opportunities[0] as Dictionary)["state"]), "active")
+	a.eq_int("dre_access_tier has not moved yet -- Trusted Customer is earned "
+		+ "by resolving, not by accepting", int(gs.dre_access_tier), 1)
+
+	_fund(2000)
+	gm.dispatch("dre_repay", {})
+	a.eq_int("repaying resolves it -- active_opportunities empties",
+		gs.active_opportunities.size(), 0)
+	a.eq_bool("dre_first_money is now in history",
+		gs.opportunity_history.has("dre_first_money"), true)
+	a.eq_int("recorded exactly once", int((gs.opportunity_history["dre_first_money"] \
+			as Dictionary)["count"]), 1)
+	a.eq_int("Trusted Customer is latched", int(gs.dre_access_tier), 2)
+
+	a.eq_bool("a second repay is refused by dre_lender itself",
+		gm.dispatch("dre_repay", {}), false)
+	a.eq_int("so the history count cannot double from a refused repeat",
+		int((gs.opportunity_history["dre_first_money"] as Dictionary)["count"]), 1)
+
+func _test_opportunity_late_resolution_still_promotes() -> void:
+	_fresh()
+	gs.dre_intro_offered = true
+	gm.dispatch("dre_seek_out", {})
+	gm.dispatch("dre_borrow", {})
+	while str(gs.dre_account.get("status", "")) != "overdue":
+		_cross_day()
+	_fund(2000)
+	a.eq_bool("a late repay still succeeds", gm.dispatch("dre_repay", {}), true)
+	a.eq_int("and First Money still resolves",
+		gs.active_opportunities.size(), 0)
+	a.eq_int("Trusted Customer is still earned -- the design doc's recovery "
+		+ "completion, not only the clean one", int(gs.dre_access_tier), 2)
+
+func _test_opportunity_objective_advances_only_from_success() -> void:
+	_fresh()
+	gs.dre_intro_offered = true
+	gm.dispatch("dre_seek_out", {})
+	gm.dispatch("dre_borrow", {})
+	gs.cash = 0
+	a.eq_bool("a repay Dre's own blocker refuses dispatches false",
+		gm.dispatch("dre_repay", {}), false)
+	a.eq_int("a failed dispatch never reaches the reconcile seam -- "
+		+ "the instance is exactly where it was", gs.active_opportunities.size(), 1)
+	a.eq_str("still active, not completed",
+		str((gs.active_opportunities[0] as Dictionary)["state"]), "active")
+	a.eq_bool("and no history was written for a resolution that never happened",
+		gs.opportunity_history.has("dre_first_money"), false)
+
+func _test_opportunity_decline() -> void:
+	_fresh()
+	gs.dre_intro_offered = true
+	gm.dispatch("dre_seek_out", {})
+	var instance_id: int = int((gs.opportunity_offers[0] as Dictionary)["instance_id"])
+	a.eq_bool("declining the offer by instance id succeeds",
+		gm.dispatch("opportunity_decline", {"instance_id": instance_id}), true)
+	a.eq_int("the offer is gone", gs.opportunity_offers.size(), 0)
+	a.eq_str("recorded declined, not completed",
+		str((gs.opportunity_history["dre_first_money"] as Dictionary)["outcome"]), "declined")
+	# The contract does not own the door it points at -- section 5.4's
+	# pillar, "a contract observes; a domain system settles." Declining the
+	# OFFER does not touch dre_lender's own rules, the same way PR B's
+	# decline test proves not seeking Dre out breaks nothing else.
+	a.eq_bool("but dre_borrow itself is untouched by the decline -- the "
+		+ "domain stays authoritative", gm.dispatch("dre_borrow", {}), true)
+	a.eq_bool("declining an offer that no longer exists is refused by name",
+		gm.dispatch("opportunity_decline", {"instance_id": instance_id}), false)
+
+func _test_opportunity_reconcile_on_load() -> void:
+	# Never touched, account clear: offers fresh.
+	_fresh()
+	gs.dre_introduced = true
+	gs.dre_access_tier = 1
+	_opportunities().reconcile_on_load()
+	a.eq_int("First Money offers itself for a never-touched, eligible player",
+		gs.opportunity_offers.size(), 1)
+
+	# A first loan already open under normal PR C play.
+	_fresh()
+	gs.dre_introduced = true
+	gs.dre_access_tier = 1
+	gs.dre_account["status"] = "active"
+	gs.dre_account_history["loans_taken"] = 1
+	_opportunities().reconcile_on_load()
+	a.eq_int("a first loan already open is activated retroactively",
+		gs.active_opportunities.size(), 1)
+	a.eq_str("as dre_first_money", str((gs.active_opportunities[0] \
+			as Dictionary)["definition_id"]), "dre_first_money")
+
+	# The legacy edge case: a v19 -> v20 migrated debt carries an open
+	# account with loans_taken still at its GameState default of zero,
+	# because the field did not exist yet to migrate (PR A's own arm).
+	_fresh()
+	gs.dre_introduced = true
+	gs.dre_access_tier = 1
+	gs.dre_account["status"] = "overdue"
+	_opportunities().reconcile_on_load()
+	a.eq_int("a legacy open debt with no loans_taken is activated, not offered",
+		gs.active_opportunities.size(), 1)
+	a.eq_int("and nothing doubles up in opportunity_offers",
+		gs.opportunity_offers.size(), 0)
+
+	# Already resolved before this system existed.
+	_fresh()
+	gs.dre_introduced = true
+	gs.dre_access_tier = 1
+	gs.dre_account_history["loans_taken"] = 1
+	_opportunities().reconcile_on_load()
+	a.eq_bool("an already-resolved first loan completes retroactively",
+		gs.opportunity_history.has("dre_first_money"), true)
+	a.eq_int("and Trusted Customer is granted immediately",
+		int(gs.dre_access_tier), 2)
+
+	# Idempotent: a second reconcile against the same state does not re-run.
+	_opportunities().reconcile_on_load()
+	a.eq_int("a repeat reconcile does not recount an already-recorded arc",
+		int((gs.opportunity_history["dre_first_money"] as Dictionary)["count"]), 1)
+	gs.reset_to_new_game()
+
+func _test_opportunity_effect_allowlist_fails_closed() -> void:
+	_fresh()
+	var before_tier: int = int(gs.dre_access_tier)
+	_opportunities()._apply_effect({"type": "set_field_directly", "field": "dre_access_tier",
+		"min": 5})
+	a.eq_int("an unlisted effect type mutates nothing, not even a named GameState field",
+		int(gs.dre_access_tier), before_tier)
+
+func _test_opportunity_offer_is_not_duplicated_by_a_repeat_check() -> void:
+	_fresh()
+	gs.dre_introduced = true
+	gs.dre_access_tier = 1
+	_opportunities()._maybe_offer("dre_first_money")
+	_opportunities()._maybe_offer("dre_first_money")
+	a.eq_int("re-checking eligibility (what a re-rendered screen would do, "
+		+ "were it not read-only) never mints a second offer",
+		gs.opportunity_offers.size(), 1)
+	gs.reset_to_new_game()
+
+func _test_opportunity_accepted_commitment_cap() -> void:
+	# OPP-D2, unreachable by this build's own content (First Money is the
+	# only thing that can ever be offered) but enforced anyway -- fabricated
+	# filler instances stand in for the repeatable content that will one day
+	# reach this for real.
+	_fresh()
+	gs.dre_introduced = true
+	gs.dre_access_tier = 1
+	gs.active_opportunities = [
+		{"instance_id": 90, "definition_id": "filler_a", "state": "active"},
+		{"instance_id": 91, "definition_id": "filler_b", "state": "active"},
+		{"instance_id": 92, "definition_id": "filler_c", "state": "active"},
+	]
+	_opportunities()._maybe_offer("dre_first_money")
+	a.eq_int("First Money can still be offered at the cap -- offering is free",
+		gs.opportunity_offers.size(), 1)
+	_opportunities()._accept("dre_first_money")
+	a.eq_int("but accepting it at the cap is refused",
+		gs.opportunity_offers.size(), 1)
+	a.eq_int("active_opportunities does not grow past the cap",
+		gs.active_opportunities.size(), 3)
+
+	gs.active_opportunities = []
+	_opportunities()._accept("dre_first_money")
+	a.eq_int("freeing a slot lets the same still-offered instance accept",
+		gs.active_opportunities.size(), 1)
 	gs.reset_to_new_game()

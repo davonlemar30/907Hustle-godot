@@ -116,6 +116,14 @@ func _ready() -> void:
 	dre_lender.setup(_gs, self, time)
 	register_system("dre", dre_lender)
 
+	# Street Opportunity and Mission System, PR C. Registered right after Dre,
+	# its only consumer this build. `dispatch()` below calls its `reconcile()`
+	# on every successful action, not just the ones it itself handles — that
+	# is the one seam this system needs; see its own header.
+	var opportunities = preload("res://systems/opportunities.gd").new()
+	opportunities.setup(_gs, self)
+	register_system("opportunities", opportunities)
+
 	var nine07list = preload("res://systems/nine07list.gd").new()
 	nine07list.setup(_gs, rng, time, attributes, self)
 	register_system("list", nine07list)
@@ -264,6 +272,16 @@ func dispatch(action: String, payload: Dictionary = {}) -> bool:
 				var crew_ops: Object = system("crew_operations")
 				if crew_ops != null:
 					crew_ops.reconcile()
+				# Street Opportunity and Mission System, PR C: the declared
+				# reconciliation point (design doc section 19.3 / addendum
+				# "two properties that must survive" item 2). Same reasoning
+				# as crew_ops immediately above — writes state directly,
+				# dispatches nothing, and runs before the invariant reconcile
+				# so a completed milestone's access latch is set before
+				# autosave and before the announcer looks for opened gates.
+				var opportunities: Object = system("opportunities")
+				if opportunities != null:
+					opportunities.reconcile(action, payload, result)
 				# Persistent latches must settle before state_changed. SaveSystem
 				# autosaves from that signal, before a screen gets to refresh.
 				_gs.reconcile_persistent_invariants()

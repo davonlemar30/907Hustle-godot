@@ -159,7 +159,15 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## `ConsequenceEngine.prune_settled`). The arm applies all of it once to a
 ## loading v21 save, so a long run's save gets its relief at load rather than
 ## trickling in push by push.
-const SAVE_VERSION := 22
+## v23: `opportunity_offers`, `active_opportunities`, `opportunity_history`,
+## `opportunity_next_instance_id` (Street Opportunity and Mission System, PR
+## C). GameState declared these fields one version early -- v22's PR landed
+## them by accident alongside unrelated work -- so this bump is the first one
+## that actually reads or writes them. Purely additive: no v22 save has ever
+## seen an opportunity offered, so empty arrays/dict and a fresh counter are
+## that save's honest history, the same call the v3 -> v4 and v4 -> v5 arms
+## make for their own untouched-until-now fields.
+const SAVE_VERSION := 23
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -261,6 +269,10 @@ const PERSIST_FIELDS: Array[String] = [
 	# PR B (v21): the day-start latch deciding whether Juan's mention has
 	# fired. Separate from `dre_introduced` -- see that field's own header.
 	"dre_intro_offered",
+	# Street Opportunity and Mission System, PR C (v23). The shared substrate
+	# Dre's first two authored contracts run on -- see systems/opportunities.gd.
+	"opportunity_offers", "active_opportunities", "opportunity_history",
+	"opportunity_next_instance_id",
 ]
 
 ## A save missing any of these is not a run. Everything else defaults in from
@@ -370,6 +382,16 @@ func load_run() -> bool:
 		crew_ops = crew_ops.system("crew_operations")
 		if crew_ops != null:
 			crew_ops.reconcile()
+	# Street Opportunity and Mission System, PR C: the same qualifying-load
+	# reasoning as crew_ops immediately above, for a save that can already
+	# satisfy a definition's requirements — a PR B player who sought Dre out
+	# before this system existed never fired the reconcile that offers First
+	# Money. See `Opportunities.reconcile_on_load()`'s own header.
+	var opportunities: Object = get_node_or_null("/root/GameManager")
+	if opportunities != null:
+		opportunities = opportunities.system("opportunities")
+		if opportunities != null:
+			opportunities.reconcile_on_load()
 	# A pre-v2 save carries no markets. Walk a fresh board off the run seed so
 	# the run resumes priced rather than empty; the next day-cross re-walks it.
 	if gs.markets.is_empty():
@@ -852,6 +874,11 @@ func _migrate(payload: Dictionary) -> Dictionary:
 						if live_causes.has(str(cause_id)):
 							kept_history[cause_id] = (history as Dictionary)[cause_id]
 					state["consequence_history"] = kept_history
+			22:
+				# v22 -> v23: opportunity_offers / active_opportunities /
+				# opportunity_history / opportunity_next_instance_id. Purely
+				# additive -- see this arm's own paragraph by SAVE_VERSION.
+				pass
 			_:
 				return {}
 		version += 1

@@ -19,8 +19,8 @@ const TIP_EVENTS := preload("res://data/tip_events.gd")
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v22. Older saves are
-## migrated before this validator runs, so every arm below reads a v22 shape.
+## repaired payload back to disk. The save schema is v23. Older saves are
+## migrated before this validator runs, so every arm below reads a v23 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -56,6 +56,11 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_dre_account(state, repairs)
 	_validate_dre_account_history(state, repairs)
 	_validate_territory_nodes(state, repairs)
+	_validate_opportunity_offers(state, repairs)
+	_validate_active_opportunities(state, repairs)
+	_validate_opportunity_history(state, repairs)
+	# Reads the two arrays above, so it runs after both are already clean.
+	_validate_opportunity_next_instance_id(state, repairs)
 	return {"state": state, "repairs": repairs}
 
 func _repair(repairs: Array[String], path: String, reason: String) -> void:
@@ -907,6 +912,109 @@ func _validate_dre_account_history(state: Dictionary, repairs: Array[String]) ->
 			_repair(repairs, "dre_account_history.%s" % field, "negative; defaulted")
 			history[field] = 0
 	state["dre_account_history"] = history
+
+# --- Opportunities (Street Opportunity and Mission System, PR C) -----------
+#
+## `opportunity_offers` holds only "offered" rows; `active_opportunities`
+## holds only "active"/"ready" rows -- the two arrays are how the substrate
+## itself tells the two phases apart, so a row claiming the wrong phase's
+## state is exactly as inconsistent as a shark note with no status.
+const OPPORTUNITY_OFFERED_STATES := ["offered"]
+const OPPORTUNITY_ACTIVE_STATES := ["active", "ready"]
+## History records a resolution, never a live state -- design doc section
+## 9.4/20.1's "a definition ID, outcome key, count, and last-resolved day."
+const OPPORTUNITY_TERMINAL_STATES := ["completed", "declined", "expired", "withdrawn", "failed"]
+
+## Shared row shape for both live arrays -- same precedent as
+## `_validate_phone_messages` serving both inbox halves with one function and
+## a field name. `allowed_states` is the one thing that differs per caller.
+func _validate_opportunity_instances(state: Dictionary, field: String,
+		allowed_states: Array, repairs: Array[String]) -> void:
+	if not state.has(field):
+		return
+	var rows: Array = _array(state, field, [], field, repairs)
+	var clean: Array = []
+	for index in rows.size():
+		var value: Variant = rows[index]
+		if not value is Dictionary:
+			_repair(repairs, "%s[%d]" % [field, index], "invalid instance dropped")
+			continue
+		var inst: Dictionary = value
+		var path := "%s[%d]" % [field, index]
+		_int(inst, "instance_id", -1, "%s.instance_id" % path, repairs)
+		_string(inst, "definition_id", "", "%s.definition_id" % path, repairs)
+		_string(inst, "state", str(allowed_states[0]), "%s.state" % path, repairs)
+		if not str(inst["state"]) in allowed_states:
+			_repair(repairs, "%s.state" % path, "unrecognised for this array; defaulted")
+			inst["state"] = allowed_states[0]
+		_dict(inst, "source_context", {}, "%s.source_context" % path, repairs)
+		for day_field in ["offered_day", "offered_slot", "accepted_day",
+				"accepted_slot", "deadline_day", "deadline_slot"]:
+			_int(inst, day_field, -1, "%s.%s" % [path, day_field], repairs)
+		_dict(inst, "objective_progress", {}, "%s.objective_progress" % path, repairs)
+		_dict(inst, "resolved_result", {}, "%s.resolved_result" % path, repairs)
+		_string(inst, "receipt_id", "", "%s.receipt_id" % path, repairs)
+		clean.append(inst)
+	state[field] = clean
+
+func _validate_opportunity_offers(state: Dictionary, repairs: Array[String]) -> void:
+	_validate_opportunity_instances(state, "opportunity_offers",
+		OPPORTUNITY_OFFERED_STATES, repairs)
+
+func _validate_active_opportunities(state: Dictionary, repairs: Array[String]) -> void:
+	_validate_opportunity_instances(state, "active_opportunities",
+		OPPORTUNITY_ACTIVE_STATES, repairs)
+
+## Keyed by definition_id; every row is the same compact three fields
+## regardless of which agent or family the definition belongs to.
+func _validate_opportunity_history(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("opportunity_history"):
+		return
+	if not state["opportunity_history"] is Dictionary:
+		state["opportunity_history"] = {}
+		_repair(repairs, "opportunity_history", "wrong type; defaulted")
+		return
+	var clean: Dictionary = {}
+	for key in (state["opportunity_history"] as Dictionary):
+		var value: Variant = (state["opportunity_history"] as Dictionary)[key]
+		var path := "opportunity_history[%s]" % str(key)
+		if not value is Dictionary:
+			_repair(repairs, path, "invalid row dropped")
+			continue
+		var row: Dictionary = value
+		_string(row, "outcome", "completed", "%s.outcome" % path, repairs)
+		if not str(row["outcome"]) in OPPORTUNITY_TERMINAL_STATES:
+			_repair(repairs, "%s.outcome" % path, "unrecognised; defaulted")
+			row["outcome"] = "completed"
+		_int(row, "count", 1, "%s.count" % path, repairs)
+		if int(row["count"]) < 0:
+			_repair(repairs, "%s.count" % path, "negative; defaulted")
+			row["count"] = 1
+		_int(row, "last_resolved_day", -1, "%s.last_resolved_day" % path, repairs)
+		clean[key] = row
+	state["opportunity_history"] = clean
+
+## Never negative, and never behind an id a live instance already carries --
+## the same invariant `shark_next_loan_id` protects, for the same reason: a
+## rewound counter lets a future offer collide with one still in play.
+func _validate_opportunity_next_instance_id(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("opportunity_next_instance_id"):
+		return
+	_int(state, "opportunity_next_instance_id", 1, "opportunity_next_instance_id", repairs)
+	if int(state["opportunity_next_instance_id"]) < 1:
+		_repair(repairs, "opportunity_next_instance_id", "negative; defaulted")
+		state["opportunity_next_instance_id"] = 1
+	var floor_id := 1
+	for field in ["opportunity_offers", "active_opportunities"]:
+		var rows: Variant = state.get(field)
+		if not rows is Array:
+			continue
+		for entry in (rows as Array):
+			if entry is Dictionary:
+				floor_id = maxi(floor_id, int((entry as Dictionary).get("instance_id", 0)) + 1)
+	if int(state["opportunity_next_instance_id"]) < floor_id:
+		_repair(repairs, "opportunity_next_instance_id", "behind a live instance id; raised")
+		state["opportunity_next_instance_id"] = floor_id
 
 ## v16 (FS-002.3). Drop rows whose id the authored board does not carry, clamp
 ## soldiers non-negative, and cap a posted sum that exceeds the capacity those

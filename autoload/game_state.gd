@@ -395,6 +395,10 @@ func reset_to_new_game() -> void:
 		"extensions": 0, "defaults": 0,
 		"total_principal_borrowed": 0, "total_interest_paid": 0,
 	}
+	opportunity_offers = []
+	active_opportunities = []
+	opportunity_history = {}
+	opportunity_next_instance_id = 1
 	respect = 0
 	attributes = {"combat": 1, "charisma": 1, "intelligence": 1}
 	attribute_progress = {"combat": 0.0, "charisma": 0.0, "intelligence": 0.0}

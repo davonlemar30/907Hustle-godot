@@ -51,7 +51,7 @@ const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
 const DEFS := preload("res://data/territory_definitions.gd")
 
 ## The check floor. See `_ready()` for why a count is a gate.
-const MIN_CHECKS := 169
+const MIN_CHECKS := 170
 
 var a: RefCounted
 var gs: Node
@@ -565,9 +565,21 @@ func _test_settlement_order_reason() -> void:
 		% [as_shipped, scaled_first], as_shipped > scaled_first)
 	a.check("SETTLE_ORDER ships crew before territory",
 		order.find("crew") < order.find("territory"))
-	a.check("and jobs and obligations run LAST, which HANDOFF.md denied for four batches",
-		order.find("jobs") > order.find("territory")
-			and order.find("obligations") == order.size() - 1)
+	# "Jobs and obligations run last" held literally for four batches and
+	# through Dre Lending PR A (which inserted `dre` between `shark` and
+	# `jobs`, not after `obligations`). Street Opportunity and Mission
+	# System PR C is the first system with a genuine reason to settle AFTER
+	# obligations: its settlement-fact objectives (design doc section 10.2)
+	# read facts obligations' own settlement just wrote -- rent missed, a
+	# job lost -- the same reasoning that put obligations after jobs in the
+	# first place, one step later in the chain. What this test still
+	# guards -- jobs and obligations settling together, in that order,
+	# after everything territory/crew/shark/dre-related -- still holds.
+	a.check("jobs and obligations still run together, in that order, "
+		+ "right after dre", order.find("jobs") > order.find("territory")
+			and order.find("obligations") == order.find("jobs") + 1)
+	a.check("and opportunities is the new last -- the one system authored "
+		+ "to need the fully settled night", order.find("opportunities") == order.size() - 1)
 
 ## The raw holding heat for the order test's board, before any multiplier.
 func _terr_raw_heat_for_order_test() -> float:

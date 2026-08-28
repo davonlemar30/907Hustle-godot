@@ -233,8 +233,19 @@ const DAY_START_ORDER: Array[String] = [
 ## Ahead of `jobs`/`obligations` for the same reason `shark` already is: Dre's
 ## transition does not pay a bill or resolve a job, it only asks whether the
 ## night's own money changed anything about what the player owes him.
+##
+## **`opportunities` sits last.** Its settlement-fact objectives (design doc
+## umbrella section 10.2 / addendum's declared lifecycle reconcile point) read
+## GameState facts other systems' own settlement just wrote -- rent paid or
+## missed, a note gone overdue, a job lost -- and have to see the fully
+## settled night, not a half-finished one. Nothing in this build's authored
+## content resolves this way yet (First Money settles through a live
+## `dre_repay` dispatch instead, reconciled at the point named in
+## `GameManager.dispatch()`), so this step is currently a no-op every night;
+## it exists so a later PR's settlement-driven objective needs no new
+## SETTLE_ORDER entry, only a new row in its own data file.
 const SETTLE_ORDER: Array[String] = [
-	"crew", "territory", "shark", "dre", "jobs", "obligations",
+	"crew", "territory", "shark", "dre", "jobs", "obligations", "opportunities",
 ]
 
 var gs: Node

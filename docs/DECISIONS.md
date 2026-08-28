@@ -417,6 +417,111 @@ DRE-D3 (full repayment only), DRE-D6 (the provisional grace substitute),
 and the first-loan numbers — so the rulings this file records had to exist
 before the code that implements them, not after.
 
+## D-8 — Street Opportunity and Mission System: the closed umbrella rulings
+
+**Decided** 2026-08-28 · **Ships in** PR C · **Design doc**
+`docs/STREET_OPPORTUNITY_AND_MISSION_SYSTEM_DESIGN.md` §25 · **Sources:** the
+design doc's own recommended defaults, `BUILD_OPPORTUNITY_CONTRACT_ADDENDUM.md`
+(the mid-build addendum binding this doc to PR C), and D-7 above, which this
+entry restates rather than overrides where the two name the same fact
+
+### The question
+
+The umbrella design closes with fifteen open questions (§25) the same way
+D-7's design doc did — a recommended default for each, "measurement and
+playtest may change it." The addendum that bound this doc to PR C turned
+every one of those defaults into a ruling before PR C's own code landed, the
+same Slice-0-before-the-code discipline D-7 records for Dre's own rulings.
+
+### Authority chain (umbrella §2.1)
+
+The umbrella owns the shared opportunity lifecycle, objective vocabulary,
+deadline semantics, capacity rules, and typed-effect rules. The Dre design
+owns Dre's own content, economy, and milestones. The running domain system
+(`dre_lender.gd`, `shark.gd`, ...) stays authoritative for what actually
+happened. Where the Dre design's thinner §10.3 sketch and the umbrella's
+§9 shapes disagree on a field's exact place — `giver_id` is the one case
+PR C actually hit — the umbrella wins: `giver_id` lives on the *definition*
+(`data/dre_contracts.gd`), not duplicated onto the instance.
+
+### The rulings
+
+Referenced from code as `OPP-D1` through `OPP-D15`, matching the design
+doc's own numbering.
+
+| ID | Ruling |
+|---|---|
+| OPP-D1 | Internal name "opportunities" (`systems/opportunities.gd`, `opportunity_*` fields). Player-facing surfaces use thematic names only — no screen is ever titled "Opportunities". |
+| OPP-D2 | Accepted-commitment cap: three globally across contracts/missions/scores. Leads, standing surfaces, obligations, operations, and threats never count. Enforced in `opportunities.gd` from day one, per the addendum's own instruction — a guard on `_accept()`, one comparison. PR C's one authored chain never reaches it; the guard exists so the first repeatable content that could cannot ship without it already in place. |
+| OPP-D3 | Accepting costs no slot by default. An authored meeting that both accepts and begins work states its cost in its own confirm copy — First Money's `dre_borrow` is the one live example, consistent with DRE-D2. |
+| OPP-D4 | `completion_mode: "auto"` for every MVP definition. `ready` (turn-in) ships in the lifecycle enum and the validator but no MVP content uses it. |
+| OPP-D5 | No separate agent standing. Exposure is sentiment; domain milestones are access — DRE-D8 restated at the umbrella level, one authority. |
+| OPP-D6 | No mission currency — DRE-D9 restated. |
+| OPP-D7 | Offer generation only at declared lifecycle points (a dispatch's own reconcile, or `DayLifecycle.SETTLE_ORDER`'s `opportunities` step), seeded, never on screen open. |
+| OPP-D8 | No procedural generation until the Dre chain and one Score chain are both live. PR C hardcodes nothing generative. |
+| OPP-D9 | Unified Score presentation deferred entirely — needs its own content design first. Lift/Stickup untouched by this build. |
+| OPP-D10 | Elapsed-day gates: 907List's `day_min: 3` and Stickup's `day_min: 2` are retained as intentional pacing; Boost's wander-count gate is real discovery and stays. Only person/relationship access converts — Shark→Dre, which PR B already did. |
+| OPP-D11 | Deadlines store absolute `deadline_day`/`deadline_slot`; the stated final slot is inclusive. **Not exercised by PR C's content** — First Money's offer carries no authored deadline (see its own header in `data/dre_contracts.gd`), so the shared projection helper this ruling calls for has no second caller yet to prove it against and is deferred to the PR that first needs one, rather than built against a single, untested call site. |
+| OPP-D12 | Typed completion effects, closed allowlist: `wallet_credit`, `exposure_observation`, `access_milestone`, `message`, `offer_followup` — the five PR C-E need. `announce_surface`/`record_proof` wait for a consumer. Unknown effect types fail closed with a warning, never a silent no-op. |
+| OPP-D13 | Home shows at most: urgent obligation/threat, nearest accepted deadline, strongest new offer — never a quest log. **Not yet wired to Home** — PR C's own scope is the substrate and its Phone/People presentation; the Home summary card is deferred to whichever PR first has more than one live offer competing for the same priority stack. |
+| OPP-D14 | No tutorial week. Yalonda's intro sheet and Juan's mention are the model: authored, optional, no reward for merely visiting a screen. |
+| OPP-D15 | `respect` is out of scope for this build and is not wired into opportunities. Its own meaning (or removal from presentation) is a separate, later ruling. |
+
+Three further calls the addendum made that are not numbered in the design
+doc's own §25 but are equally closed:
+
+| Decision | Ruling |
+|---|---|
+| Objective classes | PR C implements only `action_result` and `state_fact`. `consequence_result` is PR D's (the collection contract). `counter_delta`, `maintain_condition`, `deliver_resource` stay unimplemented — unknown classes fail closed, so authoring one later forces the implementation rather than silently no-op-ing. |
+| Lifecycle enum | The full set ships from day one — `offered, active, ready, completed, declined, expired, withdrawn, failed` — because the validator has to know every state before any content uses it. PR C's own content reaches `offered`, `active`, `completed`, and `declined`; `ready`, `expired`, `withdrawn`, and `failed` are reachable by later PRs' content without a schema change. |
+| Adapter registry | Not built in this build. PR C needs exactly one seam — the dispatch-reconcile call reading `action`/`payload`/`result`, plus direct reads of `dre_lender` projections. The registry (umbrella §19.2) appears when a second domain consumer exists to justify it, per the umbrella's own G10, "land no unused framework." |
+
+### DRE-ARC-01 is recorded, never tracked — the "one authority" call
+
+The addendum asks PR C to author DRE-ARC-01 (The Introduction) "retroactively
+as the PR B meeting" and states plainly: "one authority only." PR B's
+`dre_lender._seek_out()` already shipped and merged as the sole authority for
+`dre_introduced` and the tier-1 latch before this system existed. PR C does
+not migrate that mutation into an opportunity completion effect — doing so
+would touch already-merged, already-tested code to relocate a single write
+for no behavioral gain, and would leave two authorities disagreeing about
+which one fires first during the window between the two dispatches most
+players will never notice. Instead, `dre_the_introduction` is authored as a
+definition (so its `id`/`objectives` are ordinary data anything can read) but
+`opportunities.gd` never creates a live *instance* for it — the first time
+`dre_seek_out` succeeds, the system writes a `completed`-only history entry
+with empty `completion_effects` and nothing else. DRE-ARC-02 (First Money) is
+the first definition this system tracks through a real offered → active →
+completed instance.
+
+### Two properties that must survive, restated for PR C specifically
+
+D-7 already names route-gate monotonicity and the single dispatch seam as
+properties every later PR depends on. PR C adds one more of the same shape:
+**qualifying load is not optional.** A save that reached First Money's
+eligibility before this system existed — any PR B player who already sought
+Dre out — would otherwise never see the offer, ever, because nothing but a
+fresh `dre_seek_out` dispatch or a load-time catch-up can create it.
+`Opportunities.reconcile_on_load()`, called from `SaveSystem.load_run()`
+beside the existing `crew_operations.reconcile()` call there, is that
+catch-up. Its own header carries the exhaustive branch table, including the
+one genuine edge case: a save migrated from before PR A (`debt`/
+`debt_due_days`) can carry an open Dre account with `dre_account_history
+.loans_taken` still at zero, because the counter did not exist yet to
+migrate — that save is activated retroactively, not offered a second time.
+
+### Why PR C carries this entry rather than a later PR
+
+Same reasoning as D-7's own closing note: PR C's `opportunities.gd` and
+`data/dre_contracts.gd` already depend on OPP-D2 (the enforced cap),
+OPP-D3 (borrowing IS accepting), OPP-D4 (auto-completion), OPP-D12 (the
+exact five effect types), and the objective-class scope — so the rulings
+had to exist before the code that implements them, not after. OPP-D11's
+deadline row is the one exception, recorded but not yet built: PR C's own
+content has no deadline to project (see that row), so the shared helper it
+calls for is deferred to whichever PR first has a real caller, rather than
+built once against zero live uses.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

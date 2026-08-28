@@ -111,6 +111,10 @@ func _test_budget_cap_per_day() -> void:
 	var two_generators_never_fired := true
 	for day in range(1, 41):
 		gs.day = day
+		# Emptied per day so the delta reads the GENERATOR, not the inbox cap:
+		# 40 days of tips overflows PHONE_INBOX_MAX partway through, and a push
+		# into a full inbox moves its size by zero (v22, the scrolling fix).
+		gs.phone_inbox = []
 		var before: int = gs.phone_inbox.size()
 		_tips().push_tip(day)
 		var delta: int = gs.phone_inbox.size() - before
@@ -138,6 +142,9 @@ func _test_ramp_bounds_and_quiet_fraction() -> void:
 	var total_days := 60
 	for day in range(1, total_days + 1):
 		gs.day = day
+		# Same reset as the budget test above, same reason: a day that fired
+		# into a capped-full inbox would read as quiet and poison the fraction.
+		gs.phone_inbox = []
 		var before: int = gs.phone_inbox.size()
 		a.check("tip_misses stays within [0, ceiling] on day %d" % day,
 			int(gs.tip_misses) >= 0 and int(gs.tip_misses) <= ceiling)

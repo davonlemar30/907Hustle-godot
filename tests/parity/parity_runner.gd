@@ -1847,8 +1847,10 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# PR E (Word of Mouth's tip payloads and drought counter), 19 → 20 in
 	# the Dre Lending & Loan-Shark Progression build's PR A (the dormant
 	# debt/debt_due_days pair replaced by a structured dre_account), 20 → 21
-	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch).
-	_expect_int("save version is 21", saves.SAVE_VERSION, 21)
+	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
+	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
+	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
+	_expect_int("save version is 22", saves.SAVE_VERSION, 22)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -7221,6 +7223,7 @@ func _check_consequence_engine() -> void:
 	_check_engine_stage_machine(gs, engine)
 	_check_engine_projections(gs, engine)
 	_check_engine_queue(gs, engine)
+	_check_engine_prune(gs, engine)
 	_check_engine_adapters(gs, gm, engine)
 	_check_engine_dispatch_validation(gs, gm, engine)
 	_check_blocking_route_guard(gs, gm)
@@ -7594,6 +7597,51 @@ func _check_engine_queue(gs: Node, engine: RefCounted) -> void:
 	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
 	_expect_true("nothing surfaces while a chain is active",
 		not engine.can_surface_delayed(12))
+
+## The v22 morning housekeeping: terminal queue rows leave, and a history row
+## survives only for a Cause something can still address — the active chain's,
+## or one a pending/surfaced queue row names. The liveness audit that makes
+## this safe is written on `prune_settled` itself.
+##
+## SABOTAGE: make `prune_settled` keep terminal rows -> both "dropped" counts
+## read 0; make it drop live Causes -> the active/pending survival checks fail.
+func _check_engine_prune(gs: Node, engine: RefCounted) -> void:
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	var active_cause: String = engine.active_cause_id()
+	gs.consequence_queue = [
+		{"queue_id": "p", "cause_id": "cause:pending", "actor_id": "x",
+			"status": "pending", "trigger_day": 14, "expires_end_day": 20},
+		{"queue_id": "s", "cause_id": "cause:surfaced", "actor_id": "y",
+			"status": "surfaced", "trigger_day": 10, "expires_end_day": 20},
+		{"queue_id": "r", "cause_id": "cause:resolved", "actor_id": "z",
+			"status": "resolved", "trigger_day": 8, "expires_end_day": 11},
+		{"queue_id": "e", "cause_id": "cause:expired", "actor_id": "w",
+			"status": "expired", "trigger_day": 5, "expires_end_day": 9},
+	]
+	for cause in [active_cause, "cause:pending", "cause:surfaced",
+			"cause:resolved", "cause:expired", "cause:orphan"]:
+		engine.history_for(str(cause))
+	var counts: Dictionary = engine.prune_settled()
+	_expect_int("prune drops the terminal queue rows", int(counts["queue_dropped"]), 2)
+	_expect_int("prune drops the dead history rows", int(counts["history_dropped"]), 3)
+	_expect_int("the pending and surfaced rows stay queued",
+		gs.consequence_queue.size(), 2)
+	_expect_true("the active chain's history survives",
+		gs.consequence_history.has(active_cause))
+	_expect_true("a pending row's history survives",
+		gs.consequence_history.has("cause:pending"))
+	_expect_true("a surfaced row's history survives",
+		gs.consequence_history.has("cause:surfaced"))
+	_expect_true("a resolved Cause's history is gone",
+		not gs.consequence_history.has("cause:resolved"))
+	_expect_true("an orphan Cause's history is gone",
+		not gs.consequence_history.has("cause:orphan"))
+	_expect_true("a second prune is a no-op",
+		int(engine.prune_settled()["history_dropped"]) == 0)
+	gs.active_consequence = {}
+	gs.consequence_queue = []
+	gs.consequence_history = {}
 
 ## TI-003 §1 and §26: adapters are runtime, re-registered on boot, never saved.
 func _check_engine_adapters(gs: Node, gm: Node, engine: RefCounted) -> void:
@@ -13231,7 +13279,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v21", saves.SAVE_VERSION, 21)
+	_expect_int("the schema is v22", saves.SAVE_VERSION, 22)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -13543,9 +13591,15 @@ func _check_market_stream_non_drift(gs: Node, gm: Node, engine: RefCounted) -> v
 	# --- arm two: the same days, spent committing crimes ---
 	_drift_ready(gs)
 	var loud: Dictionary = {}
+	# Sampled DURING the run, not read at the end: v22's morning prune
+	# (`prune_settled`) removes resolved and expired rows, so a 39-day run
+	# that exercised the delayed path thoroughly still ends with an empty
+	# queue — which is the fix working, not the path going untravelled.
+	var delayed_seen := false
 	guard = 0
 	while int(gs.day) < TARGET_DAY and guard < 20000:
 		guard += 1
+		delayed_seen = delayed_seen or not gs.consequence_queue.is_empty()
 		var day_before: int = int(gs.day)
 		if not (gs.active_consequence as Dictionary).is_empty():
 			_sim_answer_chain(gs, gm, engine, "fight")
@@ -13579,8 +13633,7 @@ func _check_market_stream_non_drift(gs: Node, gm: Node, engine: RefCounted) -> v
 	# statement about a run that did nothing.
 	_expect_true("the loud arm actually committed crimes",
 		int(gs.arrest_record["priors"]) > 0 or gs.district_pressure.size() > 0)
-	_expect_true("the loud arm reached the delayed path too",
-		not gs.consequence_queue.is_empty())
+	_expect_true("the loud arm reached the delayed path too", delayed_seen)
 	_expect_true("the loud arm reached the target day", int(gs.day) >= TARGET_DAY)
 
 	# --- and every board matches, day for day ---
@@ -14029,7 +14082,7 @@ func _check_version_stamp(gs: Node) -> void:
 	if version == null:
 		_fail("version", "no Version autoload registered")
 		return
-	_expect_str("the build is stamped 0.1.2", str(version.VERSION), "0.1.2")
+	_expect_str("the build is stamped 0.1.3", str(version.VERSION), "0.1.3")
 
 	# Shape, not value: this half survives every future bump, so the convention
 	# README documents stays enforced rather than merely written down.
@@ -14039,8 +14092,8 @@ func _check_version_stamp(gs: Node) -> void:
 		_expect_true("version part '%s' is numeric" % part, str(part).is_valid_int())
 	_expect_int("MAJOR reads back", version.major(), 0)
 	_expect_int("MINOR reads back", version.minor(), 1)
-	_expect_int("PATCH reads back", version.patch(), 2)
-	_expect_str("the display form prefixes a v", version.display(), "v0.1.2")
+	_expect_int("PATCH reads back", version.patch(), 3)
+	_expect_str("the display form prefixes a v", version.display(), "v0.1.3")
 
 	# The title screen renders it, from the singleton rather than from the
 	# scene's editor-time preview.
@@ -19751,7 +19804,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v21", int(saves.SAVE_VERSION), 21)
+	_expect_int("the schema is v22", int(saves.SAVE_VERSION), 22)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -20166,7 +20219,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v21 for Heat's teeth", int(saves.SAVE_VERSION), 21)
+	_expect_int("the schema is v22 for Heat's teeth", int(saves.SAVE_VERSION), 22)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -20619,7 +20672,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v21 for Wander", int(saves.SAVE_VERSION), 21)
+	_expect_int("the schema is v22 for Wander", int(saves.SAVE_VERSION), 22)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

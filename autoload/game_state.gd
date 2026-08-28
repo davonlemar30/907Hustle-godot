@@ -595,6 +595,16 @@ var phone_active: bool = true
 ## Order matters and the two halves disagree on purpose: a live message is
 ## unshifted (newest first), a held one is pushed (oldest first), and the flush
 ## on restoration reverses the held half before prepending it.
+##
+## PHONE_INBOX_MAX is a deliberate divergence: canon carries no cap and trusts
+## the player to clear. Measured on a driven 60-day run, the uncapped inbox was
+## the single biggest growth in the build — ~1,400 nodes on the Phone screen
+## (one card per message, rebuilt on every state change) and the dominant term
+## in the save — which is what made scrolling degrade as days passed. The
+## newest N stay, the oldest drop, the same trade `activity_log` makes at 12.
+## Enforced by `systems/phone.gd` at every push and at the held flush; the
+## v21 → v22 migration arm and the save validator hold loaded saves to it.
+const PHONE_INBOX_MAX := 30
 var phone_inbox: Array = []
 var phone_held_inbox: Array = []
 ## Canon carries `null` here; -1 is the Godot stand-in for "nothing scheduled".
@@ -815,6 +825,35 @@ var dre_account_history: Dictionary = {
 	"extensions": 0, "defaults": 0,
 	"total_principal_borrowed": 0, "total_interest_paid": 0,
 }
+
+# --- Opportunities (Street Opportunity and Mission System, PR C, design doc -
+# docs/STREET_OPPORTUNITY_AND_MISSION_SYSTEM_DESIGN.md, umbrella section 9) --
+#
+# The shared substrate every future contract/mission/Score plugs into.
+# Dre's first two authored contracts (DRE-ARC-01/02) are its only content in
+# this build — see `data/dre_contracts.gd` and `systems/opportunities.gd`.
+# Named generically on purpose (OPP-D1): no player-facing screen is ever
+# titled "Opportunities".
+#
+# Two live arrays rather than one array filtered by state, matching the
+# umbrella's own shape: `opportunity_offers` holds instances still awaiting a
+# decision, `active_opportunities` holds accepted work still in progress. A
+# terminal instance (completed/declined/expired/withdrawn/failed) leaves both
+# and is compacted into `opportunity_history` — see that field's own header.
+
+## Instances in `offered` state: visible, not yet accepted or declined.
+var opportunity_offers: Array = []
+## Instances in `active` or `ready` state: accepted, objective in progress.
+var active_opportunities: Array = []
+## Compact terminal record, keyed by `definition_id` — umbrella section 9.4:
+## "a definition ID, outcome key, count, and last-resolved day answer every
+## future question." A resolved instance's full payload is not kept forever;
+## this is the whole history a repeatable contract or a "completed" read
+## ever needs.
+var opportunity_history: Dictionary = {}
+## Monotonic within the run, like `shark_next_loan_id` — never reused, never
+## rewound by a repayment or a new game short of a full reset.
+var opportunity_next_instance_id: int = 1
 
 # --- 907List (canon: src/data/market.js LISTING_ITEMS / MARKET_TIERS) -------
 # A flip market. Every item has a `buy` price and a hidden `true_value` band,

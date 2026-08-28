@@ -117,10 +117,18 @@ func push_message(from: String, text: String, action: Dictionary = {}) -> Dictio
 	if not action.is_empty():
 		item["action"] = action.duplicate(true)
 	# Live goes on top, held goes on the end. The flush reconciles the two.
+	# Both halves hold PHONE_INBOX_MAX (see its GameState header for why this
+	# caps where canon does not): the live inbox is newest-first so the cut
+	# comes off the back, the held inbox is oldest-first so it comes off the
+	# front — the oldest message is what drops either way.
 	if gs.phone_active:
 		gs.phone_inbox.push_front(item)
+		if gs.phone_inbox.size() > gs.PHONE_INBOX_MAX:
+			gs.phone_inbox.resize(gs.PHONE_INBOX_MAX)
 	else:
 		gs.phone_held_inbox.append(item)
+		while gs.phone_held_inbox.size() > gs.PHONE_INBOX_MAX:
+			gs.phone_held_inbox.pop_front()
 	return item
 
 func _dismiss(id: String) -> Dictionary:
@@ -165,6 +173,10 @@ func restore_if_ready(previous_absolute: int) -> bool:
 		flushed.append_array(gs.phone_inbox)
 		gs.phone_inbox = flushed
 		gs.phone_held_inbox = []
+		# The merge can briefly sum to as much as 2× the cap; settle it back.
+		# Newest-first, so the resize drops the oldest of the combined stack.
+		if gs.phone_inbox.size() > gs.PHONE_INBOX_MAX:
+			gs.phone_inbox.resize(gs.PHONE_INBOX_MAX)
 	gs.log_activity("The signal bars return. Held messages fill the screen.", GREEN)
 	return true
 

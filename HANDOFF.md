@@ -29,13 +29,13 @@ One place to orient before reading anything else below.
 
 | | |
 | --- | --- |
-| Build version | `0.1.2` — "She Said Get a Job" (`autoload/version.gd`) |
-| Save schema | **v19** (0.1.2 PR E, Word of Mouth) — migration ladder walks v1 → v19. `boost_bribes_used` (v18, the Lift's BRIBE), `tip_effects`/`tip_misses` (v19, Word of Mouth's payloads + drought counter) |
-| Parity | **12,533 checks, 0 failures**, floor `MIN_CHECKS := 12533` — `DAY_START_ORDER` trace gained `DAY_START:tips`; five sections that drove tier 2-3 stickups drive the rooms (confrontation loop) |
+| Build version | `0.1.3` — the long-run memory fix (`autoload/version.gd`) |
+| Save schema | **v22** (scrolling-degradation fix) — migration ladder walks v1 → v22. `dre_account` + siblings (v20), `dre_intro_offered` (v21), and v22 adds **no fields**: it trims `phone_inbox`/`phone_held_inbox` to `GameState.PHONE_INBOX_MAX` (30, newest kept), drops terminal shark notes, and sheds the consequence layer's settled state — terminal queue rows and dead-Cause history rows (`ConsequenceEngine.prune_settled`, run each morning; the arm applies it once at load) — the arrays that grew without bound and degraded long runs |
+| Parity | **12,556 checks, 0 failures**, floor `MIN_CHECKS := 12533` — `DAY_START_ORDER` trace gained `DAY_START:tips`; five sections that drove tier 2-3 stickups drive the rooms (confrontation loop) |
 | Territory suite | **169 checks, 0 failures** — a CI gate as of Batch 18 PR 1 (`tests/territory/`), FS-002's own harness, seconds rather than the parity runner's ~2 minutes |
 | Confrontation suite | **212 checks, 0 failures** — a CI gate as of the rooms build (`tests/confrontation/`), the loop's own harness on the shared territory asserts; grew through 0.1.2 PR D (the Lift's caught loop) and the HAND IT BACK follow-up |
 | Tips suite | **93 checks, 0 failures** — a CI gate as of 0.1.2 PR E (`tests/tips/`), Word of Mouth's own harness on the shared territory asserts |
-| Save validation | **151 checks, 0 failures** — a CI gate as of batch 12; gained `_test_v18_boost_bribes_used` and `_test_v19_tips` in 0.1.2 |
+| Save validation | **211 checks, 0 failures** — a CI gate as of batch 12; gained `_test_v18_boost_bribes_used` and `_test_v19_tips` in 0.1.2, the Dre arms (v20/v21), and `_test_v22_growth_caps` (inbox caps, terminal shark notes, consequence-layer pruning — through the real migration chain) |
 | Screen smoke | 23/23 screens instantiate **with their scripts attached** — a CI gate as of batch 12, script-attachment added in batch 15; `opening.tscn` retired in 0.1.2 PR C (Yalonda replaces it) |
 | Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` |
 | Screens | 23 (`opening.tscn` retired in 0.1.2 PR C) |

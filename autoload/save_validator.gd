@@ -19,8 +19,8 @@ const TIP_EVENTS := preload("res://data/tip_events.gd")
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v21. Older saves are
-## migrated before this validator runs, so every arm below reads a v21 shape.
+## repaired payload back to disk. The save schema is v22. Older saves are
+## migrated before this validator runs, so every arm below reads a v22 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -302,6 +302,18 @@ func _validate_phone_messages(state: Dictionary, field: String,
 			message["action"] = {}
 			_repair(repairs, "%s[%d].action" % [field, index], "wrong type; defaulted")
 		clean.append(message)
+	# The v22 cap, as a load-time backstop. The migration arm and the runtime
+	# pushes already hold both halves to PHONE_INBOX_MAX, so a save over it has
+	# been edited or predates the cap without migrating — either way the clamp
+	# has to agree with the one `systems/phone.gd` enforces, which is why the
+	# constant is read rather than repeated. Newest kept, per each half's own
+	# order: the live inbox is newest-first (keep the front), the held inbox is
+	# oldest-first (keep the back).
+	var cap: int = GAME_STATE.PHONE_INBOX_MAX
+	if clean.size() > cap:
+		var dropped: int = clean.size() - cap
+		clean = clean.slice(0, cap) if field == "phone_inbox" else clean.slice(dropped)
+		_repair(repairs, field, "over cap; %d oldest dropped" % dropped)
 	state[field] = clean
 
 func _validate_list_holdings(state: Dictionary, repairs: Array[String]) -> void:

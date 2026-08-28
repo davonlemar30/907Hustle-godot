@@ -242,6 +242,20 @@ func _heat() -> Object:
 func settle_night(ended_day: int) -> void:
 	if gs.game_over:
 		return
+	# Notes that finished on an EARLIER night (repaid / forgiven / enforced)
+	# have nothing left to say: the surface never renders them, no rule reads
+	# them again, and left alone they made shark_loans the run's second
+	# unbounded array (every note ever written, in every save, forever).
+	# Dropped here rather than at settlement so tonight's outcomes are still
+	# on the array for anything asserting against them; "defaulted" stays —
+	# it is an open decision, not a finished one. Ids stay unique regardless:
+	# shark_next_loan_id never rewinds. The v21 → v22 migration arm applies
+	# the same rule to loaded saves.
+	var open_notes: Array = []
+	for loan in gs.shark_loans:
+		if not str(loan.get("status", "active")) in ["repaid", "forgiven", "enforced"]:
+			open_notes.append(loan)
+	gs.shark_loans = open_notes
 	var settling_day: int = ended_day
 	for loan in gs.shark_loans:
 		if not str(loan["status"]) in ["active", "extended"]:

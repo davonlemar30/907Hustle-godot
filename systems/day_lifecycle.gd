@@ -458,6 +458,12 @@ func _run_day_start_step(step: String, today: int) -> void:
 		return
 	match step:
 		"expire_retaliation":
+			# Prune BEFORE expiring: rows that went terminal on an earlier
+			# night leave, tonight's expiries keep their status visible until
+			# tomorrow. Same step rather than a new DAY_START_ORDER phase —
+			# both are the queue's own morning housekeeping, and the order
+			# trace parity asserts stays exactly as authored.
+			engine.prune_settled()
 			engine.expire_stale(today)
 		"surface_delayed":
 			# The district the player is actually standing in. A retaliation

@@ -29,7 +29,7 @@ One place to orient before reading anything else below.
 
 | | |
 | --- | --- |
-| Build version | `0.2.0` — Dre Lending & Loan-Shark Progression (`autoload/version.gd`) |
+| Build version | `0.2.1` — In Hand: the touch fix and the phone build (`autoload/version.gd`) |
 | Save schema | **v24** — migration ladder walks v1 → v24. `dre_account` + siblings (v20), `dre_intro_offered` (v21), v22 adds **no fields** (trims `phone_inbox`/`phone_held_inbox` to `PHONE_INBOX_MAX`, drops terminal shark notes, sheds the consequence layer's settled state), v23 adds `opportunity_offers`/`active_opportunities`/`opportunity_history`/`opportunity_next_instance_id` (Street Opportunity substrate, PR C — GameState declared these one version early, so v23 is the first bump that actually reads/writes them), v24 adds `dre_pending_penance` (PR D, restitution follow-up). PR E (0.2.0) adds **no fields** — `shark_borrowers`' new `access_tier_min`/`introduction_key` metadata lives in the authored catalogue, reset fresh every run, never persisted |
 | Parity | **12,578 checks, 0 failures**, floor `MIN_CHECKS := 12578` — gained the `leveraged_lender` economy profile, the structural no-risk-free-Dre-carry check, and the shark bond-term parity update (PR E) |
 | Territory suite | **170 checks, 0 failures** — a CI gate as of Batch 18 PR 1 (`tests/territory/`), FS-002's own harness, seconds rather than the parity runner's ~10 minutes |
@@ -44,4 +44,5 @@ One place to orient before reading anything else below.
 | Discovery axes | **2** — `jobs_discovered` (WORK walks) and `boost_targets_discovered` (DEAL walks, batch 14) |
 | Territory operating cost | **$20/soldier/night** on the full roster (Batch 18 PR 4, D-1) — the first recurring cost Territory has ever had |
 | Branches | Stale remote branches accumulate; every merged PR's branch is deleted at merge time as of Batch 18 (see the feedback note on stacked-PR merges — never delete a branch another open PR is based on). |
-| Latest PRs | **0.2.0** — five PRs off `BUILD_DRE_LENDING_PROMPT.md`: structured debt to Dre, introduction and earned access, the opportunity substrate + First Money, A Reminder (collection contract), and the Book earned through a sponsored loan (2026-08-28) |
+| Android artifact | `.github/workflows/android-apk.yml` uploads `android-debug-apk` (arm64, debug-signed) on every push to `main` and on `workflow_dispatch`. Additive to the Web pipeline — `web-deploy.yml` and `export_presets.cfg`'s `preset.0` are untouched. On-device checklist: `docs/ANDROID_SMOKE.md` |
+| Latest PRs | **0.2.1** — two PRs off `BUILD_IN_HAND_PROMPT.md`: every screen scrolls from anywhere (touch pass-through by default), and the first Android debug build (2026-08-28) |

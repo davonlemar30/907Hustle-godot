@@ -28,6 +28,37 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 0.2.1 — In Hand: the touch fix and the phone build: two PRs  (added 2026-08-28)
+
+Two PRs against `BUILD_IN_HAND_PROMPT.md`, in the fixed order the prompt set:
+the mobile-first game's own touch handling had to be trustworthy before it was
+worth putting on an actual phone. `docs/DECISIONS.md` D-11 and D-12 carry the
+closed rulings; this entry is the narrative.
+
+**PR 1 — Every screen scrolls from anywhere.** Root cause confirmed live
+before writing any fix: `PanelContainer` is the one Container subtype that
+defaults to `MOUSE_FILTER_STOP`, while every layout Container defaults to
+`PASS` — so a drag starting on any card (`card()`/`_card()`'s output, 70+
+call sites across 17 screens) died before it ever reached the
+`ScrollContainer` above it. Fixed at the source (the two helpers now set
+`PASS`) plus a backstop sweep in `screen_base.gd` that catches every
+`.tscn`-authored panel the helpers never touch, run after every `refresh()`.
+A structural gate in `tests/smoke/screen_smoke.gd` walks every screen's
+`ScrollContainer` subtree in CI now, proven against a false negative by
+disabling the sweep once and confirming 37 real violations surfaced before
+re-enabling it. No tap semantics changed — `tap_connect`, `TAP_SLOP`, and the
+`LOCKED`-swallow rule are exactly what they were.
+
+**PR 2 — The phone build.** `export_presets.cfg` gains an Android debug
+preset (arm64 only, additive — the Web preset is byte-for-byte untouched) and
+a new `.github/workflows/android-apk.yml` produces an installable, debug-
+signed APK as a CI artifact on every push to `main`. No committed keystore —
+CI generates a throwaway one at Android's own conventional path every run.
+`docs/ANDROID_SMOKE.md` is the on-device checklist the user runs before
+merge. Closes `86bbjxtjz`, open since early in the project.
+
+---
+
 ## 0.2.0 — Dre Lending & Loan-Shark Progression: five PRs  (added 2026-08-28)
 
 Five PRs against `BUILD_DRE_LENDING_PROMPT.md`, each its own branch, merged

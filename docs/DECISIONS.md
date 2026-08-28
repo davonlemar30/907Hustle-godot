@@ -643,6 +643,38 @@ history). Every other gate suite held its existing floor unchanged: parity,
 confrontation (212), territory (170), tips (93), dre (331), save-validation
 (229).
 
+## D-12 — The phone build: the In Hand ANDR rulings
+
+**Decided** 2026-08-28 · **Ships in** `build/android-debug-apk` (0.2.1) ·
+**Source:** `BUILD_IN_HAND_PROMPT.md`, closing ClickUp `86bbjxtjz`
+
+### The question
+
+`export_presets.cfg` had exactly one preset (Web) and `.github/workflows/`
+exactly one workflow (web-deploy). Phone testing had only ever happened
+through the GitHub Pages browser export — never a native app, on a project
+whose own README describes itself as mobile-first.
+
+### The rulings
+
+| Decision | Ruling |
+|---|---|
+| The Android preset is additive | Lands as `preset.1`; `preset.0` (Web) is byte-for-byte untouched — confirmed by diffing the file before committing, zero lines removed or changed in the Web section. Specifically load-bearing and untouched: `variant/thread_support=false` and `compress/mode=1` on texture `.import` files (D-11's sibling ruling, [[godot-web-deploy-pages]] in the project's own memory of why). |
+| Legacy build, not Gradle | `gradle_build/use_gradle_build=false`. The Gradle custom-build path needs a full Android SDK/NDK/Gradle toolchain resolved over the network inside CI — much more likely to break or time out for a first Android job. The legacy path just needs the bundled export templates the `barichello/godot-ci:4.7.2` image already ships (the same image `web-deploy.yml` already uses successfully), and the project needs no native plugins or custom Gradle hooks to justify the heavier path. |
+| No committed keystore, ever | The debug keystore is generated fresh every CI run via `keytool` at Android's own conventional path (`~/.android/debug.keystore`, user `androiddebugkey`, password `android`). `export_presets.cfg`'s `keystore/debug*` fields are left blank on purpose — Godot's own fallback finds a keystore at that conventional path without the preset needing to name it, so nothing project-specific has to be committed or rotated. |
+| arm64 only | `architectures/arm64-v8a=true`, every other ABI `false`. The build target is "does this work on a real, current phone," not broad device coverage — armeabi-v7a/x86/x86_64 are a later decision if this ever needs them. |
+| A separate workflow file | `.github/workflows/android-apk.yml`, never an edit to `web-deploy.yml`. Debug-signed APK, uploaded as a CI artifact. Triggers on `push: main` + `workflow_dispatch`, deliberately not `pull_request` — this job produces an artifact and gates nothing, unlike the suites in `web-deploy.yml`. |
+| The rendering method did not change | `renderer/rendering_method="gl_compatibility"` (project-wide, already set) works unmodified for Android — nothing about the preset required touching a project-wide rendering or display setting, so nothing was touched (ANDR-D3's own rule, satisfied rather than tested). |
+| On-device smoke is a checklist, not automation | `docs/ANDROID_SMOKE.md` — install, cold boot, start a run, scroll Market/Jobs/Phone with a thumb starting ON cards (D-11's fix, meant to be felt in the hand), buy/sell, save/reload, kill/relaunch resumes. The user runs it on their own phone; the house merge rule already provides the pause before that answer is needed. |
+| Version `0.2.0 → 0.2.1`, PATCH | Same TOUCH-D7 ruling D-11 already recorded, ridden here at the close-out: neither the touch fix nor an additive build target ships a player-facing surface or system, so this stays PATCH under `version.gd`'s own MAJOR/MINOR/PATCH definition. |
+
+### Why this PR carries the entry rather than a later one
+
+Same Slice-0-before-the-code discipline as D-7 through D-11: the additive-
+preset property, the no-committed-keystore rule, and the legacy-build choice
+are all things `export_presets.cfg` and `android-apk.yml` now depend on, so
+the ruling is recorded where the dependency was created.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

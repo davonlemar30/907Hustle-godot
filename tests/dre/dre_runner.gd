@@ -62,7 +62,7 @@ extends Node
 const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
 const SCRIPTS := preload("res://data/confrontation_scripts.gd")
 
-const MIN_CHECKS := 381
+const MIN_CHECKS := 404
 
 var a: RefCounted
 var gs: Node
@@ -107,6 +107,12 @@ func _ready() -> void:
 	_test_repeat_collection_hard_road_press()
 	_test_repeat_collection_history_stays_compact()
 	_test_repeat_collection_expiry()
+	_test_repeatable_attempts_requirement()
+	_test_repeatable_attempts_fact()
+	_test_repeat_collection_leaned_on_gated_on_attempts()
+	_test_repeat_premium_gated_on_three_attempts()
+	_test_repeat_errand_lifecycle()
+	_test_generate_repeatables_retries_past_a_dud()
 	_test_player_default_ultimatum_pay_now()
 	_test_player_default_ultimatum_stall_suspends()
 	_test_restitution_then_penance()
@@ -1284,21 +1290,42 @@ func _test_repeat_collection_hard_road_press() -> void:
 ## persisted field, no new cap: the umbrella's own section 9.4/20.1 shape
 ## ("a definition ID, outcome key, count, and last-resolved day answer every
 ## future question") already bounds this by construction.
+## Not pinned to `dre_repeat_collection` specifically: PR C's own catalogue
+## (D-18) means `repeatable_attempts` climbing past 1 makes
+## `dre_repeat_collection_leaned_on` eligible too, so the seeded pick across
+## three real rounds is not guaranteed to choose the same definition every
+## time -- and should not need to, since the property under test
+## (`_write_history` keeps one compact row per definition, `resolve()`/
+## `fail()` both incrementing rather than appending) holds for whichever
+## repeatable actually gets offered each round. Reads back the offered
+## definition id each round rather than assuming one.
 func _test_repeat_collection_history_stays_compact() -> void:
 	# One fixture for the whole test, not per iteration -- resetting between
 	# rounds would wipe the very accumulation this test exists to prove.
 	# Any resolution (collected or not) increments `count` the same way
 	# (`resolve()` and `fail()` both call `_write_history`), so the outcome
 	# of each individual negotiate roll is not the thing under test here.
+	#
+	# `_cross_day()` alone drives generation here -- NOT a manual
+	# `settle_night()` call on top of it. The real day-lifecycle already
+	# calls `settle_night()` once per day-cross; calling it a second time by
+	# hand in the same round briefly doubled up two simultaneous offers
+	# (one from each call) and was the actual cause the first version of
+	# this test chased before landing here.
 	_junior_lender()
+	_cross_day()
+	var seen_before: Dictionary = {}
 	for i in range(3):
-		_opportunities().settle_night(gs.day)
-		a.check("round %d generated a fresh offer to resolve" % (i + 1),
-			_offer_exists_any("dre_repeat_collection"))
+		var live: Dictionary = _find_offer("dre_repeat_collection")
+		if live.is_empty():
+			live = _find_offer("dre_repeat_collection_leaned_on")
+		a.check("round %d generated a fresh offer to resolve" % (i + 1), not live.is_empty())
+		var definition_id := str(live.get("definition_id", ""))
+		var before: int = int(seen_before.get(definition_id, 0))
 		gm.dispatch("dre_collect_negotiate", {})
-		a.eq_int("history stays exactly one row after resolution %d" % (i + 1),
-			int((gs.opportunity_history["dre_repeat_collection"] as Dictionary)["count"]),
-			i + 1)
+		a.eq_int("round %d's definition history row increments by exactly one" % (i + 1),
+			int((gs.opportunity_history[definition_id] as Dictionary)["count"]), before + 1)
+		seen_before[definition_id] = before + 1
 		_cross_day()
 	gs.reset_to_new_game()
 
@@ -1315,6 +1342,183 @@ func _test_repeat_collection_expiry() -> void:
 		"expired")
 	a.eq_bool("collect_blocker refuses once the offer is gone",
 		_collector().collect_blocker().is_empty(), false)
+	gs.reset_to_new_game()
+
+# --- 16c. PR C's catalogue: gating, the errand, the retry loop (D-18) --------
+
+func _test_repeatable_attempts_requirement() -> void:
+	var req := preload("res://systems/requirements.gd").new()
+
+	var missing := req.evaluate_requirement(
+		{"type": "repeatable_attempts_min", "min": 1}, {})
+	a.eq_bool("an absent attempt count fails closed", bool(missing["ok"]), false)
+
+	var below := req.evaluate_requirement(
+		{"type": "repeatable_attempts_min", "min": 3}, {"repeatable_attempts": 2})
+	a.eq_bool("2 attempts fails a 3-attempt requirement", bool(below["ok"]), false)
+
+	var at := req.evaluate_requirement(
+		{"type": "repeatable_attempts_min", "min": 3}, {"repeatable_attempts": 3})
+	a.eq_bool("3 attempts clears a 3-attempt requirement", bool(at["ok"]), true)
+
+## `repeatable_attempts` sums `count` across every repeatable's own history
+## row (D-18) -- proven directly against `opportunities.gd`'s own computed
+## fact rather than by playing enough rounds to change eligibility, which
+## `_test_repeat_collection_generation` and the history-compactness test
+## above already exercise for real.
+func _test_repeatable_attempts_fact() -> void:
+	_junior_lender()
+	a.eq_int("zero attempts before anything has ever resolved",
+		int(_opportunities()._facts()["repeatable_attempts"]), 0)
+	gs.opportunity_history["dre_repeat_collection"] = {"outcome": "failed", "count": 2, "last_resolved_day": 1}
+	gs.opportunity_history["dre_repeat_errand"] = {"outcome": "completed", "count": 1, "last_resolved_day": 1}
+	a.eq_int("sums count across every repeatable definition, not just one",
+		int(_opportunities()._facts()["repeatable_attempts"]), 3)
+	gs.reset_to_new_game()
+
+func _test_repeat_collection_leaned_on_gated_on_attempts() -> void:
+	_junior_lender()
+	_opportunities().settle_night(gs.day)
+	a.eq_bool("the leaned-on variant is not yet eligible with zero attempts",
+		_offer_exists_any("dre_repeat_collection_leaned_on"), false)
+
+	_junior_lender()
+	gs.opportunity_history["dre_repeat_collection"] = {"outcome": "failed", "count": 1, "last_resolved_day": 1}
+	_opportunities().settle_night(gs.day)
+	a.eq_bool("the base collection is not re-offered with the leaned-on "
+		+ "variant now sharing eligibility -- both are equally live candidates, "
+		+ "only one generates",
+		gs.opportunity_offers.size() <= 1, true)
+	gs.reset_to_new_game()
+
+func _test_repeat_premium_gated_on_three_attempts() -> void:
+	_junior_lender()
+	gs.opportunity_history["dre_repeat_collection"] = {"outcome": "failed", "count": 2, "last_resolved_day": 1}
+	_opportunities().settle_night(gs.day)
+	a.eq_bool("the premium tier is not yet eligible at 2 attempts",
+		_offer_exists_any("dre_repeat_premium"), false)
+
+	_junior_lender()
+	gs.opportunity_history["dre_repeat_collection"] = {"outcome": "failed", "count": 3, "last_resolved_day": 1}
+	# Force the premium pick deterministically by making it the ONLY
+	# eligible candidate -- the base collection and the leaned-on variant
+	# are both still requirement-eligible at 3 attempts too, and this test
+	# is about the gate, not about which of three equally-eligible
+	# candidates a seeded pick happens to choose.
+	gs.opportunity_offers = [
+		{"instance_id": 90, "definition_id": "dre_repeat_collection", "state": "offered",
+			"source_context": {}, "deadline_day": -1},
+		{"instance_id": 91, "definition_id": "dre_repeat_collection_leaned_on", "state": "offered",
+			"source_context": {}, "deadline_day": -1},
+	]
+	_opportunities().settle_night(gs.day)
+	a.eq_bool("the premium tier offers itself once 3 attempts and the other "
+		+ "two slots are already spoken for", _offer_exists_any("dre_repeat_premium"), true)
+	gs.reset_to_new_game()
+
+func _test_repeat_errand_lifecycle() -> void:
+	# No reachable district: the fresh-run default (only Spenard unlocked)
+	# leaves the errand's own candidate pool empty, so it correctly never
+	# offers rather than naming an unreachable destination.
+	_junior_lender()
+	_opportunities().settle_night(gs.day)
+	a.eq_bool("the errand does not offer with no unlocked destination",
+		_offer_exists_any("dre_repeat_errand"), false)
+
+	_junior_lender()
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	# The base collection and the leaned-on variant are ALSO eligible at
+	# tier 4 with zero attempts -- without excluding them, a seeded pick
+	# landing on either one first (both always succeed) would return before
+	# the errand is ever tried, and this test is about the errand
+	# specifically, not about which of three eligible templates a seeded
+	# pick happens to favor. Two placeholders, not three: the premium tier
+	# is already naturally ineligible (needs 3 attempts, there are zero),
+	# and filling all three non-errand slots would trip the 3-cap itself
+	# and block generation entirely, errand included.
+	gs.opportunity_offers = [
+		{"instance_id": 90, "definition_id": "dre_repeat_collection", "state": "offered",
+			"source_context": {}, "deadline_day": -1},
+		{"instance_id": 91, "definition_id": "dre_repeat_collection_leaned_on", "state": "offered",
+			"source_context": {}, "deadline_day": -1},
+	]
+	_opportunities().settle_night(gs.day)
+	var offer: Dictionary = _find_offer("dre_repeat_errand")
+	a.eq_bool("the errand offers itself once a destination is reachable",
+		not offer.is_empty(), true)
+	a.eq_str("picks the one reachable non-home district",
+		str((offer.get("source_context", {}) as Dictionary).get("district_id", "")), "downtown")
+	a.eq_int("a 3-day window from the offer",
+		int(offer["deadline_day"]), int(offer["offered_day"]) + 3)
+
+	# 3 offers on the board through this point: the two placeholders above
+	# plus the real errand -- the placeholders are never touched by any of
+	# what follows, so they stay a constant +2 on every count below.
+	var cash_before: int = gs.cash
+	_opportunities().reconcile("travel", {"district_id": "airport_industrial"}, {"ok": true})
+	a.eq_int("traveling somewhere else does not settle it",
+		gs.opportunity_offers.size(), 3)
+	a.eq_int("and pays nothing", gs.cash, cash_before)
+
+	_opportunities().reconcile("travel", {"district_id": "downtown"}, {"ok": false})
+	a.eq_int("a refused travel (result.ok false) does not settle it either",
+		gs.opportunity_offers.size(), 3)
+
+	# A real dispatch from here, not a direct reconcile() call: Exposure's
+	# `record_observation` refuses outside a live dispatch (the same
+	# dispatch-guard discipline `_test_a_reminder_offer_and_disposition_
+	# gate`'s own comment notes above), so the completion effect's ledger
+	# write needs the genuine `GameManager.dispatch()` path to prove out.
+	# `travel` also charges its own $5 fare ahead of the errand's $70 credit,
+	# a real cost this assertion accounts for rather than hides.
+	gm.dispatch("travel", {"district_id": "downtown"})
+	a.eq_int("arriving at the named district settles it, leaving only the "
+		+ "two untouched placeholders", gs.opportunity_offers.size(), 2)
+	a.eq_str("recorded completed",
+		str((gs.opportunity_history["dre_repeat_errand"] as Dictionary)["outcome"]), "completed")
+	a.eq_int("the authored $%d fee lands net of travel's own $5 fare" % REPEAT_CONTRACTS.ERRAND_FEE,
+		gs.cash - cash_before, REPEAT_CONTRACTS.ERRAND_FEE - 5)
+	var found_errand := false
+	for row in get_node("/root/Exposure").ledger_of("dre"):
+		if str((row as Dictionary).get("event", "")) == "ran_an_errand":
+			found_errand = true
+	a.eq_bool("Dre's own ledger records the errand", found_errand, true)
+	gs.reset_to_new_game()
+
+## The generation retry loop (D-18): a pick that turns out to be a dud must
+## not silently burn the night's one generation slot when a different
+## eligible template could have used it instead.
+## Finds a day where the FIRST seeded pick, against the exact two-candidate
+## pool this test's own fixture produces (`dre_repeat_collection` then
+## `dre_repeat_errand`, dict-iteration order), lands on the errand -- the one
+## that is guaranteed to be a dud with no unlocked destination. Without
+## forcing this, the test can pass by accident on a day whose first pick
+## happens to be the collection outright, exercising nothing about the
+## retry loop at all (confirmed: this is exactly what the first version of
+## this test did, and sabotaging the retry loop away did not turn it red).
+func _find_errand_first_pick_day() -> int:
+	var rng := get_node("/root/RngManager")
+	for day in range(1, 200):
+		if rng.seeded_int_range(gs.run_seed, "%d:repeat_pick:2" % day, 0, 1) == 1:
+			return day
+	return -1
+
+func _test_generate_repeatables_retries_past_a_dud() -> void:
+	var day := _find_errand_first_pick_day()
+	a.check("a day where the errand is the first pick exists in the search window",
+		day > 0)
+	_junior_lender()
+	gs.day = day
+	# No unlocked destination -- the errand is requirement-eligible (tier 4
+	# only) but will always be a dud here. The base collection is the only
+	# OTHER eligible candidate at zero attempts, so a correct retry loop
+	# lands on it once the errand's own attempt fails -- and this day is
+	# chosen specifically so the errand IS what gets tried first.
+	_opportunities().settle_night(gs.day)
+	a.eq_bool("a dud errand pick does not leave the night empty -- the base "
+		+ "collection still generates", _offer_exists_any("dre_repeat_collection"), true)
+	a.eq_int("and nothing else snuck in alongside it",
+		gs.opportunity_offers.size(), 1)
 	gs.reset_to_new_game()
 
 # --- 17. the player-default ultimatum (PR D) ---------------------------------

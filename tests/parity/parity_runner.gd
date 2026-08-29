@@ -19793,7 +19793,7 @@ func _fail(label: String, detail: String) -> void:
 ## 0.3.0 (STK-D1): +8. `_check_stick_daily_cap_scaling`'s own coverage of the
 ## rep-scaled cap, through both the bare function and the real `blocker()`
 ## gate.
-const MIN_CHECKS := 12751
+const MIN_CHECKS := 12763
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

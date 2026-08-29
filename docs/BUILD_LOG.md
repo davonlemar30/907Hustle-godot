@@ -108,11 +108,18 @@ PR B's multi-line version, fixed the same way once found.
 
 **PR E — Staging, integration and close-out.** Version to 0.5.0 everywhere
 it lives; the wander/read/ambient pool audited against POOL-D1's own
-staging requirement (requirements-gated where progression should matter,
-deliberately open where a card is meant to be evergreen or a low-stakes
-floor) and found already substantially staged rather than padded for its
-own sake. This entry, and the ClickUp reconciliation it closes out, are
-this PR's own record.
+staging requirement and found already substantially staged (requirements-
+gated where progression should matter, deliberately open where a card is
+meant to be evergreen or a low-stakes floor) — but the audit surfaced
+`86bbjnh0x`'s own still-open findings, verified rather than assumed stale:
+`heat_burning` and `carrying_dirty` were minted in `WanderSystem.facts()`
+with no card gating on either, and `once` was read by both eligibility
+sweeps and set by nothing. Two small ambient cards close the first two
+(`wander_pocket_heavy`, `wander_every_car`); `wander_found_cash` — a
+specific lucky find at a specific pump island — is the one existing card
+whose own fiction actually asks for `once: true`, closing the third. This
+entry, and the ClickUp reconciliation it closes out, are this PR's own
+record.
 
 ## 0.4.0 — Repeat Business: five PRs (added 2026-08-29)
 

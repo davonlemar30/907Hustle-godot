@@ -315,6 +315,30 @@ const CARDS: Array[Dictionary] = [
 		"requirements": [{"type": "collection_non_empty", "collection": "inventory"}],
 		"line": "You take the long way round with the bag. It is heavier when you are thinking about it.",
 	},
+	{
+		"id": "wander_pocket_heavy", "kind": KIND_AMBIENT, "weight": 8,
+		"intents": [INTENT_DEAL],
+		"districts": [], "slots": [], "once": false,
+		# `86bbjnh0x`: `carrying_dirty` is minted in `WanderSystem.facts()`
+		# (`gs.dirty_cash > 0`) and no card gated on it -- a dead fact. Same
+		# family as `wander_carrying_heavy` (product), one door down: cash
+		# on hand is its own kind of visible, and the street-stop precedent
+		# already treats dirty money as street-visible for exactly this
+		# reason (STR-D3).
+		"requirements": [{"type": "fact_true", "fact": "carrying_dirty"}],
+		"line": "You keep a hand near the pocket without meaning to. That much cash has a way of announcing itself.",
+	},
+	{
+		"id": "wander_every_car", "kind": KIND_AMBIENT, "weight": 8,
+		"intents": [INTENT_READ],
+		"districts": [], "slots": [], "once": false,
+		# `86bbjnh0x`: `heat_burning` is minted in `WanderSystem.facts()`
+		# (Heat's own worst band) and no card gated on it -- a dead fact.
+		# BURNING already forces the interruption gate's own ceiling
+		# (STR-D1); this is the ambient beat for the walks it doesn't.
+		"requirements": [{"type": "fact_true", "fact": "heat_burning"}],
+		"line": "Every car that slows down might be nothing. You stopped believing that a while ago.",
+	},
 
 	# --- ambient: people you actually know -----------------------------------
 	{
@@ -338,7 +362,13 @@ const CARDS: Array[Dictionary] = [
 	{
 		"id": "wander_found_cash", "kind": KIND_OPPORTUNITY, "weight": 6,
 		"intents": [INTENT_DEAL],
-		"districts": [], "slots": [], "requirements": [], "once": false,
+		"districts": [], "slots": [], "requirements": [],
+		# `86bbjnh0x`: the `once` key was read by `eligible_cards()`/
+		# `eligible_encounters()` and set by nothing -- a dead branch. This is
+		# the one card whose own fiction actually asks for it: a specific
+		# lucky find at a specific pump island reads as a one-time thing, not
+		# a spot that keeps paying out for the rest of the run.
+		"once": true,
 		"line": "Folded bills in the slush by the pump island. Nobody is coming back for it.",
 		"grant": {"cash": [8, 25], "clean": false},
 	},

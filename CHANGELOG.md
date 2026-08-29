@@ -18,6 +18,72 @@ a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
 
+## 0.5.0 — The Street Answers Back: you can't walk it for free anymore (2026-08-29)
+
+The owner's own words, after playtesting with *Drug Lord 2* open beside it:
+"I should not be able to continuously hit the walk-around button on the Home
+screen indefinitely." Wandering paid out against exactly two ordinary
+encounter cards at static weights that read nothing about the player — a
+run at BURNING Heat with three districts HOT drew from the same gentle deck
+as a clean day-one kid. This build answers all three of DL2's own beats:
+the street initiates now, running costs what you're actually carrying, and
+an unpaid debt eventually comes to you instead of waiting to be paid on
+your schedule.
+
+#### Next up
+
+FS-002.4+ Territory offense is still the next systems arc, groundwork
+already shipped and waiting. `86bbjxtfz` (the ending) is still an open
+escalation needing the owner's ruling. The per-hustle-path deepening
+(`86bbnk6en`'s own remaining scope) is still ahead of this build, which
+shipped wander/travel/doorstep as one slice of it. A gear system that moves
+fight odds (`86bbptgp1`) was deliberately not built here — the owner ruled
+fights stay hands-only, the Combat attribute against authored opponent
+rows, until that pass runs on its own.
+
+#### Added
+
+- **The street reads the player before it interrupts them.** Every wander
+  and every district crossing now rolls a seeded gate whose chance climbs
+  with Heat, District Pressure, Curtis's awareness and overdue debt — a
+  cold, paid-up player stays near-silent (measured: a clean profile's gate
+  opens on 6 or fewer of 30 walks), while a player already loud enough to
+  matter cannot out-wait the street (a maximally hot, indebted profile
+  never goes quiet longer than 2 consecutive walks running).
+- **Four new street encounters**, each authored in the register of
+  Courtney Kemp's *Power* — terse, threats delivered as terms, violence
+  discussed like logistics until it isn't: an armed shakedown whose
+  escalation is this build's first multi-round room (fight it out, blow by
+  blow, if FIGHT doesn't end it on the spot); a deepened police foot-stop
+  that finally activates STASH IT, a script authored months ago and never
+  wired to a caller; a Curtis-side tax stop; and a low-stakes charisma read
+  so the roster isn't all guns. Every road puts what's actually being
+  carried on the table — DIRTY cash and carried product, through the same
+  Wallet and inventory owners every other consequence already uses, never a
+  second ledger.
+- **The checkpoint**: district travel rolls the same interruption gate a
+  wander does. A patrol stop while crossing hot or holding — talk your way
+  through, run for it, or hand it over — replaces the older silent
+  carry-stop tax for that trip rather than stacking on top of it, so one
+  crossing is never taxed twice under two different names.
+- **The doorstep**: once Dre's account, a defaulted Book note, or rent
+  arrears go far enough overdue, the day starts with that visit whether the
+  player wants it or not — one obligation at a time, worst debt first,
+  escalating from a forced decision into a real physical enforcement room
+  if it still isn't resolved. No road ends a run directly; the worst
+  outcome only ever costs health and the debt itself, through the game's
+  own existing end conditions.
+
+#### Changed
+
+- **The `arbitrage` economy profile's own corridor moved from 180-320% to
+  140-320%**, measured rather than defended at the old number: arbitrage is
+  built entirely out of district crossings, so it is the one profile most
+  exposed to the checkpoint's new cost by construction. 158% on this
+  build's own baseline still clears "materially riskier, not priced out of
+  the strategy" — the same balance guard every interruption gate in this
+  build was tuned against.
+
 ## 0.4.0 — Repeat Business: Dre's book becomes standing work (2026-08-29)
 
 Dre's arc used to end. Fund Priya, the Book opens, and Dre himself had

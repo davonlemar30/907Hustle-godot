@@ -41,7 +41,7 @@ extends Node
 ## with it: Boost and Stick each gain a per-family daily District Pressure
 ## cap on Market's own precedent (PRESS-D1/D2, D-19), measured honestly as a
 ## partial result rather than a full close.
-const VERSION := "0.4.0"
+const VERSION := "0.5.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

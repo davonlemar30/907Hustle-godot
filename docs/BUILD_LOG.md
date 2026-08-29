@@ -28,6 +28,92 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 0.5.0 — The Street Answers Back: five PRs (added 2026-08-29)
+
+Five PRs against `BUILD_STREET_ANSWERS_PROMPT.md`, each its own branch,
+merged in order. `docs/DECISIONS.md` D-20 through D-23 carry the closed
+rulings; this entry is the narrative.
+
+**PR A — The gate.** The owner's own complaint after playtesting against
+*Drug Lord 2*: wandering paid out against two ordinary encounter cards at
+flat weights that read nothing about the player. `WanderSystem._roll_gate()`
+now rolls a seeded interruption gate before the ordinary draw
+(`gate_chance(steps)`, steps read off Heat's bands, District Pressure's
+worst family, Curtis's phase and overdue debt — nothing here invents a
+second scale for any of them); `gs.wander_quiet_streak` (new, save v25)
+bounds how long a loud player can stay quiet. Three real bugs caught by
+sabotage-testing the mechanism itself, all disclosed in D-20: an empty
+encounter pool silently froze the streak instead of advancing it; a rigged
+"overdue Dre account" test fixture tripped the real player-default
+encounter as an unrelated side effect; a hot profile rigged once at the top
+of a 20-walk loop cooled off partway through because Heat decay and
+Pressure recovery keep running underneath a test that forgot to defend
+against them.
+
+**PR B — The roster.** Four scripts on the gate PR A built: an armed
+shakedown with the "luggage rule" end to end (STR-D3) and this build's
+first multi-round room when FIGHT doesn't end it on the spot; a deepened
+police foot-stop that finally wires STASH_IT, a script authored since Q4
+and never given a caller; a Curtis-side tax stop; a low-stakes charisma
+read. Wiring STASH_IT the obvious way — adding its `escape_route` shape to
+`outcome_resolver.gd`'s oracle-fixture-locked tables — broke two parity
+fixture-count assertions immediately; it resolves through its own direct
+seeded roll instead, the same choice this build already made for gate
+content the web oracle never generated fixtures for. Live verification
+found a shared bug, not a new one: the consequence screen's stakes-strip
+label had no text wrap, so a loop chain's real stats string could force the
+whole screen's layout to overflow sideways — confirmed on a real, already-
+shipped Stickup room (534px overflow) before this PR's own content ever
+touched it, and fixed at the shared root in `ui/screens/consequence.gd`.
+
+**PR C — The checkpoint.** STR-D4: the same interruption gate, invoked on
+district travel instead of a wander. `TravelSystem` reads
+`WanderSystem.attention_steps()` (promoted public rather than re-derived)
+and rolls its own seeded key on crossing; a fired checkpoint and the older,
+silent carry-stop tax (`economy.gd::resolve_carry`) are mutually exclusive
+per trip, so one crossing is never taxed twice under two different names.
+`apply_effects`/`apply_heat`/`lose_cargo` moved out of `wander.gd` into
+`ConfrontationLoop` as shared statics once Travel became their second real
+caller — PR B's own private copy, generalized rather than duplicated.
+Measured: the `arbitrage` profile (built entirely out of crossings) moved
+from 180-320% to 158%, corridor floor lowered to 140% with the reason on
+the record rather than tuning the new mechanic to hold the old number.
+
+**PR D — The doorstep.** DOOR-D1/D2: Dre's account, a defaulted Book note
+and rent arrears now force themselves onto the day's own agenda once far
+enough overdue — a new `systems/doorstep.gd` compares all three before
+anything opens (worst debt first) and claims the day-start floor before any
+generated offer would. Dre's own trigger moved out of
+`dre_lender.gd::settle_night` entirely, required for "worst first" to mean
+anything across three independent obligations; the account's own state
+machine is untouched. Genuine ambiguity flagged rather than silently
+resolved: the build prompt's own language for the Book side reads like a
+collector coming for the player, but the Book (`shark.gd`) is the one place
+in this game the player is the lender — this PR reads the forced visit as
+the player being made to stop avoiding an enforce/extend/forgive decision,
+and the new room's risk as the player's OWN aggressive collection attempt
+going wrong, the mirror image of Dre's and rent's own rooms. No new
+persisted state: every threshold derives from a `due_day` or warning
+counter the game already tracked. Two real affordability bugs caught live:
+Dre's own guaranteed "yield" could fail to close the account at all if the
+player could not cover it in full (routed through the ordinary repay gate,
+which refuses rather than partially collecting); rent's own "yield" had the
+opposite bug, forgiving arrears for free when the player came up short
+instead of taking what was on hand. A pre-existing bug in PR B's own
+shakedown room surfaced while fixing the same class of issue in this PR's
+new code: a seeded key ending in a bare varying integer, the exact "sloppy
+trailing-counter key" shape this build's own danger list already named —
+the suite's own static audit caught it in new code but had a blind spot for
+PR B's multi-line version, fixed the same way once found.
+
+**PR E — Staging, integration and close-out.** Version to 0.5.0 everywhere
+it lives; the wander/read/ambient pool audited against POOL-D1's own
+staging requirement (requirements-gated where progression should matter,
+deliberately open where a card is meant to be evergreen or a low-stakes
+floor) and found already substantially staged rather than padded for its
+own sake. This entry, and the ClickUp reconciliation it closes out, are
+this PR's own record.
+
 ## 0.4.0 — Repeat Business: five PRs (added 2026-08-29)
 
 Five PRs against `BUILD_REPEAT_BUSINESS_PROMPT.md`, each its own branch,

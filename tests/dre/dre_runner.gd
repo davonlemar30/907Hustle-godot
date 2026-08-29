@@ -62,7 +62,7 @@ extends Node
 const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
 const SCRIPTS := preload("res://data/confrontation_scripts.gd")
 
-const MIN_CHECKS := 351
+const MIN_CHECKS := 381
 
 var a: RefCounted
 var gs: Node
@@ -101,6 +101,12 @@ func _ready() -> void:
 	_test_a_reminder_negotiate_road()
 	_test_a_reminder_hard_road_walk()
 	_test_a_reminder_hard_road_press()
+	_test_repeat_collection_generation()
+	_test_repeat_collection_negotiate_road()
+	_test_repeat_collection_hard_road_walk()
+	_test_repeat_collection_hard_road_press()
+	_test_repeat_collection_history_stays_compact()
+	_test_repeat_collection_expiry()
 	_test_player_default_ultimatum_pay_now()
 	_test_player_default_ultimatum_stall_suspends()
 	_test_restitution_then_penance()
@@ -1108,6 +1114,207 @@ func _test_a_reminder_hard_road_press() -> void:
 		a.check("catastrophic is the one tier that can cost health",
 			gs.health <= health_before)
 	gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+# --- 16b. dre_repeat_collection (0.4.0 PR B, REP-D1..D5) ---------------------
+
+const REPEAT_CONTRACTS := preload("res://data/dre_repeat_contracts.gd")
+
+## Junior Lender, satisfied by construction -- the same reduced-setup
+## discipline `_trusted_customer()` uses above, already proven reachable for
+## real by `_test_full_arc_integration_drive()`.
+## Junior Lender by construction, not by playing the arc out (already proven
+## reachable for real by `_test_full_arc_integration_drive`) -- but the
+## history for every earlier milestone has to be marked resolved too, or
+## `settle_night`'s own generic sweep re-offers `dre_first_money`/
+## `dre_a_reminder`/`dre_book_sponsorship` alongside the repeatable (their
+## own tier requirements are trivially satisfied by a bare tier-4 fixture)
+## and eats the whole 3-cap before generation ever runs. A real run never
+## hits this: each milestone resolves in sequence long before Junior Lender,
+## landing in history, never sitting in `opportunity_offers` at the same
+## time as the next one.
+func _junior_lender() -> void:
+	_fresh()
+	gs.dre_introduced = true
+	gs.dre_access_tier = 4
+	gs.opportunity_history = {
+		"dre_first_money": {"outcome": "completed", "count": 1, "last_resolved_day": 1},
+		"dre_a_reminder": {"outcome": "completed", "count": 1, "last_resolved_day": 1},
+		"dre_book_sponsorship": {"outcome": "completed", "count": 1, "last_resolved_day": 1},
+	}
+
+func _test_repeat_collection_generation() -> void:
+	# Below Junior Lender: DRE-D12/REP-D1's own gate, nothing generates.
+	_trusted_customer()
+	_opportunities().settle_night(gs.day)
+	a.eq_bool("no repeatable generates below Junior Lender",
+		_offer_exists_any("dre_repeat_collection"), false)
+
+	# At Junior Lender: generates.
+	_junior_lender()
+	_opportunities().settle_night(gs.day)
+	a.eq_bool("a repeatable collection offers itself at Junior Lender",
+		_offer_exists_any("dre_repeat_collection"), true)
+	var offer: Dictionary = _find_offer("dre_repeat_collection")
+	var ctx: Dictionary = offer.get("source_context", {})
+	a.check("the borrower is one of the authored pool",
+		str(ctx.get("target_id", "")) in ["reggie_voss", "katrina_bell", "omar_deng"])
+	a.check("the seeded clean fee sits inside its authored band",
+		int(ctx.get("fee_clean", 0)) >= REPEAT_CONTRACTS.FEE_BAND["clean"][0] \
+		and int(ctx.get("fee_clean", 0)) <= REPEAT_CONTRACTS.FEE_BAND["clean"][1])
+	a.eq_int("a 4-day window from the offer",
+		int(offer["deadline_day"]), int(offer["offered_day"]) + 4)
+
+	# Determinism: the same day, replayed from scratch, picks the same
+	# borrower and the same fees -- REP-D1's "a reload regenerates the same
+	# offer," proven without an actual save/reload since generation is a
+	# pure function of run_seed + day.
+	var first_borrower := str(ctx.get("target_id", ""))
+	var first_fee := int(ctx.get("fee_clean", 0))
+	_junior_lender()
+	_opportunities().settle_night(gs.day)
+	var replay: Dictionary = _find_offer("dre_repeat_collection").get("source_context", {})
+	a.eq_str("the same day picks the same borrower",
+		str(replay.get("target_id", "")), first_borrower)
+	a.eq_int("and the same seeded fee", int(replay.get("fee_clean", 0)), first_fee)
+
+	# The 3-cap (OPP-D2/REP-D1), offered+active combined.
+	_junior_lender()
+	gs.active_opportunities = [
+		{"instance_id": 90, "definition_id": "filler_a", "state": "active"},
+		{"instance_id": 91, "definition_id": "filler_b", "state": "active"},
+		{"instance_id": 92, "definition_id": "filler_c", "state": "active"},
+	]
+	_opportunities().settle_night(gs.day)
+	a.eq_bool("generation refuses at the 3-cap, offered+active combined",
+		_offer_exists_any("dre_repeat_collection"), false)
+
+	# One new offer per settle_night call, never a flood -- even with the
+	# generated offer already live and still eligible-looking (nothing about
+	# `_maybe_offer`'s own idempotence applies to a `repeatable: true`
+	# definition, which is exactly why this needs its own proof).
+	_junior_lender()
+	_opportunities().settle_night(gs.day)
+	_opportunities().settle_night(gs.day)
+	a.eq_int("a second settle_night call does not mint a second offer",
+		gs.opportunity_offers.size(), 1)
+	gs.reset_to_new_game()
+
+func _offer_exists_any(definition_id: String) -> bool:
+	return not _find_offer(definition_id).is_empty()
+
+func _find_offer(definition_id: String) -> Dictionary:
+	for entry in gs.opportunity_offers:
+		if str((entry as Dictionary).get("definition_id", "")) == definition_id:
+			return entry
+	return {}
+
+func _test_repeat_collection_negotiate_road() -> void:
+	var success := _find_negotiate_day(["clean", "messy"])
+	a.check("a negotiate success day/slot exists in the search window",
+		not success.is_empty())
+	_junior_lender()
+	gs.day = int(success.get("day", 1))
+	gs.time_slots_today = int(success.get("slot", 0))
+	_opportunities().settle_night(gs.day)
+	var ctx: Dictionary = _find_offer("dre_repeat_collection").get("source_context", {})
+	var expected_fee := int(ctx.get("fee_%s" % str(success["tier"]), 0))
+	var cash_before: int = gs.cash
+	a.eq_bool("negotiating dispatches", gm.dispatch("dre_collect_negotiate", {}), true)
+	a.eq_int("a successful negotiate pays exactly the seeded band fee, not "
+		+ "the flat authored one dre_a_reminder uses",
+		gs.cash - cash_before, expected_fee)
+	a.eq_int("Junior Lender does not move -- there is no further tier to grant",
+		int(gs.dre_access_tier), 4)
+	a.eq_str("recorded against dre_repeat_collection, not dre_a_reminder",
+		str((gs.opportunity_history["dre_repeat_collection"] as Dictionary)["outcome"]),
+		"completed")
+	a.eq_int("dre_a_reminder's own history count is untouched by a repeatable "
+		+ "resolving -- still the fixture's own 1, not bumped by this resolution",
+		int((gs.opportunity_history["dre_a_reminder"] as Dictionary)["count"]), 1)
+	gs.reset_to_new_game()
+
+func _test_repeat_collection_hard_road_walk() -> void:
+	_junior_lender()
+	_opportunities().settle_night(gs.day)
+	var target_name := str(_find_offer("dre_repeat_collection")
+		.get("source_context", {}).get("target_name", ""))
+	a.eq_bool("going hard opens a chain", gm.dispatch("dre_collect_hard", {}), true)
+	a.eq_str("naming the generated borrower, not Dontae Wells",
+		str(gs.active_consequence.get("source", {}).get("target_name", "")), target_name)
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "walk"})
+	a.eq_str("walking away is recorded against the repeatable",
+		str((gs.opportunity_history["dre_repeat_collection"] as Dictionary)["outcome"]),
+		"failed")
+	gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+## Same reasoning as `_test_a_reminder_hard_road_press()` above: PRESS's
+## cause_id is a monotonic counter, not searchable by day/slot, so this
+## asserts on whichever of the four authored tiers the one live roll lands
+## on rather than aiming at a specific one.
+func _test_repeat_collection_hard_road_press() -> void:
+	_junior_lender()
+	_opportunities().settle_night(gs.day)
+	var ctx: Dictionary = _find_offer("dre_repeat_collection").get("source_context", {})
+	gm.dispatch("dre_collect_hard", {})
+	var cash_before: int = gs.cash
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+	var result: Dictionary = gs.active_consequence.get("decision", {}).get("result", {})
+	var tier := str(result.get("resolution", ""))
+	a.check("press resolves to one of the four authored tiers",
+		tier in ["clean", "messy", "failure", "catastrophic"])
+	if bool(result.get("collected", false)):
+		var expected_fee := int(ctx.get("fee_%s" % tier, 0))
+		a.eq_int("a collecting tier pays exactly the seeded band fee",
+			gs.cash - cash_before, expected_fee)
+		a.eq_str("recorded completed against the repeatable",
+			str((gs.opportunity_history["dre_repeat_collection"] as Dictionary)["outcome"]),
+			"completed")
+	else:
+		a.eq_int("a non-collecting tier pays nothing", gs.cash, cash_before)
+	gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+## REP-D5: verifies the bound this build needed turned out to already
+## exist. `_write_history` stores one compact row PER DEFINITION ID, not one
+## per occurrence -- resolving a repeatable three separate times (three
+## separate generations, three separate negotiate roads) increments the same
+## row's `count` rather than growing an array or minting new keys. No new
+## persisted field, no new cap: the umbrella's own section 9.4/20.1 shape
+## ("a definition ID, outcome key, count, and last-resolved day answer every
+## future question") already bounds this by construction.
+func _test_repeat_collection_history_stays_compact() -> void:
+	# One fixture for the whole test, not per iteration -- resetting between
+	# rounds would wipe the very accumulation this test exists to prove.
+	# Any resolution (collected or not) increments `count` the same way
+	# (`resolve()` and `fail()` both call `_write_history`), so the outcome
+	# of each individual negotiate roll is not the thing under test here.
+	_junior_lender()
+	for i in range(3):
+		_opportunities().settle_night(gs.day)
+		a.check("round %d generated a fresh offer to resolve" % (i + 1),
+			_offer_exists_any("dre_repeat_collection"))
+		gm.dispatch("dre_collect_negotiate", {})
+		a.eq_int("history stays exactly one row after resolution %d" % (i + 1),
+			int((gs.opportunity_history["dre_repeat_collection"] as Dictionary)["count"]),
+			i + 1)
+		_cross_day()
+	gs.reset_to_new_game()
+
+func _test_repeat_collection_expiry() -> void:
+	_junior_lender()
+	_opportunities().settle_night(gs.day)
+	var deadline: int = int(_find_offer("dre_repeat_collection")["deadline_day"])
+	gs.day = deadline + 1
+	_opportunities().settle_night(gs.day)
+	a.eq_bool("an unaccepted repeatable expires past its own window",
+		_offer_exists_any("dre_repeat_collection"), false)
+	a.eq_str("recorded expired, not failed or completed",
+		str((gs.opportunity_history["dre_repeat_collection"] as Dictionary)["outcome"]),
+		"expired")
+	a.eq_bool("collect_blocker refuses once the offer is gone",
+		_collector().collect_blocker().is_empty(), false)
 	gs.reset_to_new_game()
 
 # --- 17. the player-default ultimatum (PR D) ---------------------------------

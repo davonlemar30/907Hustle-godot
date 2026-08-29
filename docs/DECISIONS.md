@@ -991,6 +991,65 @@ Same Slice-0-before-the-code discipline as D-7 through D-15:
 already load-bearing for `score_slide_special`'s own lifecycle, so the
 ruling is recorded where the dependency was created.
 
+## D-17 — Repeat Business: the generator
+
+**Decided** 2026-08-29 · **Ships in** `build/dre-repeatables` (0.4.0 PR B) ·
+**Source:** `BUILD_REPEAT_BUSINESS_PROMPT.md`, DRE-D12
+
+### The question
+
+DRE-D12 deferred repeatable Dre contracts past Junior Lender from the moment
+it was written (0.2.0): "at most three offered/active, at most one new
+offer per in-game day start... deferred past PR E — the authored chain
+ships first." OPP-D8 held the same gate at the umbrella level. D-16 (PR A)
+satisfied OPP-D8's own precondition; this PR is DRE-D12's actual delivery.
+
+### The ruling
+
+| ID | Ruling |
+|---|---|
+| REP-D1 | Generation hooks `settle_night()` — the same declared lifecycle point the nightly offer sweep already uses, not a new one. `repeatable: true` definitions are excluded from that generic sweep entirely (`_maybe_offer`'s own guard, `_resolved_or_live`, checks `opportunity_history.has()`, which reads true forever after a repeatable's first resolution — exactly backwards for one meant to offer again). `_generate_repeatables()` is their own path: gated on the 3-cap (offered+active combined, OPP-D2), on each candidate definition's own requirements, and on not already being offered or active (`is_offered_or_active()` — the narrower, correct question, since history staying populated is expected and not a block). "One new offer per day" falls out of `settle_night()` itself firing at most once per day-cross — no persisted counter needed. |
+| REP-D2 | One template this PR: `data/dre_repeat_contracts.gd`'s `dre_repeat_collection`, riding `systems/dre_collector.gd`'s existing encounter (same two dispatch actions, same chance tables) end to end. Per-instance variance — a seeded borrower from an authored 3-name pool, a seeded clean/messy fee band ($60-100 / $35-65, close to the authored one-time fee's own $80/$60 clean and $50/$40 messy) — lives on `source_context`, exactly the umbrella's own §9.3 field ("named target or borrower... authored amount/range selection"). A 4-day authored window, riding D-16's own deadline mechanism. |
+| REP-D3 | No new persisted field, no schema bump. Verified rather than assumed: the cap and "one per day" both derive from existing state (checked above); the deadline rides D-16's `deadline_day`; the borrower/fee variance rides `source_context`, already part of the v23 instance shape. |
+| REP-D4 | `dre_collector.gd` generalizes rather than duplicates. Every hardcoded reference to `dre_a_reminder` and `DRE_COLLECTION_TARGET` (Dontae Wells) is replaced with a lookup — `_active_collection()` asks `Opportunities.definition()` (new public wrapper) for whichever offered/active instance carries a new marker, `resolves_via: "dre_collector"`, set on both `dre_a_reminder` and `dre_repeat_collection`. The two can never be live together (the repeatable's tier-4 requirement cannot hold before the one-time arc has already resolved past it), so the lookup is never ambiguous. Chance tables, injury bands, and Heat costs stay the authored flat constants for BOTH callers — only the fee-per-tier payout reads a per-instance override when `source_context` supplies one. Dre's account/tier authority is untouched; the generator only ever reads `dre_access_tier`, never writes it. |
+| REP-D5 | No new bound needed, verified rather than assumed: `_write_history` already stores one compact row per definition id (`count`/`outcome`/`last_resolved_day`), not one row per occurrence — a repeatable resolving three separate times increments one row's `count` three times rather than growing an array. The umbrella's own section 9.4/20.1 shape already bounds this by construction. |
+
+### What generalizing `dre_collector.gd` actually cost
+
+Every flavor line that named Dontae Wells directly now takes a `name`
+parameter or reads `chain.source.target_name` (persisted on the chain
+itself at open time, alongside a new `definition_id` field on that same
+`source` dict — both survive a reload the same way every other consequence
+chain does, per the engine's own snapshot invariant, so resolution never
+needs to re-derive which definition it is mid-chain). `ui/screens/people.gd`
+gained the same generalization independently, reading `Opportunities.
+definition()` rather than checking two ids by name, so a third repeatable
+template (PR C) needs no edit there either.
+
+### Two bugs the suite caught before this shipped, both from sabotage-testing the generator specifically
+
+1. **No per-definition dedup.** The first draft's eligibility check only
+   enforced the 3-cap, not "is this specific repeatable already offered" —
+   calling `settle_night()` twice on the same day, or once after a prior
+   offer's deadline had already passed but before `_expire_overdue()` ran
+   inside that same call, minted a second instance of the same template.
+   Fixed by adding `is_offered_or_active()` to the eligibility filter.
+2. **The test fixture, not the code.** Jumping straight to Junior Lender by
+   setting `dre_access_tier = 4` directly (rather than playing the arc out)
+   left `dre_first_money`/`dre_a_reminder`/`dre_book_sponsorship` all
+   trivially re-eligible under the generic sweep, consuming the entire
+   3-cap before generation ever ran. The fixture now also marks those three
+   `completed` in `opportunity_history`, matching what a real run's
+   sequential progression already guarantees by the time Junior Lender is
+   reached.
+
+### Why this PR carries this entry rather than a later PR
+
+Same Slice-0-before-the-code discipline as D-7 through D-16:
+`dre_collector.gd`'s generalization and the generator's own eligibility
+rules are both already load-bearing for `dre_repeat_collection`'s lifecycle,
+so the ruling is recorded where the dependency was created.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

@@ -137,6 +137,18 @@ func _ready() -> void:
 	dre_collector.setup(_gs, self, rng, attributes)
 	register_system("dre_collector", dre_collector)
 
+	# 0.5.0 PR D (DOOR-D1/D2): reaches Dre, shark (the Book) and obligations
+	# (rent) through `system()` at call time, same as everything else here —
+	# constructed after all three exist so nothing it calls on day one could
+	# ever be null.
+	var doorstep = preload("res://systems/doorstep.gd").new()
+	doorstep.setup(_gs, self)
+	register_system("doorstep", doorstep)
+	# DOOR-D2: runs after every `DAY_START_ORDER` step, so a chain it opens
+	# cannot land ahead of anything else the day already decided -- see
+	# `DayLifecycle`'s own "7. DAY_START -- DAY_START_ORDER, then hooks".
+	day_lifecycle.add_day_start_hook(doorstep.try_force_visit)
+
 	var nine07list = preload("res://systems/nine07list.gd").new()
 	nine07list.setup(_gs, rng, time, attributes, self)
 	register_system("list", nine07list)
@@ -248,6 +260,14 @@ func _ready() -> void:
 	# resolve_consequence() by chain.source.kind, not by two separate keys
 	# here.
 	consequence_engine.register_source_adapter("dre_collection", dre_collector)
+	# 0.5.0 PR D (DOOR-D1/D2): the doorstep's own forced Book/rent decisions
+	# and all three families' enforcement rooms open with
+	# source.action_id == "doorstep" -- Dre's own COLLECTION stage stays
+	# `dre_collection`'s chain (doorstep.gd only triggers it, never resolves
+	# it), told apart from doorstep's own book/rent/enforcement chains the
+	# same way dre_collector's two encounters already are: by
+	# chain.source.kind, not by a second action_id.
+	consequence_engine.register_source_adapter("doorstep", doorstep)
 	# The seventh kind (0.5.0 PR C, STR-D4): a checkpoint resolves itself the
 	# same way a wander encounter does -- the trip that produced it is over,
 	# and there is no source system holding a table about it.

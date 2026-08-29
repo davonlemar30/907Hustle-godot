@@ -1148,7 +1148,7 @@ func _shakedown_room_round(chain: Dictionary, choice_id: String) -> Dictionary:
 	var tier := "failure"
 	if resolver != null:
 		tier = str((resolver.resolve_action("confrontation", chance, raw, gs.run_seed,
-			"%s:stand:room:%d" % [str(source.get("source_rng_key", "")), round_num]
+			"%d:%s:stand:room" % [round_num, str(source.get("source_rng_key", ""))]
 			) as Dictionary)["tier"])
 
 	if tier == "clean":

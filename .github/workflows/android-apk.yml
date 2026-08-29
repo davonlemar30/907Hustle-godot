@@ -96,6 +96,25 @@ jobs:
           printf 'export/android/java_sdk_path = "%s"\n' "$JAVA_HOME" >> "$SETTINGS_FILE"
           cat "$SETTINGS_FILE"
 
+      - name: Confirm the ETC2/ASTC project setting before exporting
+        # Diagnostic: project.godot enables textures/vram_compression/
+        # import_etc2_astc, but the export still refused with "ETC2/ASTC
+        # texture compression is required" on the last run. Printing the
+        # file's actual on-disk content at this exact point in the job, right
+        # before the step that failed, rather than guessing again. Also lays
+        # down res://override.cfg (Godot's own documented mechanism, loaded
+        # after project.godot) with the identical setting as a second,
+        # independent path to the same value in case something about
+        # project.godot's own load order for this one key is the actual
+        # problem -- override.cfg is git-ignored scratch, never committed.
+        run: |
+          grep -A1 "^\[rendering\]" project.godot
+          tail -5 project.godot
+          printf '%s\n' '[rendering]' > override.cfg
+          printf '\n' >> override.cfg
+          printf 'textures/vram_compression/import_etc2_astc=true\n' >> override.cfg
+          cat override.cfg
+
       - name: Export debug APK
         run: |
           mkdir -p build

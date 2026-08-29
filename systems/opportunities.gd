@@ -85,12 +85,13 @@ extends RefCounted
 
 const DRE_CONTRACTS := preload("res://data/dre_contracts.gd")
 const SCORE_CONTRACTS := preload("res://data/score_contracts.gd")
+const DRE_REPEAT_CONTRACTS := preload("res://data/dre_repeat_contracts.gd")
 const REQUIREMENTS := preload("res://systems/requirements.gd")
 
 ## Every authored catalogue this substrate reads offers/definitions from.
-## Two today (Dre's missions/contracts, the one Score); a later PR's own
-## catalogue file is one more entry here, never a new `_definition()` branch.
-const CATALOGUES := [DRE_CONTRACTS, SCORE_CONTRACTS]
+## A later PR's own catalogue file is one more entry here, never a new
+## `_definition()` branch.
+const CATALOGUES := [DRE_CONTRACTS, SCORE_CONTRACTS, DRE_REPEAT_CONTRACTS]
 
 ## Typed completion effects, closed allowlist — addendum ruling OPP-D12, "the
 ## five PR C-E need." `announce_surface`/`record_proof` wait for a consumer
@@ -249,8 +250,107 @@ func settle_night(_ended_day: int) -> void:
 	_advance_state_fact_objectives()
 	for catalogue in CATALOGUES:
 		for definition_id in (catalogue.DEFINITIONS as Dictionary):
-			_maybe_offer(str(definition_id))
+			# `repeatable: true` definitions never run through this generic
+			# sweep: `_maybe_offer`'s own guard, `_resolved_or_live`, checks
+			# `opportunity_history.has(definition_id)` -- true forever after
+			# a definition's FIRST resolution, which is exactly right for a
+			# one-time definition and exactly wrong for one meant to offer
+			# again after every resolution. `_generate_repeatables()` below
+			# is their own eligibility path (REP-D1's cap and cadence, not
+			# "has this ever resolved").
+			var definition: Dictionary = (catalogue.DEFINITIONS as Dictionary)[definition_id]
+			if not bool(definition.get("repeatable", false)):
+				_maybe_offer(str(definition_id))
+	_generate_repeatables()
 	_expire_overdue()
+
+## REP-D1 (DRE-D12): at most one new repeatable offer per settle_night call
+## (which itself fires at most once per day-cross, so "per in-game day
+## start" falls out of that by construction -- no persisted counter needed),
+## and never past the 3 accepted-commitment cap (OPP-D2) combined across
+## every contract/mission/score, not just repeatables. Selection is a single
+## seeded pick across every eligible repeatable definition, not "the first
+## one found" -- with one template today the pick is trivial, but the shape
+## is ready for PR C's catalogue without another rewrite here.
+func _generate_repeatables() -> void:
+	if gs.opportunity_offers.size() + gs.active_opportunities.size() \
+			>= MAX_ACCEPTED_COMMITMENTS:
+		return
+	var facts: Dictionary = _facts()
+	var eligible: Array = []
+	for catalogue in [DRE_REPEAT_CONTRACTS]:
+		for definition_id in (catalogue.DEFINITIONS as Dictionary):
+			var definition: Dictionary = (catalogue.DEFINITIONS as Dictionary)[definition_id]
+			if not bool(definition.get("repeatable", false)):
+				continue
+			# A repeatable already offered or active is not eligible to
+			# generate AGAIN on top of itself -- `_resolved_or_live` cannot
+			# serve this check (its `opportunity_history` half stays true
+			# forever after a repeatable's very first resolution, which is
+			# exactly backwards for a definition meant to offer again after
+			# every resolution). `is_offered_or_active` is the narrower,
+			# correct question: is THIS specific instance live right now.
+			if is_offered_or_active(str(definition_id)):
+				continue
+			var verdict: Dictionary = REQUIREMENTS.new().evaluate_requirements(
+				definition.get("requirements", []), facts)
+			if bool(verdict.get("ok", false)):
+				eligible.append(str(definition_id))
+	if eligible.is_empty():
+		return
+	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
+	if rng == null:
+		return
+	# Varying components first (day leads) -- house style, and a separate
+	# sub-key (":repeat_pick") from whatever the chosen template's own
+	# generation rolls use, per the seeded-key discipline every other draw
+	# in this codebase follows.
+	var pick_key := "%d:repeat_pick" % gs.day
+	var chosen: String = eligible[rng.seeded_int_range(gs.run_seed, pick_key, 0, eligible.size() - 1)]
+	_offer_repeatable(chosen)
+
+## Per-template generation. One `match` arm per repeatable definition,
+## exactly like `reconcile()`'s own bespoke-glue branches above -- a second
+## repeatable template (PR C) adds one more arm here, not a new dispatcher.
+func _offer_repeatable(definition_id: String) -> void:
+	match definition_id:
+		"dre_repeat_collection":
+			_offer_repeat_collection()
+
+## REP-D2: seeded borrower pick and seeded fee band, both varying components
+## first and on their own sub-keys, carried on `source_context` per the
+## umbrella's own §9.3 ("named target or borrower... authored amount/range
+## selection"). The chance tables, injury band, and Heat cost are NOT
+## per-instance -- REP-D4: authored content riding the existing mechanics,
+## not new ones.
+func _offer_repeat_collection() -> void:
+	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
+	var pool: Array = DRE_REPEAT_CONTRACTS.BORROWER_POOL
+	var borrower: Dictionary = pool[rng.seeded_int_range(
+		gs.run_seed, "%d:repeat_borrower" % gs.day, 0, pool.size() - 1)]
+	var fee_band: Dictionary = DRE_REPEAT_CONTRACTS.FEE_BAND
+	var clean_band: Array = fee_band["clean"]
+	var messy_band: Array = fee_band["messy"]
+	var inst: Dictionary = _new_instance("dre_repeat_collection", "offered")
+	inst["source_context"] = {
+		"target_id": str(borrower["id"]),
+		"target_name": str(borrower["name"]),
+		"target_desc": str(borrower["desc"]),
+		"fee_clean": rng.seeded_int_range(gs.run_seed, "%d:repeat_fee_clean" % gs.day,
+			int(clean_band[0]), int(clean_band[1])),
+		"fee_messy": rng.seeded_int_range(gs.run_seed, "%d:repeat_fee_messy" % gs.day,
+			int(messy_band[0]), int(messy_band[1])),
+	}
+	var offers: Array = gs.opportunity_offers
+	offers.append(inst)
+	gs.opportunity_offers = offers
+
+## Public — `systems/dre_collector.gd` (PR B) reads a live collection
+## instance's own definition to confirm `resolves_via` before treating it as
+## theirs to resolve, the same generic-lookup need `ui/screens/boost.gd`
+## (PR A) already established for `score_offer_for_target`.
+func definition(definition_id: String) -> Dictionary:
+	return _definition(definition_id)
 
 func _advance_state_fact_objectives() -> void:
 	var facts: Dictionary = _facts()

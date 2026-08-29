@@ -31,6 +31,14 @@ extends RefCounted
 ## documentation for that reason, the same reduced role
 ## `dre_the_introduction`'s own objective plays.
 ##
+## 0.4.0 PR B: `dre_collector.gd` no longer hardcodes THIS definition's id —
+## it asks `Opportunities` for whichever live instance carries
+## `resolves_via: "dre_collector"` (this one, or `data/dre_repeat_contracts
+## .gd`'s repeatable sibling; never both at once, since the repeatable's own
+## tier-4 requirement cannot be true before this one-time arc has already
+## resolved and promoted past it). This definition's own behavior is
+## unchanged; only the code path that finds it generalized.
+##
 ## `dre_penance` is the small follow-up once a suspension clears by
 ## payment (`dre_pending_penance`, game_state.gd) — real content, resolved
 ## through the generic matcher like `dre_first_money`, because
@@ -112,6 +120,11 @@ const DEFINITIONS := {
 			{"type": "dre_account_clear"},
 			{"type": "dre_disposition_min", "min": 0},
 		],
+		# 0.4.0 PR B: the marker `dre_collector.gd` now reads generically
+		# instead of hardcoding this definition's own id — see that file's
+		# header and `data/dre_repeat_contracts.gd`'s, the repeatable sibling
+		# this generalization exists for.
+		"resolves_via": "dre_collector",
 		# Documentation only — see this file's own header on why neither
 		# resolution road uses the generic matcher.
 		"objectives": [

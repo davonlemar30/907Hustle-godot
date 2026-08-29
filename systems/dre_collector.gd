@@ -38,6 +38,26 @@ extends RefCounted
 ## Stickup room, say) resolve THIS instance. This file calls
 ## `Opportunities.accept()`/`resolve()`/`fail()` directly instead, from the
 ## one place that genuinely knows which chain is which.
+##
+## ## 0.4.0 PR B — one encounter, two callers
+##
+## `data/dre_repeat_contracts.gd`'s `dre_repeat_collection` rides this exact
+## encounter after Junior Lender, so neither road below hardcodes
+## `dre_a_reminder` any more: `_active_collection()` asks `Opportunities` for
+## whichever offered/active instance's definition carries
+## `resolves_via: "dre_collector"` and returns its definition id plus target
+## (from `source_context` for a repeatable, falling back to the authored
+## `DRE_COLLECTION_TARGET` when `source_context` is empty — true for
+## `dre_a_reminder`, which needs no per-run variance). The two can never be
+## live together (the repeatable's own tier-4 requirement cannot hold before
+## the one-time arc has already resolved past it), so "the first match" is
+## never ambiguous in practice. Chance tables, fees, and effects stay
+## `data/confrontation_scripts.gd`'s own authored constants for BOTH
+## callers, UNLESS the active instance's `source_context` carries its own
+## seeded `fee_clean`/`fee_messy` (REP-D2's per-instance variance) — checked
+## at the point of payment, never at the point of the roll itself, so the
+## odds a repeatable's own presentation shows are the same odds `dre_a_
+## reminder` always showed.
 
 const SCRIPTS := preload("res://data/confrontation_scripts.gd")
 
@@ -91,24 +111,64 @@ func handle(action: String, _payload: Dictionary) -> Dictionary:
 func collect_blocker() -> String:
 	if gs.game_over:
 		return "The run is over."
-	if not _has_offer("dre_a_reminder"):
+	if _active_collection().is_empty():
 		return "Dre hasn't asked you for this."
 	return ""
 
-func _has_offer(definition_id: String) -> bool:
-	for entry in gs.opportunity_offers:
-		if str((entry as Dictionary).get("definition_id", "")) == definition_id:
-			return true
-	return false
+## The one offered-or-active instance whose definition carries
+## `resolves_via: "dre_collector"` — offered before `accept()` runs (both
+## roads' own callers, checking whether to let the player start), active
+## after (`_resolve_borrower_collection`'s own fee lookup, once `_open_hard`
+## has already moved it there). Empty dict if none — `dre_a_reminder` and
+## `dre_repeat_collection` are the only two definitions that ever set this
+## marker, and they can never both be live (see this file's header).
+func _active_collection() -> Dictionary:
+	for pool in [gs.opportunity_offers, gs.active_opportunities]:
+		for entry in (pool as Array):
+			var inst: Dictionary = entry
+			var definition: Dictionary = _opportunities().definition(
+				str(inst.get("definition_id", "")))
+			if str(definition.get("resolves_via", "")) == "dre_collector":
+				return inst
+	return {}
+
+## The target to name in copy and to key the chain's own `source` on —
+## `source_context` for a repeatable (REP-D2's per-run variance), the
+## authored `DRE_COLLECTION_TARGET` when empty (the one-time arc, which
+## carries none).
+func _collection_target(inst: Dictionary) -> Dictionary:
+	var ctx: Dictionary = inst.get("source_context", {})
+	if ctx.has("target_id"):
+		return {"id": ctx["target_id"], "name": ctx.get("target_name", ""),
+			"desc": ctx.get("target_desc", "")}
+	return SCRIPTS.DRE_COLLECTION_TARGET
+
+## The clean/messy fee for the given road, reading a repeatable's own seeded
+## band (`source_context.fee_clean`/`fee_messy`) when present and falling
+## back to the authored flat constant otherwise — the roll itself (chance,
+## tier) is never per-instance (REP-D4); only the payout for an already-won
+## tier can vary.
+func _fee_for(inst: Dictionary, road: String, tier: String) -> int:
+	var ctx: Dictionary = inst.get("source_context", {})
+	var key := "fee_%s" % tier
+	if ctx.has(key):
+		return int(ctx[key])
+	var table: Dictionary = SCRIPTS.DRE_COLLECTION_PRESS_FEE if road == "press" \
+		else SCRIPTS.DRE_COLLECTION_NEGOTIATE_FEE
+	return int(table.get(tier, 0))
 
 # --- negotiate (no chain) -----------------------------------------------------
 
 func _negotiate() -> Dictionary:
-	var blocked := collect_blocker()
-	if not blocked.is_empty():
-		return {"ok": false, "reason": blocked}
+	var inst: Dictionary = _active_collection()
+	if inst.is_empty():
+		return {"ok": false, "reason": "Dre hasn't asked you for this."}
+	if gs.game_over:
+		return {"ok": false, "reason": "The run is over."}
+	var definition_id := str(inst["definition_id"])
+	var target: Dictionary = _collection_target(inst)
 	var opportunities: Object = _opportunities()
-	opportunities.accept("dre_a_reminder")
+	opportunities.accept(definition_id)
 	var resolver: Object = gm.system("outcome_resolver")
 	# Varying components first — house style (seeded key audit,
 	# tests/parity/parity_runner.gd).
@@ -118,10 +178,15 @@ func _negotiate() -> Dictionary:
 		gs.run_seed, key)
 	var tier := str(outcome["tier"])
 	var collected: bool = tier in ["clean", "messy"]
-	gs.log_activity(_negotiate_line(tier), GREEN if collected else RED)
+	gs.log_activity(_negotiate_line(tier, str(target.get("name", ""))), GREEN if collected else RED)
 	var exposure: Node = _exposure()
 	if collected:
-		var fee: int = int((SCRIPTS.DRE_COLLECTION_NEGOTIATE_FEE as Dictionary).get(tier, 0))
+		# accept() may have refused at the 3-cap (OPP-D2) -- the instance is
+		# still offered, not active, and resolve() below correctly no-ops
+		# rather than paying a fee for a collection this run never actually
+		# committed to. dre_a_reminder's own content never reaches the cap
+		# (see accept()'s own header); a repeatable can, by design.
+		var fee: int = _fee_for(inst, "negotiate", tier)
 		if fee > 0:
 			_wallet().credit(fee, _wallet().DIRTY, {"source_id": "dre_collection_negotiate"})
 		if exposure != null:
@@ -129,17 +194,17 @@ func _negotiate() -> Dictionary:
 				"event": "handled_it_clean", "source": "direct"})
 			exposure.record_observation("dre", {"type": "financial",
 				"event": "collection_negotiated", "source": "direct"})
-		opportunities.resolve("dre_a_reminder", {"road": "negotiate", "tier": tier})
+		opportunities.resolve(definition_id, {"road": "negotiate", "tier": tier})
 	else:
 		if tier == "catastrophic" and exposure != null:
 			exposure.broadcast_observation({"type": "violence",
 				"event": "botched_mission", "channel": "network"})
-		opportunities.fail("dre_a_reminder", {"road": "negotiate", "tier": tier})
+		opportunities.fail(definition_id, {"road": "negotiate", "tier": tier})
 	return {"ok": true, "tier": tier, "collected": collected}
 
-func _negotiate_line(tier: String) -> String:
+func _negotiate_line(tier: String, name: String) -> String:
 	match tier:
-		"clean": return "Dontae hands it over before you finish the sentence."
+		"clean": return "%s hands it over before you finish the sentence." % name
 		"messy": return "It takes longer than it should, but it's in your hand."
 		"failure": return "He talks in circles. You leave with nothing."
 		_: return "It goes sideways fast. You leave with nothing, and word gets around."
@@ -147,14 +212,17 @@ func _negotiate_line(tier: String) -> String:
 # --- hard (opens a chain) -----------------------------------------------------
 
 func _open_hard() -> Dictionary:
-	var blocked := collect_blocker()
-	if not blocked.is_empty():
-		return {"ok": false, "reason": blocked}
+	var inst: Dictionary = _active_collection()
+	if inst.is_empty():
+		return {"ok": false, "reason": "Dre hasn't asked you for this."}
+	if gs.game_over:
+		return {"ok": false, "reason": "The run is over."}
 	var engine: Object = _engine()
 	if engine.has_active():
 		return {"ok": false, "reason": "You're already in the middle of something."}
-	_opportunities().accept("dre_a_reminder")
-	var target: Dictionary = SCRIPTS.DRE_COLLECTION_TARGET
+	var definition_id := str(inst["definition_id"])
+	var target: Dictionary = _collection_target(inst)
+	_opportunities().accept(definition_id)
 	# The zero-RNG projection, not a live roll — TI-003 §2's rule (and this
 	# codebase's own house style: odds are shown as qualitative bands, never
 	# raw percentages; that translation happens in the shared consequence
@@ -168,14 +236,14 @@ func _open_hard() -> Dictionary:
 		"return_route": "HOME",
 		"source": {"action_id": "dre_collection", "kind": "borrower_collection",
 			"family": "dre", "target_id": str(target["id"]),
-			"target_name": str(target["name"])},
+			"target_name": str(target["name"]), "definition_id": definition_id},
 		"decision": {
 			"allowed_choices": ["press", "walk"],
 			"deterministic_choices": ["walk"],
 			"shown_probabilities": shown,
 		},
 	})
-	gs.log_activity("You go find Dontae Wells.", AMBER)
+	gs.log_activity("You go find %s." % str(target["name"]), AMBER)
 	return {"ok": true}
 
 # --- the player-default ultimatum (opened by dre_lender.gd, no dispatch) -----
@@ -222,9 +290,17 @@ func _resolve_borrower_collection(chain: Dictionary, choice_id: String) -> Dicti
 	var engine: Object = _engine()
 	var decision: Dictionary = chain.get("decision", {})
 	var opportunities: Object = _opportunities()
+	var source: Dictionary = chain.get("source", {})
+	# Read off the chain's own persisted source, not re-derived — a chain is
+	# already snapshot-safe across a reload (the engine invariant every
+	# consequence adapter follows), so this is the one honest source for
+	# which definition opened it, not `_active_collection()` re-scanning
+	# live state that a reload might have moved on from by then.
+	var definition_id := str(source.get("definition_id", "dre_a_reminder"))
+	var target_name := str(source.get("target_name", "Dontae Wells"))
 
 	if choice_id == "walk":
-		gs.log_activity("You leave Dontae alone. Dre hears about it.", AMBER)
+		gs.log_activity("You leave %s alone. Dre hears about it." % target_name, AMBER)
 		if engine.record_receipt(cause_id, "dre_collection:refused_work"):
 			var exposure: Node = _exposure()
 			if exposure != null:
@@ -232,7 +308,7 @@ func _resolve_borrower_collection(chain: Dictionary, choice_id: String) -> Dicti
 					"event": "refused_work", "source": "direct"})
 		decision["result"] = {"resolution": "walked", "collected": false}
 		engine.advance_stage(engine.STAGE_RESULT)
-		opportunities.fail("dre_a_reminder", {"road": "hard", "resolution": "walked"})
+		opportunities.fail(definition_id, {"road": "hard", "resolution": "walked"})
 		return {"ok": true, "resolution": "walked"}
 
 	# "press"
@@ -250,7 +326,7 @@ func _resolve_borrower_collection(chain: Dictionary, choice_id: String) -> Dicti
 			{"source_id": "dre_collection_press"})
 
 	if collected and engine.record_receipt(cause_id, "dre_collection:fee"):
-		var fee: int = int((SCRIPTS.DRE_COLLECTION_PRESS_FEE as Dictionary).get(tier, 0))
+		var fee: int = _fee_for(_active_collection(), "press", tier)
 		if fee > 0:
 			_wallet().credit(fee, _wallet().DIRTY, {"source_id": "dre_collection_press"})
 
@@ -281,19 +357,19 @@ func _resolve_borrower_collection(chain: Dictionary, choice_id: String) -> Dicti
 				exposure2.broadcast_observation({"type": "violence",
 					"event": "botched_mission", "channel": "network"})
 
-	gs.log_activity(_press_line(tier), GREEN if collected else RED)
+	gs.log_activity(_press_line(tier, target_name), GREEN if collected else RED)
 	decision["result"] = {"resolution": tier, "collected": collected}
 	engine.advance_stage(engine.STAGE_RESULT)
 
 	if collected:
-		opportunities.resolve("dre_a_reminder", {"road": "hard", "tier": tier})
+		opportunities.resolve(definition_id, {"road": "hard", "tier": tier})
 	else:
-		opportunities.fail("dre_a_reminder", {"road": "hard", "tier": tier})
+		opportunities.fail(definition_id, {"road": "hard", "tier": tier})
 	return {"ok": true, "resolution": tier, "collected": collected}
 
-func _press_line(tier: String) -> String:
+func _press_line(tier: String, name: String) -> String:
 	match tier:
-		"clean": return "Dontae pays up fast once he sees you mean it."
+		"clean": return "%s pays up fast once he sees you mean it." % name
 		"messy": return "It gets loud before it gets paid, but it gets paid."
 		"failure": return "He's got nothing on him. You leave empty-handed."
 		_: return "It gets physical. You leave without the money and worse off."

@@ -82,8 +82,15 @@ func _bind_dre_extras(v: VBoxContainer) -> void:
 					% [principal, total, int(dre_system.FIRST_LOAN_TERM_DAYS)],
 				"Muted", 11, MUTED, true))
 			v.add_child(button("BORROW $%d" % principal, true, _on_borrow_dre, 40))
-	if _offer_exists("dre_a_reminder"):
-		v.add_child(label("Dontae Wells owes Dre. He'd like it handled.",
+	# 0.4.0 PR B: reads whichever collection-shaped offer is live (the
+	# authored `dre_a_reminder` or a generated `dre_repeat_collection`) —
+	# `dre_collector.gd`'s own generalization, mirrored here rather than
+	# checking two ids by name.
+	var collection: Dictionary = _collection_offer()
+	if not collection.is_empty():
+		var ctx: Dictionary = (collection.get("source_context", {}) as Dictionary)
+		var collect_name := str(ctx.get("target_name", "Dontae Wells"))
+		v.add_child(label("%s owes Dre. He'd like it handled." % collect_name,
 			"Muted", 11, MUTED, true))
 		v.add_child(button("TALK IT LOOSE", true, _on_collect_negotiate, 40))
 		v.add_child(button("GO COLLECT", true, _on_collect_hard, 40))
@@ -97,6 +104,22 @@ func _offer_exists(definition_id: String) -> bool:
 		if str((entry as Dictionary).get("definition_id", "")) == definition_id:
 			return true
 	return false
+
+## The one offered instance whose definition resolves through
+## `dre_collector.gd` — same marker, same "never both live" reasoning as
+## that file's own `_active_collection()`. Read via `opportunities.definition()`
+## rather than checking `dre_a_reminder`/`dre_repeat_collection` by name, so
+## a third repeatable collection template (PR C) needs no edit here.
+func _collection_offer() -> Dictionary:
+	var opportunities: Object = _gm.system("opportunities")
+	if opportunities == null:
+		return {}
+	for entry in gs.opportunity_offers:
+		var inst: Dictionary = entry
+		var definition: Dictionary = opportunities.definition(str(inst.get("definition_id", "")))
+		if str(definition.get("resolves_via", "")) == "dre_collector":
+			return inst
+	return {}
 
 func _on_seek_dre() -> void:
 	_gm.dispatch("dre_seek_out", {})

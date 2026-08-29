@@ -1815,6 +1815,70 @@ and the 40-second budget is spent entirely on reading. The copy is what has to
 stay inside it, not the code, and three beats of ~30 words each plus three
 choice lanes reads inside 40 seconds comfortably.
 
+### Real bugs caught in PR C
+
+5. **A road labelled CERTAIN under a line promising it cost nothing.** The
+   screen's fallback for a deterministic choice is "Guaranteed: no injury, no
+   Heat, no arrest." That was true for every deterministic choice shipped
+   before 0.3.0 and is true for almost none of SQ-D6's surrender roads — and
+   it was flatly a lie on `wander_warrant_check`'s WAIT IT OUT, the one card
+   where surrender is deliberately the WORST road (the whole bag plus the
+   loudest Heat on the card). ENC-D6 had already opened the exact seam for
+   this (`choice_guarantee`) when Stick Caught's YIELD started guaranteeing an
+   arrest; Wander had simply never implemented it. Every surrender road in the
+   file now states its own price, and the suite asserts none of them reads
+   like the fallback.
+
+6. **Flat observation rows on run roads with costly tails.** Six roads
+   authored one observation shape for every tier, so a KEEP MOVING that cost
+   health and a quarter of the cash still observed as `discretion /
+   walked_it_off`. Found by driving all 24 new roads on the real build and
+   reading the ledger back. Tiered.
+
+7. **The parity runner hung silently, and it was a parse error after all.**
+   Editing this suite by slicing between two markers removed three functions
+   along with the one being replaced. Godot logged three "function not found"
+   parse errors and then sat at ~1% CPU indefinitely. Exactly the failure the
+   danger list names — worth recording that the first instinct (three
+   overlapping background runs contending) was wrong, and that the diagnosis
+   came from running ONE instance with output unfiltered.
+
+### Measured results, PR C
+
+| Suite | After PR B | After PR C |
+| --- | --- | --- |
+| parity | 12836 | 13276 |
+| confrontation | 630 | 1130 |
+| save validation / territory / tips / dre / smoke | — | unchanged |
+
+Confrontation's +500 is almost entirely free: the structural sweeps iterate
+the card registry, so eight new cards brought their own coverage with them.
+That is what the sweeps were for.
+
+**MEAS-D1, the gate.** The gate is out of scope for 0.6.0 and no line of it
+changed, but "we did not touch it" is not the same claim as "it did not get
+louder" — tripling the roster is exactly the kind of change that moves a rate
+through a back door. Both halves are now measured and asserted:
+
+- **Structurally:** the gate's own predicate is re-derived in the suite from
+  only the two inputs it is allowed to read (`attention_steps()` and
+  `wander_quiet_streak`, through `gate_chance` and `quiet_streak_cap`) and
+  compared against what `_roll_gate()` actually decided — **30/30 agreement**
+  on the largest pool the roster can stage. A pool-size term anywhere in that
+  predicate would show up as a disagreement.
+- **Empirically, on the real build:** a cold day-one profile driven through
+  the real `dispatch("wander")` path opens **2.83 of 30 walks** (1/5/3/1/4/2
+  across six seeds), well inside the ≤6 ceiling PR A set — and the cards that
+  came up were genuinely varied (`wander_desperate_approach` ×6,
+  `wander_young_ones` ×6, `wander_mistaken_identity` ×4, `wander_lot_side`
+  ×1), which is the roster doing its job.
+
+One honest finding fell out of it: `_roll_gate`'s empty-pool branch is
+**defensive rather than reachable**. Three cards are authored for any district,
+any slot, with no requirements, so the pool has a floor of three whatever the
+player has done. The suite now asserts that floor, so an author who gates all
+three gets a red suite telling them the gate just became silenceable.
+
 ### Why this PR carries this entry
 
 Same rule as every entry above: SQ-D1..D5 are load-bearing for PR A's own

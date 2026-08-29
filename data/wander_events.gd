@@ -934,7 +934,13 @@ const CARDS: Array[Dictionary] = [
 					"failure": {"type": "violence", "event": "street_fight"},
 					"catastrophic": {"type": "violence", "event": "street_fight"},
 				},
-				"hold_steady": {"type": "discretion", "event": "walked_it_off"},
+				"hold_steady": {
+					"clean": {"type": "discretion", "event": "walked_it_off"},
+					"messy": {"type": "discretion", "event": "walked_it_off"},
+					"failure": {"type": "discretion", "event": "walked_it_off"},
+					# The only bruise this card can leave, and it is one.
+					"catastrophic": {"type": "violence", "event": "caught_from_behind"},
+				},
 				"cross_the_street": {"type": "submission", "event": "ceded_the_corner"},
 			},
 			"effects": {
@@ -953,6 +959,527 @@ const CARDS: Array[Dictionary] = [
 					"messy": {"health": 2, "cash_fraction": 0.0, "goods_fraction": 0.0},
 					"failure": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.0},
 					"catastrophic": {"health": 6, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+			},
+		},
+	},
+	# --- 0.6.0 PR C: the everyday street (POOL-D1, SQ-D6..D8, VOX-D1) --------
+	#
+	# 0.5.0 left the encounter pool a skeleton: four cards, of which two were
+	# Curtis-shaped and one needed WATCHED Heat to fire at all. What was
+	# missing is the ordinary -- the stops that happen to people who are not
+	# doing anything in particular, the addicts who are not a plot, and the
+	# blocks that decide you are the wrong person to be standing on them.
+	#
+	# Eight cards below, in three families the owner named:
+	#
+	#   POLICE      the vehicle search and the warrant check. The on-foot
+	#               stop already ships (`wander_stopped_on_foot`) and is NOT
+	#               duplicated -- it is the first of the three.
+	#   ADDICTS     the desperate approach and the lot-side confrontation.
+	#               The hard case for VOX-D1: desperation is not comedy and
+	#               not pity, and the register holds.
+	#   GENERAL     wrong place wrong time, mistaken identity, the beef the
+	#               block picks, and the one that is somebody else's problem
+	#               until you answer it.
+	#
+	# **Arrest, and the seam left obvious.** Wander has never booked one --
+	# `resolve_consequence`'s own header says why: "somebody on a corner is
+	# not a crime the player committed", and the two chains that DO reach
+	# custody both open off an action the player chose to take. The police
+	# cards are the first plausible exception and it is the owner's ruling to
+	# make. Until it is made they ship as ruled-as-specified: **seizure and
+	# Heat are the worst road, no custody**, and `arrest_risks` stays empty on
+	# every one of them. The seam is `open_chain`'s own `arrest_risks` block,
+	# which every other chain kind already fills; a card that gains custody
+	# fills it and changes nothing else.
+
+	{
+		"id": "wander_vehicle_search", "kind": KIND_ENCOUNTER, "weight": 7,
+		"intents": [], "gate_bias": "",
+		"districts": [], "slots": [], "once": false,
+		# Somewhere else to be, and enough attention to be worth pulling over
+		# on the way. Both gates read state the build already keeps.
+		"requirements": [
+			{"type": "fact_true", "fact": "on_the_road"},
+			{"type": "fact_true", "fact": "heat_noticed"},
+		],
+		"line": "The car behind you has been behind you for three turns, and now the lights come on.",
+		"encounter": {
+			"definition_id": "wander_vehicle_search",
+			"opponent": "The traffic stop",
+			"shape": "negotiation",
+			"choices": ["ask_why", "roll_slow", "open_it_up"],
+			"roles": {"ask_why": ROLE_FIGHT, "roll_slow": ROLE_RUN,
+				"open_it_up": ROLE_SURRENDER},
+			"admits_crew": false,
+			"deterministic": ["open_it_up"],
+			"base": {"ask_why": 0.55, "roll_slow": 0.40},
+			"observations": {
+				"ask_why": {
+					"clean": {"type": "discretion", "event": "talked_through_a_stop"},
+					"messy": {"type": "discretion", "event": "talked_through_a_stop"},
+					"failure": {"type": "heat_exposure", "event": "vehicle_searched"},
+					"catastrophic": {"type": "heat_exposure", "event": "vehicle_searched"},
+				},
+				"roll_slow": {
+					"clean": {"type": "discretion", "event": "talked_through_a_stop"},
+					"messy": {"type": "heat_exposure", "event": "vehicle_searched"},
+					"failure": {"type": "heat_exposure", "event": "vehicle_searched"},
+					"catastrophic": {"type": "heat_exposure", "event": "vehicle_searched"},
+				},
+				"open_it_up": {"type": "submission", "event": "vehicle_searched"},
+			},
+			"effects": {
+				# A car search finds cargo, not cash -- a wallet is not
+				# probable cause and the luggage rule has never taken clean
+				# money. The worst road is the whole trunk plus the Heat of
+				# having been the reason somebody called it in.
+				"ask_why": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 0.5},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.5,
+						"heat": 1.0},
+					"catastrophic": {"health": 0, "cash_fraction": 0.0,
+						"goods_fraction": 1.0, "heat": 2.0},
+				},
+				"roll_slow": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.25,
+						"heat": 1.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.5,
+						"heat": 1.5},
+					"catastrophic": {"health": 0, "cash_fraction": 0.0,
+						"goods_fraction": 1.0, "heat": 2.5},
+				},
+				"open_it_up": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0,
+						"goods_fraction": 1.0, "heat": 0.5},
+				},
+			},
+		},
+	},
+	{
+		"id": "wander_warrant_check", "kind": KIND_ENCOUNTER, "weight": 6,
+		"intents": [], "gate_bias": "",
+		"districts": [], "slots": [], "once": false,
+		# The one card in the roster that requires a history. A warrant check
+		# on somebody who has never been booked is not a warrant check.
+		"requirements": [{"type": "fact_true", "fact": "has_priors"}],
+		"line": "He takes your name to the car and does not come straight back.",
+		"encounter": {
+			"definition_id": "wander_warrant_check",
+			"opponent": "The name check",
+			"shape": "negotiation",
+			# THE ONE CARD WHERE SURRENDER IS THE WORST ROAD, and the odds say
+			# so before the player commits: WAIT IT OUT is deterministic and
+			# its authored guarantee is the whole cargo plus the most Heat any
+			# road here carries. The chassis rule is that a guaranteed out
+			# EXISTS, never that it is cheap -- Stick Caught's own YIELD books
+			# you on purpose (ENC-D6) and is the precedent. What the player is
+			# owed is that the price is visible first, and a deterministic
+			# road states its price rather than showing a band.
+			"choices": ["give_a_name", "walk_now", "wait_it_out"],
+			"roles": {"give_a_name": ROLE_FIGHT, "walk_now": ROLE_RUN,
+				"wait_it_out": ROLE_SURRENDER},
+			"admits_crew": false,
+			"deterministic": ["wait_it_out"],
+			"base": {"give_a_name": 0.48, "walk_now": 0.34},
+			"observations": {
+				"give_a_name": {
+					"clean": {"type": "honesty", "event": "name_came_back_clean"},
+					"messy": {"type": "heat_exposure", "event": "run_for_warrants"},
+					"failure": {"type": "heat_exposure", "event": "run_for_warrants"},
+					"catastrophic": {"type": "heat_exposure", "event": "run_for_warrants"},
+				},
+				"walk_now": {
+					"clean": {"type": "discretion", "event": "left_before_it_landed"},
+					"messy": {"type": "heat_exposure", "event": "run_for_warrants"},
+					"failure": {"type": "heat_exposure", "event": "run_for_warrants"},
+					"catastrophic": {"type": "heat_exposure", "event": "run_for_warrants"},
+				},
+				"wait_it_out": {"type": "submission", "event": "run_for_warrants"},
+			},
+			"effects": {
+				"give_a_name": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 1.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.5,
+						"heat": 2.0},
+					"catastrophic": {"health": 0, "cash_fraction": 0.0,
+						"goods_fraction": 1.0, "heat": 3.0},
+				},
+				# Walking away from a name that is already in a computer is
+				# the fastest road out and the one that costs most when it
+				# does not work.
+				"walk_now": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 2, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 1.5},
+					"failure": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.5,
+						"heat": 3.0},
+					"catastrophic": {"health": 8, "cash_fraction": 0.0,
+						"goods_fraction": 1.0, "heat": 4.0},
+				},
+				# The deliberate inversion. Nobody is hurt and nothing is
+				# argued; you stand there while a computer decides, and it
+				# decides the expensive way.
+				"wait_it_out": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0,
+						"goods_fraction": 1.0, "heat": 3.5},
+				},
+			},
+		},
+	},
+
+	# --- hostile addicts ------------------------------------------------------
+	#
+	# VOX-D1's hard case, and the register holds: these are not comedy and they
+	# are not pity. A person who needs something in the next ten minutes is
+	# unpredictable in a specific way -- they are not calculating, which is
+	# what makes them dangerous to somebody who is.
+
+	{
+		"id": "wander_desperate_approach", "kind": KIND_ENCOUNTER, "weight": 9,
+		"intents": [], "gate_bias": "",
+		"districts": [], "slots": [], "once": false,
+		# No requirement at all: this is the roster's floor, the thing that
+		# happens to anybody standing anywhere. Weighted highest of the eight
+		# for the same reason.
+		"requirements": [],
+		"line": "He was talking before he got to you and has not stopped since. His hands will not stay still.",
+		"encounter": {
+			"definition_id": "wander_desperate_approach",
+			"opponent": "The one who will not stop talking",
+			"shape": "negotiation",
+			"choices": ["shut_it_down", "keep_moving_past", "give_him_something"],
+			"roles": {"shut_it_down": ROLE_FIGHT, "keep_moving_past": ROLE_RUN,
+				"give_him_something": ROLE_SURRENDER},
+			"admits_crew": true,
+			"deterministic": ["give_him_something"],
+			# Unpredictable, and the numbers say it: the flat odds are decent
+			# on both rolled roads and the catastrophic tails are heavy. He is
+			# not calculating, so neither road is a plan.
+			"base": {"shut_it_down": 0.58, "keep_moving_past": 0.62},
+			"observations": {
+				"shut_it_down": {
+					"clean": {"type": "defiance", "event": "held_the_block"},
+					"messy": {"type": "violence", "event": "street_fight"},
+					"failure": {"type": "violence", "event": "street_fight"},
+					"catastrophic": {"type": "violence", "event": "street_fight"},
+				},
+				# Per-tier, not flat: a run road whose failure tiers cost real
+				# health and cash cannot observe as "walked it off" on those
+				# tiers. Found by driving all 24 roads on the real build —
+				# every flat row on a road with a costly tail was wrong the
+				# same way.
+				"keep_moving_past": {
+					"clean": {"type": "discretion", "event": "walked_it_off"},
+					"messy": {"type": "discretion", "event": "walked_it_off"},
+					"failure": {"type": "violence", "event": "caught_from_behind"},
+					"catastrophic": {"type": "violence", "event": "caught_from_behind"},
+				},
+				"give_him_something": {"type": "financial", "event": "paid_to_be_left_alone"},
+			},
+			"effects": {
+				"shut_it_down": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 3, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 7, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					# DOOR-D1, carried forward: no scripted death. The worst
+					# road hurts and takes; the run ends only through the
+					# existing end conditions.
+					"catastrophic": {"health": 16, "cash_fraction": 0.25,
+						"goods_fraction": 0.0},
+				},
+				"keep_moving_past": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 2, "cash_fraction": 0.25, "goods_fraction": 0.0},
+					"catastrophic": {"health": 9, "cash_fraction": 0.5, "goods_fraction": 0.25},
+				},
+				# A flat, small, known price. The cheapest guaranteed out in
+				# the roster, and it should be -- what he wants is small.
+				"give_him_something": {
+					"deterministic": {"health": 0, "cash_flat": 20, "goods_fraction": 0.0},
+				},
+			},
+		},
+	},
+	{
+		"id": "wander_lot_side", "kind": KIND_ENCOUNTER, "weight": 7,
+		"intents": [], "gate_bias": "",
+		"districts": [], "slots": [EVENING, NIGHT], "once": false,
+		"requirements": [],
+		"line": "Two of them are already arguing about something that has nothing to do with you, on the side of the lot you have to walk past.",
+		"encounter": {
+			"definition_id": "wander_lot_side",
+			"opponent": "The argument on the lot",
+			"shape": "confrontation",
+			# The card the brief asks for by name: FIGHT is CHEAP IN ODDS and
+			# EXPENSIVE IN HEAT. Winning is easy -- they are not in any state
+			# to stop you -- and a fight on a lit lot at night is the loudest
+			# thing in this file. The trade is legible before the player
+			# commits, because the odds band says STRONG and nothing hides
+			# that heat is what it costs.
+			"choices": ["put_them_down", "go_around", "hands_up"],
+			"roles": {"put_them_down": ROLE_FIGHT, "go_around": ROLE_RUN,
+				"hands_up": ROLE_SURRENDER},
+			"admits_crew": true,
+			"deterministic": ["hands_up"],
+			"base": {"put_them_down": 0.78, "go_around": 0.60},
+			"observations": {
+				"put_them_down": {"type": "violence", "event": "beat_somebody_in_public"},
+				"go_around": {
+					"clean": {"type": "discretion", "event": "walked_it_off"},
+					"messy": {"type": "discretion", "event": "walked_it_off"},
+					"failure": {"type": "violence", "event": "caught_from_behind"},
+					"catastrophic": {"type": "violence", "event": "caught_from_behind"},
+				},
+				"hands_up": {"type": "submission", "event": "gave_it_up"},
+			},
+			"effects": {
+				# Every tier of the fight road carries Heat, including the
+				# clean one. That is the point: you did not lose, you were
+				# seen.
+				"put_them_down": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 2.0},
+					"messy": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 2.5},
+					"failure": {"health": 9, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 3.0},
+					"catastrophic": {"health": 14, "cash_fraction": 0.25,
+						"goods_fraction": 0.25, "heat": 3.5},
+				},
+				"go_around": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 3, "cash_fraction": 0.25, "goods_fraction": 0.0},
+					"catastrophic": {"health": 8, "cash_fraction": 0.5, "goods_fraction": 0.5},
+				},
+				"hands_up": {
+					"deterministic": {"health": 0, "cash_fraction": 0.5, "goods_fraction": 0.5},
+				},
+			},
+		},
+	},
+
+	# --- general street -------------------------------------------------------
+
+	{
+		"id": "wander_wrong_place", "kind": KIND_ENCOUNTER, "weight": 8,
+		"intents": [], "gate_bias": "",
+		"districts": [], "slots": [EVENING, NIGHT], "once": false,
+		"requirements": [],
+		"line": "Something already happened here. You did not see it, and the people who did are looking at you.",
+		"encounter": {
+			"definition_id": "wander_wrong_place",
+			"opponent": "Whoever was already here",
+			"shape": "negotiation",
+			"choices": ["say_your_piece", "keep_it_moving", "back_out"],
+			"roles": {"say_your_piece": ROLE_FIGHT, "keep_it_moving": ROLE_RUN,
+				"back_out": ROLE_SURRENDER},
+			"admits_crew": true,
+			"deterministic": ["back_out"],
+			"base": {"say_your_piece": 0.56, "keep_it_moving": 0.58},
+			"observations": {
+				"say_your_piece": {
+					"clean": {"type": "honesty", "event": "cleared_it_up"},
+					"messy": {"type": "honesty", "event": "cleared_it_up"},
+					"failure": {"type": "violence", "event": "street_fight"},
+					"catastrophic": {"type": "violence", "event": "street_fight"},
+				},
+				"keep_it_moving": {
+					"clean": {"type": "discretion", "event": "walked_it_off"},
+					"messy": {"type": "discretion", "event": "walked_it_off"},
+					"failure": {"type": "violence", "event": "caught_from_behind"},
+					"catastrophic": {"type": "violence", "event": "caught_from_behind"},
+				},
+				"back_out": {"type": "submission", "event": "gave_it_up"},
+			},
+			"effects": {
+				"say_your_piece": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 2, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 6, "cash_fraction": 0.25, "goods_fraction": 0.0},
+					"catastrophic": {"health": 11, "cash_fraction": 0.5, "goods_fraction": 0.25},
+				},
+				"keep_it_moving": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 4, "cash_fraction": 0.25, "goods_fraction": 0.25},
+					"catastrophic": {"health": 10, "cash_fraction": 0.5, "goods_fraction": 0.5},
+				},
+				# Backing out of somewhere you had no business being costs the
+				# walk and nothing else. The block keeps it anyway.
+				"back_out": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+			},
+		},
+	},
+	{
+		"id": "wander_mistaken_identity", "kind": KIND_ENCOUNTER, "weight": 8,
+		"intents": [], "gate_bias": "",
+		"districts": [], "slots": [], "once": false,
+		"requirements": [],
+		"line": "He says your name. It is not your name, and he is very sure about it.",
+		"encounter": {
+			"definition_id": "wander_mistaken_identity",
+			"opponent": "The man who is sure",
+			"shape": "negotiation",
+			"choices": ["set_him_straight", "let_him_talk", "be_who_he_wants"],
+			"roles": {"set_him_straight": ROLE_FIGHT, "let_him_talk": ROLE_RUN,
+				"be_who_he_wants": ROLE_SURRENDER},
+			"admits_crew": true,
+			"deterministic": ["be_who_he_wants"],
+			"base": {"set_him_straight": 0.60, "let_him_talk": 0.52},
+			"observations": {
+				"set_him_straight": {
+					"clean": {"type": "honesty", "event": "cleared_it_up"},
+					"messy": {"type": "honesty", "event": "cleared_it_up"},
+					"failure": {"type": "violence", "event": "street_fight"},
+					"catastrophic": {"type": "violence", "event": "street_fight"},
+				},
+				"let_him_talk": {
+					"clean": {"type": "discretion", "event": "walked_it_off"},
+					"messy": {"type": "discretion", "event": "walked_it_off"},
+					"failure": {"type": "honesty", "event": "wore_somebody_elses_name"},
+					"catastrophic": {"type": "honesty", "event": "wore_somebody_elses_name"},
+				},
+				# Answering to a name that is not yours is a lie the street
+				# can check later, and it is the road that carries the debt.
+				"be_who_he_wants": {"type": "honesty", "event": "wore_somebody_elses_name"},
+			},
+			"effects": {
+				"set_him_straight": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 2, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 6, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 12, "cash_fraction": 0.25, "goods_fraction": 0.0},
+				},
+				"let_him_talk": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.25, "goods_fraction": 0.0},
+					"failure": {"health": 3, "cash_fraction": 0.5, "goods_fraction": 0.0},
+					"catastrophic": {"health": 8, "cash_fraction": 1.0, "goods_fraction": 0.25},
+				},
+				# Whatever the other man owed, you just agreed to.
+				"be_who_he_wants": {
+					"deterministic": {"health": 0, "cash_flat": 60, "goods_fraction": 0.0},
+				},
+			},
+		},
+	},
+	{
+		"id": "wander_territorial_beef", "kind": KIND_ENCOUNTER, "weight": 7,
+		"intents": [INTENT_DEAL], "gate_bias": "stick",
+		"districts": [], "slots": [], "once": false,
+		# The block has to already be paying attention for this to make sense.
+		# Reads the engine's own MARKET band for the district underfoot, which
+		# is the same read `SEE WHO IS OUT` renders -- not a second scale.
+		"requirements": [{"type": "fact_true", "fact": "market_pressure_visible"}],
+		"line": "They know what you have been doing on this block, and they have decided it is their block.",
+		"encounter": {
+			"definition_id": "wander_territorial_beef",
+			"opponent": "The ones who work this block",
+			"shape": "confrontation",
+			"choices": ["it_is_my_block", "not_today", "off_the_block"],
+			"roles": {"it_is_my_block": ROLE_FIGHT, "not_today": ROLE_RUN,
+				"off_the_block": ROLE_SURRENDER},
+			"admits_crew": true,
+			"deterministic": ["off_the_block"],
+			"base": {"it_is_my_block": 0.46, "not_today": 0.54},
+			"observations": {
+				"it_is_my_block": {
+					"clean": {"type": "territory", "event": "held_the_block"},
+					"messy": {"type": "territory", "event": "held_the_block"},
+					"failure": {"type": "violence", "event": "street_fight"},
+					"catastrophic": {"type": "violence", "event": "street_fight"},
+				},
+				"not_today": {
+					"clean": {"type": "discretion", "event": "walked_it_off"},
+					"messy": {"type": "discretion", "event": "walked_it_off"},
+					"failure": {"type": "territory", "event": "run_off_the_block"},
+					"catastrophic": {"type": "territory", "event": "run_off_the_block"},
+				},
+				"off_the_block": {"type": "submission", "event": "ceded_the_corner"},
+			},
+			"effects": {
+				"it_is_my_block": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 1.0},
+					"messy": {"health": 5, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 1.5},
+					"failure": {"health": 10, "cash_fraction": 0.25, "goods_fraction": 0.5,
+						"heat": 1.5},
+					"catastrophic": {"health": 15, "cash_fraction": 0.5, "goods_fraction": 1.0,
+						"heat": 2.0},
+				},
+				"not_today": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.25},
+					"failure": {"health": 4, "cash_fraction": 0.25, "goods_fraction": 0.5},
+					"catastrophic": {"health": 9, "cash_fraction": 0.5, "goods_fraction": 1.0},
+				},
+				# The whole point of the card: the cheap answer is agreeing
+				# not to work here, and what it costs is what you are holding.
+				"off_the_block": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.5},
+				},
+			},
+		},
+	},
+	{
+		"id": "wander_somebody_elses_problem", "kind": KIND_ENCOUNTER, "weight": 6,
+		"intents": [], "gate_bias": "",
+		"districts": [], "slots": [], "once": false,
+		"requirements": [{"type": "fact_true", "fact": "curtis_visible"}],
+		"line": "Somebody is getting worked over half a block up, and one of them has already looked at you twice.",
+		"encounter": {
+			"definition_id": "wander_somebody_elses_problem",
+			"opponent": "The two up the block",
+			"shape": "confrontation",
+			"choices": ["step_in", "cross_over", "look_away"],
+			"roles": {"step_in": ROLE_FIGHT, "cross_over": ROLE_RUN,
+				"look_away": ROLE_SURRENDER},
+			"admits_crew": true,
+			"deterministic": ["look_away"],
+			"base": {"step_in": 0.44, "cross_over": 0.66},
+			"observations": {
+				"step_in": {
+					"clean": {"type": "loyalty", "event": "stepped_in_for_somebody"},
+					"messy": {"type": "loyalty", "event": "stepped_in_for_somebody"},
+					"failure": {"type": "violence", "event": "street_fight"},
+					"catastrophic": {"type": "violence", "event": "street_fight"},
+				},
+				"cross_over": {
+					"clean": {"type": "discretion", "event": "walked_it_off"},
+					"messy": {"type": "discretion", "event": "walked_it_off"},
+					"failure": {"type": "violence", "event": "caught_from_behind"},
+					"catastrophic": {"type": "violence", "event": "caught_from_behind"},
+				},
+				# Watching and doing nothing is a thing the block also sees.
+				"look_away": {"type": "submission", "event": "watched_it_happen"},
+			},
+			"effects": {
+				"step_in": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 6, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 11, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 17, "cash_fraction": 0.25, "goods_fraction": 0.25},
+				},
+				"cross_over": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 2, "cash_fraction": 0.0, "goods_fraction": 0.25},
+					"catastrophic": {"health": 6, "cash_fraction": 0.25, "goods_fraction": 0.5},
+				},
+				"look_away": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
 				},
 			},
 		},
@@ -1002,6 +1529,35 @@ const CHOICE_LABELS := {
 	# because this is where the wander adapter looks its buttons up.
 	"call_tone": "CALL TONE",
 	"let_deshawn_talk": "LET DESHAWN TALK",
+	# --- 0.6.0 PR C: the roster's own vocabulary -------------------------------
+	# Twenty-four labels, three per card, and not one of them is the word
+	# "fight", "run" or "surrender". That is SQ-D6 working: the role is the
+	# structural position and the label is what this particular situation
+	# actually offers you.
+	"ask_why": "ASK WHY",
+	"roll_slow": "ROLL IT DOWN SLOW",
+	"open_it_up": "OPEN IT UP",
+	"give_a_name": "GIVE HIM A NAME",
+	"walk_now": "WALK NOW",
+	"wait_it_out": "WAIT IT OUT",
+	"shut_it_down": "SHUT IT DOWN",
+	"keep_moving_past": "KEEP MOVING",
+	"give_him_something": "GIVE HIM SOMETHING",
+	"put_them_down": "PUT THEM DOWN",
+	"go_around": "GO AROUND",
+	"hands_up": "HANDS UP",
+	"say_your_piece": "SAY YOUR PIECE",
+	"keep_it_moving": "KEEP IT MOVING",
+	"back_out": "BACK OUT",
+	"set_him_straight": "SET HIM STRAIGHT",
+	"let_him_talk": "LET HIM TALK",
+	"be_who_he_wants": "BE WHO HE WANTS",
+	"it_is_my_block": "IT IS MY BLOCK",
+	"not_today": "NOT TODAY",
+	"off_the_block": "OFF THE BLOCK",
+	"step_in": "STEP IN",
+	"cross_over": "CROSS OVER",
+	"look_away": "LOOK AWAY",
 }
 
 const CHOICE_COPY := {
@@ -1024,6 +1580,67 @@ const CHOICE_COPY := {
 	"give_it_up": "Whatever you are holding stops being worth this.",
 	"call_tone": "He ends it by standing there. Costs a favor.",
 	"let_deshawn_talk": "His voice, not yours. Everybody walks.",
+	# VOX-D1: short declaratives, terms rather than threats, and the addict
+	# lines carry no comedy and no pity.
+	"ask_why": "Make him say the reason out loud. Sometimes there is not one.",
+	"roll_slow": "Two inches of window and every answer already ready.",
+	"open_it_up": "Trunk, doors, all of it. It ends when they are finished.",
+	"give_a_name": "A name that is close enough to be boring. Boring gets waved through.",
+	"walk_now": "Before the computer finishes. Every second is worse odds.",
+	"wait_it_out": "Stand there and let it come back. It will come back.",
+	"shut_it_down": "End the conversation. He will not end it himself.",
+	"keep_moving_past": "Do not slow down and do not answer. He loses interest or he does not.",
+	"give_him_something": "Twenty dollars is cheaper than the next ten minutes.",
+	"put_them_down": "Neither of them is in any state to stop you. Everybody on this lot will see it.",
+	"go_around": "Long way, well lit, nobody's business but yours.",
+	"hands_up": "Whatever is on you is theirs. Nobody swings.",
+	"say_your_piece": "Tell them what you did and did not see. Hope it lands.",
+	"keep_it_moving": "You were never here. Act like it.",
+	"back_out": "The way you came, at the speed you came. Nothing lost but the walk.",
+	"set_him_straight": "Tell him whose name it is. He is going to argue.",
+	"let_him_talk": "Let him finish and find out what the other man owes.",
+	"be_who_he_wants": "Answer to it. Whatever that man owed, you just agreed to.",
+	"it_is_my_block": "You have been working it. That is the argument.",
+	"not_today": "Not the day for it. There will be another block.",
+	"off_the_block": "Agree not to work here. Leave what you brought.",
+	"step_in": "It is not your problem until you make it yours.",
+	"cross_over": "Other side of the street, same pace, eyes forward.",
+	"look_away": "Somebody is going to remember that you saw.",
+}
+
+## The line under a DETERMINISTIC road, stating its guaranteed price.
+##
+## Reached through the engine's `choice_guarantee` adapter seam, which exists
+## for exactly this: the screen's own fallback ("Guaranteed: no injury, no
+## Heat, no arrest") was true for every deterministic choice that shipped
+## before 0.3.0, and ENC-D6 opened the seam the day Stick Caught's YIELD
+## guaranteed an ARREST instead.
+##
+## Every surrender road in this file needs it, because SQ-D6 makes the
+## guaranteed out structural rather than cheap: HANDS OUT ends a search by
+## letting it find what is on you, OFF THE BLOCK leaves half your cargo where
+## you were standing, and WAIT IT OUT — the warrant check, the one card where
+## surrender is genuinely the WORST road — costs the whole bag and the loudest
+## Heat on the card. A player is owed that price BEFORE they commit, and
+## "CERTAIN" beside an odds band is not a price.
+const CHOICE_GUARANTEE := {
+	"hand_over": "Guaranteed: you walk away whole. Everything you are carrying is theirs.",
+	"hands_out": "Guaranteed: nobody is hurt. The search happens, and it finds what is on you.",
+	"cross_the_street": "Guaranteed: nothing happens to you. The block will remember that it did not.",
+	"pay_it": "Guaranteed: $40, and the corner has no further questions today.",
+	"give_it_up": "Guaranteed: the fight stops here. Whatever is still in your hands is not.",
+	"open_it_up": "Guaranteed: no argument and no injury. Whatever is in the car is theirs.",
+	# The inversion, stated plainly. It is the only road on this card that
+	# takes everything AND carries the most Heat, and it is the certain one.
+	"wait_it_out": "Guaranteed: nobody lays a hand on you. They take everything you are carrying, and your name goes in a computer twice.",
+	"give_him_something": "Guaranteed: $20, and he goes and asks somebody else.",
+	"hands_up": "Guaranteed: nobody swings. Half of what is on you leaves with them.",
+	"back_out": "Guaranteed: nothing lost but the walk back.",
+	"be_who_he_wants": "Guaranteed: $60. Whatever that other man owed is yours now.",
+	"off_the_block": "Guaranteed: no injury. Half of what you brought stays on this corner.",
+	"look_away": "Guaranteed: nothing happens to you at all. Somebody will remember that you saw.",
+	"call_tone": "Guaranteed: it ends. It costs a favor you will want back later.",
+	"let_deshawn_talk": "Guaranteed: everybody walks, and you keep what you were carrying.",
 }
 
 static func card_by_id(card_id: String) -> Dictionary:

@@ -54,7 +54,15 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## the doorstep's enforcement room admitting the same calls on the same terms,
 ## and the arm that pins the beat to the SITUATION LINE — the one place the
 ## room's own copy was reaching the chip and the log and not the sentence.
-const MIN_CHECKS := 630
+## 0.6.0 (POOL-D1, PR C): 630 -> 1102, +472 and not one new line of test code.
+## The structural sweeps iterate the card registry, so eight new cards brought
+## their own coverage with them -- roles declared and filled exactly once,
+## surrender deterministic and the other two not, every road labelled, copied,
+## priced and observable at every tier. That is what the sweeps were for.
+## The remaining +28 is `_check_guaranteed_prices_are_stated`, added after the
+## real build showed a road labelled CERTAIN under a fallback line promising it
+## cost nothing, on the one card where surrender is the WORST road.
+const MIN_CHECKS := 1130
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -1142,6 +1150,7 @@ func _check_verb_triad() -> void:
 	_check_observation_rows()
 	_check_observation_written()
 	_check_beat_is_the_situation()
+	_check_guaranteed_prices_are_stated()
 	_check_crew_calls()
 	_check_doorstep_crew_calls()
 
@@ -1568,3 +1577,46 @@ func _check_beat_is_the_situation() -> void:
 		ENCOUNTER_SHEET.situation_body(engine, engine.active_summary()),
 		"You went out to see what was around. This is what was around.")
 	gs.active_consequence = {}
+
+## ENC-D6's seam, applied to the roster: every deterministic road states its
+## OWN guaranteed price rather than inheriting the screen's fallback.
+##
+## The fallback is "Guaranteed: no injury, no Heat, no arrest." It was true for
+## every deterministic choice that shipped before 0.3.0 and it is true for
+## almost none of SQ-D6's surrender roads — HANDS OUT lets a search find what
+## is on you, OFF THE BLOCK leaves half your cargo behind, and WAIT IT OUT (the
+## warrant check, the one card where surrender is the WORST road) costs the
+## whole bag and the loudest Heat on the card. Caught on the real build: the
+## sheet rendered "CERTAIN" beside a road that takes everything, under a line
+## promising it takes nothing.
+func _check_guaranteed_prices_are_stated() -> void:
+	var wander: Object = gm.system("wander")
+	for entry in EVENTS.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != EVENTS.KIND_ENCOUNTER:
+			continue
+		var card_id := str(card["id"])
+		var roads: Array = [str(EVENTS.choice_for_role(card, EVENTS.ROLE_SURRENDER))]
+		for beat in (((card["encounter"] as Dictionary).get("room", {}) as Dictionary)
+				.get("beats", []) as Array):
+			for choice_id in ((beat as Dictionary).get("deterministic", []) as Array):
+				if not str(choice_id) in roads:
+					roads.append(str(choice_id))
+		for road in roads:
+			var said := str(wander.choice_guarantee(str(road)))
+			a.check("%s's guaranteed road '%s' states its own price"
+				% [card_id, str(road)], not said.is_empty())
+			# The fallback would be a lie on every one of them, so none may
+			# read like it.
+			a.check("%s's '%s' does not claim it costs nothing"
+				% [card_id, str(road)],
+				not said.contains("no injury, no Heat, no arrest"))
+
+	# The warrant check specifically: the price is stated, and it names the
+	# two things that road actually costs.
+	var warrant := str(wander.choice_guarantee("wait_it_out"))
+	a.check("the warrant check's surrender road names what it takes",
+		warrant.contains("everything you are carrying"))
+	a.eq_bool("...and it is the card's declared surrender road",
+		str(EVENTS.choice_for_role(EVENTS.card_by_id("wander_warrant_check"),
+			EVENTS.ROLE_SURRENDER)) == "wait_it_out", true)

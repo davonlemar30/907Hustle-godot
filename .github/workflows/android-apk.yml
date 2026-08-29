@@ -68,10 +68,60 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=907Hustle CI,O=907Hustle,C=US"
 
+      - name: Force a clean, VRAM-compressed texture reimport (Android only)
+        # Two layers deep, both confirmed by direct testing, not assumed:
+        #
+        # 1. The 88 committed `.import` sidecar files predate this preset,
+        #    with no ETC2/ASTC variant baked in. Toggling project.godot's
+        #    import_etc2_astc does not retroactively regenerate an existing,
+        #    up-to-date-looking `.import` file (godotengine/godot#94882,
+        #    #106992) -- confirmed here too: forcing a reimport with only
+        #    that toggle set still failed with the identical error.
+        # 2. The actual reason: every texture imports at compress/mode=1
+        #    (Lossy). import_etc2_astc only controls which GPU formats get
+        #    generated for a texture already set to compress/mode=2 (VRAM
+        #    Compressed) -- it does not change a texture's own import mode.
+        #    Since nothing here uses mode 2, no texture would ever produce
+        #    an ETC2/ASTC variant no matter how many times it reimports.
+        #
+        # The fix: an importer-defaults override for "texture" -> VRAM
+        # Compressed, written into THIS job's own ephemeral project.godot
+        # copy only, immediately before deleting the sidecars so the forced
+        # reimport actually picks it up. Never committed -- the real
+        # project.godot default (and every already-shipped Web texture)
+        # stays exactly Lossy, untouched (ANDR-D1/D3: this changes what the
+        # Android artifact ships, not the project).
+        run: |
+          printf '\n[importer_defaults]\n\ntexture={\n"compress/mode": 2\n}\n' >> project.godot
+          find . -name "*.import" -not -path "./.git/*" -delete
+
       - name: Import resources
         # First import builds the .godot cache. It reports missing-dependency
         # noise on a cold cache; the export step is the real gate.
         run: godot --headless --import || true
+
+      - name: Point the editor at the container's JDK
+        # The Android export refuses with "A valid Java SDK path is required
+        # in Editor Settings" on a container with no prior editor settings
+        # file. Confirmed by trying JAVA_HOME alone first: Godot's own
+        # config-validation reads the java_sdk_path *editor setting*
+        # directly, not the environment -- setting JAVA_HOME changed nothing.
+        # The image carries a JDK (keytool above needed one); it just has no
+        # EditorSettings resource yet to record where. Writing a minimal one
+        # ahead of the export is the actual fix. Path detected rather than
+        # hardcoded, since the exact JDK location is an image implementation
+        # detail, not something this repo should pin.
+        run: |
+          JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+          echo "Detected JAVA_HOME=$JAVA_HOME"
+          mkdir -p "$HOME/.config/godot"
+          SETTINGS_FILE="$HOME/.config/godot/editor_settings-4.7.tres"
+          printf '%s\n' '[gd_resource type="EditorSettings" format=3]' > "$SETTINGS_FILE"
+          printf '\n' >> "$SETTINGS_FILE"
+          printf '%s\n' '[resource]' >> "$SETTINGS_FILE"
+          printf 'export/android/java_sdk_path = "%s"\n' "$JAVA_HOME" >> "$SETTINGS_FILE"
+          cat "$SETTINGS_FILE"
 
       - name: Export debug APK
         run: |

@@ -68,6 +68,20 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=907Hustle CI,O=907Hustle,C=US"
 
+      - name: Force a clean texture reimport
+        # The 88 committed `.import` sidecar files were all generated before
+        # this preset existed, with no ETC2/ASTC-compressed variant baked in
+        # -- toggling project.godot's textures/vram_compression/
+        # import_etc2_astc does not retroactively regenerate an existing,
+        # up-to-date-looking `.import` file (a known Godot behavior:
+        # godotengine/godot#94882, #106992), so the Android export refuses
+        # with "ETC2/ASTC texture compression is required" even with the
+        # setting correctly enabled. Deleting the sidecars in THIS ephemeral
+        # checkout only -- never committed, never touches git -- forces
+        # Godot to regenerate every one from scratch under the current
+        # settings on the next import.
+        run: find . -name "*.import" -not -path "./.git/*" -delete
+
       - name: Import resources
         # First import builds the .godot cache. It reports missing-dependency
         # noise on a cold cache; the export step is the real gate.
@@ -95,25 +109,6 @@ jobs:
           printf '%s\n' '[resource]' >> "$SETTINGS_FILE"
           printf 'export/android/java_sdk_path = "%s"\n' "$JAVA_HOME" >> "$SETTINGS_FILE"
           cat "$SETTINGS_FILE"
-
-      - name: Confirm the ETC2/ASTC project setting before exporting
-        # Diagnostic: project.godot enables textures/vram_compression/
-        # import_etc2_astc, but the export still refused with "ETC2/ASTC
-        # texture compression is required" on the last run. Printing the
-        # file's actual on-disk content at this exact point in the job, right
-        # before the step that failed, rather than guessing again. Also lays
-        # down res://override.cfg (Godot's own documented mechanism, loaded
-        # after project.godot) with the identical setting as a second,
-        # independent path to the same value in case something about
-        # project.godot's own load order for this one key is the actual
-        # problem -- override.cfg is git-ignored scratch, never committed.
-        run: |
-          grep -A1 "^\[rendering\]" project.godot
-          tail -5 project.godot
-          printf '%s\n' '[rendering]' > override.cfg
-          printf '\n' >> override.cfg
-          printf 'textures/vram_compression/import_etc2_astc=true\n' >> override.cfg
-          cat override.cfg
 
       - name: Export debug APK
         run: |

@@ -38,11 +38,21 @@ extends "res://ui/screens/surface_base.gd"
 ##   - result deltas are exact, signed, and carry their sign in text as well as
 ##     in colour
 ##
-## ## Four stages, one scene
+## ## Four stages, one scene — and, since 0.6.0, two presentations
 ##
 ## `decision` → `result` → `booking` → `release`. Separate scenes would duplicate
 ## the chrome four times and would make the stage a navigation fact rather than a
 ## state fact — and stage IS state, because it has to survive a reload.
+##
+## SQ-D2 changed which of those four normally REACH this scene, not what any of
+## them renders. `booking` and `release` still take the whole screen and are the
+## ordinary way here; `decision` and `result` ride a `ModalSheet` over whatever
+## screen the player was on (`screen_base.gd::_drain_flow_sheets`). This scene
+## still builds all four, and a decision reached here directly — a harness, a
+## deep link, a future stage split that moves one back — renders exactly what it
+## always did, because SQ-D1 put the situation/decision/result builders in
+## `ui/components/encounter_sheet.gd` and BOTH presentations call them. There is
+## no second copy to drift.
 ##
 ## ## Leaving
 ##
@@ -56,9 +66,6 @@ extends "res://ui/screens/surface_base.gd"
 const CYAN := Color(0.475, 0.733, 0.757)
 const ORANGE := Color(1.0, 0.29, 0.239)
 
-const RULES := preload("res://data/consequence_rules.gd")
-const CONF_SCRIPTS := preload("res://data/confrontation_scripts.gd")
-
 @onready var _engine: Object = _gm.system("consequence")
 
 ## Where Continue lands once the chain is gone. Captured while the chain still
@@ -67,9 +74,6 @@ var _return_path: String = ""
 
 func _ready() -> void:
 	super()
-
-func _rules() -> RefCounted:
-	return RULES.new()
 
 ## The chain's `return_route`, as a scene path.
 ##
@@ -141,445 +145,38 @@ func _build_body() -> void:
 		_engine.STAGE_RELEASE:
 			_build_release()
 
-# --- the situation ----------------------------------------------------------
+# --- the situation, the decision and the result (SQ-D1) ----------------------
+#
+# All three moved to `ui/components/encounter_sheet.gd` in 0.6.0 and are called
+# from there by BOTH presentations. What used to be ~440 lines of builders here
+# is now three delegations, and the copy tables, the odds bands, the arrest
+# warnings and the delta rows have exactly one owner again.
+#
+# The builders return Arrays of Controls rather than adding to a parent
+# themselves: this screen drops them into its `Body` VBox, and the sheet packs
+# the same Controls into a ScrollContainer inside a ModalSheet card. Neither
+# knows anything about the other's container, which is the whole reason the
+# split is safe.
+#
+# `ENCOUNTER_SHEET` and `_wire_encounter_button` are both INHERITED from
+# `screen_base.gd` and not redeclared here. That is the point: a choice
+# committed from the sheet and a choice committed from this screen go through
+# one dispatcher, so "committed" cannot come to mean two slightly different
+# things depending on which pixels the player tapped.
 
-## PX-003 §3 C-F: kicker, title, cause line, body, stakes. Shared by all four
-## stages so the player never loses the thread between a decision and its result.
 func _build_situation(summary: Dictionary) -> void:
-	var c := card()
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 6)
-	v.add_child(label("CONSEQUENCE", "Kicker", 10, ORANGE))
-	v.add_child(label(_title(summary), "CardTitle", 17, CREAM))
-	var context := _context_line(summary)
-	if not context.is_empty():
-		v.add_child(label(context, "Muted", 11, MUTED))
-	v.add_child(label(_situation_body(summary), "Muted", 13, MUTED, true))
+	for control in ENCOUNTER_SHEET.build_situation(_engine, gs, summary):
+		body.add_child(control)
 
-	# The stakes strip. Only values that change the CURRENT decision: the take
-	# in dispute, and the two meters a bad answer moves.
-	#
-	# A loop chain swaps the static take for the live pair that IS its
-	# decision — what is already banked against what is still on the table —
-	# plus the round counter and the #LEFT chip, which are the chassis's two
-	# promises: this ends, and they are people.
-	var stakes: Array = []
-	var loop: Dictionary = _engine.loop_summary()
-	var contested: int = int(summary.get("contested_take", 0))
-	if not loop.is_empty():
-		stakes.append("STAGE %d/%d" % [int(loop.get("stage", 0)) + 1,
-			maxi(1, int(loop.get("stage_count", 1)))])
-		stakes.append("%s %d" % [str(loop.get("left_label", "LEFT")),
-			int(loop.get("left", 0))])
-		stakes.append("BANKED $%d" % int(loop.get("banked", 0)))
-	elif contested > 0:
-		stakes.append("TAKE $%d" % contested)
-	stakes.append("HEALTH %d/%d" % [int(gs.health), int(gs.health_max)])
-	stakes.append("HEAT %d/%d" % [gs.heat_shown(), int(gs.heat_max)])
-	# `wrap`: a loop chain's strip ("STAGE 2/5  ·  IN YOUR WAY 3  ·  BANKED
-	# $340  ·  HEALTH 80/100  ·  HEAT 5/15") routinely exceeds the card's
-	# width at this font size. Unwrapped, a Label reports its full unbroken
-	# text as its minimum size, which drags every ancestor up to Shell wider
-	# than the viewport — the strip does not clip, the whole screen shifts.
-	v.add_child(label("  ·  ".join(stakes), "Mono", 12, AMBER, not loop.is_empty()))
-	c.add_child(v)
-	body.add_child(c)
+func _build_decision(summary: Dictionary) -> void:
+	for control in ENCOUNTER_SHEET.build_decision(_engine, summary,
+		_wire_encounter_button):
+		body.add_child(control)
 
-	# The round log — the last few beats, oldest first, so the scene carries
-	# its own short memory of how it got here. Decision stage only: the result
-	# stage already tells the ending its own way.
-	if not loop.is_empty() and str(summary.get("stage", "")) == _engine.STAGE_DECISION:
-		var log_lines: Array = loop.get("log", [])
-		if not log_lines.is_empty():
-			var lc := card()
-			var lv := VBoxContainer.new()
-			lv.add_theme_constant_override("separation", 3)
-			lv.add_child(label("SO FAR", "Kicker", 10, MUTED))
-			for line in log_lines:
-				lv.add_child(label(str(line), "Muted", 11, MUTED, true))
-			lc.add_child(lv)
-			body.add_child(lc)
-
-func _title(summary: Dictionary) -> String:
-	match str(summary.get("chain_kind", "")):
-		_engine.KIND_BOOST_CAUGHT:
-			return "CAUGHT"
-		_engine.KIND_STICK_BOOKING:
-			return "YOU'RE IN"
-		_engine.KIND_STICK_CAUGHT:
-			return "CAUGHT"
-		_engine.KIND_RETALIATION:
-			return "THEY WERE WAITING"
-		_engine.KIND_WANDER:
-			return "SOMEBODY STOPS YOU"
-		_engine.KIND_TRAVEL_STOP:
-			return "CHECKPOINT"
-		_engine.KIND_CONFRONTATION:
-			# The room's own authored name — "THE GAME", "THE NIGHT TILL" —
-			# because a confrontation is a place the player chose to walk into,
-			# not a thing that happened to them.
-			var loop: Dictionary = _engine.loop_summary()
-			var sheet := str(loop.get("sheet_title", ""))
-			return sheet if not sheet.is_empty() else "THIS IS HAPPENING NOW"
-	return "THIS IS HAPPENING NOW"
-
-## PX-003 §3 D: connects the current problem to the action that made it, without
-## ever exposing a Cause ID.
-func _context_line(summary: Dictionary) -> String:
-	var parts: Array = []
-	match str(summary.get("chain_kind", "")):
-		_engine.KIND_BOOST_CAUGHT:
-			parts.append("BOOST")
-			var opponent := str(summary.get("source_opponent", ""))
-			if not opponent.is_empty():
-				parts.append(opponent.to_upper())
-		_engine.KIND_STICK_BOOKING:
-			parts.append("STICK UP")
-		_engine.KIND_STICK_CAUGHT:
-			parts.append("STICK UP")
-			parts.append(str(summary.get("source_target_name", "")).to_upper())
-		_engine.KIND_RETALIATION:
-			parts.append(str(summary.get("source_target_name", "SOMEBODY")).to_upper())
-		_engine.KIND_WANDER:
-			parts.append("ON FOOT")
-			var who := str(summary.get("source_opponent", ""))
-			if not who.is_empty():
-				parts.append(who.to_upper())
-		_engine.KIND_TRAVEL_STOP:
-			# No target-name append here: `source_target_name` is the
-			# destination's own display name, which the universal district
-			# suffix below already supplies (the chain's `district_id` IS the
-			# destination) -- appending it twice would just repeat the word.
-			parts.append("EN ROUTE")
-		_engine.KIND_CONFRONTATION:
-			# Named by family so the Lift and the corner scripts inherit this
-			# line the day they arrive on the same kind.
-			var family := str(summary.get("source_family", ""))
-			parts.append("STICK UP" if family == "stick" else family.to_upper())
-			parts.append(str(summary.get("source_target_name", "")).to_upper())
-	var district := str(summary.get("district_id", ""))
-	if not district.is_empty():
-		parts.append(str(gs.district_by_id(district).get("name", "")).to_upper())
-	return "  ·  ".join(parts)
-
-## PX-003 §4: one or two short sentences naming what is happening in the world.
-## The opponent's own tier decides the line, because a clerk and an armed guard
-## are not the same situation.
-func _situation_body(summary: Dictionary) -> String:
-	match str(summary.get("chain_kind", "")):
-		_engine.KIND_BOOST_CAUGHT:
-			match int(summary.get("source_target_tier", 1)):
-				1: return "The clerk caught the move before you made the door. The take is still in play."
-				2: return "Store security cuts you off at the exit. You still have the merchandise."
-			return "The guard sees the lift and closes the distance before you clear the room."
-		_engine.KIND_STICK_BOOKING:
-			return "The move is over. Now the choice is how much cash you are willing to trade for time."
-		_engine.KIND_STICK_CAUGHT:
-			return "Blue and reds behind you before you're two blocks clear. The robbery already happened — this is what it costs."
-		_engine.KIND_RETALIATION:
-			return "%s tracked it back to you. They found you before the neighborhood forgot." \
-				% str(summary.get("source_target_name", "Somebody"))
-		_engine.KIND_WANDER:
-			# Wander's own cards carry their opening line into the feed already,
-			# so this is the body of the moment rather than a second retelling
-			# of how it started.
-			return "You went out to see what was around. This is what was around."
-		_engine.KIND_TRAVEL_STOP:
-			return "Lights come up behind you before you clear the line. This is the toll for moving while they're watching."
-		_engine.KIND_CONFRONTATION:
-			# The situation IS the current beat — the loop re-authors this line
-			# every round, which is what "each round is a new situation" means
-			# on screen.
-			var beat := str(_engine.loop_summary().get("beat", ""))
-			if not beat.is_empty():
-				return beat
-	return "Somebody is waiting on an answer."
-
-# --- decision ---------------------------------------------------------------
-
-## PX-003 §4's response lanes. One card each: the name, what it is for, the
-## qualitative odds, the arrest warning where one applies, and one full-width
-## action.
-##
-## Order is the order the chain declares, which is stable across encounters —
-## PX-003 §16 asks for "stable vertical ordering for Fight, Run, Talk, Yield" so
-## the vocabulary becomes something the player learns rather than re-reads.
-const CHOICE_COPY := {
-	"fight": "Highest upside. Win and you leave with it. Losing costs blood.",
-	"run": "Keep it if you get clear. A bad escape costs the take and worse.",
-	"talk": "Hand it back and try to keep this from turning physical.",
-	"yield": "Give it back and stop the escalation here.",
-}
-
-## PX-003 §4 and §19 point 8. Says THAT a response can book you; never at what
-## number, and never which tier.
-##
-## No `"target"` row: HEAT-D2 (0.3.0) removed the unconditional tier-3 Run
-## arrest that warning described, so `caught_arrest_risk` never returns
-## `ARREST_RISK_TARGET` any more and nothing looks this key up.
-const ARREST_WARNINGS := {
-	"on_loss": "IF THIS GOES WRONG, THEY BOOK YOU",
-	"worst_only": "THE WORST OUTCOME HERE ENDS IN CUFFS",
-	"heat": "HIGH HEAT: A FAILED RUN CAN BOOK YOU",
-}
-
-func _build_decision(_summary: Dictionary) -> void:
-	var rows: Array = _engine.choice_summaries()
-	if rows.is_empty():
-		body.add_child(label("No way out of this one.", "Muted", 13, MUTED, true))
-		return
-	body.add_child(section("HOW DO YOU PLAY IT"))
-	for entry in rows:
-		body.add_child(_choice_card(entry))
-
-func _choice_card(row: Dictionary) -> Control:
-	var c := card()
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 5)
-	var choice_id := str(row["choice_id"])
-	var committed: bool = bool(row["committed"])
-
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 8)
-	var name_label := label(str(row["label"]).to_upper(), "CardTitle", 14,
-		CREAM if not bool(row["disabled"]) or committed else MUTED)
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(name_label)
-	head.add_child(label(_odds_text(row), "Mono", 12, _odds_tone(row)))
-	v.add_child(head)
-
-	# Through the engine's adapter seam, so a chain kind with its own vocabulary
-	# says its own words. `CHOICE_COPY` below is the default and still covers
-	# the three original kinds; a blank here was a shipped defect for Wander,
-	# whose five choice ids are in none of them.
-	v.add_child(label(_engine.choice_description(choice_id,
-		str(CHOICE_COPY.get(choice_id, ""))), "Muted", 11, MUTED, true))
-
-	# Yield's whole value is certainty, so it states its guaranteed price rather
-	# than an odds band (PX-003 §4: "Yield has no probability treatment").
-	# Through the engine's adapter seam: the fallback is true for every
-	# deterministic choice that shipped before 0.3.0, but Stick Caught's own
-	# YIELD guarantees an arrest rather than avoiding one (ENC-D6).
-	if bool(row.get("deterministic", false)):
-		v.add_child(label(_engine.choice_guarantee(choice_id,
-			"Guaranteed: no injury, no Heat, no arrest."), "Muted", 11, CYAN, true))
-
-	var warning := str(ARREST_WARNINGS.get(str(row.get("arrest_risk", "")), ""))
-	if not warning.is_empty():
-		v.add_child(label(warning, "Mono", 11, ORANGE, true))
-
-	# PX-003 §15 and §16: the committed choice stays visibly selected and every
-	# lane goes inert. The lock is a LABEL as well as a state, because a dimmed
-	# button and a disabled button look the same and mean different things.
-	if committed:
-		v.add_child(label("LOCKED IN", "Mono", 11, CYAN))
-	if bool(row["disabled"]):
-		var inert := Button.new()
-		inert.theme_type_variation = &"BtnSecondary"
-		# Three reasons a lane can be inert, and only one is silent: locked in
-		# is its own label above, some OTHER lane being committed says nothing
-		# about THIS one so a dash is honest, and a choice blocked on its own
-		# terms (a bribe short of its price) says so rather than pretending to
-		# be the same case as a plain "not what you picked".
-		var blocked_reason := str(row.get("blocked_reason", ""))
-		if committed:
-			inert.text = "COMMITTED"
-		elif not blocked_reason.is_empty():
-			inert.text = blocked_reason
-		else:
-			inert.text = "—"
-		inert.disabled = true
-		inert.custom_minimum_size = Vector2(0, 46)
-		inert.modulate = Color(1, 1, 1, 0.85 if committed else 0.45)
-		v.add_child(inert)
-	else:
-		v.add_child(button(str(row["label"]).to_upper(), true,
-			_commit.bind(choice_id), 46))
-	c.add_child(v)
-	return c
-
-## Qualitative, always. FS-003.11's brief is explicit that raw percentages do not
-## reach the player: the projection API produces an exact probability, and the
-## authored bands in `consequence_rules.gd` turn it into something a person can
-## act on.
-##
-## This is a DIVERGENCE from PX-003 §4, which sketches `[chance]%` on the
-## response cards. It is deliberate and is recorded in HANDOFF.md and the design
-## log rather than silently chosen.
-func _odds_text(row: Dictionary) -> String:
-	if bool(row.get("deterministic", false)):
-		return _rules().ODDS_CERTAIN
-	if not bool(row.get("has_odds", false)):
-		return "—"
-	return _rules().odds_label(float(row["success_probability"]))
-
-func _odds_tone(row: Dictionary) -> Color:
-	if bool(row.get("deterministic", false)):
-		return CYAN
-	if not bool(row.get("has_odds", false)):
-		return MUTED
-	match _rules().odds_rank(float(row["success_probability"])):
-		4, 3: return GREEN
-		2: return AMBER
-	return RED
-
-func _commit(choice_id: String) -> void:
-	var summary: Dictionary = _engine.active_summary()
-	# Stable IDs, both of them. The engine revalidates against the live chain, so
-	# a button rendered before a reload is refused rather than honoured against
-	# whatever is open now.
-	_gm.dispatch("resolve_consequence_choice", {
-		"consequence_id": str(summary.get("consequence_id", "")),
-		"cause_id": str(summary.get("cause_id", "")),
-		"choice_id": choice_id,
-	})
-
-# --- result -----------------------------------------------------------------
-
-## PX-003 §5: the lived result first, the resolver tier never. "You kept the
-## take" is what happened; "messy" is internal vocabulary.
 func _build_result(summary: Dictionary) -> void:
-	var result: Dictionary = _engine.result_summary()
-	var effects: Dictionary = result.get("result", {})
-	var tier := str(result.get("resolved_tier", ""))
-	var choice := str(result.get("committed_choice", ""))
-	var arrested: bool = bool(effects.get("arrested", false))
-
-	var c := card()
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 6)
-	v.add_child(label(_result_headline(summary, choice, tier, effects),
-		"CardTitle", 15, _tier_tone(tier)))
-	v.add_child(label(_result_body(summary, choice, tier, effects), "Muted", 12, MUTED, true))
-	c.add_child(v)
-	body.add_child(c)
-
-	# The deltas, one row each, exact and signed.
-	var deltas: Array = _delta_rows(effects)
-	if not deltas.is_empty():
-		var d := card()
-		var dv := VBoxContainer.new()
-		dv.add_theme_constant_override("separation", 4)
-		dv.add_child(label("WHAT IT COST", "Kicker", 10, MUTED))
-		for entry in deltas:
-			dv.add_child(_delta_row(entry))
-		d.add_child(dv)
-		body.add_child(d)
-
-	if arrested:
-		body.add_child(note("The store is done with you and police take over from here."))
-	body.add_child(_continue_button("BOOKING" if arrested else "CONTINUE"))
-
-func _result_headline(summary: Dictionary, choice: String, tier: String,
-		effects: Dictionary) -> String:
-	if str(summary.get("chain_kind", "")) == _engine.KIND_CONFRONTATION:
-		var headline := str(CONF_SCRIPTS.STICK_RESULT_HEADLINES.get(
-			str(effects.get("resolution", "")), ""))
-		if not headline.is_empty():
-			return headline
-	if str(summary.get("chain_kind", "")) == _engine.KIND_RETALIATION:
-		if int(effects.get("cash", 0)) < 0:
-			return "THEY GOT PAID"
-		if tier in ["clean", "messy"]:
-			return "YOU HELD ONTO IT"
-		return "THEY FOUND NOTHING"
-	if str(summary.get("chain_kind", "")) == _engine.KIND_STICK_CAUGHT:
-		if bool(effects.get("arrested", false)):
-			return "IT ENDS IN CUFFS"
-		if tier in ["clean", "messy"]:
-			return "YOU GOT CLEAR"
-		return "THEY DIDN'T BUY IT"
-	if choice == "yield":
-		return "YOU GAVE IT BACK"
-	var kept: bool = int(effects.get("cash", 0)) + int(effects.get("goods", 0)) > 0
-	if bool(effects.get("arrested", false)):
-		return "IT ENDS IN CUFFS"
-	if kept and int(effects.get("health", 0)) < 0:
-		return "YOU KEPT IT. YOU PAID FOR IT."
-	if kept:
-		return "YOU KEPT THE TAKE"
-	if tier in ["clean", "messy"]:
-		return "YOU TALKED IT DOWN"
-	return "YOU DIDN'T GET FAR"
-
-func _result_body(summary: Dictionary, choice: String, tier: String,
-		effects: Dictionary) -> String:
-	if str(summary.get("chain_kind", "")) == _engine.KIND_CONFRONTATION:
-		var conf_body := str(CONF_SCRIPTS.STICK_RESULT_BODIES.get(
-			str(effects.get("resolution", "")), ""))
-		if not conf_body.is_empty():
-			return conf_body
-	if str(summary.get("chain_kind", "")) == _engine.KIND_RETALIATION:
-		if int(effects.get("cash", 0)) < 0:
-			return "They take what they came for and go."
-		return "They leave without what they came for. That is not the end of it."
-	if str(summary.get("chain_kind", "")) == _engine.KIND_STICK_CAUGHT:
-		if bool(effects.get("arrested", false)):
-			return "The responding officer isn't interested in a conversation. Whatever happens next goes through the book."
-		if tier in ["clean", "messy"]:
-			return "You get clear of it. The robbery already happened; this part didn't."
-		return "It doesn't end here, but it doesn't end in cuffs either — not this time."
-	if choice == "yield":
-		return "You lose the take and stop the situation from climbing any higher."
-	if bool(effects.get("banned", false)) and not bool(effects.get("arrested", false)):
-		return "The merchandise goes back. The store is finished dealing with you."
-	if tier in ["clean", "messy"]:
-		return "You get through them and make the exit."
-	return "The take is gone and the room remembers your face."
-
-func _tier_tone(tier: String) -> Color:
-	match tier:
-		"clean": return GREEN
-		"messy": return AMBER
-		"catastrophic": return RED
-		"deterministic": return CYAN
-	return MUTED
-
-## Exact deltas, one line each. TI-003 §18: "Result stage shows narrative plus
-## exact changes to Cash, goods, Health, Heat, bans, and arrest state."
-##
-## Driven off a declared table rather than a chain of ifs so a later slice adds a
-## row by adding a row. `money` decides the format; `good` decides which
-## direction of the value counts as good news, because +2.0 Heat and +$45 are
-## opposite kinds of news and colour alone must never be what says so.
-const RESULT_ROWS := [
-	{"key": "cash", "label": "Cash", "money": true, "good": 1},
-	{"key": "goods", "label": "Merchandise", "money": true, "good": 1},
-	{"key": "health", "label": "Health", "money": false, "good": 1},
-	{"key": "heat", "label": "Heat", "money": false, "good": -1},
-	{"key": "pressure", "label": "Local attention", "money": false, "good": -1},
-]
-
-func _delta_rows(effects: Dictionary) -> Array:
-	var rows: Array = []
-	for spec in RESULT_ROWS:
-		var row: Dictionary = spec
-		if not effects.has(row["key"]):
-			continue
-		var value: float = float(effects[row["key"]])
-		if is_zero_approx(value):
-			continue
-		rows.append({
-			"label": str(row["label"]),
-			# PX-003 §16: "redundant labels alongside color". The sign is in the
-			# TEXT, so the row reads correctly with no colour perception at all.
-			"text": ("+" if value > 0.0 else "−") + (("$%d" % int(abs(value)))
-				if bool(row["money"]) else ("%.1f" % absf(value))),
-			"good": (value > 0.0) == (int(row["good"]) > 0),
-		})
-	if bool(effects.get("banned", false)):
-		rows.append({"label": "Store access", "text": "BLOCKED", "good": false})
-	return rows
-
-func _delta_row(entry: Dictionary) -> HBoxContainer:
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 8)
-	var k := label(str(entry["label"]), "Muted", 12, MUTED)
-	k.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	h.add_child(k)
-	h.add_child(label(str(entry["text"]), "Mono", 13,
-		GREEN if bool(entry["good"]) else ORANGE))
-	return h
+	for control in ENCOUNTER_SHEET.build_result(_engine, gs, summary,
+		_wire_encounter_button):
+		body.add_child(control)
 
 # --- booking ----------------------------------------------------------------
 

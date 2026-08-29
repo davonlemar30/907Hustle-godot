@@ -33,6 +33,7 @@ func _ready() -> void:
 	_test_v23_opportunities()
 	_test_v24_dre_pending_penance()
 	_test_stick_booking_still_validates()
+	_test_decision_stage_reload()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -1009,6 +1010,79 @@ func _test_stick_booking_still_validates() -> void:
 		int((chain["time"] as Dictionary).get("source_slots_remaining", 0)) == 1)
 	_check("it is still sitting at result, not fast-forwarded",
 		chain.get("stage", "") == "result")
+
+## SQ-D4: a decision-stage chain survives a reload with everything the sheet
+## rebuilds itself from, and NOTHING about the sheet itself.
+##
+## The whole reason the overlay needed no schema bump is that presentation is
+## DERIVED — kind plus stage, read back off the chain the validator already
+## carried. This arm is what keeps that true: if a later slice ever persists a
+## sheet flag, the first check below is what says so, and the rest prove the
+## fields the rebuild actually depends on (the round, the bank, the burned
+## verbs, the snapshotted odds) come back exactly as they went in.
+##
+## The loop block rides `decision.loop` and is deliberately NOT in
+## PERSIST_FIELDS — the validator's coercion leaves unlisted keys alone, which
+## is the property this arm pins.
+func _test_decision_stage_reload() -> void:
+	var mid_round := {
+		"consequence_id": "consequence:00000007", "cause_id": "cause:00000007",
+		"chain_kind": "wander_encounter", "stage": "decision",
+		"district_id": "north_star_lot", "return_route": "HOME",
+		"source": {"family": "wander", "action_id": "wander",
+			"card_id": "wander_shakedown", "opponent": "Two off the wall",
+			"shape": "confrontation", "source_rng_key": "wander:3:2:1"},
+		"decision": {
+			"definition_id": "wander_shakedown",
+			"allowed_choices": ["keep_fighting", "give_it_up"],
+			"deterministic_choices": ["give_it_up"],
+			"shown_probabilities": {"keep_fighting": 0.35},
+			"committed_choice": "",
+			"round": 2,
+			"loop": {
+				"round": 2, "base_chance": 0.45, "banked_health": 4,
+				"stage": 1, "stage_count": 3, "left": 1, "banked": 0,
+				"left_label": "ROUNDS LEFT",
+				"burned": ["stand"],
+				"log": ["It does not end there.", "Round 1: it gets loud again."],
+			},
+		},
+		"booking": {},
+		"time": {"source_slots_remaining": 1, "source_time_settled": false},
+	}
+	var fixed := _fixed(_state("active_consequence", mid_round))
+	var chain: Dictionary = fixed["active_consequence"]
+	var decision: Dictionary = chain["decision"]
+	var loop: Dictionary = decision.get("loop", {})
+
+	_check("a decision-stage chain reloads still at decision",
+		chain.get("stage", "") == "decision")
+	_check("nothing about the SHEET is persisted (no presentation key)",
+		not chain.has("sheet") and not chain.has("presentation") \
+			and not decision.has("sheet"))
+	_check("the round survives the reload", int(decision.get("round", 0)) == 2)
+	_check("the loop block survives the reload", not loop.is_empty())
+	_check("the loop round survives", int(loop.get("round", 0)) == 2)
+	_check("the banked damage survives", int(loop.get("banked_health", 0)) == 4)
+	_check("the burned verbs survive",
+		(loop.get("burned", []) as Array) == ["stand"])
+	_check("the round log survives",
+		(loop.get("log", []) as Array).size() == 2)
+	_check("the snapshotted odds survive",
+		is_equal_approx(float((decision.get("shown_probabilities", {}) as Dictionary) \
+			.get("keep_fighting", 0.0)), 0.35))
+	_check("the guaranteed out survives",
+		"give_it_up" in (decision.get("deterministic_choices", []) as Array))
+	_check("an uncommitted round reloads uncommitted",
+		str(decision.get("committed_choice", "x")) == "")
+
+	# The other half of SQ-D4: a chain that reloads at BOOKING is still a
+	# booking, so the route ladder still sends it to the full screen.
+	var booked: Dictionary = mid_round.duplicate(true)
+	booked["stage"] = "booking"
+	var booked_fixed: Dictionary = _fixed(_state("active_consequence", booked))
+	_check("a booking-stage chain reloads still at booking",
+		(booked_fixed["active_consequence"] as Dictionary).get("stage", "") == "booking")
 
 func _test_load_pipeline() -> void:
 	var save_system: Node = get_node("/root/SaveSystem")

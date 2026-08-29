@@ -39,7 +39,11 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## 0.3.0 (STK-D1): +1 — `_check_authored_tables`'s own target-iteration loop
 ## picked up the new tier-1 Spenard target automatically; no code changed,
 ## the check floor still has to move with what the loop now covers.
-const MIN_CHECKS := 251
+## 0.6.0 (SQ-D1..D5, PR A): +35 for check block 14 — the route ladder's stage
+## split in both directions, the shared builder's single ownership of the
+## chain's copy, the duplicated palette asserted equal, and the blocking
+## sheet's two removed dismissal gestures.
+const MIN_CHECKS := 286
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -70,6 +74,7 @@ func _ready() -> void:
 	_check_lift_bribe()
 	_check_lift_hand_it_back()
 	_check_stick_caught()
+	_check_encounter_overlay()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -905,3 +910,205 @@ func _check_stick_caught() -> void:
 			gs.time_slots_today, 1)
 	gs.arrest_record = {"priors": 0, "last_arrest_day": -1, "charges": []}
 	gs.active_consequence = {}
+
+# --- check block 14: SQ-D1..D5, the encounter overlay (0.6.0 PR A) -----------
+#
+# Presentation-only coverage in a suite that is otherwise about resolution,
+# because the thing at risk is not a number: it is the route ladder. SQ-D2
+# narrows `blocking_route()` from "any live chain" to "booking or release", and
+# that one function has three readers (`resolved_route`, the boot/CONTINUE
+# path, and the flow-sheet drain's guard). Get the split wrong in either
+# direction and either the player navigates away from a live decision or a
+# booking becomes unreachable — neither of which any existing check would
+# notice, because both leave every authored number exactly where it was.
+#
+# The arms below are the ones the danger list names, in both directions, plus
+# the structural proof that SQ-D1's extraction did not leave two copies of the
+# chain's copy behind.
+
+const ENCOUNTER_SHEET := preload("res://ui/components/encounter_sheet.gd")
+const SURFACE_BASE := preload("res://ui/screens/surface_base.gd")
+
+func _check_encounter_overlay() -> void:
+	var nav: Node = get_node_or_null("/root/ScreenManager")
+	if nav == null:
+		a.check("ScreenManager is available for the route ladder arms", false)
+		return
+
+	# --- SQ-D2: the stage split, from the one place that owns it -------------
+	a.eq_bool("decision rides the sheet",
+		ENCOUNTER_SHEET.stage_rides_sheet("decision"), true)
+	a.eq_bool("result rides the sheet",
+		ENCOUNTER_SHEET.stage_rides_sheet("result"), true)
+	a.eq_bool("booking does NOT ride the sheet",
+		ENCOUNTER_SHEET.stage_rides_sheet("booking"), false)
+	a.eq_bool("release does NOT ride the sheet",
+		ENCOUNTER_SHEET.stage_rides_sheet("release"), false)
+	a.eq_bool("an unknown stage does not ride the sheet (fails closed)",
+		ENCOUNTER_SHEET.stage_rides_sheet("nonsense"), false)
+
+	# --- the ladder, driven through the real chain ---------------------------
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.game_over = false
+	a.eq_str("no chain, no blocking route", str(nav.blocking_route()), "")
+
+	# A real tier-2 room, opened through the real dispatch, so the arms below
+	# are asserting against a chain the game actually produces rather than a
+	# hand-built dictionary that might not resemble one.
+	var day: int = _find_day(3, T2_TARGET, ["messy"])
+	a.check("a tier-2 probe day exists for the ladder arms", day > 0)
+	if day <= 0:
+		return
+	_reset_probe(3)
+	gs.day = day
+	a.check("the probe robbery dispatches", gm.dispatch("stickup", {"target_id": T2_TARGET}))
+	a.eq_str("the room opens at decision", str(_engine().active_stage()), "decision")
+
+	a.eq_str("a live DECISION does not force the consequence route",
+		str(nav.blocking_route()), "")
+	a.eq_str("...so ordinary navigation resolves to where it was asked to go",
+		str(nav.resolved_route(nav.HOME)), nav.HOME)
+	a.eq_str("...including the boot/CONTINUE landing",
+		str(nav.resolved_route(nav.STREET)), nav.STREET)
+
+	# The sheet builds against that live chain, and it builds the DECISION.
+	var built: Control = ENCOUNTER_SHEET.build_sheet(_engine(), gs, Callable())
+	a.check("the sheet builds content for a live decision", built != null)
+	if built != null:
+		var actions: Array = _sheet_action_buttons(built)
+		a.check("the decision sheet carries at least one commit button",
+			not actions.is_empty())
+		var commits: int = 0
+		for b in actions:
+			if str((b as Button).get_meta(ENCOUNTER_SHEET.ACTION_META, "")) \
+					== ENCOUNTER_SHEET.ACTION_COMMIT:
+				commits += 1
+		a.eq_int("one commit button per undisabled choice row",
+			commits, _undisabled_choice_count())
+		built.free()
+
+	# --- the same chain at booking DOES take the screen ----------------------
+	#
+	# Forced by stage rather than by driving a robbery all the way to an arrest:
+	# the ladder reads `stage`, and what this arm is about is the ladder.
+	var saved_stage := str(gs.active_consequence.get("stage", ""))
+	gs.active_consequence["stage"] = "booking"
+	a.eq_str("a live BOOKING forces the consequence route",
+		str(nav.blocking_route()), nav.CONSEQUENCE)
+	a.eq_str("...and ordinary navigation is overridden by it",
+		str(nav.resolved_route(nav.HOME)), nav.CONSEQUENCE)
+	a.check("the sheet refuses to build for a booking",
+		ENCOUNTER_SHEET.build_sheet(_engine(), gs, Callable()) == null)
+	gs.active_consequence["stage"] = "release"
+	a.eq_str("a live RELEASE forces the consequence route",
+		str(nav.blocking_route()), nav.CONSEQUENCE)
+	gs.active_consequence["stage"] = saved_stage
+
+	# --- game over still outranks everything (the ladder's rung 1) -----------
+	gs.game_over = true
+	a.eq_str("game over outranks a live decision",
+		str(nav.blocking_route()), nav.GAME_OVER)
+	gs.active_consequence["stage"] = "booking"
+	a.eq_str("game over outranks a live booking too",
+		str(nav.blocking_route()), nav.GAME_OVER)
+	gs.game_over = false
+	gs.active_consequence["stage"] = saved_stage
+
+	# --- SQ-D1: one owner for the chain's copy -------------------------------
+	#
+	# The extraction is only worth anything if the screen stopped carrying its
+	# own copy. These are the tables that used to live in `consequence.gd` and
+	# would silently fork the day somebody edited one of them.
+	var screen_src: String = FileAccess.get_file_as_string(
+		"res://ui/screens/consequence.gd")
+	a.check("consequence.gd no longer declares its own choice copy",
+		not screen_src.contains("const CHOICE_COPY"))
+	a.check("consequence.gd no longer declares its own arrest warnings",
+		not screen_src.contains("const ARREST_WARNINGS"))
+	a.check("consequence.gd no longer declares its own result rows",
+		not screen_src.contains("const RESULT_ROWS"))
+	a.check("consequence.gd no longer builds its own odds bands",
+		not screen_src.contains("func _odds_text"))
+
+	# --- SQ-D1: the duplicated palette is asserted equal, not trusted --------
+	#
+	# `encounter_sheet.gd` is a RefCounted and cannot inherit `surface_base`'s
+	# colours (its own header says why). The same discipline `wander_events.gd`
+	# ships its duplicated STASH IT label under applies here.
+	var surface: Object = SURFACE_BASE
+	a.check("the sheet's GREEN matches the screens'",
+		ENCOUNTER_SHEET.GREEN == surface.GREEN)
+	a.check("the sheet's RED matches the screens'",
+		ENCOUNTER_SHEET.RED == surface.RED)
+	a.check("the sheet's AMBER matches the screens'",
+		ENCOUNTER_SHEET.AMBER == surface.AMBER)
+	a.check("the sheet's MUTED matches the screens'",
+		ENCOUNTER_SHEET.MUTED == surface.MUTED)
+	a.check("the sheet's CREAM matches the screens'",
+		ENCOUNTER_SHEET.CREAM == surface.CREAM)
+
+	# --- SQ-D3: a blocking sheet cannot be dismissed by touching it ----------
+	var plain := ModalSheet.new()
+	var plain_content := Control.new()
+	plain.setup(plain_content)
+	a.eq_bool("an ordinary sheet defaults to non-blocking", plain.blocking, false)
+	a.eq_int("an ordinary sheet builds its handle bar",
+		_handle_count(plain), 1)
+	plain.free()
+
+	var locked := ModalSheet.new()
+	locked.blocking = true
+	var locked_content := Control.new()
+	locked.setup(locked_content)
+	a.eq_bool("a blocking sheet reports itself as such", locked.blocking, true)
+	a.eq_int("a blocking sheet builds NO handle bar", _handle_count(locked), 0)
+	# The scrim still exists and still stops the tap; it just does not dismiss.
+	locked._on_scrim_input(_left_click())
+	a.eq_bool("a scrim tap does not dismiss a blocking sheet",
+		is_instance_valid(locked) and not locked._exiting, true)
+	locked.free()
+
+	gs.active_consequence = {}
+
+## Every button `encounter_sheet.gd` built inside `root`, found by the metadata
+## it stamps rather than by its text — the text is authored copy and a check
+## matching on it would break the day somebody rewrites a label.
+func _sheet_action_buttons(root: Node) -> Array:
+	var out: Array = []
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if node is Button and node.has_meta(ENCOUNTER_SHEET.ACTION_META):
+			out.append(node)
+	return out
+
+func _undisabled_choice_count() -> int:
+	var count: int = 0
+	for row in _engine().choice_summaries():
+		if not bool((row as Dictionary).get("disabled", false)):
+			count += 1
+	return count
+
+## How many grab-bars the sheet's card actually contains. Counted structurally
+## (a CenterContainer with its own `gui_input` wiring, which is what
+## `_build_handle` makes) rather than by node name, so the check is about the
+## control existing rather than about what it was called.
+func _handle_count(sheet: ModalSheet) -> int:
+	var count: int = 0
+	var stack: Array[Node] = [sheet]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if node is CenterContainer and (node as Control).gui_input.get_connections().size() > 0:
+			count += 1
+	return count
+
+func _left_click() -> InputEventMouseButton:
+	var event := InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.pressed = true
+	return event

@@ -72,7 +72,106 @@ func _ready() -> void:
 		print("screen ok: %s" % n)
 	print("screen smoke: %d/%d instantiated" % [ok, names.size()])
 	print("screen smoke: touch checks %d/%d passed" % [touch_checks - touch_failed, touch_checks])
+	await _check_components(gs)
 	get_tree().quit.call_deferred(0)
+
+# --- runtime components (0.6.0 PR A) -----------------------------------------
+#
+# Not every renderable thing in the build is a `.tscn` in `ui/screens`. Two are
+# built entirely in code and parented at runtime, so the directory walk above
+# has never been able to see them, and until 0.6.0 neither had any gate at all
+# — `ModalSheet` shipped for two builds with nothing asserting it could even be
+# constructed.
+#
+# 0.6.0 makes that gap load-bearing: an encounter is a `ModalSheet` wrapping
+# `encounter_sheet.gd`'s content over a `health_bar.gd`, so a parse error or a
+# bad `.new()` in any of the three is a chain the player cannot answer, on a
+# screen with no navigation off it. This asks the same two questions the screen
+# walk asks — does it construct, and does everything inside a ScrollContainer
+# still hold the touch-scroll property — of the components instead.
+#
+# Built against a REAL live chain rather than a stub: the whole point of
+# `encounter_sheet.gd` is that it resolves from the engine's summary calls, and
+# a fake summary would prove those calls are never made wrong.
+
+const ENCOUNTER_SHEET := preload("res://ui/components/encounter_sheet.gd")
+const HEALTH_BAR := preload("res://ui/components/health_bar.gd")
+
+func _check_components(gs: Node) -> void:
+	var gm: Node = get_node("/root/GameManager")
+	var engine: Object = gm.system("consequence")
+	var checks := 0
+	var failed := 0
+
+	# The health bar on its own, first: it is the one component with no chain
+	# behind it, so a failure here is unambiguously the component.
+	var bar: Control = HEALTH_BAR.new().bind(gs)
+	checks += 1
+	if bar == null or bar.get_child_count() == 0:
+		printerr("COMPONENT FAILED: health_bar built nothing")
+		failed += 1
+	else:
+		add_child(bar)
+		await get_tree().process_frame
+	if bar != null:
+		bar.queue_free()
+		await get_tree().process_frame
+
+	# A real wander chain, opened through the real engine, at each of the two
+	# stages that ride a sheet.
+	var opened: Dictionary = engine.open_chain(engine.KIND_WANDER, {
+		"district_id": str(gs.current_district_id),
+		"return_route": "HOME",
+		"source": {"family": "wander", "action_id": "wander",
+			"card_id": "smoke", "opponent": "Somebody", "shape": "confrontation",
+			"target_id": "smoke", "target_name": "Somebody", "target_tier": 1,
+			"source_rng_key": "smoke"},
+		"decision": {
+			"definition_id": "smoke",
+			"allowed_choices": ["stand", "walk", "hand_over"],
+			"deterministic_choices": ["hand_over"],
+			"shown_probabilities": {"stand": 0.45, "walk": 0.6},
+		},
+	})
+	checks += 1
+	if not bool(opened.get("ok", false)):
+		printerr("COMPONENT FAILED: could not open a probe chain")
+		failed += 1
+		print("screen smoke: component checks %d/%d passed" % [checks - failed, checks])
+		return
+
+	for stage in ["decision", "result"]:
+		if stage == "result":
+			(gs.active_consequence["decision"] as Dictionary)["result"] = {
+				"choice_id": "walk", "tier": "messy", "cash": -20,
+				"goods": 0, "health": -4, "heat": 0.0,
+			}
+			(gs.active_consequence["decision"] as Dictionary)["resolved_tier"] = "messy"
+			(gs.active_consequence["decision"] as Dictionary)["committed_choice"] = "walk"
+			engine.advance_stage(engine.STAGE_RESULT)
+		var content: Control = ENCOUNTER_SHEET.build_sheet(engine, gs, Callable())
+		checks += 1
+		if content == null:
+			printerr("COMPONENT FAILED: encounter_sheet built nothing at %s" % stage)
+			failed += 1
+			continue
+		var sheet := ModalSheet.new()
+		sheet.blocking = true
+		sheet.setup(content)
+		add_child(sheet)
+		await get_tree().process_frame
+		var result: Array = _check_scroll_transparency(sheet, "encounter_sheet:%s" % stage)
+		checks += int(result[0])
+		for violation in result[1]:
+			printerr("TOUCH FAILED: %s" % violation)
+			failed += 1
+		sheet.queue_free()
+		await get_tree().process_frame
+
+	gs.active_consequence = {}
+	print("screen smoke: component checks %d/%d passed" % [checks - failed, checks])
+	if failed > 0:
+		get_tree().quit.call_deferred(1)
 
 ## Nodes inside a ScrollContainer legitimately kept at MOUSE_FILTER_STOP, named
 ## rather than skipping a whole screen (TOUCH-D5). Empty today: ModalSheet's

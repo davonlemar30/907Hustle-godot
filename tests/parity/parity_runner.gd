@@ -7995,22 +7995,49 @@ func _check_blocking_route_guard(gs: Node, gm: Node) -> void:
 		_expect_str("%s routes to itself when nothing blocks" % str(path).get_file(),
 			nav.resolved_route(str(path)), str(path))
 
-	# A chain open: every ordinary route is redirected.
+	# A chain open at a stage that still TAKES the screen: every ordinary route
+	# is redirected.
+	#
+	# SQ-D2 (0.6.0) narrowed rung 2 of the ladder to booking and release. A
+	# chain at decision or result rides a ModalSheet over the ordinary screen
+	# instead, so both directions are asserted here — an escapable decision and
+	# an unreachable booking are equally broken and neither moves a number any
+	# other check in this suite reads.
 	_engine_ready(gs)
+	_unlock_every_surface(gs)
 	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
-	_expect_str("an open chain is the blocking route",
+	gs.active_consequence["stage"] = "booking"
+	_expect_str("an open booking is the blocking route",
 		nav.blocking_route(), nav.CONSEQUENCE)
 	for path in ordinary:
-		_expect_str("%s cannot bypass an open chain" % str(path).get_file(),
+		_expect_str("%s cannot bypass an open booking" % str(path).get_file(),
 			nav.resolved_route(str(path)), nav.CONSEQUENCE)
 	# The blocking screen itself is not redirected to itself in a loop.
 	_expect_str("the consequence scene routes to itself",
 		nav.resolved_route(nav.CONSEQUENCE), nav.CONSEQUENCE)
 	# And `go_to_game()` — the boot and CONTINUE RUN path — lands on the chain
 	# rather than on Home. TI-003 §18: a loaded active consequence must not
-	# expose an ordinary screen for an interactive frame.
-	_expect_str("continuing a run re-enters the chain",
+	# expose an ordinary screen for an interactive frame, and for a booking
+	# that is still achieved by never building Home at all.
+	_expect_str("continuing a run re-enters a booking",
 		nav.resolved_route(nav.HOME), nav.CONSEQUENCE)
+	gs.active_consequence["stage"] = "release"
+	_expect_str("an open release is the blocking route too",
+		nav.blocking_route(), nav.CONSEQUENCE)
+
+	# The other direction. §18's requirement is met for these two by the sheet's
+	# own scrim rather than by the route (SQ-D4, and `go_to_game()`'s own
+	# doc-comment): the screen is reached, and it is not interactive before the
+	# blocking sheet lands over it.
+	for stage in ["decision", "result"]:
+		gs.active_consequence["stage"] = stage
+		_expect_str("a live %s is not a blocking route" % stage,
+			nav.blocking_route(), "")
+		for path in ordinary:
+			_expect_str("%s still reaches itself over a live %s"
+				% [str(path).get_file(), stage],
+				nav.resolved_route(str(path)), str(path))
+	gs.active_consequence["stage"] = "booking"
 
 	# Game over outranks a consequence. Both open at once is the case that
 	# decides the priority, and routing to the consequence would strand a run
@@ -8119,11 +8146,20 @@ func _check_engine_reload(gs: Node, gm: Node, engine: RefCounted) -> void:
 		_expect_true("the chain's save carries no Object references",
 			not "Object(" in text)
 
-	# The route guard reads reloaded state, so a save loaded mid-chain blocks
-	# immediately rather than after a refresh.
+	# The route guard reads reloaded state, so a save loaded mid-chain answers
+	# immediately rather than after a refresh — and as of SQ-D2 the answer
+	# depends on the stage it reloaded AT. A decision reloads onto Home with
+	# the sheet reopened over it (SQ-D4); a booking still takes the screen.
+	# Both halves are asserted off the SAME reloaded chain, so this is about
+	# the reload rather than about two separately-built dictionaries.
 	var nav := get_node("/root/ScreenManager")
-	_expect_str("a reloaded chain blocks navigation",
+	_expect_str("a chain reloaded at decision does not block navigation",
+		nav.resolved_route(nav.HOME), nav.HOME)
+	var reloaded_stage := str(gs.active_consequence.get("stage", ""))
+	gs.active_consequence["stage"] = "booking"
+	_expect_str("the same chain reloaded at booking does block navigation",
 		nav.resolved_route(nav.HOME), nav.CONSEQUENCE)
+	gs.active_consequence["stage"] = reloaded_stage
 
 	# And a save with no chain does not block.
 	_engine_ready(gs)
@@ -13364,20 +13400,50 @@ func _check_blocking_scene_structure() -> void:
 	_expect_true("the blocking scene has no NavBar", not text.contains("NavBar"))
 	_expect_true("the blocking scene has no home button",
 		not text.contains("HomeBtn") and not text.contains("HomeFab"))
-	# And the route guard still sends every ordinary destination to it while a
-	# chain is open — the structural half of "navigation cannot bypass it".
+	# And the route guard, in BOTH directions.
+	#
+	# SQ-D2 (0.6.0) narrowed rung 2 of the ladder: a live chain intercepts
+	# navigation only at the stages that still take this screen. `booking` and
+	# `release` do; `decision` and `result` ride a ModalSheet over whatever
+	# screen the player was already on, so they must NOT. Both halves are
+	# asserted here because getting either one wrong is invisible in every
+	# other check in this suite — an escapable decision and an unreachable
+	# booking both leave every authored number exactly where it was.
 	var gs := get_node("/root/GameState")
 	var nav := get_node("/root/ScreenManager")
+	var ordinary: Array = [nav.HOME, nav.STREET, nav.MARKET, nav.HUSTLE,
+		nav.BOOST, nav.PHONE]
 	gs.reset_to_new_game()
-	gs.active_consequence = {"stage": "decision", "chain_kind": "boost_caught"}
-	for route in [nav.HOME, nav.STREET, nav.MARKET, nav.HUSTLE, nav.BOOST, nav.PHONE]:
-		_expect_str("navigation to %s is intercepted" % str(route),
+	gs.active_consequence = {"stage": "booking", "chain_kind": "boost_caught"}
+	for route in ordinary:
+		_expect_str("a booking intercepts navigation to %s" % str(route),
 			nav.resolved_route(str(route)), nav.CONSEQUENCE)
 	_expect_str("the consequence route reaches itself",
 		nav.resolved_route(nav.CONSEQUENCE), nav.CONSEQUENCE)
-	# Game Over still outranks it, so a run can end mid-chain.
+	gs.active_consequence = {"stage": "release", "chain_kind": "boost_caught"}
+	_expect_str("a release intercepts navigation too",
+		nav.resolved_route(nav.HOME), nav.CONSEQUENCE)
+
+	# The other direction. Only the UNGATED destinations are asserted to reach
+	# themselves: MARKET and BOOST sit behind batch 15's ACCESS guard on a
+	# fresh run and are still refused with "" — which is the point of the last
+	# check in each pass. The guard UNDER the blocking rung is untouched by
+	# SQ-D2, and this is what says so.
+	for stage in ["decision", "result"]:
+		gs.active_consequence = {"stage": stage, "chain_kind": "boost_caught"}
+		for route in [nav.HOME, nav.STREET, nav.HUSTLE, nav.PHONE]:
+			_expect_str("a live %s does not intercept navigation to %s"
+				% [stage, str(route)], nav.resolved_route(str(route)), str(route))
+		_expect_str("...and the access guard under a live %s still refuses Boost"
+			% stage, nav.resolved_route(nav.BOOST), "")
+
+	# Game Over still outranks both, so a run can end mid-chain at any stage.
+	gs.active_consequence = {"stage": "decision", "chain_kind": "boost_caught"}
 	gs.game_over = true
-	_expect_str("game over outranks an open consequence",
+	_expect_str("game over outranks a live decision",
+		nav.resolved_route(nav.HOME), nav.GAME_OVER)
+	gs.active_consequence = {"stage": "booking", "chain_kind": "boost_caught"}
+	_expect_str("game over outranks an open booking",
 		nav.resolved_route(nav.HOME), nav.GAME_OVER)
 	gs.game_over = false
 	gs.active_consequence = {}
@@ -19793,7 +19859,17 @@ func _fail(label: String, detail: String) -> void:
 ## 0.3.0 (STK-D1): +8. `_check_stick_daily_cap_scaling`'s own coverage of the
 ## rep-scaled cap, through both the bare function and the real `blocker()`
 ## gate.
-const MIN_CHECKS := 12763
+##
+## 0.6.0 (SQ-D2, PR A): 12763 -> 12817, +54. The route ladder's stage split is
+## asserted in BOTH directions everywhere it was previously asserted in one:
+## `_check_blocking_route_guard` now drives a booking (redirects every ordinary
+## route) AND a decision and a result (redirect none of them, with the ACCESS
+## guard underneath proven untouched), `_check_blocking_scene_structure` does
+## the same on its smaller route list, and the mid-chain reload arm asserts
+## both stages off the one reloaded chain. No authored number moved; this is
+## entirely new coverage of a contract that used to have one shape and now has
+## two.
+const MIN_CHECKS := 12817
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

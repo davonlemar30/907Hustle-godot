@@ -37,7 +37,18 @@ const RECOVERY := "res://ui/screens/recovery.tscn"
 const GAME_OVER := "res://ui/screens/game_over.tscn"
 ## The blocking consequence scene (TI-003 §18). Not in NAV_ROUTES: it is never
 ## somewhere the player chooses to go.
+##
+## SQ-D2 (0.6.0) narrowed what reaches it: `booking` and `release` still take
+## the whole screen, `decision` and `result` ride a ModalSheet over whatever
+## screen the player was already on. See `blocking_route()`.
 const CONSEQUENCE := "res://ui/screens/consequence.tscn"
+
+## SQ-D2's stage split lives with the presentation that owns it, not here — see
+## `ui/components/encounter_sheet.gd`. Preloaded rather than reached by
+## `class_name` for the same reason `flow_sheets.gd` is: a UI component with a
+## global type name is a stale editor cache waiting to happen.
+const ENCOUNTER_SHEET := preload("res://ui/components/encounter_sheet.gd")
+const HEALTH_BAR := preload("res://ui/components/health_bar.gd")
 
 ## Every bottom-nav cell has a scene now. The empty-route branch in
 ## screen_base::_wire_nav() is kept for the next cell that does not.
@@ -111,8 +122,25 @@ func has_pending_flow_sheets() -> bool:
 
 ## Run-boundary reset. `_change()` below calls this on the way into TITLE or
 ## NAME_ENTRY, so a dead run's pending cards never pop over a fresh one.
+##
+## The health bar's animation memory (SQ-D5) is a run-scoped presentation fact
+## and clears on the same boundary for the same reason: without this the first
+## encounter of a NEW run would animate down from the dead run's last health.
 func clear_flow_sheets() -> void:
 	_flow_queue.clear()
+	HEALTH_BAR.forget()
+
+## Put a spec back at the FRONT of the queue.
+##
+## SQ-D4(a)'s loss-free half. A chain opening while an ordinary card is already
+## on screen is a race the encounter must win outright — but the drain has
+## already POPPED that card's spec by then, and winning by dropping it on the
+## floor would cost the player a discovery they earned. The drain hands it back
+## here instead, and it is the next thing shown once the chain is gone.
+func requeue_flow_sheet(spec: Dictionary) -> void:
+	if spec.is_empty():
+		return
+	_flow_queue.push_front(spec)
 
 ## Whether a sheet is up right now. `is_instance_valid` rather than a plain
 ## null check: a forced scene swap frees the sheet along with the screen that
@@ -142,13 +170,27 @@ func register_flow_sheet(sheet: ModalSheet) -> void:
 ## Deliberately NOT enforced for the two screens that are themselves the higher
 ## priority: routing to Game Over while a consequence is open must reach Game
 ## Over, or the run could never end mid-chain.
+## SQ-D2 (0.6.0) is the one change to this ladder since it was written, and it
+## is a change to rung 2 only: a live chain is blocking **only at the stages
+## that still take the screen**. `decision` and `result` return "" and are
+## presented as a ModalSheet over the ordinary screen instead
+## (`screen_base.gd::_drain_flow_sheets`), which is what lets the street stay
+## visible behind an encounter. Game over still outranks everything.
+##
+## This function has THREE readers and all three change behaviour together:
+## `resolved_route()` below, the boot/CONTINUE path through `go_to_game()`, and
+## the flow-sheet drain's own guard in `screen_base.gd`. That is deliberate —
+## one place decides, so an encounter cannot be escapable by navigation while
+## still deferring a discovery card, or any other half-applied combination.
 func blocking_route() -> String:
 	var gs: Node = get_node_or_null("/root/GameState")
 	if gs == null:
 		return ""
 	if bool(gs.game_over):
 		return GAME_OVER
-	if not (gs.active_consequence as Dictionary).is_empty():
+	var chain: Dictionary = gs.active_consequence
+	if not chain.is_empty() and not ENCOUNTER_SHEET.stage_rides_sheet(
+			str(chain.get("stage", ""))):
 		return CONSEQUENCE
 	return ""
 
@@ -195,8 +237,23 @@ func go_to(scene_path: String) -> void:
 ##
 ## This is the boot and CONTINUE RUN path, so it is also where a save loaded
 ## mid-chain re-enters the consequence — TI-003 §18 requires that to happen
-## without an ordinary screen being exposed for an interactive frame, and
-## routing here rather than to Home and correcting is what achieves it.
+## without an ordinary screen being exposed for an interactive frame.
+##
+## How that requirement is met changed in 0.6.0 (SQ-D2/SQ-D4) and this
+## doc-comment changed with it, because a comment describing a route that no
+## longer exists is the same drift the build that wrote it exists to fix:
+##
+##   - **booking / release** still route straight to CONSEQUENCE from here,
+##     through `resolved_route()`, exactly as before. Home is never built.
+##   - **decision / result** now land on Home and have the encounter sheet
+##     opened over them by `screen_base.gd::_drain_flow_sheets`. The drain is
+##     `call_deferred` from `refresh()`, so there IS a frame in which Home is
+##     the current scene — but it is not an INTERACTIVE one: `ModalSheet`'s
+##     own `enter()` already awaits a frame before animating, the scrim is
+##     parented at MOUSE_FILTER_STOP the moment `setup()` runs, and the drain
+##     runs before input is processed for that frame. §18's requirement is
+##     that a tap in that window cannot reach the screen underneath, and it
+##     cannot.
 func go_to_game() -> void:
 	go_to(HOME)
 

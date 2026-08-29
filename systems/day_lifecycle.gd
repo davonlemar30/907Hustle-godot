@@ -410,7 +410,15 @@ func _run_rollover_step(step: String, today: int) -> void:
 		"heat_decay":
 			var heat: Object = gm.system("heat") if gm != null else null
 			if heat != null:
+				# HEAT-D1 (0.3.0): both halves of the same night's bookkeeping,
+				# under the one declared step rather than a second name — the
+				# quiet-day rule (conditional on tonight's own gain) and the
+				# active floor (unconditional) answer different questions but
+				# settle at the exact same point in the lifecycle, so there is
+				# nothing a second ROLLOVER_ORDER entry would buy that this
+				# step's own body does not already give it.
 				heat.settle_quiet_day()
+				heat.settle_active_decay()
 		"exposure":
 			var exposure: Node = _autoload("Exposure")
 			if exposure != null:

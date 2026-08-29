@@ -8825,21 +8825,26 @@ func _check_caught_authored_rows(rules: RefCounted) -> void:
 	_expect_float("yield adds exactly 1.0 pressure",
 		rules.pressure_gain("yield", "deterministic"), 1.0)
 
-	# The one conditional arrest, at its exact boundary. FS-003 §5 Run/Failure:
-	# "Arrest occurs only when pre-encounter Global Heat > 6 or the target is
-	# Tier 3." Strictly greater, so 6.0 itself does not arrest.
-	_expect_true("run failure at tier 1 and heat 6.0 does not arrest",
-		not rules.arrests("run", "failure", 1, 6.0))
-	_expect_true("run failure at tier 1 and heat 6.1 arrests",
-		rules.arrests("run", "failure", 1, 6.1))
-	_expect_true("run failure at tier 2 and heat 0 does not arrest",
-		not rules.arrests("run", "failure", 2, 0.0))
-	_expect_true("run failure at tier 3 always arrests",
-		rules.arrests("run", "failure", 3, 0.0))
-	# And the condition reads the PRE-ENCOUNTER heat, not the tier alone — both
-	# halves of the `or` are separately sufficient.
-	_expect_true("run failure at tier 3 and high heat still arrests",
-		rules.arrests("run", "failure", 3, 12.0))
+	# The one conditional arrest, at its exact boundary. HEAT-D2 (0.3.0): tier
+	# SCALES the threshold rather than bypassing it (closes `86bbjk6kk`) — data-
+	# driven off the authored table so a future retune of the thresholds moves
+	# this test with it, rather than needing hardcoded literals kept in sync
+	# by hand. Strictly greater than the gate, at every tier, so the gate
+	# itself does not arrest.
+	for tier_key in [1, 2, 3]:
+		var run_tier: int = int(tier_key)
+		var run_gate: float = float(rules.RUN_FAILURE_ARREST_HEAT[run_tier])
+		_expect_true("run failure at tier %d and heat %.1f does not arrest" % [run_tier, run_gate],
+			not rules.arrests("run", "failure", run_tier, run_gate))
+		_expect_true("run failure at tier %d and heat %.1f arrests" % [run_tier, run_gate + 0.1],
+			rules.arrests("run", "failure", run_tier, run_gate + 0.1))
+	# The scaling claim itself, not just the absence of the old unconditional
+	# trigger: a heat that already arrests tier 3 (its own lower gate) need
+	# not yet arrest tier 1 (its own higher gate).
+	var run_mid_heat: float = float(rules.RUN_FAILURE_ARREST_HEAT[3]) + 0.1
+	_expect_true("that heat arrests tier 3", rules.arrests("run", "failure", 3, run_mid_heat))
+	_expect_true("but not yet tier 1, whose own gate is higher",
+		not rules.arrests("run", "failure", 1, run_mid_heat))
 
 # --- layer 2: the encounter, through dispatch -------------------------------
 
@@ -9343,6 +9348,7 @@ func _drive_caught_priority(gs: Node, gm: Node, engine: RefCounted,
 
 func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
 		rules: RefCounted) -> void:
+	var tier1_gate: float = float(rules.RUN_FAILURE_ARREST_HEAT[1])
 	var found := false
 	# 0.1.2: run/failure escalates instead of resolving outright (LIFT_ESCALATION),
 	# so reaching it now generally means fight and talk both failing (and
@@ -9350,20 +9356,20 @@ func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
 	# for last; `before_final` re-pins the boundary heat right before run's
 	# roll, undoing whatever fight/talk's own escalation heat cost along the
 	# way -- the snapshot this probe is actually testing is immutable from
-	# chain-open regardless, but the LIVE-heat assertion below needs 6.0 to
-	# still mean exactly 6.0 at the moment run is the one rolling.
-	var pin_heat := func() -> void: gs.heat = 6.0
+	# chain-open regardless, but the LIVE-heat assertion below needs the gate
+	# to still mean exactly that at the moment run is the one rolling.
+	var pin_heat := func() -> void: gs.heat = tier1_gate
 	for attempt in range(1, 220):
 		_caught_ready(gs, attempt, 1)
 		gs.health = gs.health_max
-		# Exactly on the boundary: the rule is strictly greater than 6.
-		gs.heat = 6.0
+		# Exactly on the boundary: the rule is strictly greater than the gate.
+		gs.heat = tier1_gate
 		var lifted: bool = gm.dispatch("boost", {"target_id": "night_owl"})
 		_caught_carry(gs)
 		if not lifted or (gs.active_consequence as Dictionary).is_empty():
 			continue
 		_expect_float("the chain snapshotted the boundary heat",
-			float((engine.active_summary() as Dictionary)["pre_encounter_heat"]), 6.0)
+			float((engine.active_summary() as Dictionary)["pre_encounter_heat"]), tier1_gate)
 		var drive := _drive_caught_priority(gs, gm, engine,
 			["fight", "talk", "run"], pin_heat)
 		if not bool(drive["terminal"]) or str(drive["last_choice"]) != "run":
@@ -9378,9 +9384,9 @@ func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
 		# meter past the threshold — which is exactly the trap.
 		_expect_float("run/failure at tier 1 added its authored heat",
 			snappedf(float(gs.heat), 0.0001),
-			snappedf(6.0 + rules.raw_heat("run", "failure", 1) * 0.9, 0.0001))
+			snappedf(tier1_gate + rules.raw_heat("run", "failure", 1) * 0.9, 0.0001))
 		_expect_true("the live meter is now above the arrest threshold",
-			float(gs.heat) > rules.RUN_FAILURE_ARREST_HEAT)
+			float(gs.heat) > tier1_gate)
 		# And the gate still says no, because it read the snapshot.
 		_expect_true("the arrest gate reads the pre-encounter snapshot, not the live meter",
 			not bool(outcome["result"]["arrested"]))
@@ -9390,9 +9396,14 @@ func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
 		break
 	_expect_true("the arrest-snapshot probe found a run/failure", found)
 
-	# The other half of the `or`: tier 3 arrests regardless of Heat. Driven the
-	# same way so both branches of the condition are covered on the real path.
-	var found_tier3 := false
+	# HEAT-D2 (0.3.0): tier SCALES the threshold, it no longer bypasses it.
+	# Proven two ways on the real path, both closing `86bbjk6kk`: tier 3 does
+	# NOT arrest at zero Heat any more (the old unconditional trigger), and
+	# tier 3's own (lower) gate DOES arrest at a Heat that tier 1's own
+	# (higher) gate would still call safe -- the scaling claim itself, not
+	# just the absence of the old bug.
+	var tier3_gate: float = float(rules.RUN_FAILURE_ARREST_HEAT[3])
+	var found_tier3_cold := false
 	for attempt in range(1, 220):
 		_caught_ready(gs, attempt, 3)
 		gs.health = gs.health_max
@@ -9409,9 +9420,40 @@ func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
 		if str(outcome3["resolved_tier"]) != "failure":
 			gs.active_consequence = {}
 			continue
-		found_tier3 = true
-		_expect_true("run/failure at tier 3 arrests even at zero heat",
-			bool(outcome3["result"]["arrested"]))
+		found_tier3_cold = true
+		_expect_true("run/failure at tier 3 no longer arrests at zero heat",
+			not bool(outcome3["result"]["arrested"]))
+		_expect_str("a non-arrest run/failure stops at the result stage",
+			engine.active_stage(), engine.STAGE_RESULT)
+		gs.active_consequence = {}
+		break
+	_expect_true("the tier-3-at-zero-heat probe found a run/failure", found_tier3_cold)
+
+	var found_tier3_scaled := false
+	for attempt in range(1, 220):
+		_caught_ready(gs, attempt, 3)
+		gs.health = gs.health_max
+		# Above tier 3's own gate, at or below tier 1's -- the number tier 1
+		# would still call safe and tier 3 does not, which is the scaling
+		# claim rather than only the absence of the old unconditional trigger.
+		gs.heat = tier3_gate + 0.5
+		var lifted3b: bool = gm.dispatch("boost", {"target_id": "warehouse_club"})
+		_caught_carry(gs)
+		if not lifted3b or (gs.active_consequence as Dictionary).is_empty():
+			continue
+		var drive3b := _drive_caught_priority(gs, gm, engine, ["fight", "talk", "run"])
+		if not bool(drive3b["terminal"]) or str(drive3b["last_choice"]) != "run":
+			gs.active_consequence = {}
+			continue
+		var outcome3b: Dictionary = engine.result_summary()
+		if str(outcome3b["resolved_tier"]) != "failure":
+			gs.active_consequence = {}
+			continue
+		found_tier3_scaled = true
+		_expect_true("run/failure at tier 3 arrests above ITS OWN lower gate",
+			bool(outcome3b["result"]["arrested"]))
+		_expect_true("that heat sits at or below tier 1's own gate",
+			tier3_gate + 0.5 <= tier1_gate)
 		_expect_str("an arrest waits at the result stage",
 			engine.active_stage(), engine.STAGE_RESULT)
 		var booking: Dictionary = engine.booking_summary()
@@ -9432,7 +9474,7 @@ func _check_caught_arrest_snapshot(gs: Node, gm: Node, engine: RefCounted,
 			engine.source_time_owed())
 		gs.active_consequence = {}
 		break
-	_expect_true("the tier-3 arrest probe found a run/failure", found_tier3)
+	_expect_true("the tier-3-scaled-gate probe found a run/failure", found_tier3_scaled)
 
 ## Yield is the deterministic relief valve: known loss, zero RNG, +1.0 Pressure.
 func _check_caught_yield(gs: Node, gm: Node, engine: RefCounted) -> void:
@@ -11671,13 +11713,23 @@ func _check_financial_pressure_rollover(gs: Node, gm: Node, engine: RefCounted,
 	_expect_float("and three does not fold", float(gs.heat), 0.0)
 
 	# At 5, decay drops it to 4 and the fold DOES fire.
+	#
+	# HEAT-D1 (0.3.0): every night now also sheds `HEAT_ACTIVE_DECAY`,
+	# unconditionally — including THIS one, the same rollover the fold lands
+	# in. Starting heat is compensated by exactly that amount (and the night
+	# marked loud, `heat_gain_today` nonzero, so the separate CONDITIONAL
+	# quiet-day rule does not also fire and double-compensate) so the fold's
+	# own authored amount is what survives to the assertion below, unchanged —
+	# proving the fold still adds exactly what it always added, net of the one
+	# floor decay every night carries now, the same as any other gain would.
 	gs.reset_to_new_game()
 	gs.day = 9
 	gs.time_slots_today = 3
 	gs.time_slot = "NIGHT"
 	gs.cash = 5000
 	gs.financial_pressure = 5
-	gs.heat = 0.0
+	gs.heat = float(rules.HEAT_ACTIVE_DECAY)
+	gs.heat_gain_today = 1.0
 	_expect_true("the fold night dispatches", gm.dispatch("advance_time", {}))
 	_expect_int("five decays to four", int(gs.financial_pressure), 4)
 	_expect_float("and four folds into exactly one point of heat", float(gs.heat), 1.0)
@@ -11696,7 +11748,8 @@ func _check_financial_pressure_rollover(gs: Node, gm: Node, engine: RefCounted,
 		gs.crew_records["deshawn"] = {"recruited": true, "status": "active",
 			"tier": 3, "loyalty": 5, "wage_due": 0, "wage_missed_since": -1}
 		gs.financial_pressure = 7
-		gs.heat = 0.0
+		gs.heat = float(rules.HEAT_ACTIVE_DECAY)
+		gs.heat_gain_today = 1.0
 		gm.dispatch("advance_time", {})
 		_expect_float("the fold is a flat +1 in %s, with Deshawn on the crew" % district,
 			float(gs.heat), 1.0)
@@ -11705,17 +11758,39 @@ func _check_financial_pressure_rollover(gs: Node, gm: Node, engine: RefCounted,
 	# --- regression #26: Exposure must see the FOLDED morning Heat ---
 	#
 	# Exposure broadcasts on the way past 10.0 (`neighborhood`) and 8.0
-	# (`household`). Starting at 9.6, the fold's +1 carries the meter to 10.6,
-	# which is a NEIGHBORHOOD broadcast. If Exposure ran first it would see 9.6
-	# and broadcast on the household channel instead — a different set of people
+	# (`household`). Starting at 9.6 (plus HEAT-D1's own compensation, same
+	# reasoning as above), the fold's +1 carries the meter to 10.6, which is a
+	# NEIGHBORHOOD broadcast. If Exposure ran first it would see 9.6 and
+	# broadcast on the household channel instead — a different set of people
 	# find out, one day late, forever.
+	#
+	# The street stop is a THIRD nightly event that can also touch Heat above
+	# `HEAT_STOP_FLOOR` (8.0), which this test crosses on purpose — a silent
+	# scan picks a day where it does not happen to fire, the same day-scan
+	# pattern the rest of this file uses whenever a seeded roll could
+	# otherwise contaminate an unrelated assertion.
+	var fold_heat_sys: Object = gm.system("heat")
+	var fold_day := 9
+	for candidate_day in range(9, 90):
+		gs.reset_to_new_game()
+		gs.day = candidate_day
+		gs.time_slots_today = 3
+		gs.time_slot = "NIGHT"
+		gs.heat = 9.6 + float(rules.HEAT_ACTIVE_DECAY)
+		var stops_before: int = int(fold_heat_sys.stops_settled) if fold_heat_sys != null else 0
+		gm.dispatch("advance_time", {})
+		if fold_heat_sys == null or int(fold_heat_sys.stops_settled) == stops_before:
+			fold_day = candidate_day
+			break
+
 	gs.reset_to_new_game()
-	gs.day = 9
+	gs.day = fold_day
 	gs.time_slots_today = 3
 	gs.time_slot = "NIGHT"
 	gs.cash = 5000
 	gs.financial_pressure = 7
-	gs.heat = 9.6
+	gs.heat = 9.6 + float(rules.HEAT_ACTIVE_DECAY)
+	gs.heat_gain_today = 1.0
 	gs.observation_queue = []
 	_expect_true("the ordering night dispatches", gm.dispatch("advance_time", {}))
 	_expect_float("the fold carried the meter past ten",
@@ -12843,21 +12918,22 @@ func _check_arrest_risk_codes(rules: RefCounted) -> void:
 		_expect_str("talk warns only about the worst outcome at tier %d" % tier,
 			rules.caught_arrest_risk("talk", tier, 0.0), "worst_only")
 
-	# Run is the conditional one, and the player is told WHICH condition made it
-	# true — "this target" is something they chose and can choose differently;
-	# "your Heat" is something they carry.
+	# Run is the conditional one. HEAT-D2 (0.3.0) removed the tier-3 target
+	# bypass, so every tier now reads the same way: at or below its OWN gate,
+	# the worst outcome only; above it, Heat is the reason, always -- there is
+	# no more "target" code to warn about at all (closes `86bbjk6kk`).
 	_expect_str("run at tier 1 with low heat warns about the worst outcome only",
 		rules.caught_arrest_risk("run", 1, 0.0), "worst_only")
-	_expect_str("run at tier 1 at the heat threshold still warns only about the worst",
-		rules.caught_arrest_risk("run", 1, 6.0), "worst_only")
-	_expect_str("run at tier 1 above the heat threshold warns about heat",
-		rules.caught_arrest_risk("run", 1, 6.1), "heat")
-	_expect_str("run at tier 2 above the heat threshold warns about heat",
-		rules.caught_arrest_risk("run", 2, 9.0), "heat")
-	_expect_str("run at tier 3 warns about the target even at zero heat",
-		rules.caught_arrest_risk("run", 3, 0.0), "target")
-	_expect_str("run at tier 3 still blames the target when heat is also high",
-		rules.caught_arrest_risk("run", 3, 12.0), "target")
+	_expect_str("run at tier 1 at its own gate still warns only about the worst",
+		rules.caught_arrest_risk("run", 1, float(rules.RUN_FAILURE_ARREST_HEAT[1])), "worst_only")
+	_expect_str("run at tier 1 above its own gate warns about heat",
+		rules.caught_arrest_risk("run", 1, float(rules.RUN_FAILURE_ARREST_HEAT[1]) + 0.1), "heat")
+	_expect_str("run at tier 2 above its own gate warns about heat",
+		rules.caught_arrest_risk("run", 2, float(rules.RUN_FAILURE_ARREST_HEAT[2]) + 0.1), "heat")
+	_expect_str("run at tier 3 at zero heat warns only about the worst outcome now -- the old unconditional bypass is gone",
+		rules.caught_arrest_risk("run", 3, 0.0), "worst_only")
+	_expect_str("run at tier 3 above its own (lower) gate warns about heat",
+		rules.caught_arrest_risk("run", 3, float(rules.RUN_FAILURE_ARREST_HEAT[3]) + 0.1), "heat")
 
 ## The codes reach the projection the screen reads, snapshotted with the odds.
 func _check_arrest_risk_projection(gs: Node, gm: Node, engine: RefCounted) -> void:
@@ -13385,13 +13461,18 @@ func _check_ti003_scenarios(gs: Node, gm: Node, engine: RefCounted) -> void:
 		snappedf(boost_sys.chance_for(target), 0.0001), snappedf(quiet_odds, 0.0001))
 
 	# --- Financial Pressure ≥6 folds into Heat ---
+	#
+	# HEAT-D1 (0.3.0): compensated by the unconditional nightly floor decay,
+	# and the night marked loud so the separate quiet-day rule stays silent —
+	# see `_check_financial_pressure_rollover`'s own comment on the same fix.
 	gs.reset_to_new_game()
 	gs.day = 9
 	gs.time_slots_today = 3
 	gs.time_slot = "NIGHT"
 	gs.cash = 5000
 	gs.financial_pressure = 8
-	gs.heat = 0.0
+	gs.heat = float(B8_RULES.HEAT_ACTIVE_DECAY)
+	gs.heat_gain_today = 1.0
 	gm.dispatch("advance_time", {})
 	_expect_int("scenario: financial pressure decayed", int(gs.financial_pressure), 7)
 	_expect_float("scenario: and folded into heat", float(gs.heat), 1.0)
@@ -13538,12 +13619,18 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	gs.reset_to_new_game()
 
 	# --- a save with Financial Pressure at 7 folds correctly the next morning ---
+	#
+	# HEAT-D1 (0.3.0): compensated the same way as every other fold probe in
+	# this file — the unconditional nightly floor decay and the loud-day flag
+	# both ride through the save/reload below, so the night crossed at the
+	# bottom of this block sees exactly the state authored here.
 	gs.day = 9
 	gs.time_slots_today = 3
 	gs.time_slot = "NIGHT"
 	gs.cash = 5000
 	gs.financial_pressure = 7
-	gs.heat = 0.0
+	gs.heat = float(B8_RULES.HEAT_ACTIVE_DECAY)
+	gs.heat_gain_today = 1.0
 	var previous_save := ""
 	if FileAccess.file_exists(saves.SAVE_PATH):
 		var prior := FileAccess.open(saves.SAVE_PATH, FileAccess.READ)
@@ -15651,6 +15738,17 @@ const ECON_PROFILES: Array[Dictionary] = [
 		"rob": true, "seed": "econ-stick"},
 	{"name": "boost", "job": false, "trade": false, "flip": false,
 		"lift": true, "seed": "econ-boost"},
+	# HEAT-D1 (0.3.0): the property's own test subject. Neither row above is
+	# "an every-day criminal profile" on its own — each works ONE surface, so
+	# whichever surface's own daily/weekly cap or cooldown is not binding still
+	# leaves slots the profile spends elsewhere (`stickup`'s two-a-day cap, most
+	# days). This one tries stickup FIRST every slot and falls through to boost
+	# whenever stickup is blocked (the loop's own declared order, `_econ_try_
+	# crime`'s two call sites above), which is what "worked daily, at the
+	# parity economy profiles' own intensity" means read literally: whatever
+	# criminal action is available, taken, every slot, all thirty days.
+	{"name": "everyday_criminal", "job": false, "trade": false, "flip": false,
+		"rob": true, "lift": true, "seed": "econ-everyday-criminal"},
 	# The same robbery ladder, played the way the build now supports it (batch
 	# 9). `stickup` above measures a soloist, and the measured reason that
 	# surface is EV-negative is HEALTH: about 4.6hp of expected damage an
@@ -15779,12 +15877,33 @@ const ECON_PROFILES: Array[Dictionary] = [
 const ECON_CORRIDORS: Dictionary = {
 	"legal_worker": {"floor": 100, "ceiling": 100},
 	"best_job_worker": {"floor": 95, "ceiling": 130},
-	"hustler": {"floor": 600, "ceiling": 850},
-	"arbitrage": {"floor": 60, "ceiling": 110},
+	# HEAT-D1 (0.3.0) widened both trading corridors, and the causal chain is
+	# real rather than noise: `CARRY_STOP_PER_HEAT` prices a carry trip's risk
+	# off the SAME shared Heat meter stickup and boost were measured against,
+	# and both `hustler` and `arbitrage` already ran hot before this build
+	# (peak Heat 15.0 / 13.2 respectively, in the parity economy sweep) —
+	# heat that used to sit near the ceiling for most of the run and now comes
+	# down under the new active-decay floor the same way a criminal profile's
+	# does. Less standing Heat means fewer carry stops, fewer seizures, and a
+	# materially better courier number: measured 942% (was 600-850%) and 259%
+	# (was 60-110%). Not a floor to defend at the old numbers — the courier
+	# route's own risk was quietly priced off a meter that never came down,
+	# and fixing the meter fixes the price along with it. Widened rather than
+	# re-tuned: this PR's mandate is Heat, not `CARRY_STOP_PER_HEAT` itself,
+	# and retuning that lever to claw the old ceiling back is a separate,
+	# deliberate decision for whoever owns the trading economy next.
+	"hustler": {"floor": 800, "ceiling": 1100},
+	"arbitrage": {"floor": 180, "ceiling": 320},
 	"flipper": {"floor": 280, "ceiling": 430},
 	"trader": {"floor": 0, "ceiling": 15},
 	"stickup": {"floor": 0, "ceiling": 15},
 	"boost": {"floor": 5, "ceiling": 25},
+	# HEAT-D1 (0.3.0): measured at 8% — in the same single-digit range
+	# `stickup` and `boost` alone already occupy, which is the expected shape
+	# for a profile spending its slots on crime rather than the market or a
+	# shift; the ruling this profile exists to prove is about where Heat
+	# lands, not about this number.
+	"everyday_criminal": {"floor": 0, "ceiling": 20},
 	"stickup_crew": {"floor": 0, "ceiling": 15},
 	"worker_wanders": {"floor": 220, "ceiling": 350},
 	"wanderer": {"floor": 0, "ceiling": 15},
@@ -16203,6 +16322,12 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 			metrics["shift_pay"] = int((int(pay[0]) + int(pay[1])) / 2)
 	metrics["final_stick_tier"] = int(gs.stick_tier)
 	metrics["final_boost_tier"] = int(gs.boost_tier)
+	# HEAT-D1 (0.3.0): where Heat actually LANDS under sustained play, as
+	# distinct from `peak_heat` above (the ceiling it touched at some point).
+	# The property this ruling asks for is about the asymptote, not the peak —
+	# a profile that spikes to 15 on day two and settles at 4 by day thirty is
+	# healthy; one that spikes once and stays there is the bug.
+	metrics["final_heat"] = float(gs.heat)
 	metrics["days_played"] = int(gs.day)
 	metrics["game_over"] = bool(gs.game_over)
 	metrics["evicted"] = bool(gs.game_over)
@@ -16268,7 +16393,7 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 		runs.append(_simulate_economy(gs, gm, seeded))
 	var out: Dictionary = {"profile": str(profile["name"]), "runs": runs.size()}
 	var averaged: Array[String] = ["net_worth", "net_trade", "trade_margin",
-		"peak_heat", "heat_from_trading", "arrests", "peak_financial_pressure",
+		"peak_heat", "final_heat", "heat_from_trading", "arrests", "peak_financial_pressure",
 		"market_pressure_peak", "units_bought", "units_sold", "inventory_value",
 		"buys", "sells", "shifts", "wages", "flips", "travels", "fares",
 		"days_played", "rent_paid", "rent_missed", "phone_paid", "seized_value",
@@ -16776,10 +16901,10 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 		# division is a report-time convenience, not owned by either loop.
 		row["pct_of_job"] = pct
 		print(("economy: %-13s netWorth %5d (%3d%% of job) · net trade %5d · margin %+6.1f%%"
-			+ " · peak heat %4.1f · arrests %d")
+			+ " · peak heat %4.1f · end heat %4.1f · arrests %d")
 			% [str(row["profile"]), int(row["net_worth"]), pct, int(row["net_trade"]),
 				100.0 * float(row["trade_margin"]), float(row["peak_heat"]),
-				int(row["arrests"])])
+				float(row["final_heat"]), int(row["arrests"])])
 		print(("               buys %3d/%3du · sells %3d/%3du · shifts %2d ($%d) · flips %2d"
 			+ " · travels %2d ($%d fares) · heat from trading %.1f")
 			% [int(row["buys"]), int(row["units_bought"]), int(row["sells"]),
@@ -16821,6 +16946,7 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			"net_trade": int(row["net_trade"]),
 			"trade_margin_pct": snappedf(100.0 * float(row["trade_margin"]), 0.1),
 			"peak_heat": float(row["peak_heat"]),
+			"final_heat": float(row["final_heat"]),
 			"heat_from_trading": float(row["heat_from_trading"]),
 			"arrests": int(row["arrests"]),
 			"peak_financial_pressure": int(row["peak_financial_pressure"]),
@@ -16879,7 +17005,7 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			_expect_true("flipper actually flipped", float(row["flips"]) > 0.0)
 		if name in ["legal_worker", "hustler"]:
 			_expect_true("%s actually worked" % name, float(row["shifts"]) > 0.0)
-		if name in ["stickup", "boost", "boost_finder"]:
+		if name in ["stickup", "boost", "boost_finder", "everyday_criminal"]:
 			_expect_true("%s actually committed crimes" % name, float(row["jobs"]) > 0.0)
 		# The discovery profile has to have DISCOVERED, or its lifting number is
 		# measuring a board it was handed rather than one it earned — the same
@@ -16949,6 +17075,21 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 		_expect_true("%s stays inside its corridor (%d%%, wanted %d-%d%%)"
 			% [name, pct, int(corridor["floor"]), int(corridor["ceiling"])],
 			pct >= int(corridor["floor"]) and pct <= int(corridor["ceiling"]))
+
+	# --- HEAT-D1's own property (86bbjxth6's first real arm) -------------------
+	#
+	# Not a corridor on `pct_of_job` — a direct assertion on where Heat actually
+	# lands. "An every-day criminal profile must be able to return below the
+	# tier-1 stickup gate" is the ruling's own words, and 12.0 is that gate
+	# (`RULES.STICK_FAILURE_ARREST_HEAT[1]`), read live rather than repeated as
+	# a literal so a future change to the gate moves this assertion with it.
+	for row in rows:
+		if str(row["profile"]) != "everyday_criminal":
+			continue
+		var gate: float = float(B8_RULES.STICK_FAILURE_ARREST_HEAT[1])
+		_expect_true("everyday_criminal's Heat asymptotes below the tier-1 gate (%.1f, gate %.1f)"
+			% [float(row["final_heat"]), gate],
+			float(row["final_heat"]) < gate)
 
 	_check_no_risk_free_dre_carry()
 
@@ -19415,10 +19556,17 @@ func _fail(label: String, detail: String) -> void:
 ## `_check_ti003_scenarios`' own catastrophic-arrest scenario both drive the
 ## new decision (yield) rather than reading a chain that used to book itself.
 ##
+## 0.3.0 (HEAT-D1/D2): +19. The `everyday_criminal` economy profile and its
+## own property assertion, the tier-scaled Run/Failure gate's data-driven
+## coverage (three tiers instead of two hardcoded literals), and the direct
+## quiet-vs-active decay proof beside the existing quiet-day checks.
+##
 ## Parity save safety (86bbjxtaw): +7. One suite-level snapshot now protects
 ## the developer's save even when a local probe forgets its cleanup. The guard
-## pins absent, empty, populated and unreadable files independently.
-const MIN_CHECKS := 12591
+## pins absent, empty, populated and unreadable files independently. Landed on
+## `main` as a sibling PR while this one was in flight; combined here rather
+## than re-derived, since both counts are additive on the same PR-A-era 12584.
+const MIN_CHECKS := 12610
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -20392,6 +20540,27 @@ func _check_quiet_day_decay(gs: Node, gm: Node) -> void:
 	_expect_float("a loud day sheds nothing", float(heat.settle_quiet_day()), 0.0)
 	_expect_float("and the heat is where it was", float(gs.heat), 6.0)
 
+	# HEAT-D1 (0.3.0): the floor under every night, and the property the
+	# ruling names directly -- "a genuinely quiet day must still shed visibly
+	# more than an active one." Proven on the pair together, the same shape a
+	# real night applies them in (`day_lifecycle.gd`'s "heat_decay" step calls
+	# both): a quiet night banks its own bonus PLUS the floor; a loud one gets
+	# only the floor.
+	gs.heat = 6.0
+	gs.heat_gain_today = 0.0
+	var quiet_shed: float = float(heat.settle_quiet_day()) + float(heat.settle_active_decay())
+	gs.heat = 6.0
+	gs.heat_gain_today = 2.0
+	var active_shed: float = float(heat.settle_quiet_day()) + float(heat.settle_active_decay())
+	_expect_float("the active floor sheds its authored amount regardless of loudness",
+		active_shed, float(B8_RULES.HEAT_ACTIVE_DECAY))
+	# "Visibly more" read exactly rather than by an arbitrary ratio: a quiet
+	# night is built to shed the active floor PLUS its own bonus, so the gap
+	# is the quiet-day constant itself, by construction — not a multiplier
+	# that would need re-tuning every time either constant does.
+	_expect_float("a quiet night sheds exactly its own bonus more than an active one",
+		quiet_shed - active_shed, float(B8_RULES.HEAT_QUIET_DECAY))
+
 	# The floor. A run at zero has nothing to shed and cannot go negative.
 	gs.heat = 0.0
 	gs.heat_gain_today = 0.0
@@ -20401,6 +20570,16 @@ func _check_quiet_day_decay(gs: Node, gm: Node) -> void:
 	gs.heat_gain_today = 0.0
 	heat.settle_quiet_day()
 	_expect_float("less heat than the decay lands on zero, not below it",
+		float(gs.heat), 0.0)
+
+	# The active floor has the same floor, and needs no `loud_today` state at
+	# all to prove it -- it does not read the flag.
+	gs.heat = 0.0
+	_expect_float("a cool run sheds nothing from the active floor either",
+		float(heat.settle_active_decay()), 0.0)
+	gs.heat = float(B8_RULES.HEAT_ACTIVE_DECAY) / 2.0
+	heat.settle_active_decay()
+	_expect_float("less heat than the active floor lands on zero, not below it",
 		float(gs.heat), 0.0)
 
 	# The flag is cleared at DAY_START, which the declared lifecycle trace pins.
@@ -20670,6 +20849,14 @@ func _check_heat_propagation_adds(gs: Node, gm: Node) -> void:
 	_expect_true("but not the network", not ("network" in yalonda_channels))
 
 	# Three levels, each crossing one more threshold.
+	#
+	# HEAT-D1 (0.3.0): every night now sheds `HEAT_ACTIVE_DECAY` unconditionally
+	# on the way to this probe's own night-cross, which would otherwise pull
+	# each level below the very thresholds this test is probing. The day is
+	# marked loud (`heat_gain_today` nonzero) so the separate, CONDITIONAL
+	# quiet-day rule stays silent, and each starting level is compensated by
+	# exactly the one floor decay that always fires now — so what Exposure
+	# actually reads at rollover is the level named in the loop, unchanged.
 	var reached_at: Dictionary = {}
 	for level_value in [9.0, 11.0, 13.0]:
 		gs.street_name = "Parity"
@@ -20677,7 +20864,8 @@ func _check_heat_propagation_adds(gs: Node, gm: Node) -> void:
 		gs.day = 4
 		gs.time_slots_today = 3
 		gs.time_slot = "NIGHT"
-		gs.heat = float(level_value)
+		gs.heat = float(level_value) + float(B8_RULES.HEAT_ACTIVE_DECAY)
+		gs.heat_gain_today = 1.0
 		gs.npc_ledgers = {}
 		gs.observation_queue = []
 		gm.dispatch("advance_time", {})

@@ -129,10 +129,20 @@ const CAUGHT_FIXED_INJURY := {
 ## damage before existing mitigation".
 const CAUGHT_CATASTROPHIC_INJURY_BONUS := 6
 
-## Run/Failure is the one conditional arrest in the table. FS-003 §5: "Arrest
-## occurs only when pre-encounter Global Heat > 6 or the target is Tier 3."
-const RUN_FAILURE_ARREST_HEAT := 6.0
-const RUN_FAILURE_ARREST_TIER := 3
+## Run/Failure is the one conditional arrest in the table. FS-003 §5 originally
+## read "Arrest occurs only when pre-encounter Global Heat > 6 or the target is
+## Tier 3" — an OR that made tier 3 an unconditional arrest regardless of Heat.
+##
+## HEAT-D2 (0.3.0): closes `86bbjk6kk`. The OR is gone; tier now SCALES the
+## threshold instead of bypassing it, the same philosophy `STICK_FAILURE_
+## ARREST_HEAT` already uses for Stick — the bigger the job, the less Heat it
+## takes to turn a failed attempt into an arrest, never a guarantee independent
+## of Heat. Tier 3 keeps the old flat number as its own (lowest) gate rather
+## than moving it, so the one case that was already measured and shipped
+## (arrests at every Heat) still arrests at the Heat levels that used to
+## trigger it via the OR — what changes is that Heat now has to clear SOME
+## bar, even tier 3's low one, rather than none at all.
+const RUN_FAILURE_ARREST_HEAT := {1: 9.0, 2: 7.5, 3: 6.0}
 
 ## District Pressure by resolved tier — TI-003 §8's tiered gains.
 const PRESSURE_BY_TIER := {
@@ -245,8 +255,8 @@ func arrests(choice_id: String, tier_name: String, boost_tier: int,
 	if value is bool:
 		return value
 	if str(value) == "conditional":
-		return pre_encounter_heat > RUN_FAILURE_ARREST_HEAT \
-			or clampi(boost_tier, 1, 3) >= RUN_FAILURE_ARREST_TIER
+		var gate: float = float(RUN_FAILURE_ARREST_HEAT.get(clampi(boost_tier, 1, 3), 6.0))
+		return pre_encounter_heat > gate
 	return false
 
 ## District Pressure this outcome adds. Yield is its own authored row.
@@ -845,14 +855,32 @@ static func heat_stop_seizure(dirty_cash: int) -> int:
 		return 0
 	return mini(HEAT_STOP_SEIZE_MAX, int(floor(float(dirty_cash) * HEAT_STOP_SEIZE_FRACTION)))
 
-# --- Quiet-day Heat decay (batch 8) -----------------------------------------
+# --- Quiet-day Heat decay (batch 8, raised by HEAT-D1 / 0.3.0) --------------
 #
 # The other half, and the one that makes the first half fair. A ratchet with a
 # consequence at the top is a run that ends, not a pressure the player manages.
 # A day on which nothing generated Heat sheds this much; a day on which anything
 # did sheds nothing — the same quiet-day rule District Pressure has used since
 # FS-003.9, for the same reason and read off the same kind of flag.
-const HEAT_QUIET_DECAY := 0.75
+#
+# HEAT-D1 (0.3.0): raised from 0.75. See `HEAT_ACTIVE_DECAY` below for the
+# paired constant and `tests/parity/parity_runner.gd`'s `everyday_criminal`
+# economy profile for the measurement both numbers are pinned against — the
+# PR body carries the before/after numbers this pairing was tuned to produce.
+const HEAT_QUIET_DECAY := 1.5
+
+## HEAT-D1's other half: a small amount every night, loud or quiet, with no
+## `loud_today()` gate at all — the floor `HeatSystem.settle_active_decay`
+## applies unconditionally, every night, alongside (never instead of) the
+## quiet-day rule above. Kept as its own constant rather than folded into that
+## one: the two rules answer different questions (was there any gain tonight;
+## is there a floor under EVERY night regardless), and a future change to
+## either should not have to reason about the other's shape.
+##
+## Measured, not vibed, against `everyday_criminal` (daily boost AND stickup,
+## the intensity every other economy profile already plays at) — see that
+## profile's corridor and this ruling's PR body for the actual before/after.
+const HEAT_ACTIVE_DECAY := 2.0
 
 ## How a stop goes is the resolver's business, not a second dice table. The
 ## `escape` shape is already authored — {clean 0.6, messy 0.4} on a success,
@@ -1277,9 +1305,14 @@ const ARREST_RISK_ON_LOSS := "on_loss"
 ## Only the worst outcome does.
 const ARREST_RISK_WORST_ONLY := "worst_only"
 ## A failed escape books because of the Heat already on the meter.
+##
+## The only reason a failed Run ever books, as of HEAT-D2 (0.3.0) — the old
+## `ARREST_RISK_TARGET` ("books because of what this target is, regardless of
+## Heat") described the unconditional tier-3 OR that ruling removed, and a
+## warning that no longer applies is worse than one that reads slightly
+## generic: it would tell the player something about the target that stopped
+## being true.
 const ARREST_RISK_HEAT := "heat"
-## A failed escape books because of what this target is.
-const ARREST_RISK_TARGET := "target"
 
 # --- presentation lookups --------------------------------------------------
 
@@ -1317,10 +1350,9 @@ func caught_arrest_risk(choice_id: String, boost_tier: int,
 	if not "failure" in arresting:
 		return ARREST_RISK_WORST_ONLY
 	if choice_id == "run":
-		# Run/Failure is the one conditional row, and the player deserves to know
-		# WHICH condition made it true — "this target" is something they chose
-		# and can choose differently; "your Heat" is something they carry.
-		if clampi(boost_tier, 1, 3) >= RUN_FAILURE_ARREST_TIER:
-			return ARREST_RISK_TARGET
+		# Run/Failure is the one conditional row. HEAT-D2 (0.3.0) removed the
+		# unconditional tier-3 OR, so Heat is now the only reason this ever
+		# books, at every tier — the warning no longer needs to distinguish
+		# "your Heat" from "this target", because the target-only road is gone.
 		return ARREST_RISK_HEAT
 	return ARREST_RISK_ON_LOSS

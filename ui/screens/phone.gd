@@ -160,8 +160,14 @@ func _build_texts(offline: bool) -> void:
 		body.add_child(note("No messages yet."))
 		return
 	# Canon only offers Clear all when there is more than one to clear.
+	#
+	# 44pt tall (86bbjkcd8) -- the same tap-target floor the per-message
+	# dismiss button below is already held to. This is the OTHER dismiss
+	# control on this screen (bulk rather than per-message) and had been
+	# left at 40, a thumb-unfriendly size the smoke suite's own tap checks
+	# do not catch because they audit scroll-transparency wiring, not size.
 	if live > 1:
-		body.add_child(button("CLEAR ALL %d" % live, false, _on_clear_inbox, 40))
+		body.add_child(button("CLEAR ALL %d" % live, false, _on_clear_inbox, 44))
 	for message in gs.phone_inbox:
 		body.add_child(_message_card(message))
 

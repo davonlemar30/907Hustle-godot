@@ -298,11 +298,14 @@ const CHOICE_COPY := {
 
 ## PX-003 §4 and §19 point 8. Says THAT a response can book you; never at what
 ## number, and never which tier.
+##
+## No `"target"` row: HEAT-D2 (0.3.0) removed the unconditional tier-3 Run
+## arrest that warning described, so `caught_arrest_risk` never returns
+## `ARREST_RISK_TARGET` any more and nothing looks this key up.
 const ARREST_WARNINGS := {
 	"on_loss": "IF THIS GOES WRONG, THEY BOOK YOU",
 	"worst_only": "THE WORST OUTCOME HERE ENDS IN CUFFS",
 	"heat": "HIGH HEAT: A FAILED RUN CAN BOOK YOU",
-	"target": "THIS TARGET CAN TURN A FAILED RUN INTO BOOKING",
 }
 
 func _build_decision(_summary: Dictionary) -> void:

@@ -309,6 +309,30 @@ func settle_quiet_day() -> float:
 		gs.log_activity("A day nobody had to hear about. Heat -%.2f." % shed, GREEN)
 	return shed
 
+## HEAT-D1 (0.3.0): the floor under the rule above. `settle_quiet_day` answers
+## "did tonight generate anything" and sheds nothing the moment it did — which
+## is correct for what IT measures, and is also why an every-day criminal
+## profile (boost and stickup worked daily, at the parity economy profiles'
+## own intensity) asymptoted at the ceiling with no way back down short of an
+## arrest or a lucky street stop: a day that works the street is a day that
+## generates SOMETHING, always, so the quiet-day rule never once fired for it
+## across a measured 30-day run.
+##
+## This sheds a small amount EVERY night, loud or quiet, unconditionally — the
+## property the ruling asks for ("Heat must asymptote below HOT's ceiling
+## under sustained ordinary play") needs a floor under every night, not a
+## bigger reward for the nights that were already the easy case. It runs
+## ALONGSIDE `settle_quiet_day`, never instead of it: a quiet night sheds this
+## amount PLUS its own (now larger) quiet bonus, so "a genuinely quiet day
+## still sheds visibly more than an active one" keeps holding by construction
+## rather than by coincidence.
+##
+## Returns the relief that landed, same contract as `settle_quiet_day`.
+func settle_active_decay() -> float:
+	if float(gs.heat) <= 0.0:
+		return 0.0
+	return -_commit(-float(RULES.HEAT_ACTIVE_DECAY))
+
 ## The street stop. One keyed roll a night, above the floor only.
 ##
 ## Takes DIRTY cash and only dirty cash — clean money is documented money, and a

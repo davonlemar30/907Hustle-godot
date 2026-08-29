@@ -750,6 +750,106 @@ Same Slice-0-before-the-code discipline as D-7 through D-12: `stickup.gd`'s
 new adapter and `consequence_rules.gd`'s new tables already depend on every
 row above, so the ruling is recorded where the dependency was created.
 
+## D-14 — Heat can breathe
+
+**Decided** 2026-08-28 · **Ships in** `fix/heat-active-decay` (0.3.0 PR B) ·
+**Source:** `BUILD_ANSWER_FOR_IT_PROMPT.md`
+
+### The question
+
+Two related findings, both already on record before this build:
+
+1. Heat had no way down under ordinary criminal play. The only decay was the
+   quiet-day rule (`heat.gd::settle_quiet_day`), which sheds nothing on any
+   day that generated Heat at all — and a player working boost and stickup
+   daily generates Heat every day by definition, so the rule never once fired
+   for that profile across a measured 30-day run. Heat asymptoted at the
+   ceiling (15) with no way back down short of an arrest or a lucky street
+   stop (`86bbjk6jy`).
+2. Boost's Run/Failure row arrested unconditionally at tier 3, regardless of
+   Heat — an OR-clause (`consequence_rules.gd:248`, pre-fix) rather than a
+   Heat-conditional gate (`86bbjk6kk`, filed as a possible defect and
+   escalated as a ruling instead — see that entry above).
+
+### The rulings
+
+| ID | Ruling |
+|---|---|
+| HEAT-D1 | The property, not a constant: an every-day criminal profile (daily boost + stickup, at the parity economy profiles' own intensity) must be able to return below the tier-1 stickup gate (12.0) — Heat must asymptote below the BURNING band's ceiling under sustained ordinary play, and a genuinely quiet day must still shed visibly more than an active one. Implement the smallest mechanism that achieves it, measured through the parity economy profiles, asserted as a corridor check (`86bbjxth6`'s first real arm). Relief paths (arrest relief, street stop) keep bypassing gain multipliers — TI-003 regression #15 stands. |
+| HEAT-D2 | No unconditional arrests anywhere (ENC-D1's principle, applied to odds): drop the `RUN_FAILURE_ARREST_TIER` OR-clause; Run's failure arrest at every Boost tier becomes Heat-conditional, tier scaling the threshold rather than bypassing it. Closes `86bbjk6kk`. |
+
+### Implementation choices this session made, flagged as choices
+
+1. **The second candidate from HEAT-D1's own list, not the first.** The
+   ruling named two shapes: "partial decay on active days scaled inversely by
+   the day's generated Heat" or "a raised quiet-day shed plus a small
+   unconditional floor decay." The second is the flatter, simpler shape — no
+   new formula relating decay to a day's own Heat total — and was implemented
+   as two constants and one new function, `HeatSystem.settle_active_decay`,
+   called alongside (never instead of) the existing `settle_quiet_day` from
+   the same declared `"heat_decay"` ROLLOVER step. No new `ROLLOVER_ORDER`
+   entry: both are Heat's own nightly bookkeeping, settling at the same point
+   in the lifecycle.
+2. **`HEAT_QUIET_DECAY` raised 0.75 → 1.5; `HEAT_ACTIVE_DECAY` authored at
+   2.0, new.** Measured, not guessed: 0.35 and 1.0 both left the every-day
+   profile's mean ending Heat above the 12.0 gate (13.775 and 12.8
+   respectively, across 4 seeds); 1.5 landed the mean just past the gate
+   (12.05) with one seed still over it (13.5); only 2.0 put every one of 4
+   seeds comfortably under, with the worst seed at 11.0. Chosen for a real
+   margin instead of a number that happens to clear the gate on average.
+3. **A new economy profile, `everyday_criminal`.** Neither `stickup` nor
+   `boost` alone is "daily boost + stickup" as HEAT-D1's own parenthetical
+   names it — each works one surface, and whichever surface's own cap is not
+   binding on a given day still leaves slots the profile spends elsewhere.
+   The new profile tries stickup first every slot and falls through to boost
+   when stickup is blocked, which is "whatever criminal action is available,
+   every slot" read literally. Its own corridor is a plain report (0-20% of
+   the day job), the same shape `stickup`/`boost` already use; the property
+   this build actually cares about is a direct assertion on `final_heat`
+   (Heat where the run actually landed at day 30) against the live gate
+   constant, not a corridor.
+4. **A disclosed side effect: `hustler` and `arbitrage`'s own corridors
+   moved, and were widened rather than fought.** Heat is one shared meter —
+   `CARRY_STOP_PER_HEAT` prices a carry trip's risk off the exact same number
+   stickup and boost were measured against, and both trading profiles already
+   ran hot before this build (peak Heat 15.0 / 13.2). Less standing Heat means
+   fewer carry stops and a materially better courier number: measured 942%
+   (was corridor 600-850%) and 259% (was 60-110%), corridors widened to
+   800-1100% and 180-320%. This was not HEAT-D1's target and is not a second
+   balance change smuggled into this PR — retuning `CARRY_STOP_PER_HEAT`
+   itself to claw the old ceiling back, if that is even wanted, is a separate
+   decision for whoever owns the trading economy next.
+5. **`RUN_FAILURE_ARREST_HEAT` changed from a flat `6.0` to a tier-keyed
+   table, `{1: 9.0, 2: 7.5, 3: 6.0}`.** Tier 3 keeps the old number as its own
+   (lowest, easiest-to-trigger) gate rather than moving it — the one row that
+   already shipped and was measured; tiers 1 and 2 get progressively higher
+   gates, the same shape and spacing `STICK_FAILURE_ARREST_HEAT` already
+   uses for Stick. `ARREST_RISK_TARGET` and its screen copy were removed
+   outright as dead code: nothing can return that code any more, since there
+   is no tier left that arrests independently of Heat.
+
+### Measured results (4 seeds each; suite: `_check_economy_profiles`)
+
+| Profile | Metric | Before | After |
+|---|---|---|---|
+| `everyday_criminal` (new) | mean ending Heat | 14.113 (all 4 seeds above the 12.0 gate: 13.0 / 14.6 / 14.25 / 14.6) | 10.500 (all 4 seeds below: 11.0 / 10.0 / 10.4 / 10.6) |
+| `stickup` (solo) | mean ending Heat · arrests (sum, 4 seeds) | 11.025 · 31 | 10.375 · 23 |
+| `boost` (solo) | mean ending Heat · peak Heat (per seed) | 0.188 · 15.0 / 15.0 / 1.6 / 15.0 | 0.000 · 8.2 / 7.45 / 0.9 / 11.7 |
+| `hustler` | % of day job | ~730-850% (old corridor) | 942% (measured) |
+| `arbitrage` | % of day job | ~60-110% (old corridor) | 259% (measured) |
+
+Boost's own Heat trajectory improved sharply even though it was not this
+ruling's primary target — the unconditional floor decay reaches every
+Heat-generating surface alike, which is also exactly why the trading
+corridors above moved.
+
+### Why this PR carries this entry rather than a later PR
+
+Same Slice-0-before-the-code discipline as D-7 through D-13: `heat.gd`'s new
+function, `day_lifecycle.gd`'s step, and `consequence_rules.gd`'s tier-keyed
+table all already depend on every row above, so the ruling is recorded where
+the dependency was created.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated
@@ -800,7 +900,13 @@ at. Both need a human answer.
 
 ### `86bbjk6kk` — Boost tier-3 Run failure arrests unconditionally
 
-**Status: open. Not a defect as filed.**
+**Status: closed — see D-14 (HEAT-D2), 0.3.0.** The OR-clause this entry
+describes is gone: tier now scales the arrest threshold (`RUN_FAILURE_ARREST_
+HEAT`, tier-keyed) instead of bypassing it at tier 3. Left below, unedited,
+as the record of what the defect actually was and why it needed a ruling
+rather than a silent fix.
+
+**Status when filed: open. Not a defect as filed.**
 
 It does arrest unconditionally at tier 3, and it does so because
 `data/consequence_rules.gd:132-135` transcribes FS-003 §5:

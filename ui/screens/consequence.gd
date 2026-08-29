@@ -212,6 +212,8 @@ func _title(summary: Dictionary) -> String:
 			return "THEY WERE WAITING"
 		_engine.KIND_WANDER:
 			return "SOMEBODY STOPS YOU"
+		_engine.KIND_TRAVEL_STOP:
+			return "CHECKPOINT"
 		_engine.KIND_CONFRONTATION:
 			# The room's own authored name — "THE GAME", "THE NIGHT TILL" —
 			# because a confrontation is a place the player chose to walk into,
@@ -243,6 +245,12 @@ func _context_line(summary: Dictionary) -> String:
 			var who := str(summary.get("source_opponent", ""))
 			if not who.is_empty():
 				parts.append(who.to_upper())
+		_engine.KIND_TRAVEL_STOP:
+			# No target-name append here: `source_target_name` is the
+			# destination's own display name, which the universal district
+			# suffix below already supplies (the chain's `district_id` IS the
+			# destination) -- appending it twice would just repeat the word.
+			parts.append("EN ROUTE")
 		_engine.KIND_CONFRONTATION:
 			# Named by family so the Lift and the corner scripts inherit this
 			# line the day they arrive on the same kind.
@@ -276,6 +284,8 @@ func _situation_body(summary: Dictionary) -> String:
 			# so this is the body of the moment rather than a second retelling
 			# of how it started.
 			return "You went out to see what was around. This is what was around."
+		_engine.KIND_TRAVEL_STOP:
+			return "Lights come up behind you before you clear the line. This is the toll for moving while they're watching."
 		_engine.KIND_CONFRONTATION:
 			# The situation IS the current beat — the loop re-authors this line
 			# every round, which is what "each round is a new situation" means

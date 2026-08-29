@@ -296,7 +296,13 @@ func _has_overdue_debt() -> bool:
 ## flat `GATE_OVERDUE_STEPS`, per STR-D2's own framing of the three
 ## conditions (elevated Heat, HOT pressure, overdue debt) as independent
 ## alternatives rather than one blended score.
-func _attention_steps() -> int:
+##
+## Public (0.5.0 PR C): Travel's own checkpoint gate reads this exact
+## formula rather than a second one — STR-D4 asks for "the same interruption
+## machinery," not a travel-flavored reinvention of it. Wander stays the
+## formula's one author; Travel calls it the same way it already calls
+## Heat's own `band()`.
+func attention_steps() -> int:
 	var steps := 0
 	var heat: Object = gm.system("heat") if gm != null else null
 	if heat != null:
@@ -342,7 +348,7 @@ func _attention_steps() -> int:
 ## the moment something becomes eligible again, rather than the wait
 ## resetting for free every time the pool happens to run dry.
 func _roll_gate() -> Dictionary:
-	var steps: int = _attention_steps()
+	var steps: int = attention_steps()
 	var cap: int = EVENTS.quiet_streak_cap(steps)
 	var forced: bool = cap >= 0 and int(gs.wander_quiet_streak) >= cap
 	var pool: Array = eligible_encounters()
@@ -978,7 +984,7 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	if bool(effects.get("escalate", false)):
 		return _open_shakedown_room(chain, choice_id)
 
-	var applied: Dictionary = _apply_effects(effects, choice_id)
+	var applied: Dictionary = LOOP.apply_effects(gs, gm, effects, choice_id, "wander_encounter")
 	_feed_line_for(choice_id, tier)
 
 	var result := {
@@ -1022,58 +1028,6 @@ func _stash_it_tier(chain: Dictionary, choice_id: String) -> String:
 		"%s:%s" % [str(source.get("source_rng_key", "")), choice_id])
 	return "clean" if roll < chance else "failure"
 
-## Apply one authored effects row through the owners that actually hold
-## health, cash and cargo — STR-D3's own rule that no encounter system owns
-## money, health or time itself. Returns what actually moved, since a
-## fraction of zero cargo or a Tone-absorbed hit is not what was authored.
-func _apply_effects(effects: Dictionary, choice_id: String) -> Dictionary:
-	# `_lose_cargo` rounds UP so a bag with anything in it always loses
-	# something once called — correct for an authored fraction, wrong for an
-	# authored ZERO. A clean tier's own "goods_fraction: 0.0" means no loss
-	# was authored at all, so the call is skipped rather than made and
-	# floored to 1 anyway.
-	var goods_fraction: float = float(effects.get("goods_fraction", 0.0))
-	var lost_goods: int = _lose_cargo(goods_fraction) if goods_fraction > 0.0 else 0
-	var lost_cash: int = 0
-	var wallet: Object = gm.system("wallet") if gm != null else null
-	if wallet != null:
-		var fraction: float = float(effects.get("cash_fraction", 0.0))
-		var flat: int = int(effects.get("cash_flat", 0))
-		# The luggage rule reads DIRTY in-hand cash only (STR-D3, the
-		# street-stop precedent: clean, documented money is not street-
-		# visible) — capped at the dirty balance before spending, the same
-		# discipline `retaliation.gd`'s own cash loss already applies, so
-		# `ROUTINE_DIRTY_FIRST` can never actually reach clean underneath it.
-		var owed: int = flat if flat > 0 \
-			else int(round(float(wallet.dirty_balance()) * fraction))
-		lost_cash = mini(owed, int(wallet.dirty_balance()))
-		if lost_cash > 0:
-			wallet.spend(lost_cash, wallet.ROUTINE_DIRTY_FIRST,
-				{"source_id": "wander_encounter:%s" % choice_id})
-	var hurt: int = int(effects.get("health", 0))
-	if hurt > 0:
-		var crew: Object = gm.system("crew") if gm != null else null
-		if crew != null:
-			hurt = int(crew.absorbed_damage(hurt))
-		gs.health = clampi(gs.health - hurt, 0, gs.health_max)
-	var heat_gain: float = float(effects.get("heat", 0.0))
-	if heat_gain > 0.0:
-		heat_gain = _apply_heat(heat_gain)
-	return {"goods": lost_goods, "cash": lost_cash, "health": hurt, "heat": heat_gain}
-
-## Heat through the one owner, same as every other criminal-adjacent gain —
-## STASH_IT's own +0.5-on-failure is the only nonzero Heat any wander
-## encounter has ever authored. `FAMILY_NONE`: getting watched hiding a bag
-## from a cop is not a Boost, Stick or Market action, and inventing a fifth
-## family for one authored value would be a family with exactly one source
-## forever.
-func _apply_heat(amount: float) -> float:
-	var heat: Object = gm.system("heat") if gm != null else null
-	if heat == null:
-		return 0.0
-	return heat.apply_gain(amount, heat.FAMILY_NONE,
-		gs.current_district_id, {"source_id": "wander_encounter"})
-
 func _feed_line_for(choice_id: String, tier: String) -> void:
 	match tier:
 		"deterministic":
@@ -1098,15 +1052,15 @@ func _resolve_legacy(chain: Dictionary, choice_id: String, tier: String) -> Dict
 	var hurt: int = 0
 	match tier:
 		"deterministic":
-			lost = _lose_cargo(1.0)
+			lost = LOOP.lose_cargo(gs, 1.0)
 		"messy":
 			hurt = 4
 		"failure":
-			lost = _lose_cargo(0.5)
+			lost = LOOP.lose_cargo(gs, 0.5)
 		"clean":
 			pass
 		_:
-			lost = _lose_cargo(1.0)
+			lost = LOOP.lose_cargo(gs, 1.0)
 			hurt = 12
 	if hurt > 0:
 		var crew: Object = gm.system("crew") if gm != null else null
@@ -1225,10 +1179,10 @@ func _shakedown_room_round(chain: Dictionary, choice_id: String) -> Dictionary:
 
 ## The room's own exit, on every road: deterministic give-up, a clean escape,
 ## or the fight finally going badly (messy from the round cap, or an
-## outright failure/catastrophic roll). Cash and cargo route through the
-## exact same owners `_apply_effects` uses — a room is still a wander
-## encounter underneath, STR-D3's rule does not stop applying because it
-## took three rounds instead of one.
+## outright failure/catastrophic roll). Cash and cargo route through
+## `LOOP.apply_effects` — a room is still a wander encounter underneath,
+## STR-D3's rule does not stop applying because it took three rounds instead
+## of one.
 func _shakedown_room_exit(chain: Dictionary, loop: Dictionary, exit_tier: String,
 		banked_health: int) -> Dictionary:
 	var engine: Object = gm.system("consequence")
@@ -1248,7 +1202,7 @@ func _shakedown_room_exit(chain: Dictionary, loop: Dictionary, exit_tier: String
 			effects = {"health": banked_health + 10, "cash_fraction": 1.0, "goods_fraction": 1.0}
 			gs.log_activity("It goes badly, all the way through.", AMBER)
 
-	var applied: Dictionary = _apply_effects(effects, "stand")
+	var applied: Dictionary = LOOP.apply_effects(gs, gm, effects, "stand", "wander_encounter")
 	var result := {
 		"choice_id": "stand", "tier": exit_tier, "arrested": false, "banned": false,
 		"cash": -int(applied["cash"]), "goods": -int(applied["goods"]),
@@ -1262,20 +1216,3 @@ func _shakedown_room_exit(chain: Dictionary, loop: Dictionary, exit_tier: String
 	chain["decision"] = decision
 	engine.advance_stage(engine.STAGE_RESULT)
 	return {"ok": true, "tier": exit_tier, "arrested": false}
-
-## Take a fraction of what is being carried, rounded up so a bag with anything
-## in it always loses something.
-func _lose_cargo(fraction: float) -> int:
-	var taken: int = 0
-	for product_id in gs.inventory.keys():
-		var held: int = int(gs.inventory[product_id])
-		if held <= 0:
-			continue
-		var lose: int = held if fraction >= 1.0 else maxi(1, int(ceil(float(held) * fraction)))
-		lose = mini(lose, held)
-		gs.inventory[product_id] = held - lose
-		taken += lose
-	for product_id in gs.inventory.keys():
-		if int(gs.inventory[product_id]) <= 0:
-			gs.inventory.erase(product_id)
-	return taken

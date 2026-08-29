@@ -151,3 +151,80 @@ static func tip_modifiers_for(gs: Node, target_id: String, tier: int) -> Diction
 				mods["extra_left"] = int(SCRIPTS.TIP_MODIFIERS["trap"]["extra_left"])
 				mods["no_free_out_round_one"] = true
 	return mods
+
+# --- the luggage rule (STR-D3) ------------------------------------------------
+#
+# What an authored `effects` table (`cash_fraction`/`cash_flat`,
+# `goods_fraction`, `health`, `heat`) actually costs the player, moved here
+# once Travel's own checkpoint (0.5.0 PR C) became this shape's second
+# author, not just its second reader -- exactly the drift two adapters
+# sharing one rule are supposed to be protected from. Distinct from
+# `economy.gd`'s own `_seize_fraction` (the older, silent carry-stop tax,
+# price-ordered and unauthored): that mechanic predates this one and is
+# untouched here, on purpose -- unifying the two would be a bigger, unrelated
+# refactor this build never asked for.
+
+## Take a fraction of held product, floored at 1 unit for any authored
+## fraction above zero. The floor is correct for an authored fraction; it is
+## wrong for an authored zero, which is why every caller here skips the call
+## entirely rather than letting "no loss" round up to "lose one anyway".
+static func lose_cargo(gs: Node, fraction: float) -> int:
+	var taken: int = 0
+	for product_id in gs.inventory.keys():
+		var held: int = int(gs.inventory[product_id])
+		if held <= 0:
+			continue
+		var lose: int = held if fraction >= 1.0 else maxi(1, int(ceil(float(held) * fraction)))
+		lose = mini(lose, held)
+		gs.inventory[product_id] = held - lose
+		taken += lose
+	for product_id in gs.inventory.keys():
+		if int(gs.inventory[product_id]) <= 0:
+			gs.inventory.erase(product_id)
+	return taken
+
+## Heat through the one owner, same as every other criminal-adjacent gain.
+## `source_tag` names the caller for the ledger entry (`"wander_encounter"`,
+## `"travel_stop"`) -- the family stays `FAMILY_NONE` for both: neither a
+## wander encounter nor a checkpoint stop is a Boost/Stick/Market action.
+static func apply_heat(gs: Node, gm: Node, amount: float, source_tag: String) -> float:
+	var heat: Object = gm.system("heat") if gm != null else null
+	if heat == null:
+		return 0.0
+	return heat.apply_gain(amount, heat.FAMILY_NONE, gs.current_district_id,
+		{"source_id": source_tag})
+
+## Apply one resolved choice's authored effects table. `source_tag` prefixes
+## the wallet/heat ledger entries (`"<source_tag>:<choice_id>"` for cash,
+## `source_tag` alone for heat) so two different encounter families never
+## share one receipt line.
+static func apply_effects(gs: Node, gm: Node, effects: Dictionary, choice_id: String,
+		source_tag: String) -> Dictionary:
+	var goods_fraction: float = float(effects.get("goods_fraction", 0.0))
+	var lost_goods: int = lose_cargo(gs, goods_fraction) if goods_fraction > 0.0 else 0
+	var lost_cash: int = 0
+	var wallet: Object = gm.system("wallet") if gm != null else null
+	if wallet != null:
+		var fraction: float = float(effects.get("cash_fraction", 0.0))
+		var flat: int = int(effects.get("cash_flat", 0))
+		# DIRTY in-hand cash only (STR-D3, the street-stop precedent: clean,
+		# documented money is not street-visible) -- capped at the dirty
+		# balance before spending, the same discipline `retaliation.gd`'s own
+		# cash loss already applies, so `ROUTINE_DIRTY_FIRST` can never
+		# actually reach clean underneath it.
+		var owed: int = flat if flat > 0 \
+			else int(round(float(wallet.dirty_balance()) * fraction))
+		lost_cash = mini(owed, int(wallet.dirty_balance()))
+		if lost_cash > 0:
+			wallet.spend(lost_cash, wallet.ROUTINE_DIRTY_FIRST,
+				{"source_id": "%s:%s" % [source_tag, choice_id]})
+	var hurt: int = int(effects.get("health", 0))
+	if hurt > 0:
+		var crew: Object = gm.system("crew") if gm != null else null
+		if crew != null:
+			hurt = int(crew.absorbed_damage(hurt))
+		gs.health = clampi(gs.health - hurt, 0, gs.health_max)
+	var heat_gain: float = float(effects.get("heat", 0.0))
+	if heat_gain > 0.0:
+		heat_gain = apply_heat(gs, gm, heat_gain, source_tag)
+	return {"goods": lost_goods, "cash": lost_cash, "health": hurt, "heat": heat_gain}

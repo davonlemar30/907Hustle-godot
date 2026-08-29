@@ -1389,6 +1389,121 @@ room's own chassis use, and the shared UI fix are all load-bearing for this
 PR's own new content, so the ruling is recorded where the dependency was
 created.
 
+## D-22 — The Street Answers Back: the checkpoint
+
+**Decided** 2026-08-29 · **Ships in** `build/travel-checkpoint` (0.5.0 PR C) ·
+**Source:** `BUILD_STREET_ANSWERS_PROMPT.md`
+
+### The question
+
+PR A's gate and PR B's roster both answer "you're standing still, doing
+nothing" — the wander button. STR-D4 is the other half of the owner's
+complaint: crossing districts while hot or holding product was completely
+free of interactive risk. `economy.gd::resolve_carry` already taxes a hot
+carry silently on arrival, but silent and automatic is not what DL2's
+"airport security" beat asks for — a real decision, the same as every other
+interruption this build ships.
+
+### The ruling
+
+| ID | Ruling |
+|---|---|
+| STR-D4 | **Travel answers too.** `TravelSystem.handle("travel", ...)` rolls the same interruption gate a wander does — `WanderSystem.attention_steps()` (promoted public this PR) and `data/wander_events.gd::gate_chance()`, read rather than re-derived, per the ruling's own words: "the same interruption gate." Its own authored script (`data/travel_events.gd::CHECKPOINT`, a police-flavored patrol stop: TALK/RUN IT/HAND OVER), its own seeded key (`"%d:%d:travel:%s:gate"`, day and slot leading, the destination trailing), its own `KIND_TRAVEL_STOP` chain kind, and `return_route: "STREET"` — travel always originates from the Street screen (`ui/screens/street.gd`'s only `dispatch("travel", ...)` call site), so Continue lands the player back where the trip started, never generically at Home. |
+
+### Real bugs caught this PR
+
+1. **A missing local color constant.** `travel.gd` is a new author of
+   `gs.log_activity(...)` calls and never had its own `AMBER` — every other
+   system that logs activity (`wander.gd`, `stickup.gd`, `dre_collector.gd`)
+   independently declares the same `Color(0.882, 0.651, 0.227)` locally
+   rather than sharing one constant, an existing house pattern this file
+   simply hadn't needed yet. Caught immediately via a filesystem scan and
+   editor log check, before it ever reached a suite run: "Parse Error:
+   Identifier 'AMBER' not declared in the current scope."
+2. **The checkpoint's own context line repeated the destination's name
+   twice.** `_context_line()`'s per-kind match arm named the destination
+   explicitly (`"EN ROUTE  ·  DOWNTOWN"`), not realizing the function ALSO
+   appends the chain's own `district_id` as a universal trailing suffix for
+   every kind — since a checkpoint's `district_id` IS the destination, the
+   result rendered `"EN ROUTE  ·  DOWNTOWN  ·  DOWNTOWN"`. Suite coverage
+   cannot see this class of bug (it is a string-content correctness issue,
+   not a state assertion), and screenshot inspection alone did not catch it
+   either on first read — it took reading the actual UI element text via
+   `get_ui_elements` against the live chain to notice the repeated word.
+   Fixed by dropping the per-kind arm's own append and trusting the
+   universal suffix, matching `KIND_STICK_BOOKING`'s own minimal one-part
+   pattern (no target name, because its own suffix already supplies enough
+   context).
+
+### Implementation choices this session made, flagged as choices
+
+1. **The checkpoint and the older carry-stop tax are mutually exclusive per
+   trip.** `resolve_carry` (`economy.gd`) already taxes a hot carry silently
+   on arrival — STR-D4 does not say to remove it, and it stays for any trip
+   the new gate leaves quiet. But a fired checkpoint already IS the street
+   noticing the player in transit; also running the older silent tax on the
+   same trip would charge the same event twice under two different names.
+   `TravelSystem.handle()` skips `resolve_carry` exactly when the
+   checkpoint opens, nothing else. This is a judgment call the build prompt
+   does not spell out explicitly — recorded here per the Divergence
+   Protocol rather than left implicit in the diff.
+2. **No travel-specific quiet-streak guarantee.** STR-D2's streak cap is a
+   Wander-specific answer to "the walk-around button pressed indefinitely";
+   STR-D4 asks only for "the same interruption gate" (the chance formula),
+   not a second forced-open guarantee. Travel already costs a fare and a
+   full slot every time it is used, which is its own natural throttle —
+   inventing a streak mechanic STR-D4 never asked for would be scope the
+   ruling did not request. `attention_steps()`/`gate_chance()` alone govern
+   the checkpoint's frequency.
+3. **`WanderSystem.attention_steps()` made public rather than duplicated.**
+   The alternative — a travel-flavored copy of the same Heat/Pressure/
+   Curtis/debt aggregation — is exactly the kind of drift this build's own
+   `ConfrontationLoop` header warns against ("two adapters cannot drift on
+   the rules that make the loop one machine"), applied here to a
+   read-only signal formula instead of round bookkeeping. Wander stays the
+   formula's one author; Travel reads it the same way it already reads
+   Heat's own `band()`.
+4. **`apply_effects`/`apply_heat`/`lose_cargo` moved from `wander.gd` into
+   `ConfrontationLoop` as shared static helpers.** PR B authored these as
+   Wander-private; PR C is the second real caller of the exact same
+   authored-effects-table shape (`cash_fraction`/`cash_flat`/
+   `goods_fraction`/`health`/`heat`), which is the point at which "shared
+   later" becomes "shared now" rather than a premature abstraction. Every
+   call site updated in the same commit; behavior is unchanged (confirmed
+   by parity staying at the same check count for Wander's own existing
+   roster arms, all still passing).
+5. **The checkpoint's effects table costs product and Heat/health, never
+   cash — the same distinction `wander_stopped_on_foot` already draws
+   against `wander_shakedown`'s armed robbery.** A patrol has no standing
+   reason to seize money that is not itself illegal to hold; only what is
+   actually contraband is on the table. HAND OVER accordingly costs goods
+   only (no Heat, no health) — matching every existing deterministic
+   safe-out in this codebase, all of which cost assets and nothing else —
+   which is also why `choice_guarantee` needed no override: the fallback
+   text ("no injury, no Heat, no arrest") stays true without one.
+6. **The `arbitrage` economy corridor's floor moved from 180% to 140%,
+   measured rather than tuned to hold the old number.** Arbitrage is the
+   one profile built entirely out of district crossings, so it is the
+   profile most exposed to a new per-crossing risk by construction.
+   Measured at 158% on this PR's own baseline; the floor was lowered to
+   sit under that measurement rather than adjusting the gate's chance
+   table or the luggage rule's own effects to claw the old ceiling back —
+   MEAS-D1 asks for honest measurement, not a target defended after the
+   fact. 158% still clears the balance guard's own bar (materially
+   riskier, not priced out of the strategy).
+7. **Tests are homed in `tests/parity/parity_runner.gd` again**, under a
+   new "0.5.0 PR C — The checkpoint" section, for the same reason D-20 and
+   D-21 both gave. `MIN_CHECKS` moves to 12720; full suite confirmed PASS
+   at that count with a clean scan for engine/script errors, and
+   territory, save-validation, and screen-smoke all reconfirmed alongside
+   it.
+
+### Why this PR carries this entry rather than a later PR
+
+Same rule as every entry above: the checkpoint's trigger site, its kind, and
+the carry-stop exclusion are all load-bearing for this PR's own new code, so
+the ruling is recorded where the dependency was created.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

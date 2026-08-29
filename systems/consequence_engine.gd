@@ -107,9 +107,18 @@ const KIND_CONFRONTATION := "confrontation"
 ## has. Rooms (tier 2-3) are untouched — ENC-D2 — because their own stages
 ## already are the decision; this kind exists only for the single-roll path.
 const KIND_STICK_CAUGHT := "stick_caught"
+## The seventh kind (0.5.0 PR C, STR-D4): the same interruption the street
+## already runs on a wander, invoked on district travel instead — "the DL2
+## airport-security moment, at ground level." Its own kind rather than
+## `KIND_WANDER` because the fiction is different (caught mid-transit, not
+## caught wandering) and because `travel.gd`, not Wander, is the system that
+## opens and resolves it — matching the doc comment above this constant's
+## siblings: a fourth (and fifth, sixth...) kind costs one constant and one
+## `resolve_consequence` method on the system that opens it, nothing more.
+const KIND_TRAVEL_STOP := "travel_stop"
 const KNOWN_KINDS: Array[String] = [
 	KIND_BOOST_CAUGHT, KIND_STICK_BOOKING, KIND_RETALIATION, KIND_WANDER,
-	KIND_CONFRONTATION, KIND_STICK_CAUGHT,
+	KIND_CONFRONTATION, KIND_STICK_CAUGHT, KIND_TRAVEL_STOP,
 ]
 
 var gs: Node

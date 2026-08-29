@@ -471,8 +471,8 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	#    instead of starting from zero on every existing save.
 	var pressure: float = rules.pressure_gain(choice_id, tier_name)
 	if pressure > 0.0 and engine.record_receipt(cause_id, "boost_caught:pressure"):
-		_add_district_pressure(str(chain.get("district_id", "")), "boost", pressure, cause_id)
-		result["pressure"] = pressure
+		result["pressure"] = _add_district_pressure(
+			str(chain.get("district_id", "")), "boost", pressure, cause_id)
 
 	# 7. The consequence's own observation, once. Reuses the resolver's authored
 	#    footprint for the shape that was rolled, which is what FS-003 means by
@@ -656,9 +656,9 @@ func _resolve_bribe(chain: Dictionary, source: Dictionary, cause_id: String,
 			gs.boost_bribes_used.append(target_id)
 		result["heat"] = _heat().apply_gain(float(bribe["heat"]), _heat().FAMILY_BOOST,
 			str(chain.get("district_id", "")), {"source_id": "boost_caught_bribe"})
-		_add_district_pressure(str(chain.get("district_id", "")), "boost",
+		result["pressure"] = _add_district_pressure(
+			str(chain.get("district_id", "")), "boost",
 			float(bribe["pressure"]), cause_id)
-		result["pressure"] = float(bribe["pressure"])
 		var resolver_obs: Object = gm.system("outcome_resolver")
 		resolver_obs.broadcast_outcome(str(bribe["observation_shape"]),
 			str(bribe["observation_tier"]), str(chain.get("district_id", "")))
@@ -689,9 +689,9 @@ func _resolve_hand_it_back(chain: Dictionary, source: Dictionary,
 	}
 
 	if engine.record_receipt(cause_id, "boost_caught:hand_it_back"):
-		_add_district_pressure(str(chain.get("district_id", "")), "boost",
+		result["pressure"] = _add_district_pressure(
+			str(chain.get("district_id", "")), "boost",
 			RULES.YIELD_PRESSURE_GAIN, cause_id)
-		result["pressure"] = RULES.YIELD_PRESSURE_GAIN
 
 	var decision: Dictionary = chain.get("decision", {})
 	decision["resolved_tier"] = "handed_back"
@@ -739,11 +739,17 @@ func choice_blocked(choice_id: String) -> String:
 ## Boost's call sites read the same as they did, and so the bleed those gains
 ## schedule is the engine's business rather than Boost's.
 func _add_district_pressure(district_id: String, family: String, amount: float,
-		cause_id: String = "") -> void:
+		cause_id: String = "") -> float:
 	var engine: Object = gm.system("consequence") if gm != null else null
 	if engine == null or district_id.is_empty():
-		return
-	engine.add_pressure(district_id, family, amount, cause_id)
+		return 0.0
+	# PRESS-D1 (0.4.0 PR D): every Boost gain routes through the per-family
+	# daily cap now, Market's own precedent -- every call site above already
+	# passes "boost" as `family`, so this one wrapper covers all four
+	# without touching them individually. Returns what actually landed
+	# (post-cap) so a call site that reports the gain can report the truth.
+	return engine.add_capped_pressure(district_id, family, amount,
+		_rules().PRESSURE_BOOST_DAILY_CAP, cause_id)
 
 ## The gain-side half, forwarded the same way and for the same reason. Sits
 ## beside `_add_district_pressure` so a reader sees both sides of the ledger in

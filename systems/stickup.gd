@@ -362,9 +362,14 @@ func _run(target_id: String) -> Dictionary:
 	var rules_pressure: RefCounted = RULES.new()
 	var pressure_gain: float = float(rules_pressure.PRESSURE_BY_TIER.get(tier, 0.0))
 	if pressure_gain > 0.0 and engine_for_pressure != null:
-		engine_for_pressure.add_pressure(gs.current_district_id, "stick", pressure_gain,
+		# PRESS-D1 (0.4.0 PR D): capped the same way Boost's own gains are,
+		# Market's precedent for both. `result["pressure"]` reports what
+		# actually landed (post-cap), not the authored tier amount, so a
+		# capped day's own reporting stays honest about it.
+		result["pressure"] = engine_for_pressure.add_capped_pressure(
+			gs.current_district_id, "stick", pressure_gain,
+			rules_pressure.PRESSURE_STICK_DAILY_CAP,
 			"stickup:%s:%d:%d" % [target_id, gs.day, gs.time_slots_today])
-		result["pressure"] = pressure_gain
 
 	# v0.1.0's HOT escape lever, read off the SAME resolved tier as the gain
 	# above so the two can never disagree about what just happened. Only `clean`
@@ -607,11 +612,13 @@ func _resolve_caught(chain: Dictionary, choice_id: String) -> Dictionary:
 		result["heat"] = _apply_heat(raw_heat)
 
 	# 3. District Pressure, once — the same "stick" family ledger the source
-	#    robbery itself already fed.
+	#    robbery itself already fed, and the same PRESS-D1 daily cap: this
+	#    encounter's own gain and the robbery's are two draws against one
+	#    per-district-per-day room, not two separate budgets.
 	var pressure: float = rules.stick_caught_pressure_gain(choice_id, tier_name)
 	if pressure > 0.0 and engine.record_receipt(cause_id, "stick_caught:pressure"):
-		engine.add_pressure(gs.current_district_id, "stick", pressure, cause_id)
-		result["pressure"] = pressure
+		result["pressure"] = engine.add_capped_pressure(gs.current_district_id,
+			"stick", pressure, rules.PRESSURE_STICK_DAILY_CAP, cause_id)
 
 	# 4. The resolver's own footprint for the shape that was rolled. Yield
 	#    rolls nothing, so it carries none.
@@ -1127,11 +1134,14 @@ func _room_exit(chain: Dictionary, loop: Dictionary, t: Dictionary,
 			credited if credited > 0 else null)
 
 	# 6. District Pressure by the same tiered gains, and the clean credit when
-	# it was clean.
+	# it was clean. PRESS-D1: the same per-district-per-day "stick" room this
+	# tier's other two gain sources draw from, not a separate budget.
 	var rules: RefCounted = RULES.new()
 	var pressure_gain: float = float(rules.PRESSURE_BY_TIER.get(tier_equiv, 0.0))
+	var pressure_applied: float = 0.0
 	if pressure_gain > 0.0 and engine.record_receipt(cause_id, "room:pressure"):
-		engine.add_pressure(gs.current_district_id, "stick", pressure_gain, cause_id)
+		pressure_applied = engine.add_capped_pressure(gs.current_district_id,
+			"stick", pressure_gain, rules.PRESSURE_STICK_DAILY_CAP, cause_id)
 	if engine.record_receipt(cause_id, "room:clean_credit"):
 		engine.credit_clean_outcome(gs.current_district_id, "stick", tier_equiv)
 
@@ -1167,7 +1177,7 @@ func _room_exit(chain: Dictionary, loop: Dictionary, t: Dictionary,
 		"cash": credited,
 		"health": -damage,
 		"heat": applied,
-		"pressure": pressure_gain,
+		"pressure": pressure_applied,
 		"arrested": arrested,
 		"banked": banked,
 		"target_name": str(t["name"]),

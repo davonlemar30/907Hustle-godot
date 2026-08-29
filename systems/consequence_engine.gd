@@ -1079,6 +1079,34 @@ func add_market_pressure(district_id: String) -> float:
 	row["market_gain_today"] = used + amount
 	return applied
 
+## PRESS-D1 (0.4.0 PR D): the same per-family daily cap `add_market_pressure`
+## above pioneered, generalised for Boost and Stick instead of duplicated —
+## Market's own function and its own cap stay untouched (PRESS-D2: "nothing
+## else in the Pressure system moves"), this is purely additive. Unlike a
+## market sale, a Boost/Stick gain already carries its own `cause_id` from
+## the caller (the lift or the robbery that caused it), so the day-tracked
+## row field is keyed by FAMILY rather than assumed to be Market's alone —
+## `pressure_row(district_id, family)` already returns a row scoped to that
+## family, so `"capped_gain_day"/"capped_gain_today"` cannot collide between
+## families sharing a district the way a flat field name would risk.
+func add_capped_pressure(district_id: String, family: String, amount: float,
+		daily_cap: float, cause_id: String = "") -> float:
+	if amount <= 0.0:
+		return 0.0
+	var row: Dictionary = pressure_row(district_id, family)
+	var today: int = int(gs.day)
+	if int(row.get("capped_gain_day", -1)) != today:
+		row["capped_gain_day"] = today
+		row["capped_gain_today"] = 0.0
+	var used: float = float(row.get("capped_gain_today", 0.0))
+	var room: float = daily_cap - used
+	if room <= 0.0:
+		return 0.0
+	var capped_amount: float = minf(amount, room)
+	var applied: float = add_pressure(district_id, family, capped_amount, cause_id)
+	row["capped_gain_today"] = used + capped_amount
+	return applied
+
 ## Queue 50% of a NEW gain into each adjacent district for tomorrow.
 ##
 ## Never the stored score. FS-003 §6 is explicit: "Bleed uses the new gain from

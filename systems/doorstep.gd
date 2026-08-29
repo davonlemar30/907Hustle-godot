@@ -60,6 +60,9 @@ extends RefCounted
 ## choice in `docs/DECISIONS.md`, not left to read as an inconsistency.
 
 const LOOP := preload("res://systems/confrontation_loop.gd")
+## SQ-D9's authored table. The rules for a crew call live in one place and this
+## reads them; it does not restate them.
+const SCRIPTS := preload("res://data/confrontation_scripts.gd")
 
 const GREEN := Color(0.451, 0.722, 0.404)
 const RED := Color(0.827, 0.161, 0.125)
@@ -310,7 +313,8 @@ func _open_enforcement(family: String, visit: Dictionary) -> void:
 	# throwaway stub and lifting it back out is simpler than opening the
 	# real chain first and mutating it after.
 	var stub: Dictionary = _chain_stub()
-	LOOP.present_round(stub, loop, ["fight", "talk", "yield"], ["yield"], shown)
+	var offered: Array = ["fight", "talk", "yield"] + _crew_calls(loop)
+	LOOP.present_round(stub, loop, offered, ["yield"] + _crew_calls(loop), shown)
 	engine.open_chain(engine.KIND_CONFRONTATION, {
 		"district_id": gs.current_district_id,
 		"return_route": "HOME",
@@ -355,6 +359,11 @@ func _room_round(chain: Dictionary, choice_id: String) -> Dictionary:
 	var family := str(source.get("family", ""))
 	var loop: Dictionary = LOOP.loop_of(chain)
 
+	# SQ-D9, answered before the room's own verbs: a call ends the room
+	# wherever it was placed.
+	if SCRIPTS.CREW_CALLS.has(choice_id):
+		return _resolve_crew_call(chain, choice_id)
+
 	if choice_id == "yield":
 		return _room_exit(chain, loop, family, "yield")
 
@@ -391,9 +400,62 @@ func _room_round(chain: Dictionary, choice_id: String) -> Dictionary:
 		"fight": clampf(float(base["fight"]) + ROOM_ROUND_PENALTY * float(round_num + 1), 0.10, 0.95),
 		"talk": clampf(float(base["talk"]) + ROOM_ROUND_PENALTY * float(round_num + 1), 0.10, 0.95),
 	}
-	LOOP.present_round(chain, loop, ["fight", "talk", "yield"], ["yield"], next_shown)
+	var calls: Array = _crew_calls(loop)
+	LOOP.present_round(chain, loop, ["fight", "talk", "yield"] + calls,
+		["yield"] + calls, next_shown)
 	gs.active_consequence = chain
 	return {"ok": true, "tier": "continued"}
+
+# --- SQ-D9: crew calls in the enforcement room -------------------------------
+#
+# The ruling names this room specifically, alongside the general street: three
+# people at your door over a debt is exactly the situation where somebody
+# standing next to you changes the arithmetic. The rules -- who, what
+# resolution, what it costs -- are `CREW_CALLS`' in
+# `data/confrontation_scripts.gd` and are not re-stated here; the availability
+# question is the same one `systems/wander.gd::_crew_call_available` asks, and
+# is asked through that adapter rather than reimplemented, so the two rooms
+# cannot drift on what "he is around" means.
+#
+# Once per room and no verb burned, same as everywhere else.
+
+func _crew_calls(loop: Dictionary) -> Array:
+	if bool(loop.get("crew_called", false)):
+		return []
+	var wander: Object = gm.system("wander") if gm != null else null
+	if wander == null:
+		return []
+	var out: Array = []
+	for call_id in SCRIPTS.CREW_CALLS.keys():
+		if wander._crew_call_available(str(call_id)):
+			out.append(str(call_id))
+	return out
+
+## A call, resolved against the room's own exit table. Tone ends it the way a
+## clean FIGHT does (they leave empty-handed); Deshawn ends it the way YIELD
+## does (the stakes are settled, nobody is hurt) -- which is what
+## `CREW_CALLS`' authored `resolution` says in this room's vocabulary. The
+## debt still closes: a room that ended is a room that ended, and leaving the
+## account exactly as overdue as it was would just re-open the identical
+## visit tomorrow.
+func _resolve_crew_call(chain: Dictionary, call_id: String) -> Dictionary:
+	var call: Dictionary = SCRIPTS.CREW_CALLS[call_id]
+	var loop: Dictionary = LOOP.loop_of(chain)
+	var crew_id := str(call.get("crew_id", ""))
+
+	var record: Dictionary = gs.crew_record(crew_id)
+	record["loyalty"] = maxi(0, int(record.get("loyalty", 0))
+		- int(call.get("loyalty_cost", 1)))
+	gs.crew_records[crew_id] = record
+	if float(call.get("heat", 0.0)) > 0.0:
+		LOOP.apply_heat(gs, gm, float(call["heat"]), "doorstep_enforcement")
+
+	loop["crew_called"] = true
+	var road := "fight_clean" if str(call.get("resolution", "")) == SCRIPTS.RESOLUTION_WON \
+		else "yield"
+	LOOP.append_log(loop, "You made a call. It ended there.")
+	return _room_exit(chain, loop, str((chain.get("source", {}) as Dictionary)
+		.get("family", "")), road)
 
 func _room_round_line(choice_id: String, tier: String, round_num: int) -> String:
 	if tier == "clean":
@@ -553,6 +615,8 @@ func choice_label(choice_id: String) -> String:
 		"fight": return "FIGHT"
 		"talk": return "TALK"
 		"yield": return "YIELD"
+		"call_tone": return "CALL TONE"
+		"let_deshawn_talk": return "LET DESHAWN TALK"
 		"enforce": return "ENFORCE"
 		"extend": return "EXTEND"
 		"forgive": return "FORGIVE"
@@ -565,6 +629,8 @@ func choice_copy(choice_id: String) -> String:
 		"fight": return "Make it not worth the trouble."
 		"talk": return "Find a number everybody can live with."
 		"yield": return "Give up what's on you and be done with it."
+		"call_tone": return "He ends it by standing there. Costs a favor."
+		"let_deshawn_talk": return "His voice, not yours. Everybody walks."
 		"enforce": return "Collect the hard way. Heat, no roll."
 		"extend": return "Two more days. The note stays open."
 		"forgive": return "Let it go. Word travels."

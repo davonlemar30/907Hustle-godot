@@ -272,6 +272,22 @@ static func context_line(engine: Object, gs: Node, summary: Dictionary) -> Strin
 ## The opponent's own tier decides the line, because a clerk and an armed guard
 ## are not the same situation.
 static func situation_body(engine: Object, summary: Dictionary) -> String:
+	# A live beat outranks the kind's own standing line, on EVERY kind.
+	#
+	# This used to be inside the KIND_CONFRONTATION arm below, which was
+	# correct while the confrontation chain was the only one that ran a room.
+	# The wander shakedown's room (SQ-D7) is the second, and it rendered all
+	# three of its authored beats under "You went out to see what was around"
+	# — the card's standing opener, still true and no longer what is
+	# happening. Found on the real build: the STAGE 3/3 chip and the round log
+	# were both correct on screen while the situation above them was not.
+	#
+	# Hoisted rather than duplicated into a second arm, because "the situation
+	# IS the current beat" is what the round rule means on screen and it is not
+	# a fact about any one chain kind.
+	var beat := str(engine.loop_summary().get("beat", ""))
+	if not beat.is_empty():
+		return beat
 	match str(summary.get("chain_kind", "")):
 		engine.KIND_BOOST_CAUGHT:
 			match int(summary.get("source_target_tier", 1)):
@@ -292,13 +308,6 @@ static func situation_body(engine: Object, summary: Dictionary) -> String:
 			return "You went out to see what was around. This is what was around."
 		engine.KIND_TRAVEL_STOP:
 			return "Lights come up behind you before you clear the line. This is the toll for moving while they're watching."
-		engine.KIND_CONFRONTATION:
-			# The situation IS the current beat — the loop re-authors this line
-			# every round, which is what "each round is a new situation" means
-			# on screen.
-			var beat := str(engine.loop_summary().get("beat", ""))
-			if not beat.is_empty():
-				return beat
 	return "Somebody is waiting on an answer."
 
 # --- decision ---------------------------------------------------------------

@@ -19869,7 +19869,18 @@ func _fail(label: String, detail: String) -> void:
 ## both stages off the one reloaded chain. No authored number moved; this is
 ## entirely new coverage of a contract that used to have one shape and now has
 ## two.
-const MIN_CHECKS := 12817
+##
+## 0.6.0 (SQ-D6..D9, PR B): 12817 -> 12836, +19. The shakedown room's own
+## coverage was rewritten rather than extended -- 0.5.0's arms asserted a
+## re-rolled verb at a decaying number, which is the exact thing SQ-D7
+## forbids, so what they measured no longer exists. What replaced them is
+## per-beat: the room opens on beat 0 with beat 0's own copy, roads, odds and
+## body count; every authored beat is a distinct non-empty situation; a reload
+## restores the beat it was on; and a round on the LAST beat ends the room
+## rather than opening a fourth (driven, not read off a constant). The police
+## stop's own arms moved from "the original two choices" to the triad plus
+## HANDS OUT, the guaranteed out it shipped without.
+const MIN_CHECKS := 12836
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -22259,74 +22270,103 @@ func _check_roster_shakedown_room(gs: Node, gm: Node) -> void:
 	if messy_key.is_empty():
 		return
 
+	# --- SQ-D7: the room is authored beats, not one verb re-rolled ----------
+	#
+	# 0.5.0 offered `["keep_fighting", "give_it_up"]` every round at
+	# `base + (-0.10 x round)`. What is asserted now is the opposite property:
+	# each round is a DIFFERENT situation, with its own copy, its own offered
+	# roads and its own numbers, and the copy is authored rather than
+	# generated from the round number.
 	setup.call()
 	var card: Dictionary = events.card_by_id("wander_shakedown")
+	var room: Dictionary = card["encounter"]["room"]
+	var beats: Array = room["beats"]
 	wander_sys._play_encounter(card, messy_key)
 	gm.dispatch("resolve_consequence_choice", {"choice_id": "stand"})
 	var decision: Dictionary = gs.active_consequence.get("decision", {})
-	_expect_true("a non-clean STAND opens the room",
-		not (decision.get("loop", {}) as Dictionary).is_empty())
-	_expect_str("the room offers exactly two verbs",
+	var loop: Dictionary = decision.get("loop", {})
+	_expect_true("a non-clean STAND opens the room", not loop.is_empty())
+	_expect_int("the room opens on the first authored beat",
+		int(loop.get("beat_index", -1)), 0)
+	_expect_str("and the situation IS that beat's own copy",
+		str(loop.get("beat", "")), str((beats[0] as Dictionary)["beat"]))
+	_expect_str("round one offers the first beat's own roads",
 		str((decision.get("allowed_choices", []) as Array)),
-		str(["keep_fighting", "give_it_up"]))
-	_expect_true("GIVE IT UP is deterministic every round",
+		str((beats[0] as Dictionary)["choices"]))
+	_expect_true("the guaranteed out is deterministic in the room too",
 		"give_it_up" in (decision.get("deterministic_choices", []) as Array))
-	var round1_chance: float = float((decision.get("shown_probabilities", {}) as Dictionary)
-		.get("keep_fighting", 0.0))
-	_expect_float("round one's odds are the base chance minus the escalation penalty",
-		round1_chance, clampf(0.45 + wander_sys.SHAKEDOWN_ROUND_PENALTY, 0.10, 0.95))
+	_expect_float("round one's odds are the beat's own authored number",
+		float((decision.get("shown_probabilities", {}) as Dictionary).get("swing", 0.0)),
+		float(((beats[0] as Dictionary)["base"] as Dictionary)["swing"]))
+	_expect_int("#LEFT counts the bodies the beat authors",
+		int(loop.get("left", -1)), int((beats[0] as Dictionary)["left"]))
+
+	# Every authored beat is a DISTINCT situation. This is the arm that makes
+	# SQ-D7 unbreakable by a future author: three beats whose copy is equal is
+	# three rounds of the same round, which is the thing the ruling forbids.
+	var seen_beats: Array = []
+	var distinct := true
+	for entry in beats:
+		var text := str((entry as Dictionary).get("beat", ""))
+		if text.is_empty() or text in seen_beats:
+			distinct = false
+		seen_beats.append(text)
+	_expect_true("every authored beat is a distinct, non-empty situation", distinct)
+	_expect_true("the room authors more than one beat", beats.size() >= 2)
+	_expect_int("and never more than the chassis round cap",
+		mini(beats.size(), int(room["cap"])), beats.size())
 
 	# Bank a mid-round snapshot, then confirm reload reproduces it exactly —
 	# this build's own danger list names determinism under reload a release
 	# blocker for every new piece of state, the room's included.
 	var saves := get_node("/root/SaveSystem")
 	var snapshot: Dictionary = saves.capture()
-	# `GameManager.dispatch()` returns `bool` (whether some system handled the
-	# action), never the adapter's own result -- that dict is internal to
-	# `dispatch()`'s own reconcile step. What a caller reads back is state,
-	# via `gs.active_consequence`, which is what `live_tier`/`replayed_tier`
-	# below actually do.
 	var live_result: bool = gm.dispatch("resolve_consequence_choice",
-		{"choice_id": "keep_fighting"})
+		{"choice_id": "swing"})
 	var live_tier := str(gs.active_consequence.get("decision", {}).get("resolved_tier", ""))
+	var live_beat: int = int((gs.active_consequence.get("decision", {}) as Dictionary)
+		.get("loop", {}).get("beat_index", -1))
 	saves._apply(snapshot)
 	_expect_true("the reload restored the room mid-fight",
 		not (gs.active_consequence.get("decision", {}) as Dictionary)
 			.get("loop", {}).is_empty())
+	_expect_int("and restored it on the beat it was on",
+		int((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("loop", {}).get("beat_index", -1)), 0)
 	var replayed_result: bool = gm.dispatch("resolve_consequence_choice",
-		{"choice_id": "keep_fighting"})
+		{"choice_id": "swing"})
 	var replayed_tier := str(gs.active_consequence.get("decision", {}).get("resolved_tier", ""))
+	var replayed_beat: int = int((gs.active_consequence.get("decision", {}) as Dictionary)
+		.get("loop", {}).get("beat_index", -1))
 	_expect_true("the replayed round dispatches the same way", replayed_result == live_result)
 	_expect_str("and resolves the exact same tier", replayed_tier, live_tier)
-	if not bool(engine.has_active()) or str(gs.active_consequence.get("stage", "")) != "decision":
+	_expect_int("and lands on the exact same beat", replayed_beat, live_beat)
+	if bool(engine.has_active()) and str(gs.active_consequence.get("stage", "")) != "decision":
 		gm.dispatch("consequence_continue", {})
 
-	# The round cap: force MESSY every round (impossible to prove with real
-	# odds alone) is not needed — what is provable without rigging the RNG
-	# is that the cap constant itself is small and authored, and that a
-	# chain sitting at round == the cap exits on its NEXT messy round rather
-	# than opening a fourth. Proven directly against the function's own
-	# documented behavior via a chain built at the boundary.
+	# The cap and the end of the authored beats are the same wall. A chain
+	# rigged onto the LAST beat exits rather than opening a fourth round —
+	# proven by driving the room's own last beat rather than by reading a
+	# constant, because "the room ends" is behaviour and not a number.
 	gs.reset_to_new_game()
 	setup.call()
-	var card2: Dictionary = events.card_by_id("wander_shakedown")
-	wander_sys._play_encounter(card2, "test:roster:shakedown:cap")
+	wander_sys._play_encounter(events.card_by_id("wander_shakedown"),
+		"test:roster:shakedown:cap")
 	gm.dispatch("resolve_consequence_choice", {"choice_id": "stand"})
-	if not (gs.active_consequence.get("decision", {}) as Dictionary).get("loop", {}).is_empty():
-		var rigged: Dictionary = gs.active_consequence.get("decision", {})
-		var loop: Dictionary = rigged.get("loop", {})
-		loop["round"] = wander_sys.SHAKEDOWN_ROUND_CAP
-		rigged["loop"] = loop
-		gs.active_consequence["decision"] = rigged
-		gm.dispatch("resolve_consequence_choice", {"choice_id": "keep_fighting"})
-		var after: Dictionary = gs.active_consequence.get("decision", {})
-		var tier := str(after.get("resolved_tier", ""))
-		_expect_true("a round at the cap never opens a round past it",
-			tier == "clean" or tier in ["messy", "failure", "catastrophic"])
-		if tier == "messy":
-			_expect_true("and a messy result at the cap exits rather than continuing",
-				not bool((engine as Object).has_active())
-					or str(gs.active_consequence.get("stage", "")) == "result")
+	var rigged_loop: Dictionary = (gs.active_consequence.get("decision", {}) as Dictionary) \
+		.get("loop", {})
+	if not rigged_loop.is_empty():
+		wander_sys._present_beat(gs.active_consequence, rigged_loop, beats.size() - 1)
+		var last: Dictionary = gs.active_consequence.get("decision", {})
+		_expect_str("the last beat offers its own authored roads",
+			str((last.get("allowed_choices", []) as Array)),
+			str((beats[beats.size() - 1] as Dictionary)["choices"]))
+		_expect_true("the guaranteed out survives to the last beat",
+			"give_it_up" in (last.get("deterministic_choices", []) as Array))
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "swing"})
+		_expect_true("a round on the last beat ends the room rather than opening a fourth",
+			not bool((engine as Object).has_active())
+				or str(gs.active_consequence.get("stage", "")) == "result")
 		if bool((engine as Object).has_active()):
 			gm.dispatch("consequence_continue", {})
 	gs.reset_to_new_game()
@@ -22344,9 +22384,16 @@ func _check_roster_stopped_on_foot(gs: Node, gm: Node) -> void:
 	gs.heat = 10.0
 	var card: Dictionary = events.card_by_id("wander_stopped_on_foot")
 	wander_sys._play_encounter(card, "test:roster:stop:empty")
-	_expect_str("empty-handed, the stop is still the original two choices",
+	# SQ-D6 added HANDS OUT: the guaranteed out this card shipped without.
+	# It is part of the card, not a conditional extra, so it is here whether
+	# or not anything is being carried — that is the whole point of a
+	# structural surrender road.
+	_expect_str("empty-handed, the stop is the triad and nothing else",
 		str((gs.active_consequence.get("decision", {}) as Dictionary)
-			.get("allowed_choices", [])), str(["talk", "keep_walking"]))
+			.get("allowed_choices", [])), str(["talk", "keep_walking", "hands_out"]))
+	_expect_true("and HANDS OUT is the deterministic one of the three",
+		(gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("deterministic_choices", []) == ["hands_out"])
 	gm.dispatch("resolve_consequence_choice", {"choice_id": "talk"})
 	gm.dispatch("consequence_continue", {})
 
@@ -22358,8 +22405,8 @@ func _check_roster_stopped_on_foot(gs: Node, gm: Node) -> void:
 		"test:roster:stop:carrying")
 	var choices: Array = (gs.active_consequence.get("decision", {}) as Dictionary) \
 		.get("allowed_choices", [])
-	_expect_true("carrying product adds STASH IT as a third road",
-		"stash_it" in choices and choices.size() == 3)
+	_expect_true("carrying product adds STASH IT beyond the triad",
+		"stash_it" in choices and choices.size() == 4)
 	var inputs: Dictionary = (gs.active_consequence.get("decision", {}) as Dictionary) \
 		.get("resolver_inputs", {})
 	_expect_str("STASH IT rolls its own attribute, not the stop's",

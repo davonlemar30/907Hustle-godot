@@ -116,6 +116,22 @@ While wiring them, the file that documented all of it turned out to have been
 lying: four of the five entries under "authored and NOT yet wired" had shipped
 builds ago. Corrected, and the suite now asserts the correction.
 
+### The odds went dark
+
+Every response lane carried a qualitative band beside its name — STRONG
+CHANCE, FAIR CHANCE, RISKY, BAD ODDS, DESPERATE. The owner's ruling on seeing
+it shipped: *"all of these hints can be removed. Dang give the player some
+mystery."* They are gone. A lane is its name and what it is for, and you find
+out the rest by taking it.
+
+Two things stayed, because neither is an odds hint: an arrest warning still
+says THAT a road can book you and never at what number, and a guaranteed road
+still states its price — a price is knowable before you pay it, and one card
+makes the guaranteed road the worst one on purpose.
+
+Nothing about the engine changed. It still computes every probability it
+always did; it just stops telling you.
+
 ### Under the hood
 
 No save-schema bump. Every field this build needed already existed or was

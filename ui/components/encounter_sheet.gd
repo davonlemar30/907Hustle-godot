@@ -32,6 +32,37 @@ extends RefCounted
 ## today; the seam exists so a harness can build this content with no dispatch
 ## behind it at all, which is how the smoke suite covers it.
 ##
+## ## SQ-D12: the odds do not reach the player at all
+##
+## Owner ruling, 2026-08-29, taken against a shipped screenshot: **"all of these
+## hints can be removed. Dang give the player some mystery."** Every response
+## lane used to carry a qualitative band — STRONG CHANCE / FAIR CHANCE / RISKY /
+## BAD ODDS / DESPERATE — beside its name. They are gone.
+##
+## This NARROWS a standing position rather than contradicting one. FS-003.11 and
+## PX-003 §4 ruled that raw percentages must never reach the player and that
+## bands were how odds would reach them instead; the first half is untouched and
+## the second is now "they do not reach them." The lane is its name and what it
+## is for, and the player finds out the rest by doing it.
+##
+## **What deliberately stayed**, because neither is an odds hint:
+##
+##   - the **arrest warnings** (PX-003 §19 point 8). They say THAT a road can
+##     book you, never at what threshold — a category of risk, not a number.
+##     Withholding those would be hiding a rule rather than a probability.
+##   - the **guarantee line** under a deterministic road. That is a PRICE, and a
+##     price is knowable before you pay it. It is also load-bearing: SQ-D6 made
+##     the guaranteed out structural rather than cheap, and one card
+##     (`wander_warrant_check`) makes it the WORST road on purpose.
+##
+## The projection API is untouched. `choice_summaries()` still returns
+## `success_probability` and `has_odds`, `consequence_rules.gd` still authors
+## `ODDS_BANDS`, and the parity suite still pins every band boundary. Nothing
+## renders any of it. That is a deliberate keep rather than an oversight: the
+## mapping is authored, oracle-adjacent and fixture-covered, and a later build
+## that wants a difficulty setting or a read-the-room perk has the table sitting
+## ready. `consequence_rules.gd`'s own header says so at the table.
+##
 ## ## Colours and builders are duplicated from `surface_base.gd`, on purpose
 ##
 ## `surface_base.gd` is a Control script — a screen's base class. This file is a
@@ -41,7 +72,6 @@ extends RefCounted
 ## the confrontation suite, the same discipline `wander_events.gd`'s duplicated
 ## STASH IT label already ships under.
 
-const RULES := preload("res://data/consequence_rules.gd")
 const CONF_SCRIPTS := preload("res://data/confrontation_scripts.gd")
 const HEALTH_BAR := preload("res://ui/components/health_bar.gd")
 
@@ -352,14 +382,10 @@ static func _choice_card(engine: Object, row: Dictionary, wire: Callable) -> Con
 	var choice_id := str(row["choice_id"])
 	var committed: bool = bool(row["committed"])
 
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 8)
-	var name_label := _label(str(row["label"]).to_upper(), "CardTitle", 14,
-		CREAM if not bool(row["disabled"]) or committed else MUTED)
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(name_label)
-	head.add_child(_label(odds_text(row), "Mono", 12, odds_tone(row)))
-	v.add_child(head)
+	# SQ-D12: no odds chip. The lane is its name and what it is for, and the
+	# player finds out the rest by doing it.
+	v.add_child(_label(str(row["label"]).to_upper(), "CardTitle", 14,
+		CREAM if not bool(row["disabled"]) or committed else MUTED))
 
 	# Through the engine's adapter seam, so a chain kind with its own vocabulary
 	# says its own words. `CHOICE_COPY` above is the default and still covers
@@ -367,8 +393,11 @@ static func _choice_card(engine: Object, row: Dictionary, wire: Callable) -> Con
 	v.add_child(_label(engine.choice_description(choice_id,
 		str(CHOICE_COPY.get(choice_id, ""))), "Muted", 11, MUTED, true))
 
-	# Yield's whole value is certainty, so it states its guaranteed price rather
-	# than an odds band (PX-003 §4: "Yield has no probability treatment").
+	# The one thing that survives SQ-D12, and the reason it survives: a
+	# guaranteed road is not a probability the player is being denied, it is a
+	# PRICE, and a price is knowable before you pay it. PX-003 §4 already said
+	# "Yield has no probability treatment" — that was true when there were odds
+	# to withhold and it is still true now that there are none.
 	if bool(row.get("deterministic", false)):
 		v.add_child(_label(engine.choice_guarantee(choice_id,
 			"Guaranteed: no injury, no Heat, no arrest."), "Muted", 11, CYAN, true))
@@ -406,27 +435,6 @@ static func _choice_card(engine: Object, row: Dictionary, wire: Callable) -> Con
 			ACTION_COMMIT, choice_id, wire))
 	c.add_child(v)
 	return c
-
-## Qualitative, always. FS-003.11's brief is explicit that raw percentages do not
-## reach the player: the projection API produces an exact probability, and the
-## authored bands in `consequence_rules.gd` turn it into something a person can
-## act on.
-static func odds_text(row: Dictionary) -> String:
-	if bool(row.get("deterministic", false)):
-		return RULES.ODDS_CERTAIN
-	if not bool(row.get("has_odds", false)):
-		return "—"
-	return RULES.new().odds_label(float(row["success_probability"]))
-
-static func odds_tone(row: Dictionary) -> Color:
-	if bool(row.get("deterministic", false)):
-		return CYAN
-	if not bool(row.get("has_odds", false)):
-		return MUTED
-	match RULES.new().odds_rank(float(row["success_probability"])):
-		4, 3: return GREEN
-		2: return AMBER
-	return RED
 
 # --- result -----------------------------------------------------------------
 

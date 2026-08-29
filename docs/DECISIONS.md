@@ -1727,6 +1727,7 @@ exposure observation.
 | VOX-D1 | **The voice: menace as business — the *Power* register**, carried forward unchanged from 0.5.0. Emulate the register; never lift or paraphrase actual lines. Copy ships in the same PR as its content. |
 | MEAS-D1 | **Frequencies and durations are measured, never vibed**, carried forward. |
 | VER-D1 | **Version → `0.6.0`, MINOR.** Rides the close-out PR. |
+| SQ-D12 | **The odds do not reach the player at all.** Owner ruling, taken against a shipped screenshot of the encounter sheet: *"all of these hints can be removed. Dang give the player some mystery."* The qualitative band beside every response lane — STRONG CHANCE / FAIR CHANCE / RISKY / BAD ODDS / DESPERATE, and CERTAIN on a deterministic road — is gone. A lane is now its name and what it is for. **Two things deliberately stay, because neither is an odds hint:** the arrest warnings (PX-003 §19 point 8 — they say THAT a road can book you, never at what threshold, which is a rule rather than a probability), and the guarantee line under a deterministic road (that is a PRICE, and a price is knowable before you pay it — load-bearing since SQ-D6 made the guaranteed out structural rather than cheap, and `wander_warrant_check` makes it the worst road on purpose). |
 
 ### Real bugs caught in PR A
 
@@ -1814,6 +1815,33 @@ So the build's own contribution to a three-round encounter is under a second,
 and the 40-second budget is spent entirely on reading. The copy is what has to
 stay inside it, not the code, and three beats of ~30 words each plus three
 choice lanes reads inside 40 seconds comfortably.
+
+### SQ-D12, and why it is a narrowing rather than a reversal
+
+FS-003.11 and PX-003 §4 ruled two things together: raw percentages must never
+reach the player, and qualitative bands are how odds would reach them instead.
+Those are separable, and only the second one moved. The percentage rule is
+untouched and the parity suite still audits every stage for a `%`.
+
+**Nothing about the engine changed.** `choice_summaries()` still returns
+`success_probability` and `has_odds`, `consequence_rules.gd` still authors
+`ODDS_BANDS`, and the parity suite still pins every band boundary against its
+fixtures. This is presentation going dark, not the engine forgetting what it
+knows — which is what leaves a later difficulty setting, or a read-the-room
+perk, with the mapping sitting ready.
+
+That does leave `odds_label` and `odds_rank` with no runtime caller, and this
+build has already been burned once by a file that documented its own gaps and
+then stopped updating them (`confrontation_scripts.gd`'s "authored and NOT yet
+wired" header, four of five entries stale — see the PR D section). So the band
+table carries a comment at the table saying it is authored, fixture-covered and
+deliberately unrendered, rather than being left to read as dead code the next
+time somebody audits for it.
+
+**The parity assertion was flipped rather than deleted.** It used to read "the
+odds render as a band"; it now walks every authored band string and asserts
+none of them reaches a label. An assertion that merely stopped existing would
+let the chip come back silently; one that asserts the opposite cannot.
 
 ### Real bugs caught in PR C
 

@@ -1308,6 +1308,19 @@ const ODDS_BANDS: Array[Dictionary] = [
 	{"min": 0.00, "label": "DESPERATE", "rank": 0},
 ]
 
+## **Nothing renders any of this as of 0.6.0 (SQ-D12).** The owner's ruling was
+## "all of these hints can be removed — give the player some mystery", and the
+## qualitative band beside each response lane went with it. The table is kept
+## rather than deleted for three reasons, in order of weight: the parity suite
+## pins every one of its boundaries against fixtures and that coverage is worth
+## more than the lines it costs; the mapping is the authored answer to "what
+## does this probability MEAN", which is a question a later difficulty setting
+## or read-the-room perk will ask again; and FS-003.11's actual ruling — raw
+## percentages never reach the player — is unchanged and this is still the
+## thing that would satisfy it. `odds_label` and `odds_rank` have no runtime
+## caller today. That is deliberate, and this comment is what stops it reading
+## as an oversight the next time somebody audits for dead code.
+
 ## What a deterministic response reads as. Not an odds band: showing Yield as 0%
 ## would say "impossible" when it means the opposite.
 const ODDS_CERTAIN := "CERTAIN"

@@ -94,6 +94,13 @@ on it and stepping off write opposite entries into his ledger. And the 907List
 finally has the scene its spec always named, on the one meetup outcome that
 used to decide nothing at all.
 
+**And the odds went dark.** Every response lane used to carry a qualitative
+band beside its name — STRONG CHANCE, RISKY, BAD ODDS. They are gone: a lane is
+its name and what it is for, and you find out the rest by taking it. The two
+things that stayed are not odds hints — an arrest warning still says THAT a
+road can book you (never at what number), and a guaranteed road still states
+its price, because a price is knowable before you pay it.
+
 No save-schema change. Every field this build needed already existed or was
 derivable from one.
 
@@ -576,9 +583,9 @@ every screen's `ScrollContainer` subtree is walked for a Control stuck at
 `MOUSE_FILTER_STOP` or a button wired the wrong way, so the touch-scroll fix
 below can't regress silently.
 
-Current counts: parity 13,276 · save-validation 247 · territory 170 ·
-confrontation 1,248 · tips 93 · dre 404 · smoke 23/23 screens, 1,101 touch
-checks, 67 component checks.
+Current counts: parity 13,281 · save-validation 247 · territory 170 ·
+confrontation 1,266 · tips 93 · dre 404 · smoke 23/23 screens, 1,101 touch
+checks, 61 component checks.
 
 Smoke gained a second job in 0.6.0. Not everything renderable is a `.tscn` in
 `ui/screens` — the encounter sheet, the health bar and `ModalSheet` itself are

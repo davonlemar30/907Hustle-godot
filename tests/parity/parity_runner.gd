@@ -13199,12 +13199,25 @@ func _check_consequence_scene(gs: Node, gm: Node, engine: RefCounted) -> void:
 	_expect_true("the decision stage names the situation", "CAUGHT" in labels)
 	_expect_true("the decision stage offers the four responses",
 		"FIGHT" in labels and "RUN" in labels and "TALK" in labels and "YIELD" in labels)
-	# The audit.
+	# The audit. The percentage rule is FS-003.11's and is unchanged; what
+	# moved is everything underneath it.
 	_expect_true("no rendered label shows a raw percentage", not joined.contains("%"))
-	_expect_true("the odds render as a band", joined.contains("CHANCE")
-		or joined.contains("RISKY") or joined.contains("BAD ODDS")
-		or joined.contains("DESPERATE"))
-	_expect_true("yield is labelled certain rather than zero", joined.contains("CERTAIN"))
+	# SQ-D12 (0.6.0): the qualitative band went the same way the percentage
+	# already had. This assertion used to be its exact inverse -- "the odds
+	# render as a band" -- and flipping it is the whole ruling: the player is
+	# told what a road IS FOR and finds out the rest by taking it.
+	var rules_for_bands: RefCounted = preload("res://data/consequence_rules.gd").new()
+	for band_row in rules_for_bands.ODDS_BANDS:
+		var band := str((band_row as Dictionary)["label"])
+		_expect_true("no rendered label shows the band %s" % band,
+			not joined.contains(band))
+	_expect_true("and no rendered label shows the certainty chip",
+		not joined.contains(rules_for_bands.ODDS_CERTAIN))
+	# What survives, because neither is a probability: the guaranteed road
+	# still states its price, and an arrest warning still says THAT without
+	# saying at what number.
+	_expect_true("the guaranteed road still states its price",
+		joined.contains("Guaranteed:"))
 	# PX-003 §16: every action is at least the 44px minimum.
 	var buttons: Array = []
 	_collect_buttons(screen, buttons)

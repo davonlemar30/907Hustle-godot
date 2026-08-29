@@ -41,7 +41,19 @@ extends Node
 ## with it: Boost and Stick each gain a per-family daily District Pressure
 ## cap on Market's own precedent (PRESS-D1/D2, D-19), measured honestly as a
 ## partial result rather than a full close.
-const VERSION := "0.5.0"
+##
+## 0.6.0 (Squared Up): every confrontation stops taking the screen and becomes
+## a ModalSheet over the street with a live health bar (SQ-D1..D5), the general
+## street gets a structural verb triad and the two guaranteed outs it was
+## missing (SQ-D6), the one room in the build stops being a re-rolled verb and
+## becomes three authored situations (SQ-D7), every encounter writes an
+## observation (SQ-D8), crew calls stop being an authored table nothing reads
+## (SQ-D9), the wander pool goes from four cards to twelve, and the last three
+## unwired scripts -- both corner rooms and the 907List meetup -- get their
+## triggers (SQ-D10). New player-facing surfaces and systems, squarely MINOR.
+## No schema bump: everything this build needed was derivable from a field the
+## game already kept.
+const VERSION := "0.6.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

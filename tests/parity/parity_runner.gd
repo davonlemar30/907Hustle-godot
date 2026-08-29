@@ -103,12 +103,31 @@ const EPS := 1e-12
 
 var _failures: Array[String] = []
 var _checks := 0
+## The parity runner drives real dispatches, and real dispatches autosave. Keep
+## one suite-level snapshot around every section so a local probe that forgets
+## its own cleanup can never become a developer-save deletion. The snapshot
+## keeps existence separate from contents: an absent file, an empty file and
+## an unreadable file are three different states (ClickUp 86bbjxtaw).
+var _suite_save_snapshot: Dictionary = {}
 
 func _ready() -> void:
+	var saves := get_node("/root/SaveSystem")
+	_suite_save_snapshot = _capture_user_file(saves.SAVE_PATH)
+	if bool(_suite_save_snapshot["existed"]) \
+			and not bool(_suite_save_snapshot["readable"]):
+		# Do not run a single mutating probe if the developer's existing save
+		# cannot first be preserved. A failed suite is recoverable; a deleted run
+		# is not.
+		_fail("suite save guard",
+			"could not read %s; parity refused to run" % saves.SAVE_PATH)
+		_finish()
+		return
+
 	var fixtures: Dictionary = _load_fixtures()
 	if fixtures.is_empty():
 		_fail("fixtures", "could not read %s" % FIXTURES)
 	else:
+		_check_suite_save_guard_contract()
 		_check_hashes(fixtures.get("hashes", []))
 		_check_seeds(fixtures.get("seeds", []))
 		_check_streams(fixtures.get("streams", []))
@@ -173,6 +192,135 @@ func _load_json(path: String) -> Dictionary:
 		return {}
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	return parsed if parsed is Dictionary else {}
+
+## Capture a user file without collapsing "absent", "empty" and "unreadable"
+## into the same empty String. This runner only uses user:// paths, which lets
+## the restore side use the same DirAccess idiom as the rest of the suite.
+func _capture_user_file(path: String) -> Dictionary:
+	var snapshot := {
+		"existed": FileAccess.file_exists(path),
+		"readable": false,
+		"text": "",
+	}
+	if not bool(snapshot["existed"]):
+		snapshot["readable"] = true
+		return snapshot
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return snapshot
+	snapshot["text"] = file.get_as_text()
+	file.close()
+	snapshot["readable"] = true
+	return snapshot
+
+## Restore exactly what `_capture_user_file` observed. An unreadable original
+## is deliberately a no-op: `_ready` refuses to run in that state, and cleanup
+## must never translate "could not preserve" into "safe to delete".
+func _restore_user_file(path: String, snapshot: Dictionary, label: String) -> void:
+	if snapshot.is_empty() or not bool(snapshot.get("readable", false)):
+		return
+	if not bool(snapshot.get("existed", false)):
+		if not FileAccess.file_exists(path):
+			return
+		var user_dir := DirAccess.open("user://")
+		if user_dir == null:
+			_fail(label, "could not open user:// to remove the suite-created save")
+			return
+		var remove_error := user_dir.remove(path.get_file())
+		if remove_error != OK:
+			_fail(label, "could not remove suite-created %s (error %d)"
+				% [path, remove_error])
+		return
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		_fail(label, "could not restore %s" % path)
+		return
+	file.store_string(str(snapshot.get("text", "")))
+	file.close()
+
+## The suite-level guard's own regression proof uses a scratch file, never the
+## run save it protects. It pins all four states: absent, empty, populated and
+## unreadable. The last is a synthetic snapshot because changing permissions
+## on the real save would make the test itself the destructive actor.
+func _check_suite_save_guard_contract() -> void:
+	const PROBE_PATH := "user://parity_save_guard_probe.tmp"
+	var user_dir := DirAccess.open("user://")
+	if user_dir == null:
+		_fail("suite save guard", "could not open user:// for the guard probe")
+		return
+	if FileAccess.file_exists(PROBE_PATH):
+		user_dir.remove(PROBE_PATH.get_file())
+
+	var absent := _capture_user_file(PROBE_PATH)
+	_expect_true("save guard distinguishes an absent file",
+		not bool(absent["existed"]) and bool(absent["readable"]))
+	var file := FileAccess.open(PROBE_PATH, FileAccess.WRITE)
+	if file == null:
+		_fail("suite save guard", "could not create the absent-file probe")
+		return
+	file.store_string("suite-created")
+	file.close()
+	_restore_user_file(PROBE_PATH, absent, "suite save guard")
+	_expect_true("save guard removes only a suite-created file",
+		not FileAccess.file_exists(PROBE_PATH))
+
+	file = FileAccess.open(PROBE_PATH, FileAccess.WRITE)
+	if file == null:
+		_fail("suite save guard", "could not create the empty-file probe")
+		return
+	file.close()
+	var empty := _capture_user_file(PROBE_PATH)
+	_expect_true("save guard distinguishes an empty existing file",
+		bool(empty["existed"]) and bool(empty["readable"])
+		and str(empty["text"]).is_empty())
+	file = FileAccess.open(PROBE_PATH, FileAccess.WRITE)
+	if file == null:
+		_fail("suite save guard", "could not clobber the empty-file probe")
+		return
+	file.store_string("clobbered")
+	file.close()
+	_restore_user_file(PROBE_PATH, empty, "suite save guard")
+	_expect_true("save guard restores an empty file without deleting it",
+		FileAccess.file_exists(PROBE_PATH))
+	var restored_empty := FileAccess.open(PROBE_PATH, FileAccess.READ)
+	_expect_true("the restored empty file stays zero bytes",
+		restored_empty != null and restored_empty.get_length() == 0)
+	if restored_empty != null:
+		restored_empty.close()
+
+	file = FileAccess.open(PROBE_PATH, FileAccess.WRITE)
+	if file == null:
+		_fail("suite save guard", "could not create the populated-file probe")
+		return
+	file.store_string("developer-save")
+	file.close()
+	var populated := _capture_user_file(PROBE_PATH)
+	file = FileAccess.open(PROBE_PATH, FileAccess.WRITE)
+	if file == null:
+		_fail("suite save guard", "could not clobber the populated-file probe")
+		return
+	file.store_string("suite-save")
+	file.close()
+	_restore_user_file(PROBE_PATH, populated, "suite save guard")
+	var restored := FileAccess.open(PROBE_PATH, FileAccess.READ)
+	var restored_text := ""
+	if restored != null:
+		restored_text = restored.get_as_text()
+		restored.close()
+	_expect_str("save guard restores populated bytes", restored_text, "developer-save")
+
+	# Cleanup must leave an unreadable original alone. Synthetic on purpose:
+	# chmod-ing the real save would turn this regression check into the hazard.
+	var unreadable := {"existed": true, "readable": false, "text": ""}
+	_restore_user_file(PROBE_PATH, unreadable, "suite save guard")
+	restored = FileAccess.open(PROBE_PATH, FileAccess.READ)
+	restored_text = ""
+	if restored != null:
+		restored_text = restored.get_as_text()
+		restored.close()
+	_expect_str("save guard leaves an unreadable original alone",
+		restored_text, "developer-save")
+	_restore_user_file(PROBE_PATH, absent, "suite save guard")
 
 # --- sections ---------------------------------------------------------------
 
@@ -16809,7 +16957,7 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 	# replaced by nothing. Only the absence THIS run observed earns a delete.
 	if not had_save:
 		if FileAccess.file_exists(saves.SAVE_PATH):
-			DirAccess.remove_absolute(ProjectSettings.globalize_path(saves.SAVE_PATH))
+			DirAccess.open("user://").remove(saves.SAVE_PATH.get_file())
 	elif read_save:
 		var restore := FileAccess.open(saves.SAVE_PATH, FileAccess.WRITE)
 		if restore != null:
@@ -19266,9 +19414,20 @@ func _fail(label: String, detail: String) -> void:
 ## caught decision before booking — `_run_stickup_case`'s catastrophic arm and
 ## `_check_ti003_scenarios`' own catastrophic-arrest scenario both drive the
 ## new decision (yield) rather than reading a chain that used to book itself.
-const MIN_CHECKS := 12584
+##
+## Parity save safety (86bbjxtaw): +7. One suite-level snapshot now protects
+## the developer's save even when a local probe forgets its cleanup. The guard
+## pins absent, empty, populated and unreadable files independently.
+const MIN_CHECKS := 12591
 
 func _finish() -> void:
+	# Last action before reporting: restore the file captured before ANY probe
+	# ran. Local sections still keep their narrower snapshots for independence,
+	# but this outer guard is the guarantee that a missed cleanup cannot escape
+	# the suite. It also restores a legitimately empty file as an empty file.
+	var saves := get_node("/root/SaveSystem")
+	_restore_user_file(saves.SAVE_PATH, _suite_save_snapshot, "suite save guard")
+
 	# The floor, enforced rather than merely declared.
 	#
 	# `MIN_CHECKS` has carried a careful paragraph per slice since FS-003.1 and

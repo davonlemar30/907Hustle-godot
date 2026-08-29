@@ -95,7 +95,20 @@ preprocess = 7.0
 speed_scale = 0.85
 modulate = Color(1, 1, 1, 0.5)
 
-[node name="Pad" type="MarginContainer" parent="."]
+[node name="Content" type="Control" parent="."]
+custom_minimum_size = Vector2(375, 0)
+layout_mode = 1
+anchors_preset = 15
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -187.5
+offset_right = 187.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Pad" type="MarginContainer" parent="Content"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -108,17 +121,17 @@ theme_override_constants/margin_top = 40
 theme_override_constants/margin_right = 24
 theme_override_constants/margin_bottom = 36
 
-[node name="V" type="VBoxContainer" parent="Pad"]
+[node name="V" type="VBoxContainer" parent="Content/Pad"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 0
 
-[node name="TopSpace" type="Control" parent="Pad/V"]
+[node name="TopSpace" type="Control" parent="Content/Pad/V"]
 custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Logo" type="TextureRect" parent="Pad/V"]
+[node name="Logo" type="TextureRect" parent="Content/Pad/V"]
 custom_minimum_size = Vector2(0, 104)
 layout_mode = 2
 mouse_filter = 2
@@ -126,21 +139,21 @@ texture = ExtResource("logo")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Divider" type="HBoxContainer" parent="Pad/V"]
+[node name="Divider" type="HBoxContainer" parent="Content/Pad/V"]
 custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
 mouse_filter = 2
 alignment = 1
 theme_override_constants/separation = 10
 
-[node name="L1" type="ColorRect" parent="Pad/V/Divider"]
+[node name="L1" type="ColorRect" parent="Content/Pad/V/Divider"]
 custom_minimum_size = Vector2(96, 1)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 color = Color(0.55, 0.12, 0.1, 1)
 
-[node name="Dot" type="ColorRect" parent="Pad/V/Divider"]
+[node name="Dot" type="ColorRect" parent="Content/Pad/V/Divider"]
 custom_minimum_size = Vector2(7, 7)
 layout_mode = 2
 size_flags_vertical = 4
@@ -149,14 +162,14 @@ rotation = 0.785398
 pivot_offset = Vector2(3.5, 3.5)
 color = Color(0.83, 0.18, 0.14, 1)
 
-[node name="L2" type="ColorRect" parent="Pad/V/Divider"]
+[node name="L2" type="ColorRect" parent="Content/Pad/V/Divider"]
 custom_minimum_size = Vector2(96, 1)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 color = Color(0.55, 0.12, 0.1, 1)
 
-[node name="LastRun" type="Label" parent="Pad/V"]
+[node name="LastRun" type="Label" parent="Content/Pad/V"]
 visible = false
 layout_mode = 2
 mouse_filter = 2
@@ -166,12 +179,12 @@ theme_override_font_sizes/font_size = 10
 horizontal_alignment = 1
 text = "LAST RUN"
 
-[node name="Gap" type="Control" parent="Pad/V"]
+[node name="Gap" type="Control" parent="Content/Pad/V"]
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="NewRun" type="Button" parent="Pad/V"]
+[node name="NewRun" type="Button" parent="Content/Pad/V"]
 custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
 focus_mode = 0
@@ -179,12 +192,12 @@ theme_type_variation = &"BtnPrimary"
 theme_override_font_sizes/font_size = 16
 text = ">>  NEW RUN"
 
-[node name="BtnGap" type="Control" parent="Pad/V"]
+[node name="BtnGap" type="Control" parent="Content/Pad/V"]
 custom_minimum_size = Vector2(0, 12)
 layout_mode = 2
 mouse_filter = 2
 
-[node name="ContinueRun" type="Button" parent="Pad/V"]
+[node name="ContinueRun" type="Button" parent="Content/Pad/V"]
 visible = false
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
@@ -193,13 +206,13 @@ theme_type_variation = &"BtnSecondary"
 theme_override_font_sizes/font_size = 14
 text = "CONTINUE RUN"
 
-[node name="Confirm" type="VBoxContainer" parent="Pad/V"]
+[node name="Confirm" type="VBoxContainer" parent="Content/Pad/V"]
 visible = false
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 10
 
-[node name="Prompt" type="Label" parent="Pad/V/Confirm"]
+[node name="Prompt" type="Label" parent="Content/Pad/V/Confirm"]
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"Muted"
@@ -208,7 +221,7 @@ horizontal_alignment = 1
 autowrap_mode = 3
 text = "Start a new run? The current autosave will be replaced."
 
-[node name="StartNew" type="Button" parent="Pad/V/Confirm"]
+[node name="StartNew" type="Button" parent="Content/Pad/V/Confirm"]
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 focus_mode = 0
@@ -216,7 +229,7 @@ theme_type_variation = &"BtnPrimary"
 theme_override_font_sizes/font_size = 14
 text = "START NEW RUN"
 
-[node name="KeepSave" type="Button" parent="Pad/V/Confirm"]
+[node name="KeepSave" type="Button" parent="Content/Pad/V/Confirm"]
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 focus_mode = 0
@@ -224,12 +237,12 @@ theme_type_variation = &"BtnSecondary"
 theme_override_font_sizes/font_size = 14
 text = "KEEP SAVED RUN"
 
-[node name="HelpGap" type="Control" parent="Pad/V"]
+[node name="HelpGap" type="Control" parent="Content/Pad/V"]
 custom_minimum_size = Vector2(0, 22)
 layout_mode = 2
 mouse_filter = 2
 
-[node name="HowTo" type="Label" parent="Pad/V"]
+[node name="HowTo" type="Label" parent="Content/Pad/V"]
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"Muted"
@@ -237,18 +250,18 @@ theme_override_font_sizes/font_size = 11
 horizontal_alignment = 1
 text = "HOW TO PLAY"
 
-[node name="HowToRule" type="CenterContainer" parent="Pad/V"]
+[node name="HowToRule" type="CenterContainer" parent="Content/Pad/V"]
 custom_minimum_size = Vector2(0, 7)
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Line" type="ColorRect" parent="Pad/V/HowToRule"]
+[node name="Line" type="ColorRect" parent="Content/Pad/V/HowToRule"]
 custom_minimum_size = Vector2(78, 1)
 layout_mode = 2
 mouse_filter = 2
 color = Color(0.83, 0.18, 0.14, 0.8)
 
-[node name="VersionStamp" type="Label" parent="."]
+[node name="VersionStamp" type="Label" parent="Content"]
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0

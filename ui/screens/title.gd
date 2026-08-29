@@ -11,6 +11,14 @@ extends Control
 ## over a valid save asks first ("The current autosave will be replaced").
 ## The save itself is only overwritten when the new run actually begins —
 ## backing out at name entry keeps the old run, same as canon.
+##
+## 86bbexucb (0.3.0): the foreground UI (`Content`, in the scene) is capped at
+## a 375-wide column and centred, so a desktop-width viewport still shows the
+## mobile-proportioned layout — buttons at their authored width, not
+## stretched edge to edge — instead of the raw anchor-fills-parent behaviour
+## every Control here had before. The background (photo, scrim, snow) stays
+## unconstrained and fills the full viewport regardless: only the things a
+## human reads and taps needed the cap.
 
 # Autoloads by path, not by the compile-time global, so a freshly-registered
 # singleton resolves even before the editor reloads.
@@ -18,13 +26,13 @@ extends Control
 @onready var nav: Node = get_node("/root/ScreenManager")
 @onready var saves: Node = get_node("/root/SaveSystem")
 
-@onready var _new_run: Button = $Pad/V/NewRun
-@onready var _continue: Button = $Pad/V/ContinueRun
-@onready var _last_run: Label = $Pad/V/LastRun
-@onready var _confirm: VBoxContainer = $Pad/V/Confirm
+@onready var _new_run: Button = $Content/Pad/V/NewRun
+@onready var _continue: Button = $Content/Pad/V/ContinueRun
+@onready var _last_run: Label = $Content/Pad/V/LastRun
+@onready var _confirm: VBoxContainer = $Content/Pad/V/Confirm
 ## The build stamp. Bottom-right, deliberately quiet: it exists so a playtest
 ## report can name the build it came from, not to be read during play.
-@onready var _version: Label = $VersionStamp
+@onready var _version: Label = $Content/VersionStamp
 
 ## The last inspect() result, so the buttons and the preview always describe
 ## the same read of the file.
@@ -35,8 +43,8 @@ func _ready() -> void:
 	# there is no drag gesture to protect (see the scroll rule in HANDOFF.md).
 	_new_run.pressed.connect(_on_new_run)
 	_continue.pressed.connect(_on_continue)
-	$Pad/V/Confirm/StartNew.pressed.connect(_on_confirm_new)
-	$Pad/V/Confirm/KeepSave.pressed.connect(_on_cancel_new)
+	$Content/Pad/V/Confirm/StartNew.pressed.connect(_on_confirm_new)
+	$Content/Pad/V/Confirm/KeepSave.pressed.connect(_on_cancel_new)
 	# The scene's baked "v0.0.0" is an editor-time preview, the same convention
 	# every other screen uses. Version.VERSION is the only real source.
 	_version.text = get_node("/root/Version").display()

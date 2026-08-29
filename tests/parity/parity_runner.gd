@@ -14422,7 +14422,10 @@ func _check_version_stamp(gs: Node) -> void:
 	if screen == null:
 		_fail("version", "the title screen would not instantiate")
 		return
-	var stamp := screen.get_node_or_null("VersionStamp") as Label
+	# 86bbexucb (0.3.0): VersionStamp moved under the new `Content` column so
+	# it stays anchored to the phone-width layout rather than the full
+	# (potentially desktop-wide) screen rect.
+	var stamp := screen.get_node_or_null("Content/VersionStamp") as Label
 	if stamp == null:
 		_fail("version", "the title screen has no VersionStamp")
 		_free_screen(screen)

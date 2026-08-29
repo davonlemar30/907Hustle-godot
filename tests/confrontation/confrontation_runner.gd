@@ -72,7 +72,12 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## driven, and the property that defines it: the cash was already credited, so
 ## what an exit takes it takes out of the CLEAN pool `settle_holding` put it in
 ## and never out of dirty.
-const MIN_CHECKS := 1248
+## 0.6.0 (SQ-D12, PR G): 1248 -> 1266, +18 for check block 18 — a built sheet
+## walked for every authored band string, on a chain whose lanes span the odds
+## range, plus the two things that deliberately survive (the arrest warning and
+## the guaranteed road's price) and the proof that the ENGINE still projects
+## odds it no longer shows.
+const MIN_CHECKS := 1266
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -107,6 +112,7 @@ func _ready() -> void:
 	_check_verb_triad()
 	_check_corner()
 	_check_meetup()
+	_check_no_odds_hints()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -2105,3 +2111,102 @@ func _check_meetup_roads() -> void:
 		gm.dispatch("consequence_continue", {})
 		gs.active_consequence = {}
 	gs.list_holdings = []
+
+# --- check block 18: SQ-D12, the odds go dark (0.6.0 PR G) -------------------
+#
+# Owner ruling against a shipped screenshot: "all of these hints can be removed.
+# Dang give the player some mystery." Every response lane carried a qualitative
+# band beside its name; none does now.
+#
+# Asserted STRUCTURALLY rather than by reading one card, because the failure
+# mode is a future author re-adding the chip to a builder that eleven card
+# scripts and five chain kinds all render through. A built sheet is walked for
+# every authored band string, on a chain whose lanes span the whole odds range.
+
+func _check_no_odds_hints() -> void:
+	var wander: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+	var rules: RefCounted = RULES_CONST.new()
+
+	# Every band, and the certainty label, as strings nothing may render.
+	var forbidden: Array = [rules.ODDS_CERTAIN]
+	for row in rules.ODDS_BANDS:
+		forbidden.append(str((row as Dictionary)["label"]))
+	a.check("there are bands to check for", forbidden.size() >= 6)
+
+	# A card whose three roads span the range: a low-odds fight, a mid-odds run,
+	# and a deterministic out — the exact shape that used to print RISKY /
+	# FAIR CHANCE / CERTAIN down the sheet.
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.inventory = {"weed": 6}
+	wander._play_encounter(EVENTS.card_by_id("wander_shakedown"), "test:odds:dark")
+	var built: Control = ENCOUNTER_SHEET.build_sheet(engine, gs, Callable())
+	a.check("the decision sheet builds", built != null)
+	if built == null:
+		gs.active_consequence = {}
+		return
+
+	var rendered: Array = _sheet_text(built)
+	var joined: String = "\n".join(rendered)
+	for band in forbidden:
+		a.check("no lane renders '%s'" % str(band), not joined.contains(str(band)))
+	# The em-dash placeholder the no-odds case used to print went with them.
+	a.check("and no lane renders the empty-odds placeholder",
+		not joined.contains("  —  ") and not "—" in rendered)
+
+	# What deliberately SURVIVES. Neither is an odds hint, and losing either
+	# would be hiding a rule or a price rather than a probability.
+	a.check("the guaranteed road still states its price",
+		joined.contains("Guaranteed:"))
+	a.check("...and every lane still says what it is for",
+		joined.contains(str(EVENTS.CHOICE_COPY["stand"])))
+	built.free()
+
+	# The arrest warnings survive too — proven on a chain that actually carries
+	# one, since wander never does (its own adapter books nothing).
+	a.check("an arrest warning is still authored for a road that can book",
+		not str(ENCOUNTER_SHEET.ARREST_WARNINGS.get("on_loss", "")).is_empty())
+	a.check("...and it names no threshold",
+		not _has_digit(str(ENCOUNTER_SHEET.ARREST_WARNINGS["on_loss"])))
+
+	# The projection API is UNTOUCHED. This is presentation going dark, not the
+	# engine forgetting what it knows — a later difficulty setting or perk needs
+	# these to still be there.
+	var rows: Array = engine.choice_summaries()
+	var priced := 0
+	for row in rows:
+		if bool((row as Dictionary).get("has_odds", false)):
+			priced += 1
+			a.check("the engine still projects a real probability for '%s'"
+				% str((row as Dictionary)["choice_id"]),
+				float((row as Dictionary)["success_probability"]) > 0.0)
+	a.check("at least one lane still carries odds behind the curtain", priced > 0)
+	a.eq_str("and the band table still maps them", rules.odds_label(0.60), "FAIR CHANCE")
+
+	# The builder no longer carries the renderer at all.
+	var src: String = FileAccess.get_file_as_string(
+		"res://ui/components/encounter_sheet.gd")
+	a.check("the sheet builder no longer has an odds renderer",
+		not src.contains("func odds_text") and not src.contains("func odds_tone"))
+	gs.active_consequence = {}
+
+## Every string a built sheet actually puts on screen.
+func _sheet_text(root: Node) -> Array:
+	var out: Array = []
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if node is Label:
+			out.append(str((node as Label).text))
+		elif node is Button:
+			out.append(str((node as Button).text))
+	return out
+
+func _has_digit(text: String) -> bool:
+	for i in range(text.length()):
+		if text[i] >= "0" and text[i] <= "9":
+			return true
+	return false

@@ -28,6 +28,74 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 0.4.0 — Repeat Business: five PRs (added 2026-08-29)
+
+Five PRs against `BUILD_REPEAT_BUSINESS_PROMPT.md`, each its own branch,
+merged in order. `docs/DECISIONS.md` D-16 through D-19 carry the closed
+rulings; this entry is the narrative.
+
+**PR A — One Score through the substrate.** The Street Opportunity/Mission
+substrate (OPP-D1..D9) had exactly one consumer: Dre's own lending arc. A
+second, unrelated consumer was the standing precondition for building
+anything else on top of it, and this PR is that proof: `score_slide_special`
+(a Boost bonus contract on a discovered target, `data/score_contracts.gd`)
+runs the full offer → accept → resolve/fail lifecycle without touching the
+substrate at all — requirements gate it, the lift itself resolves through
+Boost's own untouched pipeline, and the contract only observes the outcome.
+The first draft named the wrong target (`spenard_fuel_till`, actually a
+Stickup target) and the wrong bonus ($85 instead of the ruled $50); caught
+live rather than by the suite, since a synthetic reconcile test can't tell a
+nonexistent target from a real one. Fixing the target made the bonus fire
+for real in the parity economy sweep for the first time, pushing Boost's own
+share to 26% — the corridor widened with the reason on the record, a
+bounded one-time effect rather than a compounding one.
+
+**PR B — The generator.** DRE-D12 had sat deferred since the Junior Lender
+arc shipped: Dre's arc ended, and every dollar after it came from the Book,
+never from him again. `dre_repeat_collection` is the first repeatable —
+fresh borrower, seeded fee band and deadline, riding the exact
+`dre_collector` encounter the one-time `dre_a_reminder` chain already used
+end to end. `dre_collector.gd` generalized to find whichever live instance
+carries a new `resolves_via: "dre_collector"` marker rather than hardcoding
+the one definition id, so a second caller costs a marker, not a rewrite. Cap
+at three live offers (offered and active both count), one new offer a day,
+zero schema bump.
+
+**PR C — The catalogue.** Three more templates fill out the three roles the
+build asked for: `dre_repeat_collection_leaned_on` (a second collection
+variant, higher stakes, gated on one prior repeatable), `dre_repeat_premium`
+(the higher-tier ask, gated on three), and `dre_repeat_errand` (a delivery
+shape observing a real `travel` rather than riding `dre_collector` at all —
+the one template that doesn't). Filling the catalogue exposed a real gap
+PR B's single template had no way to reach: a dud pick (the errand, when no
+district is currently reachable) could silently produce zero offers for the
+night even with the base collection still eligible. The generator's
+eligibility filter grew a retry loop, still fully deterministic for a fixed
+run seed and day.
+
+**PR D — The economy answers.** Two open items closed together. Boost and
+Stick each get a per-family daily District Pressure gain cap
+(`add_capped_pressure`, generalized off Market's own `add_market_pressure`),
+both landing on 2.0 because every non-Market pressure source ultimately
+draws from the same tiered table, which tops out at 2.0 on a catastrophic
+result — sized so one bad outcome is never truncated by its own cap.
+Measured against the standing five-profile table and reported honestly: the
+cap does not get the always-criminal archetype out of HOT within a run (a
+one-day improvement on its worst districts, not an exit), because Pressure's
+two real recovery levers — a quiet day, or a clean-outcome refund — are both
+structurally rare for a policy that works crime every day and rarely
+resolves clean. A cap bounds one day's damage; it can't fix an imbalance
+that recurs every day, and fixing that needs the recovery side, which this
+build's own ruling (PRESS-D2) keeps untouched. Recorded as a partial result
+with the numbers attached, not a silent success. Alongside it, a new
+`repeat_contractor` economy profile finally prices the standing Dre income
+PR B/C shipped with no profile ever measuring it: 109% of the day job,
+meaningful without dominating.
+
+**PR E — Integration and close-out.** Full suite run, version bump to
+0.4.0, and the tracker reconciliation this build's own predecessor's
+close-out skipped and had to redo by hand.
+
 ## 0.3.0 — Answer For It: four PRs (added 2026-08-29)
 
 Four PRs against `BUILD_ANSWER_FOR_IT_PROMPT.md`, each its own branch, merged

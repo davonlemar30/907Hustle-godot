@@ -69,9 +69,28 @@ extends RefCounted
 ## here, since by then the milestone already promoted Junior Lender, which
 ## opens the borrower through the ordinary tier gate instead — exactly the
 ## distinction `_resolved_or_live()` cannot make.
+##
+## ## A second consumer exists (0.4.0 PR A, SCR-D1..D3, `docs/DECISIONS.md` D-16)
+##
+## `data/score_contracts.gd`'s `score_slide_special` is the first non-Dre
+## content this substrate carries — a Score, observing an existing successful
+## `boost` at a named target, per the umbrella's own taxonomy (design doc
+## section 6). It needed exactly two small, generic additions, both below:
+## an authored `deadline` a definition can declare (`_new_instance()` now
+## reads it), and `_expire_overdue()`, the deadline half of the umbrella's own
+## shape (section 9.2) that OPP-D11 deferred for lack of a second caller.
+## Nothing else moved — `_definition()`/`settle_night()`'s nightly offer sweep
+## now read TWO catalogues instead of one, and that is the whole size of the
+## change to prove the substrate generalizes.
 
 const DRE_CONTRACTS := preload("res://data/dre_contracts.gd")
+const SCORE_CONTRACTS := preload("res://data/score_contracts.gd")
 const REQUIREMENTS := preload("res://systems/requirements.gd")
+
+## Every authored catalogue this substrate reads offers/definitions from.
+## Two today (Dre's missions/contracts, the one Score); a later PR's own
+## catalogue file is one more entry here, never a new `_definition()` branch.
+const CATALOGUES := [DRE_CONTRACTS, SCORE_CONTRACTS]
 
 ## Typed completion effects, closed allowlist — addendum ruling OPP-D12, "the
 ## five PR C-E need." `announce_surface`/`record_proof` wait for a consumer
@@ -129,7 +148,31 @@ func reconcile(action: String, _payload: Dictionary, result: Dictionary) -> void
 		# forever: _advance_action_result_objectives only ever scans
 		# active_opportunities, never opportunity_offers.
 		accept("dre_penance")
+	elif action == "boost" and _resolves_score_slide_special(_payload, result):
+		# Bespoke glue, same shape as the three branches above, for the same
+		# reason score_contracts.gd's own header gives: there is no accept
+		# moment separate from the resolving `boost` dispatch itself, so
+		# accept() and resolve() both run here, in one pass, rather than
+		# leaving the offer for a generic matcher that only ever scans
+		# active_opportunities.
+		accept("score_slide_special")
+		resolve("score_slide_special", result)
 	_advance_action_result_objectives(action, result)
+
+## True when a live, unexpired `score_slide_special` offer exists AND this
+## `boost` dispatch is the one it is about — the named target, and an actual
+## success (`result.success`), not merely an attempt. Reads `_find` against
+## `opportunity_offers` directly rather than `_resolved_or_live`/generic
+## helpers, because this is checking one specific pending offer's own match
+## fields, not a general "has this ever been touched" question.
+func _resolves_score_slide_special(payload: Dictionary, result: Dictionary) -> bool:
+	if not bool(result.get("success", false)):
+		return false
+	var inst: Variant = _find(gs.opportunity_offers, "score_slide_special")
+	if inst == null:
+		return false
+	var objective: Dictionary = (_definition("score_slide_special").get("objectives", []) as Array)[0]
+	return str(payload.get("target_id", "")) == str(objective.get("target_id", ""))
 
 ## Qualifying load — the crew_operations precedent in `SaveSystem.load_run()`
 ## for the same reason: a save can already satisfy a definition's
@@ -204,8 +247,10 @@ func _record_introduction_once() -> void:
 ## night.
 func settle_night(_ended_day: int) -> void:
 	_advance_state_fact_objectives()
-	for definition_id in (DRE_CONTRACTS.DEFINITIONS as Dictionary):
-		_maybe_offer(str(definition_id))
+	for catalogue in CATALOGUES:
+		for definition_id in (catalogue.DEFINITIONS as Dictionary):
+			_maybe_offer(str(definition_id))
+	_expire_overdue()
 
 func _advance_state_fact_objectives() -> void:
 	var facts: Dictionary = _facts()
@@ -238,7 +283,11 @@ func _advance_action_result_objectives(action: String, result: Dictionary) -> vo
 # --- generic instance lifecycle ----------------------------------------------
 
 func _definition(definition_id: String) -> Dictionary:
-	return (DRE_CONTRACTS.DEFINITIONS as Dictionary).get(definition_id, {})
+	for catalogue in CATALOGUES:
+		var found: Variant = (catalogue.DEFINITIONS as Dictionary).get(definition_id, null)
+		if found != null:
+			return found
+	return {}
 
 ## True once a definition has ever been offered, is currently live, or has a
 ## terminal outcome recorded — the one check every entry point into a
@@ -268,6 +317,33 @@ func is_offered_or_active(definition_id: String) -> bool:
 	return _find(gs.opportunity_offers, definition_id) != null \
 		or _find(gs.active_opportunities, definition_id) != null
 
+## The UI's own question, for `ui/screens/boost.gd`'s target row: is a live
+## Score naming THIS target on the board right now, and what does it pay if
+## pulled inside the window? Reads every definition's own `kind`/first
+## objective rather than hardcoding `score_slide_special`'s id, so a second
+## Score naming a different target needs no new UI-facing method here.
+func score_offer_for_target(target_id: String) -> Dictionary:
+	for pool in [gs.opportunity_offers, gs.active_opportunities]:
+		for entry in (pool as Array):
+			var inst: Dictionary = entry
+			var definition: Dictionary = _definition(str(inst.get("definition_id", "")))
+			if str(definition.get("kind", "")) != "score":
+				continue
+			var objectives: Array = definition.get("objectives", [])
+			if objectives.is_empty() \
+					or str((objectives[0] as Dictionary).get("target_id", "")) != target_id:
+				continue
+			var bonus := 0
+			for effect in (definition.get("completion_effects", []) as Array):
+				if str((effect as Dictionary).get("type", "")) == "wallet_credit":
+					bonus += int((effect as Dictionary).get("amount", 0))
+			return {
+				"title": str(definition.get("presentation", {}).get("title", "Score")),
+				"bonus": bonus,
+				"days_left": int(inst.get("deadline_day", -1)) - gs.day,
+			}
+	return {}
+
 func _facts() -> Dictionary:
 	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
 	return {
@@ -281,6 +357,11 @@ func _facts() -> Dictionary:
 		# that purity real rather than nominal.
 		"dre_disposition": exposure.disposition("dre") if exposure != null else 0.0,
 		"dre_pending_penance": gs.dre_pending_penance,
+		# Score's own requirement (SCR-D1's "the named target discovered") --
+		# handed in as the raw list rather than a pre-computed bool, so a
+		# later Score against a different target needs no new fact key, only
+		# its own `boost_target_discovered` requirement record.
+		"boost_targets_discovered": gs.boost_targets_discovered,
 	}
 
 func _maybe_offer(definition_id: String) -> void:
@@ -303,15 +384,23 @@ func _maybe_offer(definition_id: String) -> void:
 	offers.append(_new_instance(definition_id, "offered"))
 	gs.opportunity_offers = offers
 
+## OPP-D11's deadline half, first exercised by `score_slide_special`: a
+## definition may declare `"deadline": {"window_days": N}` (umbrella section
+## 9.1's own shape), counted from the offer appearing — every instance in
+## this build is minted as "offered" first, and Dre's own content has no
+## `deadline` key at all, so `window_days` defaults to 0 and `deadline_day`
+## stays -1 (no deadline), exactly the prior behaviour, unchanged.
 func _new_instance(definition_id: String, state: String) -> Dictionary:
 	var id: int = gs.opportunity_next_instance_id
 	gs.opportunity_next_instance_id = id + 1
+	var deadline: Dictionary = _definition(definition_id).get("deadline", {})
+	var window_days: int = int(deadline.get("window_days", 0))
 	return {
 		"instance_id": id, "definition_id": definition_id, "state": state,
 		"source_context": {},
 		"offered_day": gs.day, "offered_slot": -1,
 		"accepted_day": -1, "accepted_slot": -1,
-		"deadline_day": -1, "deadline_slot": -1,
+		"deadline_day": gs.day + window_days if window_days > 0 else -1, "deadline_slot": -1,
 		"objective_progress": {}, "resolved_result": {}, "receipt_id": "",
 	}
 
@@ -398,6 +487,36 @@ func fail(definition_id: String, result: Dictionary) -> void:
 	active.erase(inst)
 	gs.active_opportunities = active
 	_write_history(definition_id, "failed", gs.day)
+
+## OPP-D11's deadline half, first exercised by `score_slide_special` — the
+## umbrella's own lifecycle (design doc section 8) draws "Expired" as its own
+## terminal state, distinct from "Failed": a window closing is not the same
+## fact as accepted work going wrong, so this writes its own outcome label
+## rather than routing through `fail()`. Called from `settle_night()`, the
+## same declared lifecycle point `_maybe_offer`'s nightly sweep already uses
+## (OPP-D7) — never checked reactively on screen open. Checks BOTH lists:
+## `score_slide_special` never leaves `opportunity_offers` before it resolves
+## (see this file's header), so an offer can expire same as an active
+## instance can; `.duplicate()` on each for the same reason
+## `_advance_action_result_objectives` needs it — expiring an entry must not
+## disturb the array `resolve()`/whatever mutates underneath this loop.
+func _expire_overdue() -> void:
+	var offers: Array = gs.opportunity_offers
+	for entry in offers.duplicate():
+		if _is_overdue(entry):
+			offers.erase(entry)
+			_write_history(str((entry as Dictionary)["definition_id"]), "expired", gs.day)
+	gs.opportunity_offers = offers
+	var active: Array = gs.active_opportunities
+	for entry in active.duplicate():
+		if _is_overdue(entry):
+			active.erase(entry)
+			_write_history(str((entry as Dictionary)["definition_id"]), "expired", gs.day)
+	gs.active_opportunities = active
+
+func _is_overdue(entry: Dictionary) -> bool:
+	var deadline_day: int = int(entry.get("deadline_day", -1))
+	return deadline_day >= 0 and gs.day > deadline_day
 
 ## Compact terminal record — umbrella section 9.4/20.1: "a definition ID,
 ## outcome key, count, and last-resolved day answer every future question."

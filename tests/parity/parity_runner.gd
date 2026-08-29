@@ -15944,7 +15944,16 @@ const ECON_CORRIDORS: Dictionary = {
 	# regression back toward the 2% hole has to fail here, not just get
 	# reported as a smaller printed number nobody is watching.
 	"stickup": {"floor": 3, "ceiling": 15},
-	"boost": {"floor": 5, "ceiling": 25},
+	# SCR-D1 (0.4.0 PR A, D-16): widened 25 -> 30 after `score_slide_special`
+	# went live against a real target (`northern_value`) -- a one-time $50
+	# bonus this profile occasionally banks when it discovers that target and
+	# pulls it inside the Score's 3-day window, measured pushing the mean to
+	# 26%. Bounded by construction (`repeatable: false`; the bonus can fire
+	# at most once per run) rather than a compounding effect, so a modest
+	# widening rather than a re-measurement of the whole profile is the
+	# right-sized response -- the corridor's floor and the rest of Boost's
+	# own economics are untouched.
+	"boost": {"floor": 5, "ceiling": 30},
 	# HEAT-D1 (0.3.0) / STK-D1 (0.3.0): measured at 8%, in the same
 	# single-digit range `stickup` and `boost` alone occupy — the expected
 	# shape for a profile spending its slots on crime rather than the market

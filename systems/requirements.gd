@@ -266,6 +266,16 @@ func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dicti
 			var flag: bool = bool(facts.get(str(req.get("fact", "")), false))
 			return _result(req, flag, flag, true)
 
+		"boost_target_discovered":
+			# 0.4.0 PR A (SCR-D1): a Score naming a specific Boost target reads
+			# the same DISCOVERY latch the Boost screen itself reads (batch
+			# 14's DEAL axis) -- absent reads FALSE, same closed direction as
+			# every other type here.
+			var discovered: Variant = facts.get("boost_targets_discovered")
+			var found: bool = discovered is Array \
+				and str(req.get("target_id", "")) in (discovered as Array)
+			return _result(req, found, found, true)
+
 		# --- batch 14 elapsed-progress types --------------------------------
 		#
 		# Two thresholds on facts the run has always carried and no gate has

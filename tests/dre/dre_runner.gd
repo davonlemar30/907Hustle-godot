@@ -50,11 +50,19 @@ extends Node
 ## the economy-side proof (the leveraged-lender profile and the structural
 ## no-risk-free-carry check) -- not duplicated here, the same division this
 ## suite has always drawn between behavioral and economic coverage.
+##
+## 0.4.0 PR A (SCR-D1..D3, D-16): the substrate's first non-Dre content,
+## `data/score_contracts.gd`'s `score_slide_special` -- the new
+## `boost_target_discovered` requirement type, the offer/deadline/resolve/
+## expire lifecycle, the receipt guard, and a wrong-target success leaving it
+## untouched. Boost's own chance_for() roll is not re-tested here (that
+## suite's own job); this suite proves `opportunities.gd` reacts correctly
+## to whatever result Boost hands it.
 
 const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
 const SCRIPTS := preload("res://data/confrontation_scripts.gd")
 
-const MIN_CHECKS := 331
+const MIN_CHECKS := 351
 
 var a: RefCounted
 var gs: Node
@@ -87,6 +95,8 @@ func _ready() -> void:
 	_test_opportunity_effect_allowlist_fails_closed()
 	_test_opportunity_offer_is_not_duplicated_by_a_repeat_check()
 	_test_opportunity_accepted_commitment_cap()
+	_test_boost_target_discovered_requirement()
+	_test_score_slide_special_lifecycle()
 	_test_a_reminder_offer_and_disposition_gate()
 	_test_a_reminder_negotiate_road()
 	_test_a_reminder_hard_road_walk()
@@ -845,6 +855,115 @@ func _test_opportunity_accepted_commitment_cap() -> void:
 	_opportunities().accept("dre_first_money")
 	a.eq_int("freeing a slot lets the same still-offered instance accept",
 		gs.active_opportunities.size(), 1)
+	gs.reset_to_new_game()
+
+# --- 15b. score_slide_special (0.4.0 PR A, SCR-D1..D3) -----------------------
+
+## `requirements.gd`'s own pure-evaluator coverage, same shape as
+## `_test_requirement_types()` above -- the new `boost_target_discovered`
+## type this build adds.
+func _test_boost_target_discovered_requirement() -> void:
+	var req := preload("res://systems/requirements.gd").new()
+
+	var missing := req.evaluate_requirement(
+		{"type": "boost_target_discovered", "target_id": "northern_value"}, {})
+	a.eq_bool("an absent discovery list fails closed", bool(missing["ok"]), false)
+
+	var not_yet := req.evaluate_requirement(
+		{"type": "boost_target_discovered", "target_id": "northern_value"},
+		{"boost_targets_discovered": ["night_owl"]})
+	a.eq_bool("a discovered list without the named target still fails",
+		bool(not_yet["ok"]), false)
+
+	var found := req.evaluate_requirement(
+		{"type": "boost_target_discovered", "target_id": "northern_value"},
+		{"boost_targets_discovered": ["night_owl", "northern_value"]})
+	a.eq_bool("the named target present in the list passes", bool(found["ok"]), true)
+
+## The Score's own lifecycle: offer on discovery, the 3-day window computed
+## at offer time, resolution keyed to the named target AND a real success
+## (never a mere attempt), the receipt guard, a wrong-target success leaving
+## it untouched, and expiry. Resolution is proven against `reconcile()`
+## directly rather than fighting Boost's own seeded chance_for() roll to
+## force a win inside a 3-day window in a unit test -- Boost's own RNG has
+## its coverage in `tests/parity/parity_runner.gd` already; what this suite
+## owns is proving `opportunities.gd` reacts correctly to the result Boost
+## hands it, the same division this file draws everywhere else (see this
+## file's own header on PR D). The real end-to-end dispatch path is proven
+## live via the godot-ai MCP instead (PR A's own body).
+func _test_score_slide_special_lifecycle() -> void:
+	_fresh()
+	a.eq_int("no offer before the target is discovered",
+		gs.opportunity_offers.size(), 0)
+
+	gs.boost_targets_discovered = ["northern_value"]
+	_opportunities().settle_night(gs.day)
+	a.eq_int("the Score offers itself once the target is discovered",
+		gs.opportunity_offers.size(), 1)
+	var offer: Dictionary = gs.opportunity_offers[0]
+	a.eq_str("naming score_slide_special", str(offer["definition_id"]), "score_slide_special")
+	a.eq_int("a 3-day window computed at offer time",
+		int(offer["deadline_day"]), int(offer["offered_day"]) + 3)
+
+	a.eq_int("a repeat nightly sweep does not mint a second offer",
+		gs.opportunity_offers.size(), 1)
+
+	var cash_before: int = gs.cash
+	_opportunities().reconcile("boost", {"target_id": "night_owl"},
+		{"ok": true, "success": true, "take": 60, "tier": 1})
+	a.eq_int("a success at a DIFFERENT target leaves the offer alone",
+		gs.opportunity_offers.size(), 1)
+	a.eq_int("and pays no bonus", gs.cash, cash_before)
+
+	_opportunities().reconcile("boost", {"target_id": "northern_value"},
+		{"ok": true, "success": false, "take": 0, "tier": 2})
+	a.eq_int("a blown attempt at the named target does not fail the Score -- "
+		+ "only the window does (SCR-D1)", gs.opportunity_offers.size(), 1)
+
+	_opportunities().reconcile("boost", {"target_id": "northern_value"},
+		{"ok": true, "success": true, "take": 105, "tier": 2})
+	a.eq_int("a real success at the named target resolves it",
+		gs.opportunity_offers.size(), 0)
+	a.eq_bool("recorded in history", gs.opportunity_history.has("score_slide_special"), true)
+	a.eq_str("completed, not failed or expired",
+		str((gs.opportunity_history["score_slide_special"] as Dictionary)["outcome"]), "completed")
+	a.eq_int("the authored $50 bonus lands as dirty cash, on top of Boost's "
+		+ "own $105 this test's own result dict stands in for",
+		gs.cash - cash_before, 50)
+
+	var cash_after_first: int = gs.cash
+	_opportunities().reconcile("boost", {"target_id": "northern_value"},
+		{"ok": true, "success": true, "take": 105, "tier": 2})
+	a.eq_int("the receipt guard refuses a second credit -- there is nothing "
+		+ "left active or offered for reconcile to even find",
+		gs.cash, cash_after_first)
+
+	# Expiry: a fresh offer, never touched, aged past its own window.
+	_fresh()
+	gs.boost_targets_discovered = ["northern_value"]
+	_opportunities().settle_night(gs.day)
+	var deadline: int = int((gs.opportunity_offers[0] as Dictionary)["deadline_day"])
+	gs.day = deadline + 1
+	_opportunities().settle_night(gs.day)
+	a.eq_int("the offer is gone once its own window has passed",
+		gs.opportunity_offers.size(), 0)
+	a.eq_str("recorded expired, not failed or completed",
+		str((gs.opportunity_history["score_slide_special"] as Dictionary)["outcome"]), "expired")
+
+	# In-memory reload, mid-offer -- the `_round_trip()` pattern above, without
+	# touching the real user:// save slot.
+	_fresh()
+	gs.boost_targets_discovered = ["northern_value"]
+	_opportunities().settle_night(gs.day)
+	var save_system: Node = get_node("/root/SaveSystem")
+	var captured: Dictionary = save_system.capture()
+	var restored: Variant = JSON.parse_string(JSON.stringify(captured))
+	var before_deadline: int = int((gs.opportunity_offers[0] as Dictionary)["deadline_day"])
+	_fresh()
+	save_system._apply(restored as Dictionary)
+	a.eq_int("the offer survives a reload", gs.opportunity_offers.size(), 1)
+	a.eq_int("with its own deadline intact",
+		int((gs.opportunity_offers[0] as Dictionary)["deadline_day"]), before_deadline)
 	gs.reset_to_new_game()
 
 # --- 16. DRE-ARC-03, A Reminder (PR D) ---------------------------------------

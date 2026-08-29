@@ -930,6 +930,67 @@ Same Slice-0-before-the-code discipline as D-7 through D-14: `stickup.gd`'s
 `daily_cap()` and `game_state.gd`'s new target both already depend on the
 rows above, so the ruling is recorded where the dependency was created.
 
+## D-16 — One Score through the substrate
+
+**Decided** 2026-08-29 · **Ships in** `build/score-through-substrate` (0.4.0
+PR A) · **Source:** `BUILD_REPEAT_BUSINESS_PROMPT.md`, closing `86bbp7ctz`
+
+### The question
+
+`docs/STREET_OPPORTUNITY_AND_MISSION_SYSTEM_DESIGN.md` shipped in 0.2.0 PR C
+with exactly one content pair, both Dre's own (DRE-ARC-01/02) — OPP-D8's own
+gate ("no procedural generation until the Dre chain AND one Score chain are
+live") had never actually been tested against a second, non-lending
+consumer. `86bbp7ctz` is the declared reusability-validation gate between
+"working vertical slice" and "reusable foundation"; this PR is that
+validation, not a Scores feature.
+
+### The ruling
+
+| ID | Ruling |
+|---|---|
+| SCR-D1 | The one-Score validation ships in exactly one shape: `data/score_contracts.gd`'s `score_slide_special` observes an existing successful `boost` at a named target (`northern_value`, tier 2 — an existing authored target, no new Boost content) and adds an authored $50 bonus on top, inside an authored 3-day window from the offer. It does not own the lift's payout, Heat, technique, bans, or the caught path — those stay entirely `systems/boost.gd`'s. A blown/caught attempt at the named target does not fail the Score; only the window closing does. A first draft named `spenard_fuel_till` — a real target, but a Stickup one (`tests/confrontation/confrontation_runner.gd`'s own `T2_TARGET`), not Boost's; `boost_target_by_id()` returned empty and every live dispatch refused with "No such place." until a `game_eval` drive caught it, which the suite's own synthetic-reconcile tests could not have (they hand `opportunities.reconcile()` a result dict directly and have no way to know whether the target name inside it is real). |
+| SCR-D2 | Integration follows neither of the two established patterns exactly, and that gap is itself the finding: Dre's shared-name resolutions (`resolve_consequence_choice`, `fund_shark`) needed a domain system's own authority to call `accept()`/`resolve()` directly; `boost`'s own action name is unambiguous and synchronous, so the generic action-result matcher was the natural fit — except that matcher only ever scans `active_opportunities`, and there is no meaningful accept moment separate from the resolving `boost` dispatch itself (OPP-D3 applies more directly here than to any Dre content: the domain action doubling as acceptance leaves no gap between the two at all). The actual shape: one bespoke `reconcile()` branch, the same shape as `dre_seek_out`/`dre_borrow`, calling `accept()` then `resolve()` back to back the moment a live offer's named target reports a real success. No new dispatch action, no adapter registry. |
+| SCR-D3 | `systems/boost.gd`, `systems/stickup.gd`, and the confrontation chassis are untouched — confirmed by diff, not just by intent. The UI touch (`ui/screens/boost.gd`'s target row gains one informational line when a live Score names that row) is deliberately outside this constraint's wording, which names domain/mechanics files specifically; presentation was never the thing being protected. |
+
+### What the substrate actually needed to generalize
+
+Smaller than expected, and worth naming precisely because "the substrate
+needed nothing new" was the optimistic case `systems/opportunities.gd`'s own
+header predicted and this PR did not quite land on:
+
+1. **A deadline a definition can declare and have enforced.** OPP-D11
+   deferred the umbrella's own `deadline_day`/`deadline_slot` half of the
+   instance shape (design doc section 9.2) for lack of a second caller —
+   this Score is that caller. `_new_instance()` now reads an optional
+   `"deadline": {"window_days": N}` off the definition and computes
+   `deadline_day` from the offer day; `_expire_overdue()` (called from
+   `settle_night()`, the same declared lifecycle point the nightly offer
+   sweep already uses) is the enforcement half, checking both
+   `opportunity_offers` and `active_opportunities` since this content never
+   leaves the former before resolving. Dre's own content declares no
+   `deadline`, so `window_days` defaults to 0 and `deadline_day` stays -1 —
+   unchanged behavior.
+2. **One new `requirements.gd` type**, `boost_target_discovered` — SCR-D1's
+   "the named target discovered" reads the same DEAL-walk latch the Boost
+   screen itself reads, handed in as a new `boost_targets_discovered` fact
+   in `_facts()` rather than a bespoke pre-computed boolean, so a second
+   Score naming a different target needs no new fact key.
+3. **`_definition()`/`settle_night()`'s definitions loop now read a list of
+   catalogues** (`CATALOGUES := [DRE_CONTRACTS, SCORE_CONTRACTS]`) instead of
+   one hardcoded file — the only change that was purely mechanical rather
+   than a real new capability.
+
+No adapter registry, no `opportunity_accept` dispatch, no change to the
+receipt/idempotency discipline `resolve()`/`fail()` already enforced.
+
+### Why this PR carries this entry rather than a later PR
+
+Same Slice-0-before-the-code discipline as D-7 through D-15:
+`opportunities.gd`'s deadline handling and the new requirement type are both
+already load-bearing for `score_slide_special`'s own lifecycle, so the
+ruling is recorded where the dependency was created.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

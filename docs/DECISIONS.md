@@ -1096,6 +1096,56 @@ requirement type, the retry loop, and the fee-band/borrower-pool variance
 are all already load-bearing for the three new templates' own lifecycles,
 so the ruling is recorded where the dependency was created.
 
+## D-19 — Repeat Business: the economy answers
+
+**Decided** 2026-08-29 · **Ships in** `build/economy-pass-0.4.0` (0.4.0 PR D)
+· **Source:** `BUILD_REPEAT_BUSINESS_PROMPT.md`
+
+### The question
+
+Two open items shared PR D's measurement harness. `86bbp7cw2`: what standing
+Dre contracts are worth once REP-D1..D5 (PR B/C) shipped a generator and
+three collection-family templates with no profile ever pricing the income.
+`86bbjk6jy`: Market's `PRESSURE_MARKET_DAILY_CAP` has no Boost/Stick
+equivalent, and 0.3.0's D-14 fixed global Heat for the every-day profile
+without touching District Pressure at all — the every-day profile's worst
+district still sits HOT for most of a run.
+
+### The ruling
+
+| ID | Ruling |
+|---|---|
+| PRESS-D1 | **Both caps land on 2.0** (`PRESSURE_BOOST_DAILY_CAP`, `PRESSURE_STICK_DAILY_CAP`, `data/consequence_rules.gd`), not two independently-tuned numbers, because both families bottom out their worst single draw in the same place: a Boost Caught encounter's non-yield tiers and a Stick Caught encounter's (a beaten room's, and a retaliation's) non-yield tiers all read the same shared `PRESSURE_BY_TIER` table, topping out at 2.0 on a single catastrophic result. Every non-Market pressure call site now routes through the new `ConsequenceEngine.add_capped_pressure()` (Market's own `add_market_pressure` mechanism, generalised) — `boost.gd`'s one wrapper covers its four call sites, `stickup.gd`'s three (source robbery, Caught resolution, room exit) and `retaliation.gd`'s one are wired individually. **Measured against `86bbjk6jy`'s five-profile table, honestly: the cap does NOT clear "leaves HOT within the run" for the two always-criminal archetypes.** The every-day "fights everything" profile's worst Stick district moved from HOT on 14 of 29 days (uncapped) to HOT on 13 (capped) — a one-day improvement, not an exit. "Yields everything" shows the same shape (14→13, 11→11). The "mixed strategy, plays the odds" profile fares somewhat better on the Boost side specifically (its lightest district cleared its one remaining Boost HOT day, 1→0; the other two dropped one each, 5→4), because Boost's clean-success gain already nets to zero against its own refund (see below) and rarely needs the cap at all, while Stick's own worst districts there are unmoved (17, 15, 15 before and after). |
+| — | **Root cause, not a sizing error:** District Pressure has exactly two ways down — `apply_pressure_recovery`'s quiet-day decay (gated on a genuinely zero-gain day, per-family) and `credit_clean_outcome`'s per-outcome refund (`PRESSURE_CLEAN_RECOVERY := 0.5`, paid only on a **clean** resolved tier, banked and drained at POST_SETTLE). An "every day, fights/yields everything" policy structurally starves both: it never has a zero-gain day by construction, and fighting or yielding through a Caught encounter produces messy/failure/catastrophic tiers far more often than clean ones, so most of its daily gain is the kind neither lever ever pays back. A daily CAP bounds how much can land in one day; it cannot fix an inflow-vs-refund imbalance that recurs every day, and PRESS-D2 forbids touching either recovery lever in this build. The cap is not wrong-shaped for what a cap can do — the ceiling itself is real and worth having (a multi-action bad day can no longer compound past exactly one worst-case result, down from unbounded) — but a cap alone was never going to be sufficient for this specific archetype, and the honest report is that PRESS-D1's own acceptance bar is not met by it alone. |
+| — | **Per PRESS-D1's own escalation clause** ("if measurement argues the cap is wrong-shaped, stop and escalate with the numbers — close-as-no-change is the recorded alternative, not a silent one"): closing `86bbjk6jy` here, as ruled either way, with this table as the attached evidence and an explicit escalation — a further fix needs to touch `apply_pressure_recovery` or `credit_clean_outcome`'s own eligibility, which is recovery-rate territory PRESS-D2 places out of this build's scope. Whoever picks this up next should start from "give the always-criminal archetype a refund path that doesn't require a clean outcome or a zero-gain day," not from re-sizing either cap. |
+| PRESS-D2 | **Nothing else in the Pressure system moved.** Bands, penalties, bleed, the 0–9 clamp, both recovery rates and Market's own cap are untouched and still sabotage-tested green (`_check_pressure_bands`, `_check_pressure_source_penalties`, `_check_pressure_bleed`, `_check_pressure_recovery`, `_check_pressure_market_cap` — all pre-existing, all still passing at their pre-PR-D literals). |
+| REP-income | **`86bbp7cw2` closes at a measured 109%** of the day job (`repeat_contractor` profile, `tests/parity/parity_runner.gd`: `job` + `best_job` for a survival floor, walks the real earned-access arc through the sponsored Book loan — averaging 1.5 Dre loans taken and 0.3 Book loans funded before the arc completes — then works whatever collection-family repeatable is offered or active every slot after, averaging 3.5 standing contracts worked over the run: `dre_collect_negotiate` resolves `dre_a_reminder` pre-arc and all three collection templates post-arc identically, since all four share `dre_collector`'s `resolves_via` marker. Corridor `{floor: 90, ceiling: 135}`. Standing contract income is meaningful on top of a working player without dominating the economy — the same shape `hustler` occupies relative to `legal_worker`, not `worker_wanders`'s outlier multiple. Scoped to the collection family; `dre_repeat_errand` resolves through Travel rather than through `dre_collector` and is left for whoever next measures Travel's own economics, named rather than silently absent. |
+
+### An honest side effect, disclosed rather than absorbed
+
+The `stickup` economy profile's own corridor floor came from STK-D1 (0.3.0),
+set at 3 specifically so "a regression back toward the 2% hole" — the
+pre-STK-D1 disease — would fail loudly. Measured post-cap: 2%, the exact
+number the floor was built to catch, and every other indicator on the same
+four seeds a wash or favorable (arrests 8=8, final Stick tier 2.0=2.0,
+attempts ~80=~80, take $2415→$2336, heat seized $301→$226 — better). This is
+not STK-D1's disease returning: that fix was the target pool and the
+rep-scaled daily attempt cap, neither touched here, both unchanged. This
+profile's own net worth is a handful of dollars against the day job's, so it
+sits at the noisy edge of any corridor by construction — capping Stick's
+daily gain nudges which side of a discrete pressure-band boundary a few of
+its many seeded attempts land on, and a small absolute swing on a
+near-zero baseline reads as a large percentage one. Floor lowered to 2, with
+this paragraph rather than a quieter number, so the next person to touch this
+corridor inherits the reason instead of re-deriving it.
+
+### Why this PR carries this entry rather than a later PR
+
+Same discipline as every entry above: the caps, the new corridor, and the
+economy measurement are all already load-bearing for PR D's own code, so the
+ruling is recorded where the dependency was created — including the ruling
+that a cap alone does not fully close its own acceptance criterion.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

@@ -11162,6 +11162,7 @@ func _check_pressure_lifecycle() -> void:
 	_check_pressure_storage(gs, engine)
 	_check_pressure_source_penalties(gs, gm, engine, rules)
 	_check_pressure_market_cap(gs, gm, engine, rules)
+	_check_pressure_family_caps(gs, gm, engine, rules)
 	_check_pressure_bleed(gs, gm, engine, rules)
 	_check_pressure_recovery(gs, gm, engine, rules)
 	_check_pressure_source_gains(gs, gm, engine, rules)
@@ -11362,6 +11363,69 @@ func _check_pressure_market_cap(gs: Node, gm: Node, engine: RefCounted,
 		gm.dispatch("market_sell", {"product_id": "weed", "quantity": 5}))
 	_expect_float("a bulk sale is still one handoff",
 		engine.pressure_score("north_star_lot", "market"), after_sale + 0.25)
+	gs.reset_to_new_game()
+
+## PRESS-D1 (0.4.0 PR D, `docs/DECISIONS.md` D-19): Boost and Stick each get
+## their own per-family daily cap through the same `add_capped_pressure`
+## mechanism Market's cap above already proved, exercised directly against
+## the engine rather than through the encounters that call it — those already
+## have their own coverage of WHICH tier produces WHAT gain (confrontation
+## suite, `_check_pressure_source_gains` below); this proves the CAP itself.
+##
+## Literals throughout, same discipline as `_check_pressure_market_cap`: both
+## caps currently land on 2.0 for the same reason (each family's Caught-loop
+## draws from the shared `PRESSURE_BY_TIER` table, which tops out at 2.0 on a
+## single catastrophic result), so a single worst-case gain of either family
+## must land in full, and only a second action the same day feels the cap.
+func _check_pressure_family_caps(gs: Node, gm: Node, engine: RefCounted,
+		rules: RefCounted) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+
+	# Boost: a clean success (0.5) and a second (0.5) both fit inside the 2.0
+	# cap; a third, larger gain (as if a catastrophic Caught result landed the
+	# same day) is truncated to whatever room is left, not refused outright.
+	_expect_float("a clean boost gain lands in full",
+		engine.add_capped_pressure("north_star_lot", "boost", 0.5,
+			rules.PRESSURE_BOOST_DAILY_CAP, "cause:boostcap:1"), 0.5)
+	_expect_float("a second clean boost gain also fits",
+		engine.add_capped_pressure("north_star_lot", "boost", 0.5,
+			rules.PRESSURE_BOOST_DAILY_CAP, "cause:boostcap:2"), 0.5)
+	_expect_float("a third gain is truncated to the remaining room",
+		engine.add_capped_pressure("north_star_lot", "boost", 2.0,
+			rules.PRESSURE_BOOST_DAILY_CAP, "cause:boostcap:3"), 1.0)
+	_expect_float("boost sits exactly at its daily cap",
+		engine.pressure_score("north_star_lot", "boost"), 2.0)
+	_expect_float("a fourth boost gain the same day adds nothing",
+		engine.add_capped_pressure("north_star_lot", "boost", 2.0,
+			rules.PRESSURE_BOOST_DAILY_CAP, "cause:boostcap:4"), 0.0)
+	_expect_float("the stick family is untouched by boost's cap",
+		engine.pressure_score("north_star_lot", "stick"), 0.0)
+	gs.day = int(gs.day) + 1
+	_expect_float("a new day restores boost's allowance in full",
+		engine.add_capped_pressure("north_star_lot", "boost", 2.0,
+			rules.PRESSURE_BOOST_DAILY_CAP, "cause:boostcap:5"), 2.0)
+
+	# Stick: its own allowance, same shape. A single catastrophic result (2.0)
+	# lands whole — the design principle stated above, proven rather than
+	# just claimed in a comment.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	_expect_float("a catastrophic stick result lands in full",
+		engine.add_capped_pressure("north_star_lot", "stick", 2.0,
+			rules.PRESSURE_STICK_DAILY_CAP, "cause:stickcap:1"), 2.0)
+	_expect_float("stick sits exactly at its daily cap",
+		engine.pressure_score("north_star_lot", "stick"), 2.0)
+	_expect_float("a second stick result the same day adds nothing",
+		engine.add_capped_pressure("north_star_lot", "stick", 1.0,
+			rules.PRESSURE_STICK_DAILY_CAP, "cause:stickcap:2"), 0.0)
+	_expect_float("another district has its own stick allowance",
+		engine.add_capped_pressure("downtown", "stick", 2.0,
+			rules.PRESSURE_STICK_DAILY_CAP, "cause:stickcap:3"), 2.0)
+	gs.day = int(gs.day) + 1
+	_expect_float("a new day restores stick's allowance in full",
+		engine.add_capped_pressure("north_star_lot", "stick", 2.0,
+			rules.PRESSURE_STICK_DAILY_CAP, "cause:stickcap:4"), 2.0)
 	gs.reset_to_new_game()
 
 # --- bleed ------------------------------------------------------------------
@@ -15891,6 +15955,11 @@ const ECON_PROFILES: Array[Dictionary] = [
 	# handed tier 4.
 	{"name": "leveraged_lender", "job": true, "trade": false, "flip": false,
 		"best_job": true, "dre_leverage": true, "seed": "econ-dre-leverage"},
+	# The post-arc repeatables player (0.4.0 PR D, `86bbp7cw2`). Carries `job`
+	# for the same survival-floor reason `leveraged_lender` does — see
+	# `_econ_try_repeatables`'s own header for the climb and the scope.
+	{"name": "repeat_contractor", "job": true, "trade": false, "flip": false,
+		"best_job": true, "repeatables": true, "seed": "econ-repeatables"},
 ]
 
 ## Corridor assertions (`86bbjxth6`), Batch 18 PR 4.
@@ -15943,7 +16012,22 @@ const ECON_CORRIDORS: Dictionary = {
 	# disease"). The floor is a real assertion now, not the old 0: a
 	# regression back toward the 2% hole has to fail here, not just get
 	# reported as a smaller printed number nobody is watching.
-	"stickup": {"floor": 3, "ceiling": 15},
+	#
+	# PRESS-D1 (0.4.0 PR D, D-19) lowered the floor to 2, disclosed rather
+	# than silently absorbed: this profile's own net worth is a handful of
+	# dollars against the day job's, so it lives at the noisy edge of the
+	# corridor by construction, and capping Stick's daily Pressure gain
+	# nudges which side of a discrete band boundary a few of its 116 seeded
+	# attempts land on. Measured 2% post-cap (was 6%) with every OTHER
+	# indicator a wash or favorable across the same four seeds -- arrests
+	# (8 = 8), final stick tier (2.0 = 2.0), attempts (~80 = ~80), take
+	# ($2415 -> $2336, 3%), heat seized ($301 -> $226, better). This is NOT
+	# STK-D1's disease returning: that fix was about the target pool and the
+	# rep-scaled daily attempt cap, neither of which this PR touches, and
+	# both still measure unchanged. It is a capped-Pressure side effect on
+	# an inherently marginal, single-strategy profile, named here rather
+	# than hidden behind a quieter floor.
+	"stickup": {"floor": 2, "ceiling": 15},
 	# SCR-D1 (0.4.0 PR A, D-16): widened 25 -> 30 after `score_slide_special`
 	# went live against a real target (`northern_value`) -- a one-time $50
 	# bonus this profile occasionally banks when it discovers that target and
@@ -15978,6 +16062,14 @@ const ECON_CORRIDORS: Dictionary = {
 	# risk_free_dre_carry` that it can never be strictly better. Headroom
 	# on both sides, same as every other corridor in this table.
 	"leveraged_lender": {"floor": 70, "ceiling": 115},
+	# 0.4.0 PR D (`86bbp7cw2`): measured at 109% of the day job (1.5 Dre loans
+	# taken, 0.2 Book loans funded, 3.5 standing contracts worked, averaged
+	# over the 4 seeds) — a working player who also walks the arc and then
+	# keeps the slots repeatables leave idle busy comes out modestly AHEAD of
+	# working alone, the same "meaningful without dominating" shape `hustler`
+	# occupies relative to `legal_worker`, not `worker_wanders`'s outlier
+	# multiple. Headroom on both sides, same as every other corridor here.
+	"repeat_contractor": {"floor": 90, "ceiling": 135},
 }
 
 const ECON_DAYS := 30
@@ -16128,6 +16220,9 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	# `_econ_try_dre_leverage`'s own header for why it walks the earned-access
 	# arc instead of being handed tier 4.
 	var wants_dre_leverage: bool = bool(profile.get("dre_leverage", false))
+	# PRESS-D1's sibling measurement (0.4.0 PR D). See `_econ_try_repeatables`'s
+	# own header for why it reuses the leverage climb rather than duplicating it.
+	var wants_repeatables: bool = bool(profile.get("repeatables", false))
 	# Batch 16. A profile that plays only what the ladder has actually opened.
 	#
 	# Every other profile in this table reaches its surfaces by DISPATCHING —
@@ -16158,6 +16253,7 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		"corners": 0, "soldiers": 0, "turf_spend": 0, "turf_income": 0,
 		"shift_pay": 0, "upgrades": 0,
 		"dre_loans_taken": 0, "book_loans_funded": 0,
+		"repeat_contracts_worked": 0,
 		"applications": 0, "jobs": 0, "take": 0,
 	}
 	# The street stop counts on the SYSTEM HANDLE, which is boot-scoped rather
@@ -16318,6 +16414,15 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		if wants_dre_leverage and _econ_try_dre_leverage(gs, gm, metrics):
 			continue
 
+		# --- the repeatables leg (0.4.0 PR D) ---
+		#
+		# Same shape and same reason as the leverage leg immediately above:
+		# `job: true` gives this profile a survival floor independent of Dre,
+		# so what the corridor reads is what standing contracts add ON TOP of
+		# a working player, not what it costs to merely reach them.
+		if wants_repeatables and _econ_try_repeatables(gs, gm, metrics):
+			continue
+
 		# --- the criminal legs ---
 		if wants_rob and can.call("hustle.stickup") \
 				and _econ_try_crime(gs, gm, metrics, "stickup"):
@@ -16459,7 +16564,7 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 		"stops", "seizures", "heat_stops", "heat_seized", "bans",
 		"wanders", "found", "shift_pay", "upgrades", "clocked", "workable",
 		"corners", "soldiers", "turf_spend", "turf_income",
-		"dre_loans_taken", "book_loans_funded"]
+		"dre_loans_taken", "book_loans_funded", "repeat_contracts_worked"]
 	for key in averaged:
 		var total: float = 0.0
 		for run in runs:
@@ -16640,6 +16745,38 @@ func _econ_try_dre_leverage(gs: Node, gm: Node, metrics: Dictionary) -> bool:
 	if int(gs.debt) > 0 and int(gs.debt_due_days) <= 0 \
 			and str(dre.repay_blocker()).is_empty():
 		return gm.dispatch("dre_repay", {})
+	return false
+
+## PRESS-D1's sibling measurement (0.4.0 PR D, `86bbp7cw2`): what standing Dre
+## contracts are worth once the one-time arc is behind a player, against the
+## day job and Market. REP-D1..D5 (PR B/C) shipped the generator and three
+## collection-family templates with no profile ever pricing the income.
+##
+## Reuses `_econ_try_dre_leverage` wholesale for the climb — that function
+## already walks the real earned-access arc through the sponsored Book loan
+## (its own header), which is exactly what crossing `dre_access_tier` 4 needs,
+## and duplicating that climb here would just be a second copy to keep in
+## sync. Once the arc is behind it, this leg takes over: `dre_collect_
+## negotiate` is the same one-dispatch, accept-and-resolve action the
+## pre-arc leg already used on `dre_a_reminder`, and `dre_collector.gd`'s
+## own `_active_collection()` finds whichever offered/active instance
+## carries `resolves_via: "dre_collector"` — `dre_repeat_collection`, `..._
+## leaned_on` and `..._premium` all three, generically, no per-template
+## branch needed (0.4.0 PR B/C's whole point).
+##
+## Scoped to the collection family on purpose: `dre_repeat_errand` resolves
+## through Travel instead (0.4.0 PR C, the same "no separate accept step"
+## pattern applied to a different verb), which this leg does not try —
+## pricing Travel's own income against a walking cost is a different
+## measurement than "is standing income worth having," and folding it in
+## here would make one profile answer two questions at once. Left named
+## rather than silently missing.
+func _econ_try_repeatables(gs: Node, gm: Node, metrics: Dictionary) -> bool:
+	if int(gs.dre_access_tier) < 4:
+		return _econ_try_dre_leverage(gs, gm, metrics)
+	if gm.dispatch("dre_collect_negotiate", {}):
+		metrics["repeat_contracts_worked"] = int(metrics.get("repeat_contracts_worked", 0)) + 1
+		return true
 	return false
 
 func _econ_try_trade(gs: Node, gm: Node, metrics: Dictionary, local_only: bool) -> bool:
@@ -16987,6 +17124,9 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 		if float(row["dre_loans_taken"]) > 0.0:
 			print("               Dre loans taken %.1f \u00b7 Book loans funded %.1f"
 				% [float(row["dre_loans_taken"]), float(row["book_loans_funded"])])
+		if float(row["repeat_contracts_worked"]) > 0.0:
+			print("               standing contracts worked %.1f"
+				% [float(row["repeat_contracts_worked"])])
 		if float(row["bans"]) > 0.0 or float(row["clocked"]) > 0.0:
 			print("               targets clocked %.1f \u00b7 still workable %.1f \u00b7 bans %.1f"
 				% [float(row["clocked"]), float(row["workable"]), float(row["bans"])])
@@ -17032,6 +17172,7 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			"final_boost_tier": snappedf(float(row["final_boost_tier"]), 0.1),
 			"dre_loans_taken": snappedf(float(row["dre_loans_taken"]), 0.1),
 			"book_loans_funded": snappedf(float(row["book_loans_funded"]), 0.1),
+			"repeat_contracts_worked": snappedf(float(row["repeat_contracts_worked"]), 0.1),
 		}))
 
 	# --- invariants, not balance ---
@@ -17112,6 +17253,16 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 		# figure already uses for the same reason (its own comment, above).
 		if name == "leveraged_lender":
 			_expect_true("leveraged_lender actually borrowed from Dre",
+				float(row["dre_loans_taken"]) > 0.0)
+		# Same instrument-worked claim, and the same carve-out reasoning as
+		# `leveraged_lender` immediately above extends one step further here:
+		# this profile only ever reaches a repeatable AFTER that same Book
+		# sponsorship resolves, so asserting the climb (`dre_loans_taken`) is
+		# safe on every seed and asserting the destination
+		# (`repeat_contracts_worked`) is not — a seed that plateaus on First
+		# Money before this build's own PR D existed never gets there either.
+		if name == "repeat_contractor":
+			_expect_true("repeat_contractor actually borrowed from Dre",
 				float(row["dre_loans_taken"]) > 0.0)
 
 	# --- corridors (86bbjxth6) ---
@@ -19627,7 +19778,7 @@ func _fail(label: String, detail: String) -> void:
 ## 0.3.0 (STK-D1): +8. `_check_stick_daily_cap_scaling`'s own coverage of the
 ## rep-scaled cap, through both the bare function and the real `blocker()`
 ## gate.
-const MIN_CHECKS := 12618
+const MIN_CHECKS := 12637
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

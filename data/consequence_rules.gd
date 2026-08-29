@@ -650,6 +650,25 @@ const PRESSURE_BOOST_SUCCESS := 0.5
 const PRESSURE_MARKET_SALE := 0.25
 const PRESSURE_MARKET_DAILY_CAP := 1.0
 
+## PRESS-D1 (0.4.0 PR D, `docs/DECISIONS.md` D-19): Boost and Stick each gain
+## a per-family daily cap on Market's own precedent above — measured, not
+## copied blind, and each set at least as high as that family's own largest
+## SINGLE authored gain, so one bad result is never itself truncated by its
+## own cap — only a second action landing the same day starts to feel it.
+##
+## Both families bottom out their worst single draw in the same place: a
+## Boost Caught encounter's non-yield tiers and a Stick Caught encounter's
+## (and a beaten room's, and a retaliation's) non-yield tiers all read the
+## SAME shared `PRESSURE_BY_TIER` table, topping out at 2.0 on a single
+## catastrophic result. Boost's own direct gains (`PRESSURE_BOOST_SUCCESS`
+## 0.5, the bribe table's 1.0, `YIELD_PRESSURE_GAIN` 1.0) never reach that —
+## it is the shared Caught table that sets Boost's true ceiling, not Boost's
+## own authored rows. Both caps land on 2.0 for the same reason: exactly one
+## worst-case result of either family lands in full; a second action of that
+## family the same day is what the cap actually limits.
+const PRESSURE_BOOST_DAILY_CAP := 2.0
+const PRESSURE_STICK_DAILY_CAP := 2.0
+
 # --- The trading path's risk term (v0.2.0) ---------------------------------
 #
 # Measured before it was designed. The economy instrument

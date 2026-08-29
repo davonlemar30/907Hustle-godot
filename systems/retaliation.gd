@@ -381,12 +381,15 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 			district_id, {"source_id": "retaliation"})
 
 	# 5. District Pressure, once. A fight in the street is exactly the kind of
-	#    thing that makes a block start recognising you.
+	#    thing that makes a block start recognising you — under the same
+	#    PRESS-D1 "stick" family cap the robbery that caused this already
+	#    draws against, not a separate budget a retaliation could blow past it
+	#    through.
 	var pressure: float = float(effects.get("pressure", 0.0))
 	if pressure > 0.0 and engine.record_receipt(cause_id, "%s:pressure" % receipt_prefix):
-		engine.add_pressure(district_id, "stick", pressure,
+		result["pressure"] = engine.add_capped_pressure(district_id, "stick",
+			pressure, rules.PRESSURE_STICK_DAILY_CAP,
 			"%s:%s" % [cause_id, actor_id])
-		result["pressure"] = pressure
 
 	# 6. What the block saw. Reuses the resolver's authored footprint for the
 	#    shape that was rolled, the same way Caught does.

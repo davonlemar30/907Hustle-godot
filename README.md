@@ -12,7 +12,7 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `0.2.1`** — shown bottom-right on the title screen, and stamped into
+**Current: `0.3.0`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
@@ -30,10 +30,38 @@ the constant out of the file, and the parity suite asserts both the value and
 its shape. A version written down twice is a version that disagrees with itself
 the first time somebody bumps one copy.
 
-## What's new since 0.1.2
+## What's new since 0.2.0
 
 *Full technical detail in [`CHANGELOG.md`](CHANGELOG.md) and
 [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
+
+### 0.3.0 — Answer For It: the cops talk to you now
+
+**A blown stickup used to skip straight to Booking.** No encounter, no
+choice, straight to processing — for four batches that was the design,
+because the robbery had already resolved on its own roll. A phone playtest
+called it out as the first real finding: it read like a missing feature, not
+a decision. Now a blown tier-1 job opens the same fight, run, talk, or yield
+choice Boost's own caught loop already taught you, before any arrest
+resolves.
+
+**Heat comes back down now.** Working criminal surfaces every day used to
+push Heat to the ceiling with no way back short of getting arrested — the
+quiet-day discount only ever helped a day that generated no Heat at all,
+which an everyday hustle never has. A small decay now runs every night
+regardless, and the existing quiet-day discount is bigger too. Boost's
+biggest robbery tier also no longer arrests you on a blown Run attempt no
+matter how cold you are — Heat has to actually be high enough, same as every
+other tier. Boost's own measured share of the day job moved 13% → 24%.
+
+**Stickup earns more of a look.** One target and a flat two-a-day cap meant
+stickup read 2% of the day job with one mark absorbing 98% of every attempt.
+A second Spenard target and a cap that grows with rep move that to 6% solo,
+8% combined with boost.
+
+**Small fixes:** the Texts screen's "clear all" button is a real 44pt tap
+target now; the title screen keeps its authored phone-width layout instead
+of stretching edge-to-edge on a wider screen.
 
 ### 0.2.1 — In Hand: the touch fix and the phone build
 
@@ -48,37 +76,19 @@ hand the way it always should have.
 through this whole time — an installable Android APK, built fresh in CI on
 every merge to `main`. See [On a phone](#on-a-phone) below.
 
-### 0.2.0 — Dre Lending & Loan-Shark Progression
+*Between the two: **0.2.0** put structured debt to Dre in the game — a real
+account state machine, not dormant flat fields — with Juan's introduction on
+a real cash/rent-pressure trigger, and the Book earned through a sponsored
+loan rather than handed over on a day count. See the 0.2.0 entry this section
+used to open with, now in `docs/BUILD_LOG.md`.*
 
-**Dre fronts money now, and the debt is real.** Juan puts you onto him when
-things get tight — not on a clock, on whether you actually need it — and the
-first loan is a plain number with a plain deadline: what you get, what you
-owe back, and the day it's due. Pay it and Dre trusts you with more. Miss it
-and he doesn't come for you himself; he sends somebody, and that's its own
-conversation.
-
-**Trust him enough and he starts handing you work:** a name to collect from,
-talked loose or taken the hard way, your call. Handle it clean and he'll put
-your own name forward — one borrower, his vouch, funded through the same
-book everybody else's money runs through. See that loan through and the Book
-opens for real: THE BOOK is yours to run, other people's money at your own
-interest, THE SHARK surface retired under a name that actually says what it
-is. It was never a Day 5 unlock. You earn it, in order, or you don't see it
-at all.
-
-Finances now says the two things it always meant to say as two things: DEBT
-TO DRE, what you owe him, and THE BOOK, what they owe you. Never one number
-pretending to be both.
-
-*Between the two: **0.1.3** taught the game to let go of what's finished —
-old texts, settled Shark notes, resolved consequence records — after long
-runs measurably slowed down under their own history. Save schema v22; an
-existing save gets the cleanup applied once on load.*
-
-**Up next:** the authored Dre chain is the whole of his content for now —
-repeatable contracts after Junior Lender are deliberately deferred until the
-chain has proven itself in play. Stickup and the Lift folding into one
-SCORES ladder is deferred for the same reason.
+**Up next:** the economy instrument's own greedy target-picking still
+concentrates stickup attempts on whichever target has the richest ceiling —
+disclosed in D-15 as the measurement tool's own behavior, not tuned away.
+District Pressure's recovery (separate from Heat) still can't reach an
+every-day-criminal profile at all, since it only ever recovers on a quiet
+day — filed, not fixed, pending a design call on whether that's the intended
+read of maximum recognition.
 
 ## Status
 
@@ -157,6 +167,7 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Notice a room worth trying, and put it on your own map | Home → LOOK FOR A DEAL |
 | Rob marks for fast money and real Heat | Hustle → Stickup |
 | Play a staged room on the till, the register, the dice game, or Goodie's stash — bank what you've got or push for more | automatic, on a tier 2-3 stickup |
+| Get caught on a blown stickup and answer for it — fight, run, talk, or yield before any arrest resolves | automatic, on a blown tier-1 Stickup |
 | Have it go clean, messy, wrong, or badly wrong | automatic, on any risky action |
 | Get caught mid-lift and choose how to play it — talk your way clear, buy off the store, or hand back what you took | automatic, on a blown Boost |
 | Get booked, and trade cash against calendar time | automatic, when an answer goes badly enough |
@@ -215,7 +226,10 @@ one distinctive obligation — rent — is already payable from the Phone.
 trustworthy.** A leaked test catalogue had been corrupting every economy figure
 since batch 3; batch 9 closed it and re-measured. Against a day job at 100%,
 the 907List flipper reads 358% and the trade-plus-job hybrid 732%, while Boost
-sits at 13% and Stickup at 2%.
+sits at 24% and Stickup at 6% (both re-measured for 0.3.0 — Boost was 13%
+before Heat gained an unconditional decay and lost its tier-3 unconditional
+arrest; Stickup was the 2% this section used to open with, before a second
+Spenard target and a rep-scaled cap, D-15).
 
 **"Wandering reads 288% — the strongest clean path" was true for one batch and
 is retracted here rather than left standing.** It was measured before Territory
@@ -431,8 +445,8 @@ every screen's `ScrollContainer` subtree is walked for a Control stuck at
 `MOUSE_FILTER_STOP` or a button wired the wrong way, so the touch-scroll fix
 below can't regress silently.
 
-Current counts: parity 12,591 · save-validation 235 · territory 170 ·
-confrontation 250 · tips 93 · dre 331 · smoke 23/23 screens, 1,093 touch checks.
+Current counts: parity 12,618 · save-validation 235 · territory 170 ·
+confrontation 251 · tips 93 · dre 331 · smoke 23/23 screens, 1,101 touch checks.
 
 ## Architecture
 
@@ -649,6 +663,7 @@ regardless of how small the source file is.
 | **0.1.3. The long-run memory fix** | ✅ a driven 60-day run had grown ~1,400 phone-inbox UI nodes (rebuilt on every action) and a six-figure-byte save. The inbox keeps its newest 30; settled Shark notes and resolved consequence records shed on the next settle/morning. Save v19 → **v22**; an existing save gets the cleanup applied once on load. Odds, prices and outcomes unchanged — the parity suite's market-stream drift check proves it |
 | **0.2.0. Dre Lending & Loan-Shark Progression** | ✅ five PRs off `BUILD_DRE_LENDING_PROMPT.md`: structured debt to Dre (a real account state machine, not the old dormant flat fields); Juan's introduction on a real cash/rent-pressure trigger; the shared opportunity substrate and First Money (Dre's first loan); A Reminder (Dre's first real contract — collect from a borrower, talked loose or taken hard); and the Book, earned through a sponsored loan — THE SHARK retired under a name that says what it is, gated by access tier rather than by day count. New systems `dre`, `dre_collector`, `opportunities`; new CI gate `tests/dre/` (331 checks). Save v22 → v24 (no fields added in PR E — the catalogue's new borrower metadata resets fresh every run). Parity → **12,578 checks** |
 | **0.2.1. In Hand: the touch fix and the phone build** | ✅ two PRs off `BUILD_IN_HAND_PROMPT.md`: `card()`/`_card()` and a `screen_base.gd` normalize sweep make every screen's `ScrollContainer` pass-through by default, so a drag starting on a card scrolls everywhere instead of only from bare background — a structural CI gate in `screen_smoke.gd` (1,093 touch checks) guards the property going forward. Plus the first native build: an additive Android debug-APK preset and CI workflow, side by side with the Web export and untouched by it. No schema change. Parity **12,578 checks** (unchanged — behaviour-preserving) |
+| **0.3.0. Answer For It** | ✅ four PRs off `BUILD_ANSWER_FOR_IT_PROMPT.md`: a blown tier-1 stickup opens fight/run/talk/yield before booking instead of skipping straight to it (D-13); Heat gets an unconditional nightly floor alongside a bigger quiet-day discount, and Boost's tier-3 Run failure loses its unconditional arrest (D-14, closes escalation `86bbjk6kk`) — Boost's own share of the day job moves 13% → 24%; a second Spenard stickup target and a rep-scaled daily cap move stickup's measured share 2% → 6% solo, 8% combined with boost (D-15, closes `86bbjngyz`); plus phone/title UI fixes. Save schema unchanged at v24. Parity → **12,618 checks**, floor `MIN_CHECKS := 12618`. (A concurrent `#104` merged alongside this batch — a real Node-leak fix in save validation plus system-lookup hardening — and independently moved save-validation to 235 and smoke to 1,101 touch checks) |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

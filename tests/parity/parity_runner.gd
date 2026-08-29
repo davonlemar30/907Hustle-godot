@@ -183,6 +183,7 @@ func _ready() -> void:
 		_check_batch17(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_street_interruption_gate(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_street_roster(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_travel_checkpoint(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -7851,7 +7852,7 @@ func _check_engine_adapters(gs: Node, gm: Node, engine: RefCounted) -> void:
 	# including after a load. That is the mechanism the whole rule rests on.
 	_expect_str("the source adapters registered at boot",
 		str(engine.registered_adapter_ids()),
-		str(["boost", "dre_collection", "retaliation", "stickup", "wander"]))
+		str(["boost", "dre_collection", "retaliation", "stickup", "travel", "wander"]))
 	_expect_true("the boost adapter resolves to a system",
 		engine.source_adapter("boost") != null)
 	_expect_true("the boost adapter is the boost system",
@@ -16006,7 +16007,18 @@ const ECON_CORRIDORS: Dictionary = {
 	# and retuning that lever to claw the old ceiling back is a separate,
 	# deliberate decision for whoever owns the trading economy next.
 	"hustler": {"floor": 800, "ceiling": 1100},
-	"arbitrage": {"floor": 180, "ceiling": 320},
+	# 0.5.0 PR C (STR-D4): the checkpoint gate rolls on every district
+	# crossing, and arbitrage is the one profile built entirely out of
+	# crossings -- it feels a cost none of the other corridors above are
+	# structurally exposed to the same way. Measured at 158% on this PR's
+	# own baseline (was 180-320%); floor lowered to accommodate the real,
+	# deliberately shipped cost rather than tuning the gate or the luggage
+	# rule's effects table to claw the old number back. Not vibed: MEAS-D1
+	# asks for measurement over a target, and 158% comfortably clears
+	# "still profitable, materially riskier" -- the balance guard's own bar
+	# for a player who keeps moving rather than one the new mechanic prices
+	# out of the strategy.
+	"arbitrage": {"floor": 140, "ceiling": 320},
 	"flipper": {"floor": 280, "ceiling": 430},
 	"trader": {"floor": 0, "ceiling": 15},
 	# STK-D1 (0.3.0): closes `86bbjngyz`. Measured at 6% on the post-A/B
@@ -19780,7 +19792,7 @@ func _fail(label: String, detail: String) -> void:
 ## 0.3.0 (STK-D1): +8. `_check_stick_daily_cap_scaling`'s own coverage of the
 ## rep-scaled cap, through both the bare function and the real `blocker()`
 ## gate.
-const MIN_CHECKS := 12712
+const MIN_CHECKS := 12720
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -22359,6 +22371,187 @@ func _check_roster_pool_reachable(gs: Node, gm: Node) -> void:
 			found_young = true
 	_expect_true("the Curtis tax stop is reachable once he is watching", found_tax)
 	_expect_true("the low-stakes test is reachable with no gate at all", found_young)
+	gs.reset_to_new_game()
+
+# === 0.5.0 PR C — The checkpoint (STR-D4) ===================================
+#
+# The same interruption gate Wander rolls on a walk, invoked on district
+# travel instead. `WanderSystem.attention_steps()`/`B10_EVENTS.gate_chance()`
+# are read here, never re-derived -- PR A's own arithmetic checks
+# (`_check_gate_arithmetic`) already prove the formula; this section's job is
+# proving TRAVEL's own wiring: the trigger site, the authored script, the
+# seeded key, the return route, and the mutual exclusion with the older,
+# silent carry-stop tax.
+#
+# No streak-cap analog is tested here because none was authored -- STR-D4
+# asks for "the same interruption gate," which is the CHANCE formula
+# (STR-D1), not STR-D2's separate quiet-streak guarantee (a Wander-specific
+# answer to "the walk-around button pressed indefinitely"). Travel already
+# costs a fare and a full slot every time, so an unbounded chance-only gate
+# is proportionate on its own; recorded as a flagged implementation choice
+# in `docs/DECISIONS.md` rather than silently narrowing STR-D4's own scope.
+
+func _check_travel_checkpoint(gs: Node, gm: Node) -> void:
+	_check_checkpoint_cold_profile(gs, gm)
+	_check_checkpoint_hot_profile(gs, gm)
+	_check_checkpoint_reload(gs, gm)
+	_check_checkpoint_return_route(gs, gm)
+	_check_checkpoint_carry_exclusion(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+## A fresh run only ever unlocks `north_star_lot` -- travel needs a second
+## district to actually exercise, so this is the one piece of rigged state
+## every checkpoint check shares.
+func _checkpoint_setup(gs: Node) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	gs.cash = 5000
+	gs.inventory = {"weed": 5}
+
+func _checkpoint_other_district(gs: Node) -> String:
+	return "downtown" if str(gs.current_district_id) == "north_star_lot" else "north_star_lot"
+
+## Close out whatever the checkpoint opened -- same shape as
+## `_close_gate_encounter`, against `travel`'s own chain rather than
+## Wander's.
+func _close_checkpoint(gs: Node, gm: Node) -> void:
+	var decision: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+	var choices: Array = decision.get("allowed_choices", [])
+	if choices.is_empty():
+		return
+	gm.dispatch("resolve_consequence_choice", {"choice_id": str(choices[0])})
+	var engine: Object = gm.system("consequence")
+	if engine != null and bool(engine.has_active()):
+		gm.dispatch("consequence_continue", {})
+
+## Cold-player protection: a clean, paid-up player crossing districts stays
+## near-silent, the same bar STR-D2 sets for a wander.
+func _check_checkpoint_cold_profile(gs: Node, gm: Node) -> void:
+	_checkpoint_setup(gs)
+	var engine: Object = gm.system("consequence")
+	var opens := 0
+	for _trip in range(30):
+		gm.dispatch("travel", {"district_id": _checkpoint_other_district(gs)})
+		if bool((engine as Object).has_active()):
+			opens += 1
+			_close_checkpoint(gs, gm)
+	_expect_true("a cold profile's checkpoint stays near-silent (%d/30 crossings)" % opens,
+		opens <= 6)
+	gs.reset_to_new_game()
+
+## The other bound: a player already loud enough to matter cannot cross
+## freely. Pressure is re-applied on BOTH districts every trip (not just the
+## one the profile started in) because the player alternates between them
+## every crossing, and re-pinned every iteration for the same reason PR A's
+## own hot profile does -- Heat decay and Pressure recovery run on every
+## day-cross this loop will produce several of.
+func _check_checkpoint_hot_profile(gs: Node, gm: Node) -> void:
+	_checkpoint_setup(gs)
+	var engine: Object = gm.system("consequence")
+	var opens := 0
+	for i in range(20):
+		gs.heat = 14.0
+		gs.rent_missed = 1
+		engine.add_pressure("north_star_lot", "market", 9.0,
+			"cause:checkpoint_test:hot:a:%d" % i)
+		engine.add_pressure("downtown", "market", 9.0,
+			"cause:checkpoint_test:hot:b:%d" % i)
+		gm.dispatch("travel", {"district_id": _checkpoint_other_district(gs)})
+		if bool((engine as Object).has_active()):
+			opens += 1
+			_close_checkpoint(gs, gm)
+	_expect_true("a maximally hot, indebted profile's checkpoint fires often (%d/20 crossings)" % opens,
+		opens >= 8)
+	gs.reset_to_new_game()
+
+## Determinism under reload, the same release-blocker property PR A's own
+## gate proves for a wander -- `SaveSystem.capture()`/`_apply()` round-trip
+## in memory, never the real `user://` slot.
+func _check_checkpoint_reload(gs: Node, gm: Node) -> void:
+	_checkpoint_setup(gs)
+	gs.heat = 14.0
+	gs.rent_missed = 1
+	var engine: Object = gm.system("consequence")
+	engine.add_pressure("north_star_lot", "market", 9.0, "cause:checkpoint_test:reload:a")
+	engine.add_pressure("downtown", "market", 9.0, "cause:checkpoint_test:reload:b")
+	var saves := get_node("/root/SaveSystem")
+	var snapshot: Dictionary = saves.capture()
+	var pre_trip_district := str(gs.current_district_id)
+	gm.dispatch("travel", {"district_id": _checkpoint_other_district(gs)})
+	var live_opened: bool = bool((engine as Object).has_active())
+	if live_opened:
+		_close_checkpoint(gs, gm)
+
+	saves._apply(snapshot)
+	_expect_str("the reload restored the pre-trip district",
+		str(gs.current_district_id), pre_trip_district)
+	gm.dispatch("travel", {"district_id": _checkpoint_other_district(gs)})
+	var reloaded_opened: bool = bool((engine as Object).has_active())
+	if reloaded_opened:
+		_close_checkpoint(gs, gm)
+	_expect_true("the replayed trip resolves the checkpoint the same way the live one did",
+		reloaded_opened == live_opened)
+	gs.reset_to_new_game()
+
+## "Return routes: wander encounters return HOME today; travel encounters
+## must return to the travel destination's route. A copy-pasted
+## 'return_route': 'HOME' in the checkpoint is the obvious bug" -- the build
+## prompt's own words. Read directly off the live chain rather than driven
+## through real navigation, which this headless harness has no scene tree
+## for: `return_route` is the one field `ScreenManager` actually reads to
+## decide where Continue lands, so asserting its value IS asserting arrival.
+func _check_checkpoint_return_route(gs: Node, gm: Node) -> void:
+	_checkpoint_setup(gs)
+	var engine: Object = gm.system("consequence")
+	var opened := false
+	for i in range(20):
+		if opened:
+			break
+		gs.heat = 14.0
+		gs.rent_missed = 1
+		engine.add_pressure("north_star_lot", "market", 9.0,
+			"cause:checkpoint_test:route:a:%d" % i)
+		engine.add_pressure("downtown", "market", 9.0,
+			"cause:checkpoint_test:route:b:%d" % i)
+		gm.dispatch("travel", {"district_id": _checkpoint_other_district(gs)})
+		opened = bool((engine as Object).has_active())
+	_expect_true("the rigged state opened a checkpoint to test against", opened)
+	if opened:
+		_expect_str("the checkpoint returns to STREET, not HOME",
+			str(gs.active_consequence.get("return_route", "")), "STREET")
+		_close_checkpoint(gs, gm)
+	gs.reset_to_new_game()
+
+## STR-D3's luggage rule and the older, silent carry-stop tax (`economy.gd`'s
+## `resolve_carry`) both react to holding product while hot -- charging both
+## on one trip would tax the same event twice. Calls `TravelSystem.handle()`
+## directly rather than through `gm.dispatch()` (which returns only `bool`,
+## never the adapter's own result) because this is the one assertion that
+## needs the result dict's own `checkpointed`/`carry` keys.
+func _check_checkpoint_carry_exclusion(gs: Node, gm: Node) -> void:
+	_checkpoint_setup(gs)
+	var engine: Object = gm.system("consequence")
+	var travel_sys: Object = gm.system("travel")
+	var found := false
+	for i in range(20):
+		if found:
+			break
+		gs.heat = 14.0
+		gs.rent_missed = 1
+		engine.add_pressure("north_star_lot", "market", 9.0,
+			"cause:checkpoint_test:carry:a:%d" % i)
+		engine.add_pressure("downtown", "market", 9.0,
+			"cause:checkpoint_test:carry:b:%d" % i)
+		var result: Dictionary = travel_sys.handle("travel",
+			{"district_id": _checkpoint_other_district(gs)})
+		if bool(result.get("checkpointed", false)):
+			found = true
+			_expect_true("a checkpointed trip carries no carry-stop result of its own",
+				(result.get("carry", {}) as Dictionary).is_empty())
+			_close_checkpoint(gs, gm)
+	_expect_true("a checkpoint fired to test carry-exclusion against", found)
 	gs.reset_to_new_game()
 
 # === batch 12 — Wander, measured ============================================

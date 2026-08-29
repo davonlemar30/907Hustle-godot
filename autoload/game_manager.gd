@@ -248,6 +248,10 @@ func _ready() -> void:
 	# resolve_consequence() by chain.source.kind, not by two separate keys
 	# here.
 	consequence_engine.register_source_adapter("dre_collection", dre_collector)
+	# The seventh kind (0.5.0 PR C, STR-D4): a checkpoint resolves itself the
+	# same way a wander encounter does -- the trip that produced it is over,
+	# and there is no source system holding a table about it.
+	consequence_engine.register_source_adapter("travel", travel)
 	register_system("consequence", consequence_engine)
 
 func register_system(sys_name: String, instance: Object) -> void:

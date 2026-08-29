@@ -1,6 +1,13 @@
 extends RefCounted
 ## The Wander card registry — what is out there when you go and look.
 ##
+## `SCRIPTS` is read for exactly one authored row: `STASH_IT` (0.5.0 PR B),
+## Q4's own action for a police stop while carrying product — authored
+## there, never wired to a caller until now. Referencing it rather than
+## re-authoring its label/copy is the same "one owner" discipline this file
+## already applies to Pressure's own bands elsewhere in the codebase.
+const SCRIPTS := preload("res://data/confrontation_scripts.gd")
+##
 ## ## What Wander is, from the oracle
 ##
 ## The web build's changelog (v1.3, PR #59) has it exactly:
@@ -395,9 +402,23 @@ const CARDS: Array[Dictionary] = [
 	#
 	# These open a real blocking chain. Odds are shown before the player commits,
 	# because the build's rule is that a risk they cannot see is not a decision.
+	#
+	# STR-D3 (0.5.0 PR B), the "luggage" rule: every encounter's own `effects`
+	# table below is authored per choice, per tier, and read generically by
+	# `WanderSystem.resolve_consequence()` rather than the one hardcoded
+	# tier→outcome match this file shipped with through PR A — that match
+	# could not tell a mugging from a charisma test, and STR-D3 asks each
+	# script to put its own stakes on the table. `cash_fraction` reads DIRTY
+	# only, through the same Wallet seam the street-stop precedent already
+	# uses (clean, documented money is not street-visible); `goods_fraction`
+	# is `_lose_cargo`'s own fraction argument, unchanged. `escalate: true`
+	# on a (choice, tier) pair means this roll does not resolve on its own —
+	# it opens the room (`_open_shakedown_room`) instead of applying an
+	# effect at all, so an escalating row's own health/cash/goods fields are
+	# left at zero: the room's own effects are what actually lands.
 	{
 		"id": "wander_shakedown", "kind": KIND_ENCOUNTER, "weight": 7,
-		"intents": [INTENT_DEAL],
+		"intents": [INTENT_DEAL], "gate_bias": "stick",
 		"districts": [], "slots": [EVENING, NIGHT], "once": false,
 		"requirements": [{"type": "collection_non_empty", "collection": "inventory"}],
 		"line": "Two of them peel off the wall as you pass, and one is already talking.",
@@ -408,11 +429,37 @@ const CARDS: Array[Dictionary] = [
 			"choices": ["stand", "walk", "hand_over"],
 			"deterministic": ["hand_over"],
 			"base": {"stand": 0.45, "walk": 0.60},
+			# STAND is the fight verb (STR-D5): clean settles it on the spot —
+			# they decide you are not worth it — anything else is the fight not
+			# ending here, so it escalates into the room instead of resolving.
+			# WALK is the run, priced exactly as DL2's own reference: "you lose
+			# them in the streets — BUT all your money and drugs were in your
+			# luggage." Clean gets away with everything; every other tier costs
+			# a rising share of what was in hand, because losing them and
+			# losing the bag are two different rolls in real life and one roll
+			# here.
+			"effects": {
+				"stand": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"escalate": true},
+					"failure": {"escalate": true},
+					"catastrophic": {"escalate": true},
+				},
+				"walk": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.25, "goods_fraction": 0.25},
+					"failure": {"health": 3, "cash_fraction": 0.5, "goods_fraction": 0.5},
+					"catastrophic": {"health": 8, "cash_fraction": 1.0, "goods_fraction": 1.0},
+				},
+				"hand_over": {
+					"deterministic": {"health": 0, "cash_fraction": 1.0, "goods_fraction": 1.0},
+				},
+			},
 		},
 	},
 	{
 		"id": "wander_stopped_on_foot", "kind": KIND_ENCOUNTER, "weight": 9,
-		"intents": [],
+		"intents": [], "gate_bias": "",
 		"districts": [], "slots": [], "once": false,
 		# Only when you are already carrying enough attention to be worth
 		# stopping. Reuses batch 8's WATCHED floor rather than inventing a
@@ -423,9 +470,116 @@ const CARDS: Array[Dictionary] = [
 			"definition_id": "wander_stopped_on_foot",
 			"opponent": "The cruiser",
 			"shape": "negotiation",
+			# STASH IT (0.5.0 PR B) reactivates `SCRIPTS.STASH_IT`, authored in
+			# Q4 and never wired to a caller — its own header already says what
+			# it is: "one action added to the existing police-stop script when
+			# inventory > 0". `WanderSystem` offers it exactly under that
+			# condition rather than baking it into `choices` unconditionally, so
+			# an empty-handed stop still reads as the two-choice encounter it
+			# always was. The WATCHED floor this card already gates on is
+			# untouched by any of this — carrying product only ever ADDS a
+			# third road, never changes what makes the stop happen at all.
 			"choices": ["talk", "keep_walking"],
 			"deterministic": [],
 			"base": {"talk": 0.62, "keep_walking": 0.48},
+			"effects": {
+				"talk": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.25},
+					"catastrophic": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.5},
+				},
+				"keep_walking": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.5},
+					"catastrophic": {"health": 12, "cash_fraction": 0.0, "goods_fraction": 1.0},
+				},
+				# Two keys only — `WanderSystem._stash_it_tier()` rolls a
+				# direct success/failure the same shape STASH_IT's own
+				# authored row always was, never a four-tier resolver split,
+				# so "messy"/"catastrophic" would be dead rows here. Success
+				# hides the product from THIS stop's own search entirely —
+				# the stop still happened, but nothing carried was ever on
+				# the table. Failure mirrors KEEP_WALKING's own worst-case
+				# cost exactly, plus the authored +0.5 Heat STASH_IT's own
+				# header prices for getting watched doing it.
+				"stash_it": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 12, "cash_fraction": 0.0, "goods_fraction": 1.0,
+						"heat": 0.5},
+				},
+			},
+		},
+	},
+
+	# --- STR-D1 PR B: two new encounters, the roster deepening -----------------
+
+	{
+		"id": "wander_curtis_tax", "kind": KIND_ENCOUNTER, "weight": 6,
+		"intents": [], "gate_bias": "",
+		"districts": [], "slots": [], "once": false,
+		# Curtis-side, gated on his own awareness climbing past ambient —
+		# reuses the phase read `facts()` already exposes for `heat_watched`'s
+		# own neighbour rather than inventing a second awareness scale.
+		"requirements": [{"type": "fact_true", "fact": "curtis_watching_or_worse"}],
+		"line": "Somebody who works the block for Curtis falls in beside you. He already has a number in mind.",
+		"encounter": {
+			"definition_id": "wander_curtis_tax",
+			"opponent": "Curtis's man",
+			"shape": "negotiation",
+			"choices": ["pay_it", "push_back"],
+			"deterministic": ["pay_it"],
+			"base": {"push_back": 0.42},
+			"effects": {
+				# The known price. A flat toll rather than a percentage — the
+				# number is what buys the corner's patience, not a cut of
+				# anything specific being carried.
+				"pay_it": {
+					"deterministic": {"health": 0, "cash_flat": 40, "goods_fraction": 0.0},
+				},
+				"push_back": {
+					"clean": {"health": 0, "cash_flat": 0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_flat": 40, "goods_fraction": 0.0},
+					"failure": {"health": 5, "cash_flat": 60, "goods_fraction": 0.0},
+					"catastrophic": {"health": 10, "cash_flat": 80, "goods_fraction": 0.25},
+				},
+			},
+		},
+	},
+	{
+		"id": "wander_young_ones", "kind": KIND_ENCOUNTER, "weight": 8,
+		"intents": [], "gate_bias": "",
+		"districts": [], "slots": [], "once": false,
+		"requirements": [],
+		"line": "A couple of them post up across the street, not hiding that they are watching. They want to see what you do.",
+		"encounter": {
+			"definition_id": "wander_young_ones",
+			"opponent": "The kids across the street",
+			"shape": "negotiation",
+			# The low-stakes test the roster's own floor names: the cheap
+			# answer is composure, and composure is genuinely cheap — a clean
+			# HOLD STEADY costs nothing at all. STARE BACK is the higher
+			# variance answer for a player who wants respect out of it instead
+			# of just an uneventful walk; nothing here can cost more than a
+			# bruise, because sizing somebody up is not yet a fight.
+			"choices": ["hold_steady", "stare_back"],
+			"deterministic": [],
+			"base": {"hold_steady": 0.70, "stare_back": 0.50},
+			"effects": {
+				"hold_steady": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 2, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+				"stare_back": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 2, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 6, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+			},
 		},
 	},
 ]
@@ -445,6 +599,21 @@ const CHOICE_LABELS := {
 	"hand_over": "GIVE IT UP",
 	"talk": "TALK TO THEM",
 	"keep_walking": "DO NOT STOP",
+	# Duplicated from SCRIPTS.STASH_IT's own "label" rather than read off it:
+	# GDScript's const initializer must be a compile-time-foldable expression,
+	# and a cross-script dictionary subscript is not one. The value this
+	# duplicates is asserted equal to the source in the suite, so the two
+	# cannot drift silently.
+	"stash_it": "STASH IT",
+	"pay_it": "PAY IT",
+	"push_back": "PUSH BACK",
+	"hold_steady": "HOLD STEADY",
+	"stare_back": "STARE BACK",
+	# The shakedown room's own two verbs (0.5.0 PR B) — KEEP FIGHTING re-rolls
+	# STAND at the room's own escalating odds; GIVE IT UP is the guaranteed
+	# out mid-fight, the same shape HAND OVER already is at the door.
+	"keep_fighting": "KEEP FIGHTING",
+	"give_it_up": "GIVE IT UP",
 }
 
 const CHOICE_COPY := {
@@ -453,9 +622,17 @@ const CHOICE_COPY := {
 	"hand_over": "Hand it over and walk away whole. You lose what you are carrying.",
 	"talk": "Answer what they ask and nothing else. Charisma, not speed.",
 	"keep_walking": "Do not stop and do not run. Either one is an answer.",
+	# Same duplication, same reason — see CHOICE_LABELS's own note above.
+	"stash_it": "Product goes somewhere that is not on you. Fast hands, faster story.",
+	"pay_it": "The toll on a corner you do not own. Cheap, considering.",
+	"push_back": "Tell him the corner does not have your name on it either.",
+	"hold_steady": "Do not blink first. That is the whole test.",
+	"stare_back": "Make them remember whose block this is too.",
+	"keep_fighting": "It is not finished. Neither are you.",
+	"give_it_up": "Whatever you are holding stops being worth this.",
 }
 
-func card_by_id(card_id: String) -> Dictionary:
+static func card_by_id(card_id: String) -> Dictionary:
 	for card in CARDS:
 		if str(card["id"]) == card_id:
 			return card

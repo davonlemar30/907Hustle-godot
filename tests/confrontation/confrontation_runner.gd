@@ -36,7 +36,10 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## 0.3.0 (ENC-D1..D9): +38 for the stick-caught decision (check block 11) —
 ## hot/cold/catastrophic entry, yield's deterministic booking, cooldown
 ## suppression, and ENC-D9's source-time contract.
-const MIN_CHECKS := 250
+## 0.3.0 (STK-D1): +1 — `_check_authored_tables`'s own target-iteration loop
+## picked up the new tier-1 Spenard target automatically; no code changed,
+## the check floor still has to move with what the loop now covers.
+const MIN_CHECKS := 251
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"

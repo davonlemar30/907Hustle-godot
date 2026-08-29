@@ -717,6 +717,12 @@ func log_activity(text: String, color: Color = Color(0.608, 0.608, 0.608)) -> vo
 var stick_targets: Array = [
 	{"id": "chilkoots_stumbler", "name": "Stumbler outside Koots", "area": "north_star_lot", "tier": 1, "take": [40, 80], "slots": [3], "resistance": 0, "heat": 2, "desc": "Somebody weaving out of Chilkoot Charlie's alone, cab money visible."},
 	{"id": "washgo_regular", "name": "Wash & Go regular", "area": "north_star_lot", "tier": 1, "take": [30, 50], "slots": [], "resistance": 0, "heat": 2, "desc": "Same guy every week. Quarters and a phone, back to the door."},
+	# STK-D1 (0.3.0): the second any-slot tier-1 Spenard target, closing
+	# `86bbjngyz` — washgo_regular was the only one, and a starved single
+	# target absorbed 98% of every attempt this surface ever measured. A
+	# meaningfully bigger band gives the ladder a real second rung at the
+	# tier the whole run starts on.
+	{"id": "spenard_diner_regular", "name": "Diner regular off Spenard Road", "area": "north_star_lot", "tier": 1, "take": [95, 160], "slots": [], "resistance": 0, "heat": 2, "desc": "Same booth, same tip roll, cash before the card machine even boots up."},
 	{"id": "fourth_ave_crawler", "name": "Fourth Avenue bar crawler", "area": "downtown", "tier": 1, "take": [50, 100], "slots": [2, 3], "resistance": 0, "heat": 2, "desc": "Bar to bar on 4th with a fresh ATM stop in between."},
 	{"id": "c_street_atm", "name": "C Street ATM run", "area": "downtown", "tier": 1, "take": [60, 100], "slots": [2], "resistance": 1, "heat": 2, "desc": "Office types pull dinner cash on C Street. Heads down, cards out."},
 	{"id": "lot_hauler", "name": "Long-haul driver at the truck lot", "area": "airport_industrial", "tier": 1, "take": [40, 90], "slots": [0, 1], "resistance": 0, "heat": 2, "desc": "Overnighting off International with the cab curtains drawn."},

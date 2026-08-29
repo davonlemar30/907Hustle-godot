@@ -13,7 +13,7 @@ func _build_body() -> void:
 	if sys == null:
 		return
 
-	body.add_child(_status_card())
+	body.add_child(_status_card(sys))
 	body.add_child(_attention_card("stick"))
 
 	var targets: Array = sys.visible_targets()
@@ -41,13 +41,16 @@ func _attention_card(family: String) -> Control:
 	c.add_child(v)
 	return c
 
-func _status_card() -> Control:
+func _status_card(sys: Object) -> Control:
 	var c := card()
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 4)
 	c.add_child(v)
-	var left: int = gs.STICK_DAILY_CAP - gs.stick_daily_count
-	v.add_child(label("TIER %d  ·  %d/%d DONE TODAY" % [gs.stick_tier, gs.stick_daily_count, gs.STICK_DAILY_CAP], "CardTitle", 13, CREAM))
+	# STK-D1 (0.3.0): the cap scales with rep now, so it is read live from the
+	# system rather than off the flat authored constant.
+	var cap: int = sys.daily_cap()
+	var left: int = cap - gs.stick_daily_count
+	v.add_child(label("TIER %d  ·  %d/%d DONE TODAY" % [gs.stick_tier, gs.stick_daily_count, cap], "CardTitle", 13, CREAM))
 	var line := "%d left today" % left if left > 0 else "Done for today"
 	v.add_child(label("%s  ·  %d/%d pulled off  ·  heat %d/%d" % [line, gs.stick_successes, gs.stick_attempts, gs.heat_shown(), gs.heat_max], "Muted", 11, MUTED if left > 0 else AMBER))
 	return c

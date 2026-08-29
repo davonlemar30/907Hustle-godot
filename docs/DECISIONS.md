@@ -850,6 +850,86 @@ function, `day_lifecycle.gd`'s step, and `consequence_rules.gd`'s tier-keyed
 table all already depend on every row above, so the ruling is recorded where
 the dependency was created.
 
+## D-15 — Stickup earns its place
+
+**Decided** 2026-08-28 · **Ships in** `build/stick-viability` (0.3.0 PR C) ·
+**Source:** `BUILD_ANSWER_FOR_IT_PROMPT.md`, closing `86bbjngyz`
+
+### The question
+
+Stickup's own measured option table found it earning 2% of the day job,
+EV-negative per attempt, with one starved tier-1 target (`washgo_regular`)
+absorbing 98% of every attempt the surface ever recorded — the only any-slot
+tier-1 target in Spenard, and the daily cap flat at two forever regardless of
+how much rep a player had earned. `86bbjngyz` filed this as a standing
+high-priority decision rather than a build; this PR is the build.
+
+### The ruling
+
+| ID | Ruling |
+|---|---|
+| STK-D1 | (a) A second any-slot tier-1 target in Spenard with a band meaningfully above `washgo_regular`'s [30, 50], authored name/fiction to match the district's existing voice. (b) The daily cap scales with `stick_rep` (2 base, authored thresholds add +1, hard ceiling 4 — the cap stays a count, `stickup.gd`'s own semantics unchanged). Stickup is NOT re-measured against the old (pre-0.3.0) baseline — PR A changed blown-job cost and PR B changed Heat, so this re-measures after both landed, tunes the new target's band against that fresh baseline, and asserts a corridor floor (single digits as % of day job is success; 2% was the disease). |
+
+### Implementation choices this session made, flagged as choices
+
+1. **`spenard_diner_regular`, take `[95, 160]`, resistance 0, heat 2, any
+   slot.** The band was tuned empirically against the post-A/B baseline, not
+   picked once and trusted: `[50, 90]` at resistance 1 measured WORSE than
+   the 2%-hole baseline (arrests rose with the richer target's harder odds,
+   and the increased booking time outweighed the extra take); dropping
+   resistance to 0 and raising the ceiling in steps — `[50,90]` → 1.7%,
+   `[90,150]` → 5.5%, `[110,180]` → 14.2%, `[130,220]` → 13.0% — showed the
+   real lever was the CEILING itself (`_econ_try_crime`'s own picking rule is
+   "highest take ceiling among legal targets," so a richer target simply
+   replaces a poorer one in the profile's rotation; resistance and heat only
+   matter once two targets are otherwise comparable). `[95, 160]` was the
+   value that landed the measured share robustly mid-single-digits rather
+   than skimming either edge of the band the ruling asks for.
+2. **The rep thresholds are the existing tier milestones, not new authored
+   ones.** `+1` at `STICK_TIER2_REP` (4), `+1` at `STICK_TIER3_REP` (11) —
+   reusing exactly what `_update_tier` already reads rather than inventing a
+   parallel schedule. The ruling's own "hard ceiling 4" falls out of this
+   automatically (2 base + 1 + 1) rather than needing its own authored
+   number; `mini(cap, 4)` is kept anyway as a stated ceiling rather than an
+   incidental fact of the arithmetic, so a future third milestone cannot
+   silently raise the cap past 4 without a deliberate change here.
+3. **A disclosed instrument limitation, not a design claim: the "98%
+   concentration" moves to the new target inside the economy sweep, it does
+   not break into a genuine split.** `_econ_try_crime` always attempts
+   whichever LEGAL target has the highest take ceiling — a greedy rule with
+   no real risk-adjustment — so `spenard_diner_regular` (ceiling 160) now
+   strictly dominates both `washgo_regular` (ceiling 50) and even
+   `chilkoots_stumbler` (ceiling 80, and slot-restricted to NIGHT besides)
+   at every opportunity the daily cap allows. Reported rather than
+   engineered around: a real player weighing resistance, slot availability,
+   and personal risk tolerance would plausibly split across all three:
+   nothing about this PR removes that choice, it only changes which single
+   number this particular measurement tool's greedy heuristic prefers.
+4. **Copy note:** `blocker()`'s cap-refusal line dropped "Two in a day is how
+   people get named" (canon's own phrase, no longer accurate once the cap
+   can be three or four) for "That's enough attention for one day" — same
+   fiction (committing crimes draws attention), no specific count claimed.
+
+### Measured results (4 seeds each; suite: `_check_economy_profiles`)
+
+| Profile | % of day job, before (0.3.0 PR A+B baseline) | % of day job, after |
+|---|---|---|
+| `stickup` (solo) | 2% | 6% |
+| `stickup_crew` | not separately re-measured pre-PR-C; corridor floor was 0 | 5% |
+| `everyday_criminal` | 8% | 8% (unchanged — boost's own share of this combined profile already dominates its economics enough that stickup's fix did not move the combined number, even though stickup's own solo share tripled) |
+
+No economy profile reached `STICK_TIER3_REP` (11) within the 30-day window,
+`stickup_crew` included (`final_stick_tier` stayed at 2.0 in every seed) — the
+cap's hard ceiling of 4 is proven by `_check_stick_daily_cap_scaling`'s direct
+coverage, not by the economy sweep, which never climbs high enough to exercise
+it.
+
+### Why this PR carries this entry rather than a later PR
+
+Same Slice-0-before-the-code discipline as D-7 through D-14: `stickup.gd`'s
+`daily_cap()` and `game_state.gd`'s new target both already depend on the
+rows above, so the ruling is recorded where the dependency was created.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

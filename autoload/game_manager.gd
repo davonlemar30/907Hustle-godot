@@ -278,6 +278,11 @@ func _ready() -> void:
 	# Both corner scripts share one adapter -- see `systems/corner.gd`'s header
 	# on why two action ids would be two places for the round rules to drift.
 	consequence_engine.register_source_adapter("corner", corner)
+	# SQ-D10 (0.6.0 PR E): the 907List meetup scene. The list system already
+	# owns the meet and its outcome roll, so it owns the sheet that roll opens
+	# -- a separate adapter would put the scene's exit table somewhere the
+	# payout it is deciding about does not live.
+	consequence_engine.register_source_adapter("list_meetup", nine07list)
 	# The seventh kind (0.5.0 PR C, STR-D4): a checkpoint resolves itself the
 	# same way a wander encounter does -- the trip that produced it is over,
 	# and there is no source system holding a table about it.

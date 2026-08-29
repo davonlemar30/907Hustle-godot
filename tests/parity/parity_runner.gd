@@ -7853,8 +7853,8 @@ func _check_engine_adapters(gs: Node, gm: Node, engine: RefCounted) -> void:
 	# including after a load. That is the mechanism the whole rule rests on.
 	_expect_str("the source adapters registered at boot",
 		str(engine.registered_adapter_ids()),
-		str(["boost", "corner", "doorstep", "dre_collection", "retaliation",
-			"stickup", "travel", "wander"]))
+		str(["boost", "corner", "doorstep", "dre_collection", "list_meetup",
+			"retaliation", "stickup", "travel", "wander"]))
 	_expect_true("the boost adapter resolves to a system",
 		engine.source_adapter("boost") != null)
 	_expect_true("the boost adapter is the boost system",

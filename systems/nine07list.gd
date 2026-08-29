@@ -66,6 +66,11 @@ const PROFITABLE_FLIP_MARGIN := 1.3
 ## constant canon passes at the call site, frozen with the rest of the port.
 const MEETUP_CHANCE := 0.75
 
+## SQ-D10 (0.6.0 PR E): the buyer's friend. The authored script and the shared
+## loop chassis -- this file does not restate either.
+const SCRIPTS := preload("res://data/confrontation_scripts.gd")
+const LOOP := preload("res://systems/confrontation_loop.gd")
+
 ## Who is executing a settlement. See `settle_holding` for what differs.
 const PERSONAL := "personal"
 const DELEGATED := "delegated"
@@ -374,7 +379,263 @@ func settle_holding(index: int, execution_mode: String) -> Dictionary:
 		# A meet is a slot — for whoever went to it. Pherris going costs her day,
 		# which is the whole point of asking her.
 		time_system.handle("advance_time", {})
-	return {"ok": true, "got": got, "delta": delta, "tier": tier}
+
+	# SQ-D10: the buyer's friend. Opened AFTER the slot is spent and after the
+	# money is credited, because both of those already happened -- the sheet's
+	# whole question is whether the money STAYS.
+	var scene_opened: bool = _try_open_meetup_scene(held, item, tier, got, delegated)
+	return {"ok": true, "got": got, "delta": delta, "tier": tier,
+		"scene": scene_opened}
+
+# --- SQ-D10: the buyer's friend (MEETUP_SCRIPT) -------------------------------
+#
+# `MEETUP_SCRIPT` has been authored in `data/confrontation_scripts.gd` since
+# the loop was written, named in that file's own header as "the one 907List
+# entry, on the catastrophic meetup tier", and consumed by nothing. This is it.
+#
+# ## The narrow trigger, and why each half of it is there
+#
+#   - **`catastrophic` only.** The meetup's outcome tier already exists and,
+#     until now, decided nothing but an Exposure footprint -- this file's own
+#     header says so in as many words ("the tier has no mechanical
+#     consequence... that last tier is reachable here but toothless"). The
+#     scene is what gives the worst tier teeth, and it is the only tier that
+#     gets them: a messy meet is somebody noticing, not somebody bringing
+#     a friend.
+#   - **`value_floor` (150).** Nobody brings somebody to a $40 space heater.
+#     The authored floor is read, never restated.
+#   - **`suppress_meetup_scene`.** Pherris's `buyer_confirmed` tip, honoured
+#     through `ConfrontationLoop.tip_modifiers_for` -- the one place a tip
+#     payload is interpreted. Still a no-op until the tip system lands.
+#
+# ## Commercial, not criminal
+#
+# The ruling's own words, and the exit table below holds them: nobody swings
+# first, injury lands only on a catastrophic exit, and the guaranteed out is a
+# TRANSACTION rather than a surrender -- refund the money, take the item back,
+# sell it tomorrow to somebody with fewer friends. That is what keeps this a
+# 907List scene: the worst ORDINARY outcome is a reversed deal, not a hospital
+# bill. It is also why this is the one room in the build whose guaranteed out
+# hands the player back an asset instead of taking one.
+
+const MEETUP_SCRIPT_ID := "meetup"
+
+func _try_open_meetup_scene(held: Dictionary, item: Dictionary, tier: String,
+		got: int, delegated: bool) -> bool:
+	if tier != "catastrophic":
+		return false
+	if delegated:
+		# Pherris went. Her meet, her friend's friend -- and the player is not
+		# there to answer a sheet about a room they were not in.
+		return false
+	var script: Dictionary = SCRIPTS.MEETUP_SCRIPT
+	if got < int(script["value_floor"]):
+		return false
+	var mods: Dictionary = LOOP.tip_modifiers_for(gs, str(held["item_id"]), 1)
+	if bool(mods.get("suppress_meetup_scene", false)):
+		gs.log_activity("Pherris vouched for this one. It goes the way it was supposed to.", GREEN)
+		return false
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine == null or engine.has_active():
+		return false
+
+	var loop: Dictionary = {
+		"script_id": MEETUP_SCRIPT_ID,
+		"beat_index": 0,
+		"round": 1,
+		"log": [],
+		"burned": [],
+		"sheet_title": str(script["sheet_title"]),
+		"stage": 0,
+		"stage_count": int(script["cap"]),
+		"left_label": "IN THE LOT",
+		"left": 2,
+		# The money is already in the wallet. BANKED says exactly that, which
+		# is the whole framing of the scene.
+		"banked": got,
+	}
+	var stub: Dictionary = {"decision": {}}
+	_present_meetup(stub, loop, 0)
+	engine.open_chain(engine.KIND_CONFRONTATION, {
+		"district_id": str(gs.current_district_id),
+		"return_route": "HOME",
+		"source": {
+			"family": "list", "action_id": "list_meetup", "kind": MEETUP_SCRIPT_ID,
+			"target_id": str(held["item_id"]),
+			"target_name": str(script["opponent"]),
+			"opponent": str(script["opponent"]),
+			"source_rng_key": "meetup:%d:%d:%s" % [gs.day, gs.time_slots_today,
+				str(held["item_id"])],
+			"payout": got, "contested_take": got,
+			"item_id": str(held["item_id"]), "held": held.duplicate(true),
+		},
+		"decision": stub["decision"],
+	})
+	gs.log_activity("The buyer brought somebody. Nobody brings somebody to buy a camera.", AMBER)
+	return true
+
+## One authored beat onto the table. The script authors two; the second is
+## reached when a rolled road takes a plain `failure`, the chassis's Q6 rule.
+func _present_meetup(chain: Dictionary, loop: Dictionary, index: int) -> void:
+	var script: Dictionary = SCRIPTS.MEETUP_SCRIPT
+	var beats: Array = script["beats"]
+	var actions: Dictionary = script["actions"]
+	loop["beat_index"] = index
+	loop["stage"] = index
+	loop["beat"] = str(beats[clampi(index, 0, beats.size() - 1)])
+	LOOP.append_log(loop, "The recount is happening." if index == 0
+		else "The friend is between you and the lot.")
+
+	var offered: Array = LOOP.without_burned(loop, actions.keys())
+	var deterministic: Array = []
+	var shown: Dictionary = {}
+	for choice_id in offered:
+		var action: Dictionary = actions[str(choice_id)]
+		if bool(action.get("deterministic", false)):
+			deterministic.append(str(choice_id))
+		else:
+			shown[str(choice_id)] = float(action["base"])
+	LOOP.present_round(chain, loop, offered, deterministic, shown)
+	var decision: Dictionary = chain.get("decision", {})
+	decision["definition_id"] = MEETUP_SCRIPT_ID
+	loop["round"] = index + 1
+	decision["loop"] = loop
+	chain["decision"] = decision
+
+## The engine's one adapter method, registered under `list_meetup`.
+func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
+	var loop: Dictionary = LOOP.loop_of(chain)
+	var script: Dictionary = SCRIPTS.MEETUP_SCRIPT
+	var action: Dictionary = (script["actions"] as Dictionary).get(choice_id, {})
+	var index: int = int(loop.get("beat_index", 0))
+
+	if bool(action.get("deterministic", false)):
+		return _exit_meetup(chain, loop, choice_id, "deterministic")
+
+	var resolver: Object = gm.system("outcome_resolver")
+	var tier := "failure"
+	if resolver != null:
+		tier = str((resolver.resolve_action(str(action["shape"]),
+			float(action["base"]),
+			attributes.effective(str(action["attribute"])), gs.run_seed,
+			"%d:%s:%s:meetup" % [index,
+				str((chain.get("source", {}) as Dictionary).get("source_rng_key", "")),
+				choice_id]) as Dictionary)["tier"])
+
+	if tier == "failure" and index + 1 < mini(int(script["cap"]),
+			(script["beats"] as Array).size()):
+		LOOP.burn(loop, choice_id)
+		_present_meetup(chain, loop, index + 1)
+		gs.active_consequence = chain
+		return {"ok": true, "tier": "continued"}
+	return _exit_meetup(chain, loop, choice_id, tier)
+
+## Every exit. The money is already in the wallet, so what an exit does is
+## decide how much of it LEAVES again — clean, because that is where a 907List
+## resale was credited (`settle_holding` above, TI-003 §6 Clean).
+func _exit_meetup(chain: Dictionary, loop: Dictionary, choice_id: String,
+		tier: String) -> Dictionary:
+	var engine: Object = gm.system("consequence")
+	var decision: Dictionary = chain.get("decision", {})
+	var source: Dictionary = chain.get("source", {})
+	var payout: int = int(source.get("payout", 0))
+	var wallet: Object = gm.system("wallet")
+
+	var lost := 0
+	var hurt := 0
+	var resolution := SCRIPTS.RESOLUTION_WON
+	var line := ""
+	var restore_holding := false
+
+	match choice_id:
+		"refund_him":
+			# The transaction out. Commercial to the last: the money goes back,
+			# the item comes back, and it is tomorrow's problem instead.
+			resolution = SCRIPTS.RESOLUTION_SURRENDERED
+			lost = payout
+			restore_holding = true
+			line = "You count it back into his hand and take the box. Somebody with fewer friends will want it."
+		"read_it":
+			if tier in ["clean", "messy"]:
+				line = "You see it a beat before it starts and you are already moving. Everything leaves with you."
+			elif tier == "failure":
+				resolution = SCRIPTS.RESOLUTION_ESCAPED
+				lost = int(round(float(payout) * 0.5))
+				line = "You get out of the lot with most of it and none of the argument."
+			else:
+				resolution = SCRIPTS.RESOLUTION_BEATEN
+				lost = payout
+				hurt = 8
+				line = "You read it wrong, and the friend was the point."
+		_:
+			if tier in ["clean", "messy"]:
+				line = "Receipts, handshakes, everybody's day continues. The money is yours."
+			elif tier == "failure":
+				resolution = SCRIPTS.RESOLUTION_ESCAPED
+				lost = int(round(float(payout) * 0.5))
+				line = "The price changes hands one more time than it should have. You keep half of it."
+			else:
+				resolution = SCRIPTS.RESOLUTION_BEATEN
+				lost = payout
+				hurt = 6
+				line = "Nobody was ever buying a camera. It stops being a conversation."
+
+	if lost > 0 and wallet != null:
+		# CLEAN, out of the same balance `settle_holding` credited it to
+		# (TI-003 §6: a resale on a public listings board is legitimate
+		# income even when the seller is not).
+		#
+		# Capped at the clean balance FIRST, then spent clean-first. The cap is
+		# what keeps this honest in both directions: a refund cannot overdraw,
+		# a player who has already spent the money cannot lose more of it than
+		# they still have, and because the amount can never exceed the clean
+		# pool, `HIGH_VISIBILITY_CLEAN_FIRST` never touches dirty cash and so
+		# never generates Financial Pressure. That matters -- handing money
+		# back in a parking lot is not a formal bill, and TI-003 regression #24
+		# is routine spending creating Pressure.
+		lost = mini(lost, int(wallet.clean_balance()))
+		if lost > 0:
+			wallet.spend(lost, wallet.HIGH_VISIBILITY_CLEAN_FIRST,
+				{"source_id": "list_meetup:%s" % choice_id})
+	if restore_holding:
+		gs.list_holdings.append((source.get("held", {}) as Dictionary).duplicate(true))
+	if hurt > 0:
+		var crew: Object = gm.system("crew") if gm != null else null
+		if crew != null:
+			hurt = int(crew.absorbed_damage(hurt))
+		gs.health = clampi(int(gs.health) - hurt, 0, int(gs.health_max))
+
+	gs.log_activity(line, GREEN if lost == 0 else AMBER)
+	LOOP.append_log(loop, line)
+
+	decision["resolved_tier"] = tier
+	decision["result"] = {
+		"choice_id": choice_id, "tier": tier, "resolution": resolution,
+		"arrested": false, "banned": false,
+		"cash": -lost, "goods": 0, "health": -hurt, "heat": 0.0, "pressure": 0,
+		"take_disposition": "keep" if lost == 0 else "lose",
+		"room_log": (loop.get("log", []) as Array).duplicate(),
+	}
+	decision["loop"] = loop
+	chain["decision"] = decision
+	engine.advance_stage(engine.STAGE_RESULT)
+	return {"ok": true, "tier": tier, "arrested": false}
+
+func choice_label(choice_id: String) -> String:
+	return str((SCRIPTS.MEETUP_SCRIPT["actions"] as Dictionary)
+		.get(choice_id, {}).get("label", ""))
+
+func choice_copy(choice_id: String) -> String:
+	return str((SCRIPTS.MEETUP_SCRIPT["actions"] as Dictionary)
+		.get(choice_id, {}).get("copy", ""))
+
+## ENC-D6's seam. The screen's fallback ("no injury, no Heat, no arrest") is
+## true here as far as it goes and still says nothing about the part that
+## matters: this out costs the whole payout and hands the item back.
+func choice_guarantee(choice_id: String) -> String:
+	if choice_id == "refund_him":
+		return "Guaranteed: nobody is hurt. The money goes back and the item is yours again."
+	return ""
 
 func _update_tier() -> void:
 	var was: int = gs.list_tier

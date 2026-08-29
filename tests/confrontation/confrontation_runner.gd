@@ -67,7 +67,12 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## bound, both of Curtis's observation roads reaching his ledger receipted,
 ## and the arm that matters most: an ordinary sale on a corner that CANNOT
 ## fire is byte-for-byte what it was.
-const MIN_CHECKS := 1203
+## 0.6.0 (SQ-D10, PR E): 1203 -> 1248, +45 for check block 17 — the meetup
+## scene's four trigger preconditions removed one at a time, all three roads
+## driven, and the property that defines it: the cash was already credited, so
+## what an exit takes it takes out of the CLEAN pool `settle_holding` put it in
+## and never out of dirty.
+const MIN_CHECKS := 1248
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -101,6 +106,7 @@ func _ready() -> void:
 	_check_encounter_overlay()
 	_check_verb_triad()
 	_check_corner()
+	_check_meetup()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -1933,3 +1939,169 @@ func _check_corner_push_ledger() -> void:
 			gm.dispatch("consequence_continue", {})
 		gs.active_consequence = {}
 	gs.npc_ledgers = {}
+
+# --- check block 17: SQ-D10, the 907List meetup (0.6.0 PR E) -----------------
+#
+# `MEETUP_SCRIPT` was named in `confrontation_scripts.gd`'s own header as "the
+# one 907List entry, on the catastrophic meetup tier" and consumed by nothing.
+# The 907List's outcome tier already existed and decided nothing but an Exposure
+# footprint -- `nine07list.gd`'s own header says the worst tier is "reachable
+# here but toothless". This is what gives it teeth, and these arms are what stop
+# it growing them anywhere else.
+
+func _check_meetup() -> void:
+	_check_meetup_trigger_bounds()
+	_check_meetup_roads()
+
+## Fires on `catastrophic` above the floor, and on nothing else. Each condition
+## removed one at a time, because a trigger with four preconditions is four
+## chances for one of them to have quietly stopped mattering.
+func _check_meetup_trigger_bounds() -> void:
+	var list: Object = gm.system("list")
+	var engine: Object = gm.system("consequence")
+	var script: Dictionary = SCRIPTS.MEETUP_SCRIPT
+	var floor_value: int = int(script["value_floor"])
+	var held := {"item_id": "probe_item", "day": 1}
+	var item := {"id": "probe_item", "name": "A camera", "buy": 40}
+
+	_reset_probe()
+	gs.active_consequence = {}
+
+	# The tier gate. Only the worst one opens it.
+	for tier in ["clean", "messy", "failure"]:
+		gs.active_consequence = {}
+		a.eq_bool("a %s meet brings nobody" % str(tier),
+			list._try_open_meetup_scene(held, item, str(tier), floor_value + 200, false),
+			false)
+
+	# The value floor, both sides of it.
+	gs.active_consequence = {}
+	a.eq_bool("a catastrophic meet under the floor brings nobody",
+		list._try_open_meetup_scene(held, item, "catastrophic", floor_value - 1, false),
+		false)
+	gs.active_consequence = {}
+	a.eq_bool("...and exactly at the floor it does",
+		list._try_open_meetup_scene(held, item, "catastrophic", floor_value, false),
+		true)
+	a.eq_str("...opening a confrontation chain",
+		str(gs.active_consequence.get("chain_kind", "")), engine.KIND_CONFRONTATION)
+	var decision: Dictionary = gs.active_consequence.get("decision", {})
+	a.eq_str("...on the meetup script",
+		str(decision.get("definition_id", "")), "meetup")
+	a.eq_str("...with the script's first authored beat as the situation",
+		str((decision.get("loop", {}) as Dictionary).get("beat", "")),
+		str((script["beats"] as Array)[0]))
+	a.eq_int("...offering all three of its authored actions",
+		(decision.get("allowed_choices", []) as Array).size(),
+		(script["actions"] as Dictionary).size())
+	a.eq_bool("...with the refund as the guaranteed out",
+		"refund_him" in (decision.get("deterministic_choices", []) as Array), true)
+	# The framing that makes it a 907List scene: the money is ALREADY yours.
+	a.eq_int("...and the payout showing as BANKED, because it is already paid",
+		int(engine.loop_summary().get("banked", 0)), floor_value)
+	gs.active_consequence = {}
+
+	# Delegated: Pherris went. The player is not answering a sheet about a room
+	# they were not in.
+	a.eq_bool("a delegated meet never opens the scene",
+		list._try_open_meetup_scene(held, item, "catastrophic", floor_value + 200, true),
+		false)
+
+	# Never over a live chain.
+	gs.active_consequence = {"stage": "decision", "chain_kind": "wander_encounter"}
+	a.eq_bool("the scene never opens over a live chain",
+		list._try_open_meetup_scene(held, item, "catastrophic", floor_value + 200, false),
+		false)
+	gs.active_consequence = {}
+
+	# Pherris's tip suppresses the TRIGGER, not the roll. Read through
+	# `ConfrontationLoop.tip_modifiers_for` -- the one place a tip payload is
+	# interpreted -- and still a no-op until the tip system lands.
+	var mods: Dictionary = LOOP.tip_modifiers_for(gs, "probe_item", 1)
+	a.eq_bool("the tip seam degrades to a no-op with no tip system",
+		bool(mods.get("suppress_meetup_scene", false)), false)
+	a.eq_bool("...and the key it will carry is declared",
+		mods.has("suppress_meetup_scene"), true)
+	a.eq_bool("...matching the authored table",
+		bool(SCRIPTS.TIP_MODIFIERS["buyer_confirmed"]["suppress_meetup_scene"]), true)
+
+## All three roads, and the property that defines the scene: the cash was
+## already credited, and what the sheet decides is whether it stays. Asserted
+## through the Wallet, on the CLEAN balance `settle_holding` credited it to.
+func _check_meetup_roads() -> void:
+	var list: Object = gm.system("list")
+	var engine: Object = gm.system("consequence")
+	var wallet: Object = gm.system("wallet")
+	var payout := 400
+	var held := {"item_id": "probe_item", "day": 1}
+	var item := {"id": "probe_item", "name": "A camera", "buy": 40}
+
+	for choice_id in ["refund_him", "read_it", "stay_commercial"]:
+		_reset_probe()
+		gs.active_consequence = {}
+		gs.list_holdings = []
+		gs.clean_cash = payout
+		gs.dirty_cash = 300
+		gs.cash = payout + 300
+		var clean_before: int = int(wallet.clean_balance())
+		var dirty_before: int = int(wallet.dirty_balance())
+		var health_before: int = int(gs.health)
+		var holdings_before: int = (gs.list_holdings as Array).size()
+
+		a.eq_bool("the scene opens for %s" % str(choice_id),
+			list._try_open_meetup_scene(held, item, "catastrophic", payout, false), true)
+
+		var rounds := 0
+		while engine.has_active() and str(engine.active_stage()) == "decision" \
+				and rounds < 4:
+			rounds += 1
+			var summary: Dictionary = engine.active_summary()
+			var offered: Array = (gs.active_consequence.get("decision", {}) as Dictionary) \
+				.get("allowed_choices", [])
+			var pick := str(choice_id) if str(choice_id) in offered else str(offered[0])
+			gm.dispatch("resolve_consequence_choice", {
+				"consequence_id": str(summary.get("consequence_id", "")),
+				"cause_id": str(summary.get("cause_id", "")), "choice_id": pick})
+		a.eq_str("%s reaches a result" % str(choice_id),
+			str(engine.active_stage()), "result")
+
+		var result: Dictionary = (gs.active_consequence.get("decision", {}) as Dictionary) \
+			.get("result", {})
+		var lost: int = -int(result.get("cash", 0))
+		var tier := str((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("resolved_tier", ""))
+
+		# The property. Whatever left, left the CLEAN pool.
+		a.eq_int("%s takes what it takes out of CLEAN" % str(choice_id),
+			clean_before - int(wallet.clean_balance()), lost)
+		a.eq_int("%s never reaches dirty cash" % str(choice_id),
+			int(wallet.dirty_balance()), dirty_before)
+		a.check("%s never takes more than was paid" % str(choice_id), lost <= payout)
+
+		if str(choice_id) == "refund_him":
+			a.eq_int("the refund gives back the whole payout", lost, payout)
+			a.eq_int("...and hands the item back", (gs.list_holdings as Array).size(),
+				holdings_before + 1)
+			a.eq_int("...and nobody is hurt", int(gs.health), health_before)
+			a.eq_str("...resolving as a surrender", str(result.get("resolution", "")),
+				SCRIPTS.RESOLUTION_SURRENDERED)
+		else:
+			# Commercial, not criminal: injury only on a catastrophic exit.
+			if tier == "catastrophic":
+				a.check("%s can cost blood, but only catastrophically" % str(choice_id),
+					int(gs.health) < health_before)
+			else:
+				a.eq_int("%s costs no blood short of catastrophe" % str(choice_id),
+					int(gs.health), health_before)
+			a.eq_int("...and the item stays sold",
+				(gs.list_holdings as Array).size(), holdings_before)
+
+		# Nobody swings first, on any road: this is a 907List scene.
+		a.eq_bool("%s never books an arrest" % str(choice_id),
+			bool(result.get("arrested", false)), false)
+		a.eq_bool("%s adds no Heat -- a flip is commerce" % str(choice_id),
+			is_zero_approx(float(result.get("heat", 0.0))), true)
+
+		gm.dispatch("consequence_continue", {})
+		gs.active_consequence = {}
+	gs.list_holdings = []

@@ -123,6 +123,12 @@ static func tip_modifiers_for(gs: Node, target_id: String, tier: int) -> Diction
 		"remove_final_decay": false,
 		"extra_left": 0,
 		"no_free_out_round_one": false,
+		# 0.6.0 PR E: the 907List meetup scene's own suppression. Added to THIS
+		# dict rather than given a second reader somewhere else, because the
+		# whole value of this function is that there is exactly one place a tip
+		# payload is interpreted -- and it still degrades to a no-op until the
+		# tip system lands, same as every other key here.
+		"suppress_meetup_scene": false,
 	}
 	if not ("tip_effects" in gs):
 		return mods
@@ -150,6 +156,15 @@ static func tip_modifiers_for(gs: Node, target_id: String, tier: int) -> Diction
 			"trap":
 				mods["extra_left"] = int(SCRIPTS.TIP_MODIFIERS["trap"]["extra_left"])
 				mods["no_free_out_round_one"] = true
+			"buyer_confirmed":
+				# Pherris vouched for this buyer, and a vouched buyer cannot be
+				# the buyer's friend. The meetup's own outcome ROLL is
+				# untouched -- what is suppressed is the scene's trigger, which
+				# is the difference between a tip that changes the world and a
+				# tip that changes the odds (TIP_MODIFIERS' own rule: entry
+				# parameters only, never exit tables).
+				mods["suppress_meetup_scene"] = bool(SCRIPTS.TIP_MODIFIERS
+					["buyer_confirmed"]["suppress_meetup_scene"])
 	return mods
 
 # --- the luggage rule (STR-D3) ------------------------------------------------

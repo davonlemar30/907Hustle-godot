@@ -109,7 +109,10 @@ func refresh() -> void:
 	_normalize_scroll_mouse_filters()
 	_drain_flow_sheets.call_deferred()
 
-## Show the next queued flow sheet, if this is a safe moment for one.
+## Show the next queued sheet, if this is a safe moment for one.
+##
+## As of 0.6.0 this drains TWO things in a fixed order: a live encounter chain
+## first (SQ-D4), then the ordinary flow-sheet queue.
 ##
 ## Deferred from `refresh()` because the guards below read state (the current
 ## scene, the blocking route) that is not necessarily settled yet mid-refresh
@@ -132,6 +135,19 @@ func _drain_flow_sheets() -> void:
 	# `.current_scene` off it is a crash, not a false answer, per node.
 	if nav == null or not is_inside_tree() or get_tree().current_scene != self:
 		return
+	# SQ-D4(a): the encounter is not one of the queue's cards and does not take
+	# its turn among them. It is checked FIRST and it returns, so an ordinary
+	# card cannot drain while a chain sits at decision or result -- strict
+	# precedence, not a race this happens to win. `blocking_route()` no longer
+	# defers those two stages (SQ-D2), so without this the guard below would
+	# wave a discovery card straight over a live encounter.
+	if _encounter_stage_live():
+		_show_encounter_sheet()
+		return
+	# The chain is gone (or has moved to a stage the full screen owns, in which
+	# case `refresh()` has already routed away and this line never runs). Either
+	# way the sheet has nothing left to show.
+	_close_encounter_sheet()
 	if not nav.blocking_route().is_empty():
 		return
 	if nav.flow_sheet_active():
@@ -151,8 +167,113 @@ func _drain_flow_sheets() -> void:
 	var dismiss := content.get_node_or_null("Dismiss") as Button
 	if dismiss != null:
 		dismiss.pressed.connect(sheet.exit)
+	_ordinary_spec = spec
 	nav.register_flow_sheet(sheet)
+	sheet.dismissed.connect(func(): _ordinary_spec = {})
 	sheet.dismissed.connect(_drain_flow_sheets, CONNECT_DEFERRED)
+
+# --- the encounter sheet (SQ-D1..D5) -----------------------------------------
+#
+# A chain at `decision` or `result` renders as a blocking ModalSheet over this
+# screen instead of taking it over (SQ-D2). Presentation is DERIVED from the
+# live chain every time -- nothing about the sheet is persisted, which is what
+# makes SQ-D4's reload-reopen migration-free: the chain, the round, the bank and
+# the burned verbs were already in the save and already correct, and only the
+# pixels are being rebuilt.
+#
+# This lives on `screen_base` rather than on any one screen because a chain can
+# open under ANY of them -- a wander encounter opens over Home, a blown Lift
+# over Boost, a checkpoint over Street -- and they all extend this.
+
+const ENCOUNTER_SHEET := preload("res://ui/components/encounter_sheet.gd")
+
+var _encounter_sheet: ModalSheet = null
+## The spec behind the ordinary card currently on screen, so an encounter
+## arriving over it can hand it back to the queue rather than eat it.
+var _ordinary_spec: Dictionary = {}
+
+## Is there a chain live at a stage this screen presents as a sheet?
+func _encounter_stage_live() -> bool:
+	var manager: Node = get_node_or_null("/root/GameManager")
+	if manager == null:
+		return false
+	var engine: Object = manager.system("consequence")
+	if engine == null or not engine.has_active():
+		return false
+	if gs != null and bool(gs.game_over):
+		# Game over outranks everything, ladder unchanged -- `refresh()` has
+		# already routed there and a sheet would be building over a screen
+		# that is on its way out.
+		return false
+	return ENCOUNTER_SHEET.stage_rides_sheet(str(engine.active_stage()))
+
+func _show_encounter_sheet() -> void:
+	var manager: Node = get_node_or_null("/root/GameManager")
+	var engine: Object = manager.system("consequence") if manager != null else null
+	var content: Control = ENCOUNTER_SHEET.build_sheet(engine, gs,
+		_wire_encounter_button)
+	if content == null:
+		return
+	if _encounter_sheet != null and is_instance_valid(_encounter_sheet):
+		# Same sheet, new round or new stage. Swapped in place so the card does
+		# not slide out and back in between a commit and its result.
+		_encounter_sheet.replace_content(content)
+		return
+	# An ordinary card is up and the encounter outranks it. Hand its spec back
+	# to the front of the queue so it is the next thing shown once this is over.
+	if nav.flow_sheet_active():
+		nav.requeue_flow_sheet(_ordinary_spec)
+		_ordinary_spec = {}
+	_encounter_sheet = show_sheet(content, true)
+	nav.register_flow_sheet(_encounter_sheet)
+
+func _close_encounter_sheet() -> void:
+	if _encounter_sheet == null or not is_instance_valid(_encounter_sheet):
+		_encounter_sheet = null
+		return
+	var sheet: ModalSheet = _encounter_sheet
+	_encounter_sheet = null
+	# Deferred so the queue's next card lands AFTER this one has finished its
+	# exit tween and released `flow_sheet_active()`, rather than racing it.
+	sheet.dismissed.connect(_drain_flow_sheets, CONNECT_DEFERRED)
+	sheet.exit()
+
+## `encounter_sheet.gd`'s wiring seam. The builder names an action and the
+## choice it carries; this screen decides what that means, and always through
+## `tap_connect` -- the content sits inside a ScrollContainer, where a `pressed`
+## connection would fire at the end of a scroll drag (TOUCH-D3a).
+func _wire_encounter_button(target: Control, action: String, choice_id: String) -> void:
+	match action:
+		ENCOUNTER_SHEET.ACTION_COMMIT:
+			tap_connect(target, _commit_encounter_choice.bind(choice_id))
+		ENCOUNTER_SHEET.ACTION_CONTINUE:
+			tap_connect(target, _continue_encounter)
+
+## Stable IDs, both of them, exactly as `consequence.gd` dispatches them: the
+## engine revalidates against the live chain, so a button rendered before a
+## reload is refused rather than honoured against whatever is open now.
+func _commit_encounter_choice(choice_id: String) -> void:
+	var manager: Node = get_node_or_null("/root/GameManager")
+	var engine: Object = manager.system("consequence") if manager != null else null
+	if engine == null:
+		return
+	var summary: Dictionary = engine.active_summary()
+	manager.dispatch("resolve_consequence_choice", {
+		"consequence_id": str(summary.get("consequence_id", "")),
+		"cause_id": str(summary.get("cause_id", "")),
+		"choice_id": choice_id,
+	})
+
+func _continue_encounter() -> void:
+	var manager: Node = get_node_or_null("/root/GameManager")
+	var engine: Object = manager.system("consequence") if manager != null else null
+	if engine == null:
+		return
+	var summary: Dictionary = engine.active_summary()
+	manager.dispatch("consequence_continue", {
+		"consequence_id": str(summary.get("consequence_id", "")),
+		"cause_id": str(summary.get("cause_id", "")),
+	})
 
 ## Resolve one flow-sheet spec to content, or null when there is nothing to
 ## show. The one place a `spec["kind"]` is read -- `flow_sheets.gd` never sees
@@ -264,8 +385,11 @@ func _normalize_scroll_mouse_filters() -> void:
 ## dance, extracted so the flow-sheet drain does not have to invent its own
 ## copy of it. Market is left as it is for this PR -- adopting this helper
 ## there is a separate change, not a side effect of this one.
-func show_sheet(content: Control) -> ModalSheet:
+func show_sheet(content: Control, blocking: bool = false) -> ModalSheet:
 	var sheet := ModalSheet.new()
+	# SQ-D3: set BEFORE `setup()`, which is where the handle bar is (or is not)
+	# built. Default false, so every existing caller is unchanged.
+	sheet.blocking = blocking
 	sheet.setup(content)
 	add_child(sheet)
 	# Above Shell so it overlays the scroll content, below Atmosphere so

@@ -1683,6 +1683,92 @@ Same rule as every entry above: the threshold table, the room's own
 chassis, and the Dre-trigger relocation are all load-bearing for this PR's
 own new code, so the ruling is recorded where the dependency was created.
 
+## D-24 — Squared Up: the encounter overlay
+
+**Decided** 2026-08-29 · **Ships in** `build/encounter-overlay` (0.6.0 PR A),
+with SQ-D6..D11 landing alongside the code that depends on them in PRs B-E ·
+**Source:** `BUILD_SQUARED_UP_PROMPT.md`, ClickUp `86bbnk6en`
+
+### The question
+
+Three things the owner asked for, and one drift the repo had shipped without
+noticing.
+
+The ask: every confrontation should present as a popup over the current
+screen rather than a full-screen takeover, with a health bar that MOVES as
+damage lands; the wander encounter pool should stop being a skeleton and
+carry the everyday street; and the authored-but-unwired per-path scripts
+should get wired.
+
+The drift: encounters were full-screen and it was enforced globally —
+`ScreenManager.blocking_route()` returned CONSEQUENCE for any non-empty
+chain, and `resolved_route()` made every navigation land there. It was never
+"some encounters"; it was all of them. Under that, two of the four 0.5.0
+wander cards shipped with `"deterministic": []` (no guaranteed out, which the
+chassis rule forbids), the shakedown room re-rolled one verb at decaying odds
+instead of authoring a new situation, and no wander encounter wrote an
+exposure observation.
+
+### The ruling
+
+| ID | Ruling |
+|---|---|
+| SQ-D1 | **Encounters present as a sheet; the street stays behind them.** Chain rendering is extracted out of `ui/screens/consequence.gd` into `ui/components/encounter_sheet.gd` on the `flow_sheets.gd` pattern: static builders, no `class_name`, resolved at BUILD time from the engine's summary calls and never from `gs.active_consequence`. Both presentations consume the same builder, so the screen and the sheet cannot drift on what a chain looks like. The screen is not deleted — see SQ-D2. |
+| SQ-D2 | **Which stages ride the sheet.** `STAGE_DECISION` and `STAGE_RESULT` render as a `ModalSheet` over the current screen for every chain kind. `STAGE_BOOKING` and `STAGE_RELEASE` keep `consequence.tscn`: an arrest genuinely IS a takeover, the booking terms are long-form, and release is where a run's shape changes. `blocking_route()` returns CONSEQUENCE only for booking/release and `""` for decision/result; nothing else about the priority ladder moved, and game over still outranks everything. The split has ONE owner (`encounter_sheet.stage_rides_sheet`) and three readers — `resolved_route()`, the boot/CONTINUE path, and the flow-sheet drain's own guard — which all change behaviour together. |
+| SQ-D3 | **A blocking sheet cannot be dismissed by touching it.** `ModalSheet` gains a `blocking` flag, default `false` so Market's picker and every flow sheet are byte-for-byte unaffected. When set, the scrim still STOPS the tap (the screen underneath must not receive it) but does not treat it as a dismissal, and the handle bar is not built at all rather than built and ignored — a grab-bar that does nothing is a control that lies. The sheet closes exactly one way: the chain resolving. |
+| SQ-D4 | **The sheet reopens itself after a reload.** Presentation is DERIVED from the live chain (kind + stage), never persisted — which is what keeps the whole change migration-free. On boot or load with a decision- or result-stage chain live, `screen_base.gd`'s existing flow-sheet drain reopens the encounter sheet ahead of any queued discovery card. Two hazards, both handled here: (a) the encounter takes STRICT precedence in the drain (checked first, returns; and an ordinary card already on screen has its spec handed back to the FRONT of the queue via `requeue_flow_sheet` rather than being eaten), and (b) TI-003 §18's "no ordinary screen exposed for an interactive frame" is now met by the sheet's scrim rather than by the route — `screen_manager.gd`'s own doc-comment was rewritten to describe the path that exists rather than the one that no longer does. |
+| SQ-D5 | **The health bar is a component, and it moves in real time.** `ui/components/health_bar.gd`, a `ProgressBar`-backed strip with the exact `current/max` beside it in house colours, renders inside the situation block on every sheet stage. After a round resolves the delta ANIMATES from the prior value rather than snapping, so the player sees the hit land. The prior value is a static on the script — session-lifetime presentation memory, never persisted, never read by anything but the tween, and cleared on the run boundary `clear_flow_sheets()` already owns. HEALTH graduates out of the text stakes strip into the bar; STAGE/#LEFT/BANKED/HEAT stay in the strip. |
+| SQ-D6 | **The verb triad, and roles rather than labels.** Every general wander encounter offers exactly three roles — `fight` / `run` / `surrender` — declared as a `role` key per choice in `data/wander_events.gd`. Labels stay per-card and in voice; the role is what the chassis, the suite and the UI ordering read. The `surrender` role is always deterministic and always present, which is how "one guaranteed out per round" becomes structural instead of per-card care. Path-specific scripts keep their own authored vocabularies. *(Lands with PR B.)* |
+| SQ-D7 | **A round is a new situation or it is not a round.** Every multi-round script authors a `beats` array — one entry per round, each a distinct situation with its own copy and its own offered stakes — the way `STICK_SCRIPTS` and `LIFT_BEATS` already do. The shakedown room is rewritten to that shape. Escalating odds may ride on top but are never the only thing that changes between rounds. A script that cannot honestly author a second beat ships as one round. Cap stays 3. *(Lands with PR B.)* |
+| SQ-D8 | **Every encounter writes an exposure observation**, on RESOLUTION, keyed by the road taken and the tier reached, at the district it happened in, with receipts so a reload cannot double-write — `boost.gd`'s `boost_caught:observation` receipt is the precedent. Authored per card, read generically; a card with no authored row falls back to a shape derived from its role and tier rather than writing nothing. *(Lands with PR B.)* |
+| SQ-D9 | **Crew calls become chassis actions.** `CREW_CALLS` are offered by any script that declares `admits_crew: true`, gated on the existing availability language (recruited, active, loyalty > 0, `crew_unassigned_today`). Once per loop; calling burns no verb. Stickup scripts still admit none. *(Lands with PR B.)* |
+| SQ-D10 | **The path variants wire what is authored; they author only what is missing.** `corner_stiff`, `corner_push` and `MEETUP_SCRIPT` wire as authored. The Lift and STASH_IT are ALREADY wired — they are audited against the spec and the stale "AUTHORED, NOT YET WIRED" header in `data/confrontation_scripts.gd` is corrected. Stickup tier 1 keeps its single-roll path byte-for-byte. *(Lands with PRs D and E.)* |
+| SQ-D11 | **New rolls that the oracle never knew stay off the oracle's tables.** No new shapes in `outcome_resolver.gd`'s `OUTCOME_SHAPES` / `ACTION_ATTRIBUTE_MAP` — D-21 records what that cost last time. A Godot-only roll rolls directly and seeded, the way `_stash_it_tier` does, and says so in its header. |
+| VOX-D1 | **The voice: menace as business — the *Power* register**, carried forward unchanged from 0.5.0. Emulate the register; never lift or paraphrase actual lines. Copy ships in the same PR as its content. |
+| MEAS-D1 | **Frequencies and durations are measured, never vibed**, carried forward. |
+| VER-D1 | **Version → `0.6.0`, MINOR.** Rides the close-out PR. |
+
+### Real bugs caught in PR A
+
+1. **`consequence.gd` could not simply preload the extracted builder.** It
+   extends `surface_base.gd` → `screen_base.gd`, and `screen_base` needs the
+   same preload for the drain. Declaring `const ENCOUNTER_SHEET` in both is a
+   parse error ("the member already exists in parent class") — which Godot
+   reports by REFUSING TO ATTACH THE SCRIPT and instantiating the scene
+   anyway. That is the exact failure mode `screen_smoke.gd`'s own header was
+   written about, and the smoke gate caught it inside a minute (23/24 → 22/24,
+   touch checks 1101 → 1093). The fix made it better rather than merely
+   compiling: the const AND the `_wire_encounter_button` seam are inherited,
+   so a choice committed from the sheet and a choice committed from the screen
+   now go through one dispatcher instead of two near-identical ones.
+
+2. **Nothing in the build could see a runtime-built component.**
+   `screen_smoke.gd` walks `ui/screens/*.tscn`; `ModalSheet` had shipped for
+   two builds with no gate asserting it could be constructed at all, and the
+   new `encounter_sheet.gd` / `health_bar.gd` would have inherited that blind
+   spot. The suite now builds all three against a REAL live chain (not a stub
+   summary — the point of the builder is that it resolves from the engine's
+   own calls) and runs the same TOUCH-D5 scroll-transparency walk over the
+   result: +67 component checks.
+
+### Measured results, PR A
+
+| Suite | Before | After |
+| --- | --- | --- |
+| parity | 12763 | 12763 (presentation-only; not one authored number moved) |
+| confrontation | 251 | 286 |
+| save validation | 235 | 247 |
+| screen smoke | 23/23 screens, 1101 touch | 23/23 screens, 1101 touch, +67 component |
+| territory / tips / dre | 170 / 93 / 404 | unchanged |
+
+### Why this PR carries this entry
+
+Same rule as every entry above: SQ-D1..D5 are load-bearing for PR A's own
+code, so they are recorded where the dependency was created. SQ-D6..D11 are
+recorded here too because they are one ruling set the owner closed at once and
+splitting them across five files would be worse than naming, per row, which PR
+the code lands in.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

@@ -184,6 +184,7 @@ func _ready() -> void:
 		_check_street_interruption_gate(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_street_roster(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_travel_checkpoint(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_doorstep(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -7852,7 +7853,7 @@ func _check_engine_adapters(gs: Node, gm: Node, engine: RefCounted) -> void:
 	# including after a load. That is the mechanism the whole rule rests on.
 	_expect_str("the source adapters registered at boot",
 		str(engine.registered_adapter_ids()),
-		str(["boost", "dre_collection", "retaliation", "stickup", "travel", "wander"]))
+		str(["boost", "doorstep", "dre_collection", "retaliation", "stickup", "travel", "wander"]))
 	_expect_true("the boost adapter resolves to a system",
 		engine.source_adapter("boost") != null)
 	_expect_true("the boost adapter is the boost system",
@@ -19792,7 +19793,7 @@ func _fail(label: String, detail: String) -> void:
 ## 0.3.0 (STK-D1): +8. `_check_stick_daily_cap_scaling`'s own coverage of the
 ## rep-scaled cap, through both the bare function and the real `blocker()`
 ## gate.
-const MIN_CHECKS := 12720
+const MIN_CHECKS := 12751
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -22553,6 +22554,258 @@ func _check_checkpoint_carry_exclusion(gs: Node, gm: Node) -> void:
 			_close_checkpoint(gs, gm)
 	_expect_true("a checkpoint fired to test carry-exclusion against", found)
 	gs.reset_to_new_game()
+
+# === 0.5.0 PR D — The doorstep (DOOR-D1/D2) ==================================
+#
+# Three obligations, one owner (`systems/doorstep.gd`), zero new persisted
+# state -- every threshold below is `gs.day` measured against a `due_day`
+# (Dre's, a Book note's) or an existing warning counter (rent's) that already
+# climbs on its own. Dre's own collection stage is `dre_collector`'s
+# pre-existing ultimatum, unchanged; `tests/dre/dre_runner.gd` already proves
+# its own two-choice shape in depth (`_test_player_default_ultimatum_*`) --
+# what belongs here is proving doorstep.gd's OWN contribution: that it is the
+# one place all three obligations are compared, that the room actually
+# exists and resolves, and that nothing it does can end a run by itself.
+
+func _doorstep_setup(gs: Node) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 5000
+
+## A Book note, rigged directly into `gs.shark_loans` rather than funded
+## through the real flow -- the funding menu is Batch 15's own surface and
+## not what this section is testing; what matters here is a defaulted note
+## sitting at a known `due_day`, the same direct-rigging discipline PR A's
+## own hot-profile test already uses for `dre_account`.
+func _rig_defaulted_loan(gs: Node, due_day: int) -> int:
+	var loan_id: int = int(gs.shark_next_loan_id)
+	gs.shark_next_loan_id = loan_id + 1
+	var loans: Array = gs.shark_loans
+	loans.append({"id": loan_id, "borrower_id": "priya", "amount": 100, "term": 4,
+		"opened_day": due_day - 4, "due_day": due_day, "status": "defaulted",
+		"risk_label": "LOW"})
+	gs.shark_loans = loans
+	return loan_id
+
+func _close_doorstep_chain(gs: Node, gm: Node) -> void:
+	var decision: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+	var choices: Array = decision.get("allowed_choices", [])
+	if choices.is_empty():
+		return
+	gm.dispatch("resolve_consequence_choice", {"choice_id": str(choices[0])})
+	var engine: Object = gm.system("consequence")
+	if engine != null and bool(engine.has_active()):
+		gm.dispatch("consequence_continue", {})
+
+func _check_doorstep(gs: Node, gm: Node) -> void:
+	_check_doorstep_dre_enforcement(gs, gm)
+	_check_doorstep_book_collection(gs, gm)
+	_check_doorstep_book_enforcement(gs, gm)
+	_check_doorstep_rent_collection(gs, gm)
+	_check_doorstep_rent_enforcement(gs, gm)
+	_check_doorstep_worst_first(gs, gm)
+	_check_doorstep_never_scripted_death(gs, gm)
+	_check_doorstep_reload(gs, gm)
+	gs.reset_to_new_game()
+
+## Dre's own ultimatum is `tests/dre/dre_runner.gd`'s to prove; this is the
+## stage dre_lender.gd no longer opens at all (DOOR-D2 moved that trigger
+## here) -- stalled, then aged past `DRE_ENFORCEMENT_DELAY_DAYS`, the room
+## itself has to exist and has to close the account no matter which verb
+## wins, since nothing else will ever collect on this account again
+## otherwise.
+func _check_doorstep_dre_enforcement(gs: Node, gm: Node) -> void:
+	_doorstep_setup(gs)
+	var doorstep: Object = gm.system("doorstep")
+	gs.dre_account = {"status": "suspended", "due_day": gs.day - 1,
+		"principal": 1000, "interest": 200, "fee": 0}
+	_expect_true("a freshly suspended account has no enforcement visit yet",
+		doorstep._dre_visit().is_empty())
+	gs.dre_account["due_day"] = int(gs.day) - doorstep.DRE_ENFORCEMENT_DELAY_DAYS
+	var visit: Dictionary = doorstep._dre_visit()
+	_expect_str("aged past the delay, Dre's own visit is the enforcement stage",
+		str(visit.get("stage", -1)), "2")
+	var engine: Object = gm.system("consequence")
+	doorstep.try_force_visit(gs.day)
+	_expect_true("the enforcement room actually opens", bool(engine.has_active()))
+	if not bool(engine.has_active()):
+		return
+	_expect_str("the room's own kind is dre_enforcement",
+		str(gs.active_consequence.get("source", {}).get("kind", "")), "dre_enforcement")
+	var choices: Array = gs.active_consequence.get("decision", {}).get("allowed_choices", [])
+	_expect_str("the room offers fight, talk and yield",
+		str(choices), str(["fight", "talk", "yield"]))
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"})
+	_expect_str("yielding always closes the account, win or lose the cash",
+		str(gs.dre_account.get("status", "")), "clear")
+	gm.dispatch("consequence_continue", {})
+
+## The forced enforce/extend/forgive decision -- unchanged rolls, only
+## reaching them stopped being optional.
+func _check_doorstep_book_collection(gs: Node, gm: Node) -> void:
+	_doorstep_setup(gs)
+	var doorstep: Object = gm.system("doorstep")
+	var engine: Object = gm.system("consequence")
+	var loan_id: int = _rig_defaulted_loan(gs, int(gs.day) - doorstep.BOOK_COLLECTION_DELAY_DAYS)
+	var visit: Dictionary = doorstep._book_visit()
+	_expect_str("a note just past the collection delay reads stage 1",
+		str(visit.get("stage", -1)), "1")
+	doorstep.try_force_visit(gs.day)
+	_expect_true("the forced enforce/extend/forgive decision opens",
+		bool(engine.has_active()))
+	if not bool(engine.has_active()):
+		return
+	_expect_str("with the note's own three existing roads, forced rather than optional",
+		str(gs.active_consequence.get("decision", {}).get("allowed_choices", [])),
+		str(["enforce", "extend", "forgive"]))
+	var before_cash: int = int(gs.cash)
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "enforce"})
+	_expect_true("enforce still collects the principal, unchanged", int(gs.cash) > before_cash)
+	var loan: Dictionary = gm.system("shark").loan_by_id(loan_id)
+	_expect_str("and the note closes as enforced", str(loan.get("status", "")), "enforced")
+	gm.dispatch("consequence_continue", {})
+
+## The same note, left unresolved past the second threshold -- the room the
+## Book's own fiction points the other way: FIGHT here is the player
+## pressing a resistant borrower, so the health risk lands on the player
+## attempting to collect, not on the player being collected from.
+func _check_doorstep_book_enforcement(gs: Node, gm: Node) -> void:
+	_doorstep_setup(gs)
+	var doorstep: Object = gm.system("doorstep")
+	var engine: Object = gm.system("consequence")
+	_rig_defaulted_loan(gs, int(gs.day) - doorstep.BOOK_ENFORCEMENT_DELAY_DAYS)
+	var visit: Dictionary = doorstep._book_visit()
+	_expect_str("aged past the second threshold, the same note reads stage 2",
+		str(visit.get("stage", -1)), "2")
+	doorstep.try_force_visit(gs.day)
+	_expect_true("the Book's own enforcement room opens", bool(engine.has_active()))
+	if not bool(engine.has_active()):
+		return
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"})
+	_expect_str("yielding forgives the note rather than collecting on it -- YIELD is never the paid road",
+		str(gm.system("shark").loan_by_id(int(gs.shark_loans[0]["id"])).get("status", "")),
+		"forgiven")
+	gm.dispatch("consequence_continue", {})
+
+func _check_doorstep_rent_collection(gs: Node, gm: Node) -> void:
+	_doorstep_setup(gs)
+	var doorstep: Object = gm.system("doorstep")
+	var engine: Object = gm.system("consequence")
+	gs.rent_missed = 2
+	gs.household_warnings = 1
+	var visit: Dictionary = doorstep._rent_visit()
+	_expect_str("one missed-rent warning in, rent reads stage 1", str(visit.get("stage", -1)), "1")
+	doorstep.try_force_visit(gs.day)
+	_expect_true("the forced pay/ignore decision opens", bool(engine.has_active()))
+	if not bool(engine.has_active()):
+		return
+	_expect_str("with exactly pay or ignore",
+		str(gs.active_consequence.get("decision", {}).get("allowed_choices", [])),
+		str(["pay", "ignore"]))
+	var owed: int = 2 * int(gs.WEEKLY_RENT)
+	var before_cash: int = int(gs.cash)
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "pay"})
+	_expect_int("paying clears every week owed at once", int(gs.cash), before_cash - owed)
+	_expect_int("and the warning counter resets", int(gs.household_warnings), 0)
+	gm.dispatch("consequence_continue", {})
+
+func _check_doorstep_rent_enforcement(gs: Node, gm: Node) -> void:
+	_doorstep_setup(gs)
+	var doorstep: Object = gm.system("doorstep")
+	var engine: Object = gm.system("consequence")
+	gs.rent_missed = 3
+	gs.household_warnings = int(doorstep.RENT_ENFORCEMENT_AT_WARNING)
+	var visit: Dictionary = doorstep._rent_visit()
+	_expect_str("at the authored warning count, rent reads stage 2 (the room)",
+		str(visit.get("stage", -1)), "2")
+	doorstep.try_force_visit(gs.day)
+	_expect_true("the rent enforcement room opens", bool(engine.has_active()))
+	if not bool(engine.has_active()):
+		return
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"})
+	_expect_int("yielding closes rent arrears the same way every other room's YIELD does",
+		int(gs.household_warnings), 0)
+	gm.dispatch("consequence_continue", {})
+
+## DOOR-D2: the worst of the three wins, and the losers wait their day.
+## Rent is rigged to its own enforcement stage (2) and Dre only to its
+## collection stage (1) -- rent must win, and Dre's own account must still
+## read "overdue" afterward, untouched, exactly as if today were never its
+## turn.
+func _check_doorstep_worst_first(gs: Node, gm: Node) -> void:
+	_doorstep_setup(gs)
+	var doorstep: Object = gm.system("doorstep")
+	var engine: Object = gm.system("consequence")
+	var lender: Object = gm.system("dre")
+	gs.dre_account = {"status": "overdue",
+		"due_day": int(gs.day) - int(lender.OVERDUE_RESPONSE_DELAY_DAYS),
+		"principal": 1000, "interest": 200, "fee": 0}
+	gs.rent_missed = 3
+	gs.household_warnings = int(doorstep.RENT_ENFORCEMENT_AT_WARNING)
+	var worst: Dictionary = doorstep.worst_visit()
+	_expect_str("rent's enforcement stage outranks Dre's own collection stage",
+		str(worst.get("family", "")), "rent")
+	doorstep.try_force_visit(gs.day)
+	_expect_true("the winner's own chain is what actually opened",
+		bool(engine.has_active()) \
+			and str(gs.active_consequence.get("source", {}).get("family", "")) == "rent")
+	_expect_str("Dre's own account waits its day, completely untouched",
+		str(gs.dre_account.get("status", "")), "overdue")
+	_close_doorstep_chain(gs, gm)
+
+## DOOR-D1: "never scripted death". At floor health, the worst room outcome
+## still only ever costs health and the debt -- `game_over` stays exactly
+## what it already was, so ending a run is still only ever the existing
+## end-condition machinery's call, never this file's.
+func _check_doorstep_never_scripted_death(gs: Node, gm: Node) -> void:
+	_doorstep_setup(gs)
+	var doorstep: Object = gm.system("doorstep")
+	var engine: Object = gm.system("consequence")
+	gs.health = 1
+	gs.dre_account = {"status": "suspended",
+		"due_day": int(gs.day) - doorstep.DRE_ENFORCEMENT_DELAY_DAYS,
+		"principal": 1000, "interest": 200, "fee": 0}
+	doorstep.try_force_visit(gs.day)
+	_expect_true("the room opened against an at-floor-health player", bool(engine.has_active()))
+	if not bool(engine.has_active()):
+		return
+	# FIGHT is the road that can actually cost health at every tier below
+	# clean -- the one worth proving never scripts an ending on its own.
+	for _round in range(doorstep.ROOM_ROUND_CAP + 1):
+		if not bool((engine as Object).has_active()):
+			break
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"})
+	_expect_true("health is clamped at the floor, never below it", int(gs.health) >= 0)
+	_expect_true("and nothing in this file ever sets game_over directly",
+		not bool(gs.game_over))
+	if bool(engine.has_active()):
+		gm.dispatch("consequence_continue", {})
+
+## Determinism under reload, the same release-blocker property every other
+## loop-driven room in this build proves for itself.
+func _check_doorstep_reload(gs: Node, gm: Node) -> void:
+	_doorstep_setup(gs)
+	var doorstep: Object = gm.system("doorstep")
+	var engine: Object = gm.system("consequence")
+	gs.dre_account = {"status": "suspended",
+		"due_day": int(gs.day) - doorstep.DRE_ENFORCEMENT_DELAY_DAYS,
+		"principal": 1000, "interest": 200, "fee": 0}
+	doorstep.try_force_visit(gs.day)
+	_expect_true("a room exists to reload against", bool(engine.has_active()))
+	if not bool(engine.has_active()):
+		return
+	var saves := get_node("/root/SaveSystem")
+	var snapshot: Dictionary = saves.capture()
+	var live_result: bool = gm.dispatch("resolve_consequence_choice", {"choice_id": "talk"})
+	var live_tier := str(gs.active_consequence.get("decision", {}).get("resolved_tier", ""))
+	saves._apply(snapshot)
+	_expect_true("the reload restored the room", bool(engine.has_active()))
+	var replayed_result: bool = gm.dispatch("resolve_consequence_choice", {"choice_id": "talk"})
+	var replayed_tier := str(gs.active_consequence.get("decision", {}).get("resolved_tier", ""))
+	_expect_true("the replayed round dispatches the same way", replayed_result == live_result)
+	_expect_str("and resolves the exact same tier", replayed_tier, live_tier)
+	if bool(engine.has_active()):
+		gm.dispatch("consequence_continue", {})
 
 # === batch 12 — Wander, measured ============================================
 #

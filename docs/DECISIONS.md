@@ -1504,6 +1504,185 @@ Same rule as every entry above: the checkpoint's trigger site, its kind, and
 the carry-stop exclusion are all load-bearing for this PR's own new code, so
 the ruling is recorded where the dependency was created.
 
+## D-23 — The Street Answers Back: the doorstep
+
+**Decided** 2026-08-29 · **Ships in** `build/debt-doorstep` (0.5.0 PR D) ·
+**Source:** `BUILD_STREET_ANSWERS_PROMPT.md`
+
+### The question
+
+Three obligations already ratchet toward the run's own end conditions, and
+until this PR every one let the player keep tapping around it: Dre's own
+ultimatum waited for `dre_lender.settle_night` to notice it; a defaulted
+Book note sat available-but-ignorable until the player felt like resolving
+it; rent's escalation was pure log lines counting down to a game over the
+player never got to answer. DOOR-D1 forces the visit instead, staged.
+
+### A reading called out before the ruling table, not after
+
+STR/DOOR-D1's own words are "a defaulted/suspended **Book** standing" and
+"enforcement... a beating that routes through health and seizure" —
+language that reads, on a first pass, like someone collecting FROM the
+player. The Book (`systems/shark.gd`, UI label "THE BOOK") is the one place
+in this game the player is the LENDER: `enforce`/`extend`/`forgive` are
+already risk-free rolls the player makes about a borrower's defaulted note,
+confirmed by reading `_resolve_defaulted()` directly — no health cost
+anywhere in it, and no other player-facing debt-to-a-"Book" character
+exists anywhere in `game_state.gd` (`book_loans_funded`'s own economy
+metric reads as loans the player FUNDS, consistent with `shark.gd` being
+the only Book mechanic that exists). Taken together, "a defaulted... Book
+standing" reads as a note the PLAYER has been avoiding a decision about,
+not a debt the player owes — and "enforcement... a beating" describes NEW
+risk this PR adds to the player's own aggressive collection attempt
+(`FIGHT`), the same shape `dre_collect_hard`'s existing PRESS verb already
+has for Dre's borrowers, just no longer optional. This is the session's own
+best-reasoned resolution of a genuine ambiguity, not a confirmed reading —
+flagged here prominently, exactly where the Divergence Protocol says a
+brief's own assumption and the shipped system disagreeing belongs, so it is
+the first thing found and correctable if wrong.
+
+### The ruling
+
+| ID | Ruling |
+|---|---|
+| DOOR-D1 | **Overdue debts stop waiting**, staged: the word (unchanged — see below), the collection (a forced decision), enforcement (STR-D5's second room). Dre's own collection stage reuses `dre_collector.open_player_default_encounter()` verbatim; the Book and rent sides author the same forced-decision pattern with their own scripts. Never scripted death: no road in `systems/doorstep.gd` ever sets `game_over` — every exit costs only health and the debt itself, through the owners each already has. |
+| DOOR-D2 | **One visit per day-start, worst debt first.** `doorstep.gd`'s `worst_visit()` compares all three obligations' current stage (and, on a tie, how overdue each is in its own terms) before anything opens; the day-start hook (`DayLifecycle.add_day_start_hook`, run after every `DAY_START_ORDER` step) claims the floor before any generated offer would, and the engine's own `has_active()` guard is the same one-chain seam every other forced-open mechanism in this build already defers to. |
+
+### "The word" needed no new code
+
+The mildest stage already exists as the passive warning each obligation
+already prints the first time it goes bad — none of them block anything.
+Forcing a screen interrupt on the day's first sign of trouble would fight
+the same balance guard this build's other interruption gates were tuned
+against ("must not turn the button into a tax that makes it not worth
+pressing"). What DOOR-D1 actually asks to stop being avoidable is the two
+stages that cost something real, so those are the two this PR adds; "the
+word" is unchanged.
+
+### Nothing new persisted
+
+Every stage is computed off a field that already exists and never resets on
+its own once an obligation goes bad: `dre_account.due_day`, a shark loan's
+own `due_day`, and `gs.rent_missed`/`household_warnings`. `gs.day - due_day`
+is a valid, ever-growing "how overdue" measure for both Dre and the Book
+without a new field, and rent's own warning counter already climbs on its
+own. Ground rules: "derive before you persist" — this PR found nothing that
+could not be. `SAVE_VERSION` does not move.
+
+### Real bugs caught this PR
+
+1. **Registering a new adapter without the base dispatch contract crashes
+   every single dispatch, not just the new one.** `register_system("doorstep",
+   doorstep)` adds it to the same list `GameManager.dispatch()` calls
+   `can_handle(action)` on for EVERY action, unconditionally — a system with
+   no `can_handle`/`handle` pair (reasonable, on the assumption that a
+   pure adapter with no player-initiated actions would not need them) breaks
+   every dispatch in the game the instant it is registered. Fixed by
+   matching `retaliation.gd`'s own existing precedent for exactly this case:
+   `can_handle` returns `false` unconditionally, `handle` refuses. Found
+   immediately via the dre suite going from 404 checks to 14 failures the
+   moment this file was registered, all of them cascading from one crash.
+2. **A trailing-varying-integer seeded key, caught by the suite's own static
+   audit — in new code, and in PR B's own shipped shakedown room.** The
+   room's per-round roll was first written as `"<cause_id>:<choice_id>:room:
+   <round>"`; `_check_no_tail_varying_keys()` (a source scan, not a
+   behavioral check) flags any seeded key literal ending in a bare `%d` as
+   the exact shape of "the near-identical-rolls finding" this build's own
+   danger list names. Fixed by moving the round number to the front. While
+   fixing it, checked whether PR B's own shakedown-room key
+   (`"<key>:stand:room:<round>"`) had the same defect: it does, but the
+   audit's own line-by-line scanner never caught it because that key is
+   built as a bare expression spanning the `resolve_action(...)` call's own
+   multiple lines rather than a same-line `var key := ...` — a real, narrow
+   blind spot in the audit, not evidence the original key was fine. Fixed
+   the same way, on the same principle the audit exists to enforce, even
+   though nothing would have failed if it were left alone.
+3. **Dre's own "yield" could fail to close the account at all.** The first
+   draft routed every "paid" resolution through the real `dre_repay`
+   dispatch, which refuses outright (`repay_blocker()`) when the account
+   cannot be covered in full — correct for the ordinary menu, wrong for a
+   room whose entire point is that this debt ends today. An unaffordable
+   YIELD would have left the account exactly as overdue as it already was,
+   silently re-opening the identical enforcement room the next day forever.
+   Fixed by falling back to taking whatever cash is on hand and closing the
+   account regardless, once the real repay path refuses.
+4. **Rent's own "yield" had the opposite bug: a free pass.** The first draft
+   only spent cash toward arrears when the player could cover the full
+   amount, but reset `rent_missed`/`household_warnings` to zero
+   unconditionally either way — an unaffordable player walked away with
+   back rent forgiven for nothing. Fixed to take whatever is on hand first,
+   the same partial-payment discipline the Dre fix above uses.
+5. **The room's own stakes-strip chrome was never populated, the identical
+   class of bug D-21 already caught once for the shakedown room.** Live
+   verification (a real day-cross through the actual `advance_time`
+   dispatch, not a direct `try_force_visit` call) showed the card's title
+   falling back to `consequence.gd`'s generic "THIS IS HAPPENING NOW" and
+   the stakes strip reading "STAGE 1/1 · · BANKED $0" — `loop_summary()`
+   defaults every field this screen reads (`sheet_title`, `stage`,
+   `stage_count`, `left`, `left_label`, `banked`) when a loop dict does not
+   set them, and this room's own `loop` dict set none of them. Fixed by
+   populating them following the exact same Boost/shakedown-room precedent
+   (`ROUNDS LEFT`, `BANKED` honestly `$0`) and confirmed live afterward: the
+   card now reads "THE COLLECTION" / "STAGE 1/3 · ROUNDS LEFT 2 · BANKED
+   $0". Noted for the project's own memory as a suite-coverage gap that
+   keeps recurring across every new loop-driven room in this build — the
+   automated suite asserts dictionary contents, never rendered chrome, and
+   only a live pass catches this class of bug.
+
+### Implementation choices this session made, flagged as choices
+
+1. **One room, three tenants.** STR-D5 calls this "the build's SECOND
+   room" — singular. `_open_enforcement`/`_room_round`/`_room_exit` are one
+   chassis (built on `ConfrontationLoop`'s shared helpers, same as the
+   shakedown room) parameterized by `family`, with each family's own
+   `_close_*` function the only place that actually differs. Three
+   independent implementations would have tripled the surface a future
+   round-mechanics change has to find and fix.
+2. **The Book's room points the other way from Dre's and rent's.** FIGHT
+   there is the player pressing a resistant borrower, so the health risk
+   lands on the player attempting to collect, not on the player being
+   collected from; YIELD there means walking away from collecting at all
+   (the note's own existing `forgive`), not "pay whatever is on hand" —
+   the one place a single shared verb label carries a different meaning per
+   family, disclosed rather than left to read as an inconsistency.
+3. **Dre's own trigger moved out of `dre_lender.settle_night` entirely.**
+   "One visit per day-start, worst debt first" needs Dre, a defaulted Book
+   note and rent arrears compared against EACH OTHER before anything opens
+   — a check still living inside `dre_lender.gd`'s own settlement could not
+   see the other two, and would race whichever of them tried to open
+   first. `dre_lender.gd`'s state machine itself (active → due → overdue →
+   suspended) is completely unchanged; only who asks whether tonight is the
+   night to act on "overdue" moved, to `doorstep.gd`'s own day-start hook.
+   `tests/dre/dre_runner.gd`'s own ultimatum tests needed no changes beyond
+   this relocation — they drive through the real day-cross dispatch, which
+   the hook rides same as everything else registered on it.
+4. **Threshold numbers are authored, not measured yet** — `DRE_ENFORCEMENT_
+   DELAY_DAYS := 5`, `BOOK_COLLECTION_DELAY_DAYS := 2`, `BOOK_ENFORCEMENT_
+   DELAY_DAYS := 6`, `RENT_ENFORCEMENT_AT_WARNING := 2` (one warning short
+   of the existing `HOUSEHOLD_WARNING_LIMIT`, so a player who survives the
+   room still meets the existing end condition as the actual last word, not
+   this room). MEAS-D1's own job — measuring these against real play rather
+   than vibing them — is PR E's, the same discipline every authored number
+   in this build has gone through before it.
+5. **Tests are homed in `tests/parity/parity_runner.gd` again**, under a
+   new "0.5.0 PR D — The doorstep" section, for the reason every prior PR
+   in this build gave the same answer to. `MIN_CHECKS` moves to 12751 (a
+   net decrease from PR C's 12720 despite ~40 new checks: fixing the
+   seeded-key bug above shifted a pre-existing rigged-round test in the
+   shakedown room from a "messy" roll to a "failure" roll, and one of that
+   test's own assertions is conditioned on the tier being exactly "messy" —
+   a real, if narrow, fragility in a test tied to which tier a specific
+   rigged round happens to roll, not a loosening). Full suite confirmed
+   PASS at that count with a clean scan for engine/script errors, and
+   territory, save-validation, dre, confrontation, tips and screen-smoke
+   all reconfirmed alongside it.
+
+### Why this PR carries this entry rather than a later PR
+
+Same rule as every entry above: the threshold table, the room's own
+chassis, and the Dre-trigger relocation are all load-bearing for this PR's
+own new code, so the ruling is recorded where the dependency was created.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

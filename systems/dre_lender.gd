@@ -26,18 +26,26 @@ extends RefCounted
 ## correct in PR A; PR B only had to open a door onto a room that already
 ## worked.
 ##
-## ## The overdue → suspended edge is a real event, not a timer (PR D)
+## ## The overdue → suspended edge is a real event, not a timer
 ##
 ## The design doc's own state diagram fires `Overdue --> Suspended` on
-## "Collection/default resolves" — an EVENT. `settle_night`'s `"overdue"`
-## branch now opens that event directly: once `OVERDUE_RESPONSE_DELAY_DAYS`
-## has passed with nothing paid, it asks `dre_collector` to open a chain
-## — if one is not already open elsewhere (`ConsequenceEngine.has_active()`)
-## — through the same `KIND_CONFRONTATION` chassis DRE-ARC-03 uses: two
-## deterministic choices, PAY NOW or accept the suspension, no roll (see
-## `systems/dre_collector.gd`). If a chain is already open (some other
-## consequence has the floor), this branch simply retries the next night;
-## `"overdue"` status does not itself decay, so nothing is lost by waiting.
+## "Collection/default resolves" — an EVENT: once `OVERDUE_RESPONSE_DELAY_
+## DAYS` has passed with nothing paid, `dre_collector.open_player_default_
+## encounter()` opens a chain through the same `KIND_CONFRONTATION` chassis
+## DRE-ARC-03 uses (two deterministic choices, PAY NOW or accept the
+## suspension, no roll). `"overdue"` status does not itself decay, so
+## nothing is lost by waiting for it.
+##
+## As of 0.5.0 PR D (DOOR-D2), the trigger for that event moved OUT of this
+## file's own `settle_night` and into `systems/doorstep.gd`'s day-start
+## hook. "One visit per day-start, worst debt first" needs Dre, a defaulted
+## Book note, and rent arrears compared against EACH OTHER before anything
+## opens — a check still living inside `dre_lender.gd`'s own settlement
+## could not see the other two, and would race whichever of THEM tried to
+## open first. `doorstep.gd`'s own `_dre_visit()` reads exactly the same
+## `dre_account.status`/`due_day`/`OVERDUE_RESPONSE_DELAY_DAYS` this file
+## already owns; nothing about the state machine itself changed, only who
+## asks whether tonight is the night to act on it.
 ##
 ## ## Numbers are provisional
 ##
@@ -103,9 +111,6 @@ func _exposure() -> Node:
 
 func _phone() -> Object:
 	return gm.system("phone") if gm != null else null
-
-func _collector() -> Object:
-	return gm.system("dre_collector") if gm != null else null
 
 # --- introduction (DRE-D1, PR B) ----------------------------------------------
 
@@ -349,11 +354,10 @@ func settle_night(ended_day: int) -> void:
 					"We should talk before this becomes a different conversation.",
 					{"kind": "dre_debt"})
 		"overdue":
-			if ended_day - due_day >= OVERDUE_RESPONSE_DELAY_DAYS:
-				var collector: Object = _collector()
-				if collector != null:
-					collector.open_player_default_encounter()
-				# No `else`, no fallback write here: if the collector is
-				# somehow unregistered, or a chain already has the floor
-				# tonight, this branch just runs again tomorrow -- "overdue"
-				# does not decay on its own, so retrying costs nothing.
+			# Triggering moved to `systems/doorstep.gd` (0.5.0 PR D, DOOR-D2)
+			# so Dre's own urgency can be weighed against a defaulted Book
+			# note and rent arrears before anything opens. This branch is
+			# intentionally empty now -- "overdue" is a status this state
+			# machine still owns and still reads every night; only the
+			# decision to act on it moved.
+			pass

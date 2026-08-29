@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `0.4.0`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `0.6.0`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,115 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 0.6.0 — Squared Up: it gets in your face, and it does not take the screen to do it (2026-08-29)
+
+The owner's directive, three parts: an encounter should be a popup over the
+street rather than a full-screen takeover, with a health bar that MOVES as
+damage lands; the wander pool should stop being a skeleton and carry the
+everyday street; and the per-path scripts that have been authored and unwired
+for two builds should get their triggers.
+
+Underneath all three was a drift nobody had caught. Encounters were
+full-screen and it was enforced *globally* — `ScreenManager.blocking_route()`
+returned CONSEQUENCE for any live chain, so every navigation landed there. It
+was never "some encounters"; it was all of them.
+
+### The street stays visible behind it
+
+Decision and result stages now render as a `ModalSheet` over whatever screen
+the player was on. Booking and release still take the whole screen, because an
+arrest genuinely is a takeover. The rendering was lifted out of the screen
+into one shared builder that both presentations consume, so they cannot drift
+on what a chain looks like.
+
+A blocking sheet cannot be swiped away: the scrim still stops the tap and no
+longer treats it as a dismissal, and the grab-bar is not built at all rather
+than built and ignored. It closes exactly one way — the chain resolving.
+
+None of it is persisted. Presentation is derived from the live chain, which is
+why a save loaded mid-round reopens the sheet over Home with the same round,
+the same bank and the same burned verbs, and why this whole build needed no
+save-schema bump.
+
+### A health bar that moves
+
+There was no health bar anywhere in the build — the consequence screen printed
+`HEALTH 80/100` in a text strip. There is one now, and after a round resolves
+the delta *animates* from the previous value with the exact number counting
+alongside it, so the player watches the hit land instead of reading a
+different number.
+
+### Three roles, and the two guaranteed outs that were missing
+
+Every general encounter now declares `fight` / `run` / `surrender` as a
+structural role per choice. Labels stay per-card and in voice — STAND THERE,
+DO NOT STOP, HANDS OUT, CROSS THE STREET — and the role is what the chassis
+reads.
+
+That mattered immediately: **two of the four cards shipped in 0.5.0 had no
+guaranteed out at all**, on a chassis whose stated rule is one guaranteed out
+per round. The police stop gained HANDS OUT and the young ones gained CROSS
+THE STREET, and a suite arm now sweeps every card and refuses to pass if any
+of them is missing a road. Care was what enforced that rule, and care missed
+twice out of four.
+
+### A round that is actually a new round
+
+The one multi-round street encounter was one verb re-rolled at worse odds each
+time, with generic per-round log copy — the exact thing the loop's own header
+forbids. It is three authored situations now: they close the distance,
+somebody else joins, the door is behind you. Each has its own copy, its own
+roads and its own numbers, and the last one drops the run road because there
+is nowhere left to run.
+
+### The street has a roster
+
+Four encounter cards became twelve. Three police searches (the on-foot stop
+plus a vehicle search and a warrant check), two hostile addicts, and seven
+general street situations — wrong place wrong time, mistaken identity, a
+territorial beef, and one that is somebody else's problem until you answer it.
+The warrant check is the one card in the game where the guaranteed road is
+genuinely the worst one, and it says so in plain words before you commit.
+
+The interruption gate itself was not touched, and that is now *proven* rather
+than asserted: its decision is re-derived in the suite from only the two
+inputs it is allowed to read and matched against what it actually decided,
+thirty for thirty. A cold day-one player still gets interrupted on fewer than
+three walks in thirty.
+
+### Everything the street sees, it remembers
+
+Every encounter now writes an observation on resolution — keyed by the road
+taken and the tier reached, at the district it happened in, receipted so a
+reload cannot double-write it. Standing on a corner, walking past one, and
+paying to leave one are three different facts about you now.
+
+### Crew calls, and three tables that were waiting
+
+`CREW_CALLS`, `MARKET_SCRIPTS` and `MEETUP_SCRIPT` had all been fully authored
+since the loop was written and consumed by nothing. Tone and Deshawn can be
+called into a street encounter or a debt collector's visit — once per
+encounter, costing a favour, burning no verb. The corner answers back on both
+surfaces: a buyer who counts short after a sale, and Curtis's people deciding
+the block is theirs, with standing on it and stepping off writing opposite
+entries into his ledger. And the 907List finally has the scene its spec always
+named, on the one meetup outcome that used to decide nothing.
+
+While wiring them, the file that documented all of it turned out to have been
+lying: four of the five entries under "authored and NOT yet wired" had shipped
+builds ago. Corrected, and the suite now asserts the correction.
+
+### Under the hood
+
+No save-schema bump. Every field this build needed already existed or was
+derivable from one — including the corner's once-per-district-per-day bound,
+which reads a day-stamped counter the market pressure system already keeps.
+
+Parity 12,763 → 13,276. Confrontation 251 → 1,248. Save validation 235 → 247.
+Screen smoke gained 67 component checks covering three runtime-built UI
+components that nothing in the build could previously see — a gap that caught
+a real parse error inside a minute.
 
 ## 0.5.0 — The Street Answers Back: you can't walk it for free anymore (2026-08-29)
 

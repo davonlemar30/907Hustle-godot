@@ -2,6 +2,12 @@
 
 _Last updated: 2026-08-29. Living doc — update as screens land._
 
+> **Floors are the RUNNER CONSTANTS, not this table.** This row set drifted
+> once already (parity read 12,751 here against `MIN_CHECKS := 12763` in the
+> file) because a close-out added checks and did not come back. Every suite row
+> below now names the file its floor lives in. When they disagree, the constant
+> is right.
+
 > **This file is one of four.** `HANDOFF.md` (here) carries current, living
 > reference — orientation, design system, canon tables, working notes, and the
 > last few batches. `docs/BUILD_LOG.md` carries everything older, newest-first,
@@ -29,20 +35,21 @@ One place to orient before reading anything else below.
 
 | | |
 | --- | --- |
-| Build version | `0.5.0` — The Street Answers Back: you can't walk it for free anymore (`autoload/version.gd`) |
-| Save schema | **v25** (PR A, `wander_quiet_streak`) — the doorstep's own thresholds (PR D) deliberately added no field: every one derives from a `due_day` or warning counter the game already tracked |
-| Parity | **12,751 checks, 0 failures**, floor `MIN_CHECKS := 12751` — gained the interruption gate (STR-D1/D2), the four-script roster and its room (STR-D3/D5), the travel checkpoint (STR-D4), and the doorstep's three obligations and shared enforcement room (DOOR-D1/D2); net movement from 0.4.0's 12637 also reflects a seeded-key fix that shifted a rigged shakedown-room test off a "messy" roll onto a "failure" roll, dropping one conditional check (D-23) |
-| Territory suite | **170 checks, 0 failures** — a CI gate as of Batch 18 PR 1 (`tests/territory/`), FS-002's own harness, seconds rather than the parity runner's ~10 minutes; unchanged in 0.5.0 |
-| Confrontation suite | **251 checks, 0 failures** — a CI gate as of the rooms build (`tests/confrontation/`), the loop's own harness on the shared territory asserts; unchanged in 0.5.0 |
-| Tips suite | **93 checks, 0 failures** — a CI gate as of 0.1.2 PR E (`tests/tips/`), Word of Mouth's own harness on the shared territory asserts; unchanged in 0.5.0 |
-| Dre suite | **404 checks, 0 failures**, unchanged in 0.5.0 — a CI gate since Dre Lending PR A (`tests/dre/`); PR D relocated the player-default ultimatum's own trigger out of `dre_lender.gd` and into `doorstep.gd`'s day-start hook, and every existing ultimatum test needed no change beyond that, since they drive through the real day-cross dispatch the hook rides same as everything else |
-| Save validation | **235 checks, 0 failures** — a CI gate as of batch 12; covers nested save shapes through v25 and asserts that catalogue validation releases its temporary GameState Node (`#104`) |
-| Screen smoke | 23/23 screens instantiate **with their scripts attached** — a CI gate as of batch 12, script-attachment added in batch 15; `opening.tscn` retired in 0.1.2 PR C (Yalonda replaces it). **1101/1101 touch checks**, unchanged in 0.5.0 — the new street/checkpoint/doorstep content all renders through the existing `consequence.tscn` screen rather than a new one |
-| Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` — the ↗/♛ tofu findings from an earlier audit were already fixed in a prior batch, confirmed by direct search |
-| Screens | 23 (`opening.tscn` retired in 0.1.2 PR C) — unchanged in 0.5.0, every new consequence kind (the roster's room, the checkpoint, the doorstep's rooms) renders through the existing `consequence.tscn` |
-| Systems | **36** registered in `GameManager` (0.5.0 PR D added `doorstep`; corrected from a stale 35 here) |
+| Build version | `0.6.0` — Squared Up: the street gets in your face, and it does not take the screen to do it (`autoload/version.gd`) |
+| Save schema | **v25**, UNCHANGED by 0.6.0 — and that is the headline, not a footnote. The overlay is derived from the live chain (kind + stage) and never persisted; the verb roles, the room's beats, the observation rows and both corner triggers are all authored data or reads of fields the game already kept. `corner_stiff`'s once-per-district-per-day bound is derived from `add_market_pressure`'s own day-stamped counter rather than given a field. "Derive before you persist" paid for a whole build |
+| Parity | **13,276 checks, 0 failures**, floor `MIN_CHECKS := 13276` (`tests/parity/parity_runner.gd`). **The number in this row was stale from 0.5.0 through to this build's PR F** — it read 12,751 while the runner read 12,763, because the 0.5.0 close-out added 12 checks and did not update this table. Reconciled here, and the lesson recorded: read the constant, never this row. 0.6.0's own movement: the route ladder asserted in both directions everywhere it used to be asserted in one (+54), the room's coverage rewritten from a re-rolled verb to per-beat (+19), and the eight-card roster's generic every-card-every-road arm (+436) |
+| Territory suite | **170 checks, 0 failures**, floor `MIN_CHECKS := 170` (`tests/territory/territory_runner.gd`) — unchanged in 0.6.0 |
+| Confrontation suite | **1,248 checks, 0 failures**, floor `MIN_CHECKS := 1248` (`tests/confrontation/confrontation_runner.gd`) — up from 251. Most of that is two STRUCTURAL sweeps added in PR B that iterate the card registry rather than driving one example each, so PR C's eight new cards brought ~500 checks with them without a line of new test code. That was the point: 0.5.0 shipped two of four cards with no guaranteed out on a chassis whose stated rule is one guaranteed out per round, and "an author remembered" is exactly the enforcement that failed |
+| Tips suite | **93 checks, 0 failures**, floor `MIN_CHECKS := 93` (`tests/tips/tips_runner.gd`) — unchanged in 0.6.0 |
+| Dre suite | **404 checks, 0 failures**, floor `MIN_CHECKS := 404` (`tests/dre/dre_runner.gd`) — unchanged in 0.6.0 |
+| Save validation | **247 checks, 0 failures** (`tests/save_validation/`, no `MIN_CHECKS` — it asserts per-arm). +12 in 0.6.0 for SQ-D4's mid-round reload arm: a decision-stage chain reloads with its round, bank, burned verbs and snapshotted odds intact, and with NOTHING about the sheet persisted |
+| Screen smoke | 23/23 screens instantiate **with their scripts attached**, **1101/1101 touch checks**, and — new in 0.6.0 — **67/67 component checks**. `ModalSheet` had shipped for two builds with nothing asserting it could be constructed at all; the suite now builds it, `encounter_sheet.gd` and `health_bar.gd` against a REAL live chain (not a stub summary) and runs the same TOUCH-D5 scroll-transparency walk over the result. That gap caught a real parse error inside a minute during PR A |
+| Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` |
+| Screens | 23, unchanged in 0.6.0 — and this is the build where that stops being the whole story. Decision and result stages render through `ui/components/encounter_sheet.gd` into a `ModalSheet` over whatever screen the player was on; only booking and release still reach `consequence.tscn` |
+| Systems | **37** registered in `GameManager` (0.6.0 PR D added `corner`) |
 | Discovery axes | **2** — `jobs_discovered` (WORK walks) and `boost_targets_discovered` (DEAL walks, batch 14) |
-| Territory operating cost | **$20/soldier/night** on the full roster (Batch 18 PR 4, D-1) — the first recurring cost Territory has ever had |
+| Wander encounter pool | **12 cards**, up from 4 (0.6.0 PR C). Three police (on-foot stop, vehicle search, warrant check), two addicts, seven general street. Every one declares all three SQ-D6 roles, and the suite asserts it |
+| Territory operating cost | **$20/soldier/night** on the full roster (Batch 18 PR 4, D-1) |
 | Branches | Stale remote branches accumulate; every merged PR's branch is deleted at merge time as of Batch 18 (see the feedback note on stacked-PR merges — never delete a branch another open PR is based on). |
 | Android artifact | `.github/workflows/android-apk.yml` uploads `android-debug-apk` (arm64, debug-signed) on every push to `main` and on `workflow_dispatch`. Additive to the Web pipeline — `web-deploy.yml` and `export_presets.cfg`'s `preset.0` are untouched. On-device checklist: `docs/ANDROID_SMOKE.md` |
-| Latest PRs | **0.5.0** — five PRs off `BUILD_STREET_ANSWERS_PROMPT.md`: the interruption gate (STR-D1/D2, `#114`), the street encounter roster and its room (STR-D3/D5, `#115`), the travel checkpoint (STR-D4, `#116`), the doorstep and its shared enforcement room (DOOR-D1/D2, `#117`), and integration/close-out (2026-08-29) |
+| Latest PRs | **0.6.0** — six PRs off `BUILD_SQUARED_UP_PROMPT.md`: the encounter overlay (SQ-D1..D5, `#120`), the verb triad and the missing outs (SQ-D6..D9, `#121`), the street roster (POOL-D1, `#122`), the corner (SQ-D10, `#123`), the 907List meetup (SQ-D10, `#124`), and integration/close-out (2026-08-29) |

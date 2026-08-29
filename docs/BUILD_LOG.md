@@ -28,6 +28,214 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 0.6.0 — Squared Up: six PRs (added 2026-08-29)
+
+Source: `BUILD_SQUARED_UP_PROMPT.md`, ClickUp `86bbnk6en`. Rulings: `D-24`
+(SQ-D1..D11, VOX-D1, MEAS-D1, VER-D1). Six PRs, `#120`-`#125`.
+
+### What this build actually was
+
+Three owner asks and one piece of drift, and the drift is the part worth
+remembering.
+
+The asks: encounters should present as a popup over the street rather than a
+takeover, with a health bar that moves as damage lands; the wander pool should
+carry the everyday street instead of a skeleton; the per-path scripts that had
+been authored and unwired for two builds should get their triggers.
+
+The drift: encounters were full-screen and it was enforced GLOBALLY.
+`ScreenManager.blocking_route()` returned CONSEQUENCE for any non-empty chain
+and `resolved_route()` made every navigation land there. The task description
+framed this as a change to how *some* encounters render; the code said it was
+all of them, and the repo won that disagreement — which is the whole reason
+this build's own prompt insisted on reading the code before planning anything.
+
+Reading it that way found two more, both of which are rules the repo had
+already written down and then broken:
+
+1. **`wander_stopped_on_foot` and `wander_young_ones` shipped in 0.5.0 with
+   `"deterministic": []`** — no guaranteed out at all, on a chassis whose
+   stated rule is one guaranteed out per round. Two of four cards.
+2. **The shakedown room re-rolled one verb at `base - 0.10 x round`** with
+   generic per-round log copy, which `data/confrontation_scripts.gd`'s own
+   header calls out by name: "a script whose stages read the same is a script
+   with too many stages."
+
+Neither was findable by any suite. Both were findable by reading the code
+against its own comments, which is what the day-one instruction to read eight
+file headers was for.
+
+### PR A — the overlay (`#120`, SQ-D1..D5)
+
+Presentation only, and provably so: not one authored number moved.
+
+`consequence.gd`'s situation/decision/result builders moved to
+`ui/components/encounter_sheet.gd` on the `flow_sheets.gd` pattern — static
+builders, no `class_name`, resolved at build time from the engine's summary
+calls. Both presentations consume it, so the screen and the sheet cannot
+disagree about what a chain looks like; the screen lost ~440 lines and kept
+booking and release.
+
+The route ladder split by stage. `blocking_route()` has three readers —
+`resolved_route()`, the boot/CONTINUE path, and the flow-sheet drain's own
+guard — and all three moved together. Parity's coverage of that contract went
+up 54 checks without a single existing assertion being loosened: every place
+it was asserted in one direction is now asserted in both.
+
+`ModalSheet` gained `blocking` (default false, so Market's picker and every
+flow sheet are byte-for-byte unaffected) and `replace_content()`, so one sheet
+carries a whole chain across a commit without sliding out and back in.
+`ui/components/health_bar.gd` is new, animating from the previously shown
+value — a static on the script, session-lifetime, cleared on the run boundary
+`clear_flow_sheets()` already owned.
+
+**The bug this PR caught, and how:** declaring `const ENCOUNTER_SHEET` in both
+`consequence.gd` and its parent `screen_base.gd` is a parse error, and Godot
+reports it by *refusing to attach the script and instantiating the scene
+anyway* — the exact silent failure `screen_smoke.gd`'s own header was written
+about. The gate caught it in under a minute (23/24, touch 1101 -> 1093). The
+fix improved the design rather than merely compiling: the const AND the wiring
+seam are inherited, so a choice committed from the sheet and one committed
+from the screen go through one dispatcher.
+
+**The gap this PR closed:** nothing in the build could see a runtime-built
+component. `ModalSheet` had shipped for two builds with no gate asserting it
+could be constructed. The smoke suite now builds all three against a real live
+chain — not a stub summary, because the point of the builder is that it
+resolves from the engine's own calls — and walks the result for TOUCH-D5.
+
+### PR B — the triad and the missing outs (`#121`, SQ-D6..D9)
+
+Roles became structural. `fight` is the CONTESTED road rather than
+specifically fists — on a corner that is STAND THERE, at a cruiser window it
+is TALK TO THEM — which is the entire reason roles exist instead of a fixed
+verb set. The two missing guaranteed outs were authored, and enforcement moved
+from care to a suite arm that sweeps every card.
+
+The room became three authored beats. Odds still worsen across it (SWING 0.52
+-> 0.38 -> 0.44) but that now lives in authored numbers an author can read
+rather than in a constant applied to a number that never changed. The last
+beat drops the run road, because there is nowhere to run and offering a road
+the situation has closed is the lie the rule exists to stop.
+
+Observations landed on every encounter, receipted on `boost.gd`'s own
+precedent. Crew calls became chassis actions on the general street and in the
+doorstep's enforcement room, sharing one availability question so the two
+cannot drift on what "he is around" means.
+
+**Two bugs, both found on the real build after the suites were green, both the
+same shape** — a rule that was true of one chain kind and quietly assumed to
+be true of all of them:
+
+- `situation_body()` read the live beat only inside its `KIND_CONFRONTATION`
+  arm. All three new beats rendered under the card's standing opener, with a
+  correct STAGE 3/3 chip above and a correct round log below. A *screenshot*
+  caught it; both state assertions passed.
+- A room declares roles per BEAT, not on the card, so the observation fallback
+  found no role for SWING and a fight that took three rounds became the one
+  resolution in the build that observed nothing.
+
+**MEAS-D1, the wall-clock.** Worst case (full three-beat room, open to
+cleared): 30/31/31/46 ms of machine time, and a *fixed* 0.67 s of animation —
+entry 0.18 + exit 0.14 + one health-bar drain 0.35, not per round, because a
+beat change swaps content in place. The 40-second budget is spent entirely on
+reading, which means the constraint lands on the copy and not the loop.
+
+### PR C — the street roster (`#122`, POOL-D1)
+
+Four cards became twelve. Three police (the existing on-foot stop plus a
+vehicle search and a warrant check), two addicts, seven general street.
+
+Coverage was written GENERIC rather than as eight blocks: one parity arm
+drives every encounter card down every road and asserts the same six things of
+each. A card added tomorrow is covered the day it is added, which is a
+property a per-card block cannot have. And PR B's structural sweeps meant the
+eight new cards brought ~500 confrontation checks with them without a line of
+new test code.
+
+**MEAS-D1, the gate.** "We did not touch it" and "it did not get louder" are
+different claims, and tripling a roster is exactly the kind of change that
+moves a rate through a back door. Both are now asserted: the gate's predicate
+re-derived from only the two inputs it may read and matched against what
+`_roll_gate()` decided, 30/30 on the largest pool the roster can stage; and on
+the real build a cold day-one profile opening 2.83 of 30 walks across six
+seeds, inside PR A's own ceiling.
+
+One honest finding fell out: the gate's empty-pool branch is DEFENSIVE rather
+than reachable, because three cards are authored for any district, any slot,
+with no requirements. The suite pins that floor now.
+
+**Three bugs, all after green:**
+
+- A road labelled CERTAIN under a fallback line promising it cost nothing, on
+  the one card where surrender takes everything. ENC-D6 had opened the exact
+  seam for this (`choice_guarantee`) in 0.3.0 and Wander had never implemented
+  it.
+- Six run roads authored one observation shape for every tier, so a road that
+  cost health and cash still observed as "walked it off".
+- **The parity runner hung silently at ~1% CPU, and it was a parse error after
+  all.** Editing that suite by slicing between two markers removed three
+  functions along with the one being replaced. Worth recording that the first
+  diagnosis — three overlapping background runs contending — was wrong, and
+  that the real one came from running ONE instance with output unfiltered.
+
+### PR D — the corner (`#123`, SQ-D10)
+
+`MARKET_SCRIPTS` wired on both surfaces. `corner_stiff` on a market sell in a
+district the player can already see is watched, at most once per district per
+day; `corner_push` on Post Up once Curtis is watching, with STAND ON IT and
+STEP OFF writing opposite entries into his ledger.
+
+**No schema bump**, and the derivation is the interesting part:
+`add_market_pressure` already keeps a day-stamped counter per district, which
+already answers "has anything sold here today". The corner reads it BEFORE
+`_sell` adds its pressure — after that call the answer is permanently yes — so
+the order of two lines in `economy.gd::_sell` is load-bearing and says so.
+
+The Lift audit found all four spec verbs shipping in different words, one split
+in two, and one road (SETTLE IT) the spec never named. Recommendation held: no
+SHOVE PAST. What was actually wrong was the file's own header, which listed
+four of five entries as unwired — including STASH_IT, wired in 0.5.0 and not
+on the Lift at all. A file that documents its own gaps and then stops updating
+them is worse than one that documents nothing, because it is trusted.
+
+**One test-writing note worth keeping.** The first Curtis-ledger arm asserted
+`defiance` against the first day a push opened, and failed — because a STAND
+ON IT that rolls a plain failure BURNS itself and opens beat two, where the
+only road left is STEP OFF. The chassis was right and the test was wrong.
+
+### PR E — the meetup (`#124`, SQ-D10)
+
+`MEETUP_SCRIPT` wired on the 907List's catastrophic meetup tier above its
+authored value floor. That tier already rolled and decided nothing but an
+Exposure footprint — `nine07list.gd`'s own header calls it "reachable here but
+toothless" — so this connected a risk that was already being taken to a
+consequence, rather than adding one.
+
+It is the only room in the build whose guaranteed out HANDS THE PLAYER BACK an
+asset: refund the money, take the item back, sell it tomorrow. That asymmetry
+is what keeps it a 907List scene rather than a mugging involving a camera.
+
+The property asserted on all three roads: the cash was already credited, so
+whatever an exit takes it takes out of the CLEAN pool it was credited to and
+never out of dirty. Capping at the clean balance first also makes the
+clean-first spend policy structurally unable to touch dirty cash, so the scene
+can never generate Financial Pressure — handing money back in a parking lot is
+not a formal bill.
+
+### PR F — close-out (`#125`)
+
+Version 0.6.0. Save schema stays **v25**: everything this build needed was
+derivable from a field the game already kept, which is `derive before you
+persist` paying for a whole build rather than one field.
+
+`HANDOFF.md`'s state table reconciled — it had read parity 12,751 against a
+runner constant of 12,763 since 0.5.0's close-out, and every suite row now
+names the file its floor lives in with a standing note that the constant wins.
+
+Final floors: parity 13,276 · confrontation 1,248 · territory 170 · tips 93 ·
+dre 404 · save validation 247 · smoke 23/23 screens, 1101 touch, 67 component.
+
 ## 0.5.0 — The Street Answers Back: five PRs (added 2026-08-29)
 
 Five PRs against `BUILD_STREET_ANSWERS_PROMPT.md`, each its own branch,

@@ -1025,6 +1025,11 @@ func _test_stick_booking_still_validates() -> void:
 ## PERSIST_FIELDS — the validator's coercion leaves unlisted keys alone, which
 ## is the property this arm pins.
 func _test_decision_stage_reload() -> void:
+	# Deliberately the 0.5.0 SHAPE, verb names and all (`keep_fighting`, which
+	# 0.6.0's SQ-D7 rewrite replaced with per-beat SWING / BREAK FOR IT). That
+	# is the point: a save taken mid-fight in the previous release has to
+	# survive the validator untouched, and a fixture updated to today's verbs
+	# would stop testing the thing that can actually break.
 	var mid_round := {
 		"consequence_id": "consequence:00000007", "cause_id": "cause:00000007",
 		"chain_kind": "wander_encounter", "stage": "decision",

@@ -12,7 +12,7 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `0.5.0`** — shown bottom-right on the title screen, and stamped into
+**Current: `0.6.0`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
@@ -34,6 +34,68 @@ the first time somebody bumps one copy.
 
 *Full technical detail in [`CHANGELOG.md`](CHANGELOG.md) and
 [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
+
+### 0.6.0 — Squared Up: it gets in your face, and it does not take the screen to do it
+
+**An encounter is a popup over the street now, not a takeover.** The owner's
+framing: you are mid-walk and something gets in your face — the block should
+still be behind it. Decision and result stages render as a bottom sheet over
+whatever screen you were on, with 265 pixels of street still visible above it.
+Booking and release still take the whole screen, because an arrest genuinely
+is a takeover. You cannot swipe a live encounter away: the scrim swallows the
+tap and the grab-bar is not built at all, so the sheet closes exactly one way —
+the chain resolving.
+
+Underneath that was a drift worth naming. Encounters were full-screen and it
+was enforced *globally*: any live chain redirected every navigation in the
+game. It was never "some encounters"; it was all of them.
+
+**There is a health bar, and it moves.** There was no bar anywhere in the build
+— the consequence screen printed `HEALTH 80/100` in a text strip. After a round
+resolves, the delta now animates from the previous value with the exact number
+counting alongside it, so you watch the hit land instead of reading a different
+number.
+
+**Every street encounter offers Fight / Run / Surrender**, as a structural role
+rather than a fixed set of words — STAND THERE, DO NOT STOP, HANDS OUT, CROSS
+THE STREET, KEEP YOUR PACE. That mattered immediately: **two of the four cards
+shipped in 0.5.0 had no guaranteed way out at all**, on a chassis whose stated
+rule is one guaranteed out per round. Both have one now, and the test suite
+refuses to pass if any card is ever missing one again.
+
+**A round is a new situation.** The one multi-round street fight was a single
+verb re-rolled at worse odds each time. It is three written situations now —
+they close the distance, somebody else joins, the door is behind you — each
+with its own copy, its own roads and its own numbers. The last one has no run
+road, because there is nowhere left to run.
+
+**The street has a roster.** Four encounter cards became twelve: three police
+searches (an on-foot stop, a vehicle search, a warrant check), two hostile
+addicts, and seven general street situations — wrong place wrong time, mistaken
+identity, a territorial beef, and one that is somebody else's problem until you
+answer it. The warrant check is the one card in the game where the *guaranteed*
+road is genuinely the worst one, and it says so in plain words before you
+commit.
+
+The interruption gate itself was not touched, and that is now proven rather
+than asserted: a cold day-one player still gets stopped on fewer than three
+walks in thirty.
+
+**The block remembers all of it.** Every encounter now writes an observation
+when it resolves, keyed by the road you took and how it went, at the district
+it happened in. Standing on a corner, walking past one and paying to leave one
+are three different facts about you.
+
+**Three tables that had been waiting got wired.** Tone and Deshawn can be
+called into a street encounter or a debt collector's visit — once, costing a
+favour. The corner answers back on both surfaces: a buyer who counts short
+after a sale, and Curtis's people deciding the block is theirs, where standing
+on it and stepping off write opposite entries into his ledger. And the 907List
+finally has the scene its spec always named, on the one meetup outcome that
+used to decide nothing at all.
+
+No save-schema change. Every field this build needed already existed or was
+derivable from one.
 
 ### 0.5.0 — The Street Answers Back: you can't walk it for free anymore
 
@@ -514,8 +576,24 @@ every screen's `ScrollContainer` subtree is walked for a Control stuck at
 `MOUSE_FILTER_STOP` or a button wired the wrong way, so the touch-scroll fix
 below can't regress silently.
 
-Current counts: parity 12,763 · save-validation 235 · territory 170 ·
-confrontation 251 · tips 93 · dre 404 · smoke 23/23 screens, 1,101 touch checks.
+Current counts: parity 13,276 · save-validation 247 · territory 170 ·
+confrontation 1,248 · tips 93 · dre 404 · smoke 23/23 screens, 1,101 touch
+checks, 67 component checks.
+
+Smoke gained a second job in 0.6.0. Not everything renderable is a `.tscn` in
+`ui/screens` — the encounter sheet, the health bar and `ModalSheet` itself are
+built entirely in code and parented at runtime, so the directory walk had never
+been able to see them, and `ModalSheet` had shipped for two builds with nothing
+asserting it could even be constructed. All three are now built against a real
+live consequence chain (not a stub, because the whole point of the builder is
+that it resolves from the engine's own calls) and walked for the same
+touch-scroll property. That gate caught a real parse error inside a minute the
+day it was written.
+
+**The floors are the runner constants, not this list.** Each suite carries its
+own `MIN_CHECKS`; when a number here and a number in a runner disagree, the
+runner is right. That has happened — the table in `HANDOFF.md` read parity
+12,751 against a constant of 12,763 for a whole release cycle.
 
 ## Architecture
 
@@ -743,6 +821,7 @@ regardless of how small the source file is.
 | **0.3.0. Answer For It** | ✅ four PRs off `BUILD_ANSWER_FOR_IT_PROMPT.md`: a blown tier-1 stickup opens fight/run/talk/yield before booking instead of skipping straight to it (D-13); Heat gets an unconditional nightly floor alongside a bigger quiet-day discount, and Boost's tier-3 Run failure loses its unconditional arrest (D-14, closes escalation `86bbjk6kk`) — Boost's own share of the day job moves 13% → 24%; a second Spenard stickup target and a rep-scaled daily cap move stickup's measured share 2% → 6% solo, 8% combined with boost (D-15, closes `86bbjngyz`); plus phone/title UI fixes. Save schema unchanged at v24. Parity → **12,618 checks**, floor `MIN_CHECKS := 12618`. (A concurrent `#104` merged alongside this batch — a real Node-leak fix in save validation plus system-lookup hardening — and independently moved save-validation to 235 and smoke to 1,101 touch checks) |
 | **0.4.0. Repeat Business** | ✅ five PRs off `BUILD_REPEAT_BUSINESS_PROMPT.md`: a Score contract proves the Street Opportunity substrate generalizes past Dre's own content (SCR-D1..D3, D-16); a repeatable-contract generator rides the existing collection encounter with zero schema bump (REP-D1..D5, D-17); a four-template catalogue across three roles fills it out (CAT-D1..D4, D-18); Boost and Stick each get a per-family daily District Pressure cap on Market's own precedent, measured honestly as a partial result rather than a full close (PRESS-D1/D2, D-19, closes `86bbjk6jy`); a new `repeat_contractor` economy profile prices standing Dre income for the first time at 109% of the day job (closes `86bbp7cw2`). Save schema unchanged at v24. Parity → **12,637 checks**, floor `MIN_CHECKS := 12637`. Dre suite → **404 checks** (was 331) |
 | **0.5.0. The Street Answers Back** | ✅ five PRs off `BUILD_STREET_ANSWERS_PROMPT.md`: a seeded interruption gate reads Heat/Pressure/Curtis/debt before every wander, replacing two flat-weight encounter cards (STR-D1/D2, D-20); four new encounters including this build's first street multi-round room, and STASH_IT finally activated after sitting authored and unwired since Q4 (STR-D3/D5, D-21); the same gate on district travel, mutually exclusive with the older silent carry-stop tax (STR-D4, D-22); a doorstep forcing Dre/Book/rent debts onto the day's own agenda, worst-first, into a shared three-tenant enforcement room, with zero new persisted state (DOOR-D1/D2, D-23); version/docs close-out plus closing `86bbjnh0x` (pool staging, verified against current code rather than trusted stale) and commenting implementation-slice-one on `86bbnk6en`. Save schema v24 → **v25** (`wander_quiet_streak`, PR A only — the doorstep derives every threshold instead of persisting one). Parity → **12,763 checks**, floor `MIN_CHECKS := 12763` |
+| **0.6.0. Squared Up** | ✅ six PRs off `BUILD_SQUARED_UP_PROMPT.md`: decision and result stages become a blocking `ModalSheet` over the street with a live animated health bar, extracted into one builder both presentations consume, reopened from the live chain after a reload with no persisted state (SQ-D1..D5, D-24); a structural Fight/Run/Surrender role per choice that closed the two guaranteed outs 0.5.0 shipped without, the shakedown room rewritten from a re-rolled verb into three authored beats, observations on every encounter, and `CREW_CALLS` consumed for the first time (SQ-D6..D9); eight new cards taking the wander pool from four to twelve, with the untouched interruption gate's rate proven unchanged both structurally and on the real build (POOL-D1); `MARKET_SCRIPTS` wired on the sell path and Post Up with Curtis's ledger reading both roads, plus the Lift audit and the stale "not yet wired" header corrected (SQ-D10); `MEETUP_SCRIPT` wired on the 907List's catastrophic meetup tier, the one room whose guaranteed out hands an asset BACK (SQ-D10); version/docs close-out reconciling `HANDOFF.md`'s state table, which had read parity 12,751 against a runner constant of 12,763 for a full release cycle. **Save schema unchanged at v25** — every field this build needed was derivable from one the game already kept. Parity → **13,276 checks**, confrontation → **1,248** |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `0.3.0`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `0.4.0`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,62 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 0.4.0 — Repeat Business: Dre's book becomes standing work (2026-08-29)
+
+Dre's arc used to end. Fund Priya, the Book opens, and Dre himself had
+nothing left to say — every dollar after that came from the Book's own
+lending, never from him. That was the deferred item this build's own
+predecessor named on the record, and it closes here: Dre now hands out
+standing work of his own, on a slot the same substrate that already ran his
+one authored chain, proven first on a second, unrelated consumer to make
+sure it actually generalizes. Riding alongside it: Boost and Stick finally
+get the daily District Pressure cap Market has had all along, measured
+honestly rather than declared a win it didn't fully earn.
+
+#### Next up
+
+SCORES' own unified presentation (`86bbp38gk`) is still deferred until its
+own content design exists — this build proves the substrate generalizes and
+hands that proof to whoever designs it next, nothing more. FS-002.4+
+Territory offense is the next systems arc, groundwork already shipped and
+waiting. `86bbjxtfz` (the ending) is still an open escalation needing the
+owner's ruling, not a build. A full fix for the always-criminal archetype's
+District Pressure trajectory needs to touch the recovery side (quiet-day
+decay or the clean-outcome refund), which this build's own ruling places
+out of scope — see PRESS-D1 below.
+
+#### Added
+
+- **A second, unrelated consumer proves the Street Opportunity substrate
+  generalizes**: a Score contract (`score_slide_special`) runs the full
+  offer → accept → resolve/fail lifecycle on the same substrate Dre's loans
+  already used, completely unmodified — the lift itself, the roll, and the
+  fence are untouched, the contract only watches. Measured pushing Boost's
+  own economy share to 26% once its target (Northern Value) went live.
+- **Dre hands out repeatable work after Junior Lender**: up to three live
+  offers at once, one new offer a day, riding the exact collection encounter
+  his one-time chain already used end to end — no new save schema. Four
+  templates across three roles: a base collection, a leaned-on variant with
+  higher stakes, a premium tier gated on proven track record, and an errand
+  that rewards a simple delivery run. Measured at 109% of the day job for a
+  player who works one alongside a day job — meaningful without dominating.
+- **Boost and Stick get their own daily District Pressure cap**, on Market's
+  own precedent, both landing on 2.0 for a real shared reason: every
+  non-Market pressure source ultimately draws from the same tiered table,
+  which tops out at 2.0 on a single catastrophic result, so one bad outcome
+  is never truncated by its own cap.
+
+#### Changed
+
+- **District Pressure's daily cap is measured honestly as a partial result,
+  not declared a full fix.** The always-criminal profile's worst district
+  moves from HOT on 14 of 29 days to 13 — a real but small improvement, not
+  an exit from HOT. The two ways Pressure actually comes down (a quiet day,
+  or a clean-outcome refund) are both structurally rare for a policy that
+  works crime every day and rarely resolves clean; a daily cap bounds one
+  day's damage, it can't fix an imbalance that recurs every day. Recorded in
+  full, numbers attached, rather than quietly declared solved.
 
 ## 0.3.0 — Answer For It: the cops talk to you now (2026-08-29)
 

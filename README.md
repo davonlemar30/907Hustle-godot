@@ -12,7 +12,7 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `0.3.0`** — shown bottom-right on the title screen, and stamped into
+**Current: `0.4.0`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
@@ -34,6 +34,29 @@ the first time somebody bumps one copy.
 
 *Full technical detail in [`CHANGELOG.md`](CHANGELOG.md) and
 [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
+
+### 0.4.0 — Repeat Business: Dre's book becomes standing work
+
+**Dre used to go quiet once the Book opened.** Fund the sponsored loan and
+every dollar after came from the Book's own lending — Dre himself had
+nothing left to hand you. He does now: standing collection work, up to
+three offers live at once, one new one a day, across four flavors from a
+routine collection to a premium job gated on a proven track record.
+Measured at 109% of the day job for a player working one alongside a shift.
+
+**A second Score proves the substrate holds.** Before touching Dre's own
+follow-up work, this build proved the underlying system that runs it
+generalizes to something that isn't Dre at all — a Boost bonus contract,
+built on the exact same offer/accept/resolve machinery, with nothing shared
+between the two beyond the substrate itself.
+
+**Boost and Stick get a Pressure cap, measured honestly.** Market has always
+capped how much local heat one day of dealing can generate; Boost and Stick
+now do too. Measured against the standing five-profile table and reported
+straight: the cap meaningfully helps mixed and lighter play, and only
+modestly helps a player working crime every single day — getting that
+profile fully out of the hot zone needs a further change this build
+deliberately leaves for later, named rather than hidden.
 
 ### 0.3.0 — Answer For It: the cops talk to you now
 
@@ -229,7 +252,9 @@ the 907List flipper reads 358% and the trade-plus-job hybrid 732%, while Boost
 sits at 24% and Stickup at 6% (both re-measured for 0.3.0 — Boost was 13%
 before Heat gained an unconditional decay and lost its tier-3 unconditional
 arrest; Stickup was the 2% this section used to open with, before a second
-Spenard target and a rep-scaled cap, D-15).
+Spenard target and a rep-scaled cap, D-15). Boost moved again for 0.4.0, to
+26% — a Score contract's one-time $50 bonus firing for real once its target
+went live (SCR-D1, D-16), a bounded effect rather than a compounding one.
 
 **"Wandering reads 288% — the strongest clean path" was true for one batch and
 is retracted here rather than left standing.** It was measured before Territory
@@ -445,8 +470,8 @@ every screen's `ScrollContainer` subtree is walked for a Control stuck at
 `MOUSE_FILTER_STOP` or a button wired the wrong way, so the touch-scroll fix
 below can't regress silently.
 
-Current counts: parity 12,618 · save-validation 235 · territory 170 ·
-confrontation 251 · tips 93 · dre 331 · smoke 23/23 screens, 1,101 touch checks.
+Current counts: parity 12,637 · save-validation 235 · territory 170 ·
+confrontation 251 · tips 93 · dre 404 · smoke 23/23 screens, 1,101 touch checks.
 
 ## Architecture
 
@@ -664,6 +689,7 @@ regardless of how small the source file is.
 | **0.2.0. Dre Lending & Loan-Shark Progression** | ✅ five PRs off `BUILD_DRE_LENDING_PROMPT.md`: structured debt to Dre (a real account state machine, not the old dormant flat fields); Juan's introduction on a real cash/rent-pressure trigger; the shared opportunity substrate and First Money (Dre's first loan); A Reminder (Dre's first real contract — collect from a borrower, talked loose or taken hard); and the Book, earned through a sponsored loan — THE SHARK retired under a name that says what it is, gated by access tier rather than by day count. New systems `dre`, `dre_collector`, `opportunities`; new CI gate `tests/dre/` (331 checks). Save v22 → v24 (no fields added in PR E — the catalogue's new borrower metadata resets fresh every run). Parity → **12,578 checks** |
 | **0.2.1. In Hand: the touch fix and the phone build** | ✅ two PRs off `BUILD_IN_HAND_PROMPT.md`: `card()`/`_card()` and a `screen_base.gd` normalize sweep make every screen's `ScrollContainer` pass-through by default, so a drag starting on a card scrolls everywhere instead of only from bare background — a structural CI gate in `screen_smoke.gd` (1,093 touch checks) guards the property going forward. Plus the first native build: an additive Android debug-APK preset and CI workflow, side by side with the Web export and untouched by it. No schema change. Parity **12,578 checks** (unchanged — behaviour-preserving) |
 | **0.3.0. Answer For It** | ✅ four PRs off `BUILD_ANSWER_FOR_IT_PROMPT.md`: a blown tier-1 stickup opens fight/run/talk/yield before booking instead of skipping straight to it (D-13); Heat gets an unconditional nightly floor alongside a bigger quiet-day discount, and Boost's tier-3 Run failure loses its unconditional arrest (D-14, closes escalation `86bbjk6kk`) — Boost's own share of the day job moves 13% → 24%; a second Spenard stickup target and a rep-scaled daily cap move stickup's measured share 2% → 6% solo, 8% combined with boost (D-15, closes `86bbjngyz`); plus phone/title UI fixes. Save schema unchanged at v24. Parity → **12,618 checks**, floor `MIN_CHECKS := 12618`. (A concurrent `#104` merged alongside this batch — a real Node-leak fix in save validation plus system-lookup hardening — and independently moved save-validation to 235 and smoke to 1,101 touch checks) |
+| **0.4.0. Repeat Business** | ✅ five PRs off `BUILD_REPEAT_BUSINESS_PROMPT.md`: a Score contract proves the Street Opportunity substrate generalizes past Dre's own content (SCR-D1..D3, D-16); a repeatable-contract generator rides the existing collection encounter with zero schema bump (REP-D1..D5, D-17); a four-template catalogue across three roles fills it out (CAT-D1..D4, D-18); Boost and Stick each get a per-family daily District Pressure cap on Market's own precedent, measured honestly as a partial result rather than a full close (PRESS-D1/D2, D-19, closes `86bbjk6jy`); a new `repeat_contractor` economy profile prices standing Dre income for the first time at 109% of the day job (closes `86bbp7cw2`). Save schema unchanged at v24. Parity → **12,637 checks**, floor `MIN_CHECKS := 12637`. Dre suite → **404 checks** (was 331) |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

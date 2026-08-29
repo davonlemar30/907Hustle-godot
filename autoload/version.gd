@@ -31,7 +31,17 @@ extends Node
 ## which is the MINOR case squarely. Riding with it: Heat's own unconditional
 ## nightly decay (D-14) and a second Spenard stickup target with a rep-scaled
 ## daily cap (D-15).
-const VERSION := "0.3.0"
+##
+## 0.4.0 (Repeat Business): Dre's book becomes standing work — a fourth
+## consumer proves the Street Opportunity substrate generalizes beyond Dre's
+## own content (SCR-D1..D3, D-16), a repeatable-contract generator rides the
+## existing collection encounter with zero schema bump (REP-D1..D5, D-17),
+## and a four-template catalogue across three distinct roles fills it out
+## (CAT-D1..D4, D-18) — a new standing-content system, squarely MINOR. Riding
+## with it: Boost and Stick each gain a per-family daily District Pressure
+## cap on Market's own precedent (PRESS-D1/D2, D-19), measured honestly as a
+## partial result rather than a full close.
+const VERSION := "0.4.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

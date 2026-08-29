@@ -1050,6 +1050,52 @@ Same Slice-0-before-the-code discipline as D-7 through D-16:
 rules are both already load-bearing for `dre_repeat_collection`'s lifecycle,
 so the ruling is recorded where the dependency was created.
 
+## D-18 — Repeat Business: the catalogue
+
+**Decided** 2026-08-29 · **Ships in** `build/dre-contract-catalogue` (0.4.0
+PR C) · **Source:** `BUILD_REPEAT_BUSINESS_PROMPT.md`
+
+### The question
+
+PR B shipped exactly one repeatable template to prove the generator itself.
+The build prompt asks for three to four total, naming three distinct roles:
+"at minimum one more collection variant (different borrower archetype/
+stakes)," "one delivery/errand-shaped contract observing existing movement/
+market actions," and "one higher-tier contract gated by access tier" — plus
+outcome-variation rows per REP-D4 on all of them.
+
+### The ruling
+
+| ID | Ruling |
+|---|---|
+| CAT-D1 | Four templates total (the PR B collection included). `dre_repeat_collection_leaned_on` is the second collection variant — same machinery as the base template end to end, a different borrower pool, a higher fee band ($110-160/$60-95 clean/messy against the base's $60-100/$35-65), gated on `repeatable_attempts_min: 1`. `dre_repeat_premium` is the "higher-tier" ask, gated on `repeatable_attempts_min: 3`, the highest fee band ($180-260/$100-150). `dre_repeat_errand` is the delivery/errand shape: observes a successful `travel` to a seeded, reachable, non-home district within a 3-day window, the one template that does not ride `dre_collector.gd` at all. |
+| CAT-D2 | "Higher-tier... gated by access tier" is read as the design doc's own §12.3 difficulty progression rather than a new mechanical tier — mechanical tiers stop at 4 (Junior Lender), so there is no tier 5 to gate on. `repeatable_attempts` (new fact, `opportunities.gd`) sums `count` across every repeatable's own history row, disclosed as proven WORK rather than proven success (`count` increments on `fail()` the same as `resolve()`) — the closest fact already derivable from existing state, per REP-D3's own discipline, without a persisted win counter no other reader of `opportunity_history` has ever needed. |
+| CAT-D3 | Outcome variation (REP-D4) is already satisfied for every collection-shaped template — `dre_collector.gd`'s existing tier-keyed Exposure calls (`collected_hard`/`botched_mission`/`refused_work`) apply to ANY `resolves_via: "dre_collector"` instance regardless of definition id, so `dre_repeat_collection_leaned_on`/`dre_repeat_premium` inherit it for free; adding opportunity-level `completion_effects` on top would be the "two authorities" pattern this codebase keeps refusing. The errand's own variation is resolve-vs-fail rather than tiered, since `travel` has no clean/messy/failure shape to key off — a flat `wallet_credit` + `exposure_observation` completion effect, the same asymmetry the collection templates already carry between `resolve()` and `fail()`. |
+| CAT-D4 | The generator's own eligibility filter gained a retry loop it did not need with one template: a pick that turns out to be a dud (the errand, when no district is currently reachable) is removed and re-rolled against the shrinking pool rather than silently burning the night's one generation slot, still fully deterministic for a fixed run_seed + day. This was not anticipated when PR B's filter shipped — a single-template generator has no way to be a dud — and is the one genuinely new substrate capability this PR's four-template catalogue required. |
+
+### Two real bugs, caught by sabotage-testing the new mechanism specifically
+
+1. **A parse-error typo** (`DRE_REPEAT_CONTRACTS` used in a test file that
+   aliases the same preload as `REPEAT_CONTRACTS`) hung the suite silently
+   near 0% CPU on first run — the exact failure mode the danger list
+   already named; killed and fixed rather than waited out.
+2. **The retry loop itself (CAT-D4) did not exist in the first draft.** A
+   dud errand pick silently produced zero offers for the night even when
+   the base collection was still perfectly eligible. The first version of
+   the regression test for this did not catch it either: a seeded pick
+   that happens to land on a working template FIRST never exercises a
+   retry at all, so the test needed its own search for a day where the
+   errand is specifically the first pick before sabotaging the fix could
+   turn it red — confirmed both ways (red with the retry loop removed,
+   green with it restored) before trusting the coverage.
+
+### Why this PR carries this entry rather than a later PR
+
+Same Slice-0-before-the-code discipline as D-7 through D-17: the new
+requirement type, the retry loop, and the fee-band/borrower-pool variance
+are all already load-bearing for the three new templates' own lifecycles,
+so the ruling is recorded where the dependency was created.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

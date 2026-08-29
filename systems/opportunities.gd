@@ -158,6 +158,12 @@ func reconcile(action: String, _payload: Dictionary, result: Dictionary) -> void
 		# active_opportunities.
 		accept("score_slide_special")
 		resolve("score_slide_special", result)
+	elif action == "travel" and bool(result.get("ok", false)) \
+			and _resolves_repeat_errand(_payload):
+		# Same shape again (0.4.0 PR C) -- see data/dre_repeat_contracts.gd's
+		# header on why the errand has no separate accept step either.
+		accept("dre_repeat_errand")
+		resolve("dre_repeat_errand", result)
 	_advance_action_result_objectives(action, result)
 
 ## True when a live, unexpired `score_slide_special` offer exists AND this
@@ -301,49 +307,131 @@ func _generate_repeatables() -> void:
 	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
 	if rng == null:
 		return
-	# Varying components first (day leads) -- house style, and a separate
-	# sub-key (":repeat_pick") from whatever the chosen template's own
-	# generation rolls use, per the seeded-key discipline every other draw
-	# in this codebase follows.
-	var pick_key := "%d:repeat_pick" % gs.day
-	var chosen: String = eligible[rng.seeded_int_range(gs.run_seed, pick_key, 0, eligible.size() - 1)]
-	_offer_repeatable(chosen)
+	# A requirements pass is necessary but not sufficient for the errand
+	# template specifically -- it also needs an actual reachable district,
+	# which `requirements.gd` (pure, no GameState access) cannot express as
+	# one of its own records. Rather than teach the eligibility filter above
+	# every template's own secondary constraints, retry with a shrinking
+	# pool: a pick that turns out to be a dud (`_offer_repeatable` returns
+	# false) is removed and re-rolled, so one template's bad luck never
+	# silently burns the whole night's single generation slot while another
+	# eligible template could have used it. Still fully deterministic for a
+	# fixed run_seed + day: the same starting pool always shrinks the same
+	# way in the same order.
+	while not eligible.is_empty():
+		# Varying components first (day leads) -- house style, and a
+		# separate sub-key (":repeat_pick") from whatever the chosen
+		# template's own generation rolls use, per the seeded-key discipline
+		# every other draw in this codebase follows. The pool's own current
+		# size rides the key so a retry after a shrink is a fresh draw, not
+		# a repeat of the same index into a different-length array.
+		var pick_key := "%d:repeat_pick:%d" % [gs.day, eligible.size()]
+		var index: int = rng.seeded_int_range(gs.run_seed, pick_key, 0, eligible.size() - 1)
+		var chosen: String = eligible[index]
+		if _offer_repeatable(chosen):
+			return
+		eligible.remove_at(index)
 
 ## Per-template generation. One `match` arm per repeatable definition,
 ## exactly like `reconcile()`'s own bespoke-glue branches above -- a second
 ## repeatable template (PR C) adds one more arm here, not a new dispatcher.
-func _offer_repeatable(definition_id: String) -> void:
+## PR C (D-18): one `match` arm per repeatable definition, the same shape
+## `_offer_repeatable` already declared for PR B's single template -- a
+## fourth template is one more arm here and one more `DEFINITIONS` row,
+## never a rewrite of this dispatcher.
+## Returns whether a generation attempt actually produced an offer -- false
+## is a real, meaningful outcome for the errand template (see below), which
+## `_generate_repeatables()`'s own retry loop reads to try a different
+## eligible candidate rather than burning the night's single slot on a dud.
+func _offer_repeatable(definition_id: String) -> bool:
 	match definition_id:
 		"dre_repeat_collection":
-			_offer_repeat_collection()
+			return _offer_repeat_collection(definition_id,
+				DRE_REPEAT_CONTRACTS.BORROWER_POOL, DRE_REPEAT_CONTRACTS.FEE_BAND)
+		"dre_repeat_collection_leaned_on":
+			return _offer_repeat_collection(definition_id,
+				DRE_REPEAT_CONTRACTS.LEANED_ON_BORROWER_POOL, DRE_REPEAT_CONTRACTS.LEANED_ON_FEE_BAND)
+		"dre_repeat_premium":
+			return _offer_repeat_collection(definition_id,
+				DRE_REPEAT_CONTRACTS.PREMIUM_BORROWER_POOL, DRE_REPEAT_CONTRACTS.PREMIUM_FEE_BAND)
+		"dre_repeat_errand":
+			return _offer_repeat_errand(definition_id)
+	return false
 
 ## REP-D2: seeded borrower pick and seeded fee band, both varying components
-## first and on their own sub-keys, carried on `source_context` per the
-## umbrella's own §9.3 ("named target or borrower... authored amount/range
-## selection"). The chance tables, injury band, and Heat cost are NOT
-## per-instance -- REP-D4: authored content riding the existing mechanics,
-## not new ones.
-func _offer_repeat_collection() -> void:
+## first and on their own sub-keys (the definition id trails each key so
+## two collection-shaped templates generated on the same run never draw off
+## the same seeded value by accident, even though the 1-per-day rule means
+## they are never actually generated on the same night), carried on
+## `source_context` per the umbrella's own §9.3 ("named target or
+## borrower... authored amount/range selection"). The chance tables, injury
+## band, and Heat cost are NOT per-instance -- REP-D4: authored content
+## riding the existing mechanics, not new ones. `pool`/`fee_band` are handed
+## in per call site (see `_offer_repeatable` above) rather than looked up by
+## definition id here, so this stays one function for every collection-shaped
+## template rather than growing its own match statement.
+func _offer_repeat_collection(definition_id: String, pool: Array, fee_band: Dictionary) -> bool:
 	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
-	var pool: Array = DRE_REPEAT_CONTRACTS.BORROWER_POOL
+	if rng == null:
+		return false
 	var borrower: Dictionary = pool[rng.seeded_int_range(
-		gs.run_seed, "%d:repeat_borrower" % gs.day, 0, pool.size() - 1)]
-	var fee_band: Dictionary = DRE_REPEAT_CONTRACTS.FEE_BAND
+		gs.run_seed, "%d:%s:repeat_borrower" % [gs.day, definition_id], 0, pool.size() - 1)]
 	var clean_band: Array = fee_band["clean"]
 	var messy_band: Array = fee_band["messy"]
-	var inst: Dictionary = _new_instance("dre_repeat_collection", "offered")
+	var inst: Dictionary = _new_instance(definition_id, "offered")
 	inst["source_context"] = {
 		"target_id": str(borrower["id"]),
 		"target_name": str(borrower["name"]),
 		"target_desc": str(borrower["desc"]),
-		"fee_clean": rng.seeded_int_range(gs.run_seed, "%d:repeat_fee_clean" % gs.day,
+		"fee_clean": rng.seeded_int_range(gs.run_seed, "%d:%s:repeat_fee_clean" % [gs.day, definition_id],
 			int(clean_band[0]), int(clean_band[1])),
-		"fee_messy": rng.seeded_int_range(gs.run_seed, "%d:repeat_fee_messy" % gs.day,
+		"fee_messy": rng.seeded_int_range(gs.run_seed, "%d:%s:repeat_fee_messy" % [gs.day, definition_id],
 			int(messy_band[0]), int(messy_band[1])),
 	}
 	var offers: Array = gs.opportunity_offers
 	offers.append(inst)
 	gs.opportunity_offers = offers
+	return true
+
+## The errand's own generation: a seeded destination from the authored pool,
+## restricted to districts the run has actually unlocked (an unreachable
+## errand is not a choice) and never the district the player is standing in
+## right now (nothing to "travel" to). Returns false rather than silently
+## offering an unreachable district when no eligible one exists -- rare by
+## Junior Lender, when both non-home districts are all but always unlocked
+## already, but never assumed; the caller's own retry loop tries a
+## different eligible template instead of wasting the night.
+func _offer_repeat_errand(definition_id: String) -> bool:
+	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
+	if rng == null:
+		return false
+	var candidates: Array = []
+	for district_id in DRE_REPEAT_CONTRACTS.ERRAND_DISTRICT_POOL:
+		if str(district_id) in gs.districts_unlocked and str(district_id) != gs.current_district_id:
+			candidates.append(str(district_id))
+	if candidates.is_empty():
+		return false
+	var district_id: String = candidates[rng.seeded_int_range(
+		gs.run_seed, "%d:%s:repeat_errand_district" % [gs.day, definition_id],
+		0, candidates.size() - 1)]
+	var inst: Dictionary = _new_instance(definition_id, "offered")
+	inst["source_context"] = {"district_id": district_id}
+	var offers: Array = gs.opportunity_offers
+	offers.append(inst)
+	gs.opportunity_offers = offers
+	return true
+
+## Mirrors `_resolves_score_slide_special` (0.4.0 PR A) exactly: a live,
+## unexpired `dre_repeat_errand` offer, and this `travel` dispatch actually
+## landed at the named district (a refused travel -- wrong fare, unknown
+## district -- never reaches `reconcile()` at all, so "dispatched" already
+## means "arrived" here).
+func _resolves_repeat_errand(payload: Dictionary) -> bool:
+	var inst: Variant = _find(gs.opportunity_offers, "dre_repeat_errand")
+	if inst == null:
+		return false
+	var ctx: Dictionary = (inst as Dictionary).get("source_context", {})
+	return str(payload.get("district_id", "")) == str(ctx.get("district_id", ""))
 
 ## Public — `systems/dre_collector.gd` (PR B) reads a live collection
 ## instance's own definition to confirm `resolves_via` before treating it as
@@ -462,7 +550,26 @@ func _facts() -> Dictionary:
 		# later Score against a different target needs no new fact key, only
 		# its own `boost_target_discovered` requirement record.
 		"boost_targets_discovered": gs.boost_targets_discovered,
+		# D-18 (PR C): summed across every repeatable's own history row --
+		# proven WORK, not proven success, per this fact's own name and
+		# `data/dre_repeat_contracts.gd`'s header on why (`count` increments
+		# on `fail()` same as `resolve()`). Summed here, once, generically
+		# across whatever repeatables exist, rather than requiring each new
+		# template to know every other template's own id.
+		"repeatable_attempts": _repeatable_attempts(),
 	}
+
+func _repeatable_attempts() -> int:
+	var total := 0
+	for catalogue in CATALOGUES:
+		for definition_id in (catalogue.DEFINITIONS as Dictionary):
+			var definition: Dictionary = (catalogue.DEFINITIONS as Dictionary)[definition_id]
+			if not bool(definition.get("repeatable", false)):
+				continue
+			var row: Variant = gs.opportunity_history.get(str(definition_id), null)
+			if row is Dictionary:
+				total += int((row as Dictionary).get("count", 0))
+	return total
 
 func _maybe_offer(definition_id: String) -> void:
 	if _resolved_or_live(definition_id):

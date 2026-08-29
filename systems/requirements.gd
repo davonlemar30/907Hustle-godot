@@ -266,6 +266,13 @@ func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dicti
 			var flag: bool = bool(facts.get(str(req.get("fact", "")), false))
 			return _result(req, flag, flag, true)
 
+		"repeatable_attempts_min":
+			# D-18 (0.4.0 PR C): "proven work" gate for a harder/premium
+			# repeatable template -- absent reads 0 attempts, same closed
+			# direction as every count-shaped type here.
+			var attempts: float = _num(facts.get("repeatable_attempts"))
+			return _result(req, attempts >= min_value, attempts, min_value)
+
 		"boost_target_discovered":
 			# 0.4.0 PR A (SCR-D1): a Score naming a specific Boost target reads
 			# the same DISCOVERY latch the Boost screen itself reads (batch

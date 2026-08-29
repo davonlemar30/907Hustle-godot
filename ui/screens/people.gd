@@ -94,6 +94,17 @@ func _bind_dre_extras(v: VBoxContainer) -> void:
 			"Muted", 11, MUTED, true))
 		v.add_child(button("TALK IT LOOSE", true, _on_collect_negotiate, 40))
 		v.add_child(button("GO COLLECT", true, _on_collect_hard, 40))
+	# 0.4.0 PR C: informational only, no button -- OPP-D3's own "states its
+	# cost in its own confirm copy" applies here as text rather than a
+	# control, since the domain action that completes this (an ordinary
+	# `travel` dispatch) already has its own door on the Street screen.
+	var errand: Dictionary = _find_offer("dre_repeat_errand")
+	if not errand.is_empty():
+		var district_id := str((errand.get("source_context", {}) as Dictionary)
+			.get("district_id", ""))
+		var district_name := str(gs.district_by_id(district_id).get("name", district_id))
+		v.add_child(label("Dre wants something run out to %s — the next trip you "
+			+ "make there settles it." % district_name, "Muted", 11, MUTED, true))
 	if gs.dre_pending_penance:
 		v.add_child(label("The money's square. He still wants to hear it from you.",
 			"Muted", 11, MUTED, true))
@@ -104,6 +115,12 @@ func _offer_exists(definition_id: String) -> bool:
 		if str((entry as Dictionary).get("definition_id", "")) == definition_id:
 			return true
 	return false
+
+func _find_offer(definition_id: String) -> Dictionary:
+	for entry in gs.opportunity_offers:
+		if str((entry as Dictionary).get("definition_id", "")) == definition_id:
+			return entry
+	return {}
 
 ## The one offered instance whose definition resolves through
 ## `dre_collector.gd` — same marker, same "never both live" reasoning as

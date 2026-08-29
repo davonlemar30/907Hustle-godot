@@ -139,6 +139,7 @@ func _ready() -> void:
 		_check_recovery(fixtures.get("recovery", {}))
 		_check_outcome_resolver(_load_json(OUTCOME_FIXTURES))
 		_check_stickup_tiers()
+		_check_stick_daily_cap_scaling()
 		_check_907list_ownership()
 		_check_fs001_foundation(_load_json(FS001_FIXTURES))
 		_check_crew_regression()
@@ -1783,6 +1784,44 @@ func _check_stickup_rng_isolation(gs: Node, gm: Node, resolver: RefCounted) -> v
 	_expect_true("cursor probe robbery actually happened",
 		gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET}))
 	_expect_int("market cursor unmoved by a dispatched robbery", gs.rng_state, cursor_before)
+
+## STK-D1 (0.3.0): the daily cap scales with rep -- 2 base, +1 at each tier
+## milestone, ceiling 4. Driven through the real dispatch layer (`blocker()`),
+## not the bare function, so a regression in the wiring shows up here rather
+## than only in an isolated unit check.
+func _check_stick_daily_cap_scaling() -> void:
+	var gs := get_node("/root/GameState")
+	var gm := get_node("/root/GameManager")
+	var stickup: RefCounted = gm.system("stickup") as RefCounted
+
+	_reset_stickup_probe(gs)
+	gs.stick_rep = 0
+	_expect_int("the base cap is two, unearned", stickup.daily_cap(), 2)
+	gs.stick_rep = int(gs.STICK_TIER2_REP) - 1
+	_expect_int("one short of the tier-2 milestone, still two",
+		stickup.daily_cap(), 2)
+	gs.stick_rep = int(gs.STICK_TIER2_REP)
+	_expect_int("at the tier-2 milestone, three", stickup.daily_cap(), 3)
+	gs.stick_rep = int(gs.STICK_TIER3_REP) - 1
+	_expect_int("one short of the tier-3 milestone, still three",
+		stickup.daily_cap(), 3)
+	gs.stick_rep = int(gs.STICK_TIER3_REP)
+	_expect_int("at the tier-3 milestone, four", stickup.daily_cap(), 4)
+	gs.stick_rep = int(gs.STICK_TIER3_REP) + 500
+	_expect_int("rep far past the ceiling still reads four, not five",
+		stickup.daily_cap(), 4)
+
+	# Through the real gate: at a scaled cap of three, a third attempt in the
+	# same day is legal where the flat authored two would have refused it.
+	_reset_stickup_probe(gs)
+	gs.stick_rep = int(gs.STICK_TIER2_REP)
+	gs.stick_daily_count = 2
+	_expect_true("the daily cap scaled with rep",
+		str(stickup.blocker(STICKUP_PROBE_TARGET)).is_empty())
+	gs.stick_daily_count = 3
+	_expect_true("and still refuses once THAT cap is reached",
+		not str(stickup.blocker(STICKUP_PROBE_TARGET)).is_empty())
+	gs.reset_to_new_game()
 
 ## FS-001.2 — 907List opportunity ownership.
 ##
@@ -15896,15 +15935,22 @@ const ECON_CORRIDORS: Dictionary = {
 	"arbitrage": {"floor": 180, "ceiling": 320},
 	"flipper": {"floor": 280, "ceiling": 430},
 	"trader": {"floor": 0, "ceiling": 15},
-	"stickup": {"floor": 0, "ceiling": 15},
+	# STK-D1 (0.3.0): closes `86bbjngyz`. Measured at 6% on the post-A/B
+	# baseline (was 2%, single digits was the whole point — "2% was the
+	# disease"). The floor is a real assertion now, not the old 0: a
+	# regression back toward the 2% hole has to fail here, not just get
+	# reported as a smaller printed number nobody is watching.
+	"stickup": {"floor": 3, "ceiling": 15},
 	"boost": {"floor": 5, "ceiling": 25},
-	# HEAT-D1 (0.3.0): measured at 8% — in the same single-digit range
-	# `stickup` and `boost` alone already occupy, which is the expected shape
-	# for a profile spending its slots on crime rather than the market or a
-	# shift; the ruling this profile exists to prove is about where Heat
-	# lands, not about this number.
-	"everyday_criminal": {"floor": 0, "ceiling": 20},
-	"stickup_crew": {"floor": 0, "ceiling": 15},
+	# HEAT-D1 (0.3.0) / STK-D1 (0.3.0): measured at 8%, in the same
+	# single-digit range `stickup` and `boost` alone occupy — the expected
+	# shape for a profile spending its slots on crime rather than the market
+	# or a shift. The floor moved with STK-D1's own stickup-side fix, same
+	# reasoning as that corridor's.
+	"everyday_criminal": {"floor": 3, "ceiling": 20},
+	# STK-D1 (0.3.0): measured at 5%, the same fix as `stickup` above reaching
+	# the same target pool.
+	"stickup_crew": {"floor": 2, "ceiling": 15},
 	"worker_wanders": {"floor": 220, "ceiling": 350},
 	"wanderer": {"floor": 0, "ceiling": 15},
 	"boost_finder": {"floor": 0, "ceiling": 20},
@@ -19566,7 +19612,10 @@ func _fail(label: String, detail: String) -> void:
 ## pins absent, empty, populated and unreadable files independently. Landed on
 ## `main` as a sibling PR while this one was in flight; combined here rather
 ## than re-derived, since both counts are additive on the same PR-A-era 12584.
-const MIN_CHECKS := 12610
+## 0.3.0 (STK-D1): +8. `_check_stick_daily_cap_scaling`'s own coverage of the
+## rep-scaled cap, through both the bare function and the real `blocker()`
+## gate.
+const MIN_CHECKS := 12618
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

@@ -195,9 +195,24 @@ func blocker(target_id: String) -> String:
 		for s in slots:
 			when.append(names[int(s)])
 		return "Runs %s only." % " or ".join(when)
-	if gs.stick_daily_count >= gs.STICK_DAILY_CAP:
-		return "Two in a day is how people get named. Tomorrow."
+	if gs.stick_daily_count >= daily_cap():
+		return "That's enough attention for one day. Tomorrow."
 	return ""
+
+## STK-D1 (0.3.0): the daily cap scales with rep instead of sitting flat at
+## two forever. Reuses the exact milestones tier progression already reads
+## (`_update_tier`'s own `STICK_TIER2_REP`/`STICK_TIER3_REP`) rather than
+## authoring new thresholds — proving yourself capable of a bigger room is
+## the same story as earning another attempt at the smaller ones, told once.
+## The cap stays a COUNT, `blocker()`'s own semantics unchanged; only what it
+## is compared against moves.
+func daily_cap() -> int:
+	var cap: int = gs.STICK_DAILY_CAP
+	if gs.stick_rep >= gs.STICK_TIER2_REP:
+		cap += 1
+	if gs.stick_rep >= gs.STICK_TIER3_REP:
+		cap += 1
+	return mini(cap, 4)
 
 ## Canon stickChance, with the unbuilt terms pinned at neutral (see header).
 func chance_for(target: Dictionary) -> float:

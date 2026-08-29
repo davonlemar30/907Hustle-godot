@@ -1901,6 +1901,43 @@ opened nothing. A `corner_push` on a watching Curtis resolved STEP OFF and put
 exactly one `submission / ceded_the_corner` row in his ledger at
 `north_star_lot`.
 
+### Measured results, PR E
+
+| Suite | After PR D | After PR E |
+| --- | --- | --- |
+| confrontation | 1203 | 1248 |
+| parity | 13276 | 13276 (+1 adapter id) |
+| save validation / territory / tips / dre / smoke | — | unchanged |
+
+`MEETUP_SCRIPT` was named in `confrontation_scripts.gd`'s own header as "the
+one 907List entry, on the catastrophic meetup tier" and consumed by nothing.
+The 907List's outcome tier already existed and decided nothing but an Exposure
+footprint — `nine07list.gd`'s own header says the worst tier is "reachable here
+but toothless". This is what gives it teeth, on the narrowest trigger the
+ruling allows: catastrophic only, above `value_floor` (150), player-executed
+only, never over a live chain, and suppressible by Pherris's `buyer_confirmed`
+tip through the one place a tip payload is interpreted.
+
+**Commercial, not criminal**, held in the exit table: nobody swings first,
+injury only on a catastrophic exit, no Heat on any road (a flip is commerce),
+and the guaranteed out is a TRANSACTION — refund the money, take the item back.
+It is the one room in the build whose guaranteed out hands the player back an
+asset instead of taking one.
+
+**The property that defines the scene**, asserted through the Wallet on all
+three roads: the cash was already credited by `settle_holding`, so whatever an
+exit takes it takes out of the **CLEAN** pool it was credited to (TI-003 §6:
+a resale on a public listings board is legitimate income even when the seller
+is not) and never out of dirty. Capped at the clean balance first, which is
+also what keeps `HIGH_VISIBILITY_CLEAN_FIRST` from ever touching dirty cash and
+so from ever generating Financial Pressure — handing money back in a parking
+lot is not a formal bill, and TI-003 regression #24 is routine spending
+creating Pressure.
+
+Confirmed live: THE BUYER'S FRIEND opened over Home with `STAGE 1/2 · IN THE
+LOT 2 · BANKED $400`, and GIVE IT BACK returned exactly $400 from clean, $0
+from dirty, restored the holding, took no health and added no Heat.
+
 ### The Lift audit (SQ-D10, PR D)
 
 Ruled: audit the shipped Lift against the ClickUp spec, correct the stale

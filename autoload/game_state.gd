@@ -437,6 +437,7 @@ func reset_to_new_game() -> void:
 	lay_low_day = -1
 	# Nothing walked, nothing found, nothing seen.
 	wander_misses = 0
+	wander_quiet_streak = 0
 	wander_count = 0
 	wander_seen = {}
 	wander_recent = []
@@ -1532,6 +1533,16 @@ var lay_low_day: int = -1
 ## still four misses deep when they come back. Losing it would silently hand
 ## them the drought again.
 var wander_misses: int = 0
+
+## Consecutive wanders since the interruption gate last opened (STR-D2, 0.5.0
+## PR A, v25). `data/wander_events.gd::quiet_streak_cap()` reads this against
+## the player's current attention steps to decide whether THIS walk is forced
+## open — the Nth quiet walk, N smaller the louder the player already is.
+## Reset to 0 the moment the gate opens; climbs by one on every walk it does
+## not. Persisted for the same reason `wander_misses` is: a player three
+## quiet walks into an elevated streak who closes the tab is still three
+## walks into it when they come back.
+var wander_quiet_streak: int = 0
 
 ## Total wanders this run. Part of the draw key, so two walks taken in the SAME
 ## slot are two different walks rather than the same one twice.

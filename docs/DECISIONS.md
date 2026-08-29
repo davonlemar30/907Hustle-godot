@@ -1146,6 +1146,81 @@ economy measurement are all already load-bearing for PR D's own code, so the
 ruling is recorded where the dependency was created — including the ruling
 that a cap alone does not fully close its own acceptance criterion.
 
+## D-20 — The Street Answers Back: the interruption gate
+
+**Decided** 2026-08-29 · **Ships in** `build/street-interruption-gate` (0.5.0
+PR A) · **Source:** `BUILD_STREET_ANSWERS_PROMPT.md`
+
+### The question
+
+The owner's direct ruling after playtesting, with *Drug Lord 2* reference
+screenshots: "I should not be able to continuously hit the walk-around
+button on the Home screen indefinitely. Events should happen that force the
+player to do something." `wander_shakedown` and `wander_stopped_on_foot`
+were two ordinary cards at flat weights (7 and 9) against ~14 ambient/read/
+opportunity cards — a player at BURNING Heat with three districts HOT drew
+from the same gentle deck as a clean day-one kid, and the recency filter
+spaced the two encounters out further still.
+
+### The ruling
+
+| ID | Ruling |
+|---|---|
+| STR-D1 | **The street initiates, and it reads the player.** Every wander now rolls a seeded interruption gate BEFORE the ordinary draw — `WanderSystem._roll_gate()`, keyed `day:slot:wander_count:district:gate` (varying components lead, per the established precedent). The two legacy encounter cards fold into it: `eligible_cards()` (the ordinary pool) now excludes `KIND_ENCOUNTER` entirely, and a new `eligible_encounters()` applies the exact same district/slot/once/recency/requirements discipline to the gate's own pool — POOL-D1's own requirement, that a staged card declares through `requirements.gd` like any other rather than through a second eligibility idea invented for encounters. `_play_encounter()` (the chain-opening seam) is reused completely unmodified; the gate only decides WHETHER and WHICH, never how an opened encounter resolves. |
+| — | **The chance is `data/wander_events.gd::gate_chance(total_steps)`** — `clamp(0.03 + 0.05 × steps, 0.03, 0.60)`. Steps are read off each system's OWN existing band vocabulary rather than a second scale invented for this: Heat's four bands (COOL/NOTICED/WATCHED/BURNING → 0/1/2/3), District Pressure's worst family in the current district (already numbered by `ConsequenceEngine.pressure_steps()`), Curtis's four phases (invisible/ambient/watching/approaching → 0/1/2/3), plus a flat `GATE_OVERDUE_STEPS := 3` for any overdue debt (`gs.debt_due_days < 0`, `gs.rent_missed >= 1`, or any `defaulted` Book note) — STR-D2's own text frames "elevated Heat," "HOT pressure," and "any overdue debt" as independent alternatives, not components of one blended score, so overdue debt gets a flat bonus sized to match the top of any one graduated signal rather than its own graduated scale. |
+| STR-D2 | **The quiet streak is bounded above the floor, protected below it.** `gs.wander_quiet_streak` (new, v25) counts consecutive gate-quiet walks; `quiet_streak_cap(steps)` returns the authored cap for the current steps (6+ → 2, 3+ → 3, 1+ → 5) or `-1` ("no cap") at zero steps. A forced-open check runs before every roll: `wander_quiet_streak >= cap` opens the gate regardless of the roll. Verified against the actual Godot port rather than assumed: no web-era "day 1-3 sandbox" gate survived into this build at all (`gs.day` gates nothing in `wander.gd`/`wander_events.gd`) — the ONLY thing making early wandering gentle is that a fresh run's Heat/Pressure/Curtis/debt all read zero, which is exactly the "cold, clean, paid-up player" state STR-D2 asks to stay near-silent, achieved here structurally (zero steps has no streak-cap row at all) rather than by a separate early-game exemption. |
+| POOL-D1 (partial) | PR A implements the mechanical half — staged cards declare through `requirements.gd`, the recency filter is untouched, and the pool is now big enough to support a bias (below) — the actual roster deepening is PR B's. |
+| MEAS-D1 (partial) | Measured in `tests/parity/parity_runner.gd::_check_street_interruption_gate`: a cold profile opens ≤6 of 30 walks and its streak climbs freely past every authored cap (proving "no cap" is real, not merely untested); a maximally hot profile (BURNING Heat, HOT Market pressure, one missed rent payment — re-pinned every walk, clearing every `QUIET_STREAK_CAPS` row including the tightest, cap 2) never goes quiet longer than 2 walks running, seed after seed; a mid-streak save/reload round-trip (`SaveSystem.capture()`/`_apply()`, in memory) reproduces the identical streak count and the identical gate result on the replayed walk; `blocker()`'s existing "refuses while a chain is active" seam is re-proven against a gate-opened chain specifically, and a second `wander` dispatch on top of it is confirmed to fail. Full profile-level economy measurement (the five-profile table STR-D1's own PR describes) is deferred to PR E's own integration pass, once PR B's roster gives the gate something richer to measure than two legacy cards. |
+
+### Three real bugs, caught by sabotage-testing and live-tracing the new mechanism specifically
+
+1. **An empty encounter pool silently froze the streak instead of advancing
+   it.** The first draft of `_roll_gate()` returned early on `pool.is_empty()`
+   before touching `wander_quiet_streak` at all — so a cold profile with no
+   inventory and COOL Heat (both encounter cards permanently ineligible)
+   never incremented the streak even once in 30 walks, and the cold-profile
+   test's own "the streak climbs freely past every cap" assertion failed for
+   a reason that had nothing to do with the cap. Fixed by counting an empty
+   pool as a quiet walk for the streak's own purposes — the player
+   experienced an uneventful walk either way — while still correctly
+   refusing to force an encounter that does not exist to force.
+2. **A rigged "overdue Dre account" test fixture tripped a real, unrelated
+   encounter.** The hot-profile test's first draft set `dre_account` directly
+   to `{"status": "overdue", "due_day": day - 3}` to satisfy the gate's own
+   overdue-debt check — which ALSO satisfies `dre_lender.gd::settle_night`'s
+   real trigger for the player-default encounter once a day-cross runs,
+   opening a second, unrelated chain the moment the rigged wander chain
+   cleared. Read as "Continue is broken" until traced live through
+   `game_eval` step by step and found to be a correctly-firing Dre encounter
+   this fixture had no business causing. Fixed by using `rent_missed = 1`
+   instead — the same `_has_overdue_debt()` branch, with no real system on
+   the other side of it to trip.
+3. **A hot profile rigged once at the top of a 20-walk loop cooled off
+   partway through.** Heat's own nightly decay (HEAT-D1) and District
+   Pressure's own recovery (PRESS-D1) both run on every day-cross this
+   build's own suite work already ships — a 20-walk loop spans several
+   in-game days, long enough for a one-time BURNING/HOT/overdue snapshot to
+   decay into a lower step count with a looser cap partway through,
+   producing a real streak of 3 under a cap the test still asserted was 2.
+   Fixed by re-pinning Heat, Pressure and rent arrears at the top of every
+   iteration — proving "a player who STAYS this loud," which is what the
+   ruling actually claims, rather than a player whose rigged state the test
+   forgot to defend against the game's own ordinary decay.
+
+### Implementation choices this session made, flagged as choices
+
+1. **The band table lives in `data/wander_events.gd`, not `data/consequence_rules.gd`.** This is Wander's own draw-time decision (whether and which, not a cross-system consequence rule anything else reads), matching this file's own existing precedent (`EFFORT_BY_WALK`, `DISCOVERY_BASE`) for "a number that shapes one system's own draw lives with that draw." Pressure's own family table is read, never duplicated.
+2. **`GATE_BASE_CHANCE := 0.03` / `GATE_PER_STEP_CHANCE := 0.05` / `GATE_CAP := 0.60` are authored, not measured yet** — chosen so a cold player (0 steps) lands near the ruling's own words ("near-silent") and a maximally hot one (12 steps) approaches the ceiling without the roll alone guaranteeing an encounter every walk; the streak cap is the actual guarantee. MEAS-D1's own job is to report these honestly against play, the same discipline PRESS-D1 (D-19) just went through for District Pressure's cap.
+3. **A schema bump to v25** for `wander_quiet_streak` — genuinely new sequential state (how many consecutive quiet walks), not derivable from `wander_misses`/`wander_recent`/any existing field, the same call `wander_misses` itself got at v13. Purely additive; the migration arm is `pass`. The save validator gets the same type/non-negative check its siblings already have, deliberately WITHOUT a cap-clamp of its own — an inflated streak cannot be exploited for anything (it only ever shortens the wait until the street answers, never lengthens it), so re-deriving the current cap inside the validator would cost real complexity for a repair an honest save's own next walk will correct in one step regardless.
+4. **Tests are homed in `tests/parity/parity_runner.gd`, not the confrontation/dre suites the build prompt names.** Every other Wander behavioral test already lives in parity (`_check_batch10`/`_check_batch11` and neighbors) — a second home for the same system's own coverage would be exactly the "two authorities" pattern this codebase keeps refusing. Divergence Protocol applied: the brief's assumption and the shipped test layout disagree, the repo's own existing pattern wins, recorded here rather than silently substituted.
+5. **Encounter bias is a `gate_bias` tag** (`"debt"`, or a pressure family name) read by `_pick_encounter()`, boosting a matching card's weight by `GATE_BIAS_MATCH := 3.0`. Neither of the two legacy cards carries one — PR A's own scope has no debt- or pressure-flavored script to tag yet, so this reduces to a plain weighted pick today and becomes real the moment PR B's roster gives it something to prefer. Not "heat" as a bias category yet either, for the same reason (OPP-D8's "no unused framework" discipline, applied here to a tag rather than a whole system).
+
+### Why this PR carries this entry rather than a later PR
+
+Same Slice-0-before-the-code discipline as every entry above: the gate, the
+streak, and the schema bump are all already load-bearing for `wander.gd`'s
+own new code, so the ruling is recorded where the dependency was created.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

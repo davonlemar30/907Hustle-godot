@@ -26,8 +26,8 @@ var _boost_target_ids_cache: Dictionary = {}
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
 ## known fields to safe defaults, preserves unknown keys, and never writes a
-## repaired payload back to disk. The save schema is v24. Older saves are
-## migrated before this validator runs, so every arm below reads a v24 shape.
+## repaired payload back to disk. The save schema is v25. Older saves are
+## migrated before this validator runs, so every arm below reads a v25 shape.
 
 func validate_state(input: Dictionary) -> Dictionary:
 	var state: Dictionary = input.duplicate(true)
@@ -631,11 +631,20 @@ func _validate_heat_day(state: Dictionary, repairs: Array[String]) -> void:
 ## forever. Clamping it to the number of misses that actually reaches the cap
 ## costs an honest save nothing — past that point the extra misses were already
 ## doing nothing — and takes the exploit away.
+##
+## `wander_quiet_streak` (v25, STR-D2) gets the same type/non-negative check
+## as its siblings below, deliberately WITHOUT a cap clamp of its own: unlike
+## `wander_misses`, an inflated streak cannot be exploited FOR anything — it
+## only ever shortens the wait until the gate is next forced open, which
+## costs the player nothing and helps nobody cheat. Re-deriving "what cap
+## currently applies" here would mean replaying `_attention_steps()`'s whole
+## cross-system read inside the validator for a number a hand-edited save
+## can only make the street answer back SOONER, never later.
 func _validate_wander(state: Dictionary, repairs: Array[String]) -> void:
 	# The same number the live path caps at — one owner, so the two cannot
 	# disagree and repair an honest save.
 	var ceiling: int = int(WANDER_EVENTS.miss_ceiling())
-	for field in ["wander_misses", "wander_count", "wanders_today"]:
+	for field in ["wander_misses", "wander_count", "wanders_today", "wander_quiet_streak"]:
 		if not state.has(field):
 			continue
 		if not (state[field] is int or state[field] is float):

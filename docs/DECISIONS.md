@@ -1321,6 +1321,28 @@ register, staged through POOL-D1's requirements.
    — it asserts dictionary contents, never rendered Control geometry — and
    was only caught because this PR's own ground rules require a live visual
    pass before calling a screen done, not because any check failed.
+6. **A type-mismatch crash in this PR's own test code was silently
+   truncating that test's remaining assertions, and a bare "PASS" reading
+   missed it.** `GameManager.dispatch()` returns `bool` (whether some
+   system handled the action) — it has never returned the adapter's own
+   result dict, which is internal to `dispatch()`'s own reconcile step.
+   `_check_roster_shakedown_room`'s mid-round reload check declared
+   `var live_result: Dictionary = gm.dispatch(...)`, a type CI's stricter
+   gate caught (`SCRIPT ERROR: Trying to assign value of type 'bool' to a
+   variable of type 'Dictionary'`) that this local run's own "PASS —
+   12707 checks" reading did not surface — the crash aborted the rest of
+   that test function on the spot, silently skipping every `_expect_*`
+   call after it (the reload-restores-the-room check, the replayed-dispatch
+   check, the resolved-tier check, the round-cap section). Fixed by typing
+   both dispatch results `bool`, matching what the function actually
+   returns, and reading the real state to compare through
+   `gs.active_consequence` instead — which the surrounding code was
+   already doing for the tier comparison anyway. Running to completion
+   surfaced 5 more real checks (12707 → 12712), all passing. Corrected the
+   process, not just the code: checked this local run's own output for
+   `SCRIPT ERROR`/`ERROR:`/`Invalid access` explicitly afterward, the same
+   grep CI's "no engine or script errors" gate runs, rather than trusting
+   a passing summary line at the tail of a long log.
 
 ### Implementation choices this session made, flagged as choices
 
@@ -1355,8 +1377,10 @@ register, staged through POOL-D1's requirements.
 5. **Tests are homed in `tests/parity/parity_runner.gd` again**, under a
    new "0.5.0 PR B — The roster" section, for the same reason D-20 gave:
    every other Wander behavioral check already lives there. `MIN_CHECKS`
-   moves to 12707; full suite confirmed PASS at that count, and territory,
-   save-validation, and screen-smoke all reconfirmed green afterward.
+   moves to 12712 (see bug 6 below for why this is 5 higher than this PR's
+   first local run reported); full suite confirmed PASS at that count with
+   a clean scan for engine/script errors, and territory, save-validation,
+   and screen-smoke all reconfirmed green alongside it.
 
 ### Why this PR carries this entry rather than a later PR
 

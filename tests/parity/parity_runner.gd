@@ -19780,7 +19780,7 @@ func _fail(label: String, detail: String) -> void:
 ## 0.3.0 (STK-D1): +8. `_check_stick_daily_cap_scaling`'s own coverage of the
 ## rep-scaled cap, through both the bare function and the real `blocker()`
 ## gate.
-const MIN_CHECKS := 12707
+const MIN_CHECKS := 12712
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -22192,16 +22192,19 @@ func _check_roster_shakedown_room(gs: Node, gm: Node) -> void:
 	# blocker for every new piece of state, the room's included.
 	var saves := get_node("/root/SaveSystem")
 	var snapshot: Dictionary = saves.capture()
-	var live_result: Dictionary = gm.dispatch("resolve_consequence_choice",
+	# `GameManager.dispatch()` returns `bool` (whether some system handled the
+	# action), never the adapter's own result -- that dict is internal to
+	# `dispatch()`'s own reconcile step. What a caller reads back is state,
+	# via `gs.active_consequence`, which is what `live_tier`/`replayed_tier`
+	# below actually do.
+	var live_result: bool = gm.dispatch("resolve_consequence_choice",
 		{"choice_id": "keep_fighting"})
 	var live_tier := str(gs.active_consequence.get("decision", {}).get("resolved_tier", ""))
-	var live_shown: Dictionary = (gs.active_consequence.get("decision", {}) as Dictionary) \
-		.get("shown_probabilities", {}).duplicate()
 	saves._apply(snapshot)
 	_expect_true("the reload restored the room mid-fight",
 		not (gs.active_consequence.get("decision", {}) as Dictionary)
 			.get("loop", {}).is_empty())
-	var replayed_result: Dictionary = gm.dispatch("resolve_consequence_choice",
+	var replayed_result: bool = gm.dispatch("resolve_consequence_choice",
 		{"choice_id": "keep_fighting"})
 	var replayed_tier := str(gs.active_consequence.get("decision", {}).get("resolved_tier", ""))
 	_expect_true("the replayed round dispatches the same way", replayed_result == live_result)

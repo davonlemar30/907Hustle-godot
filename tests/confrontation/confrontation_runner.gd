@@ -33,7 +33,10 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## Updated whenever checks are added; the report call enforces it.
 ## 0.1.2: +40 for the Lift's caught-loop escalation + BRIBE (check block 10),
 ## +13 for the HAND IT BACK guaranteed-out follow-up.
-const MIN_CHECKS := 212
+## 0.3.0 (ENC-D1..D9): +38 for the stick-caught decision (check block 11) —
+## hot/cold/catastrophic entry, yield's deterministic booking, cooldown
+## suppression, and ENC-D9's source-time contract.
+const MIN_CHECKS := 250
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -63,6 +66,7 @@ func _ready() -> void:
 	_check_lift_escalation()
 	_check_lift_bribe()
 	_check_lift_hand_it_back()
+	_check_stick_caught()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -754,4 +758,147 @@ func _check_lift_hand_it_back() -> void:
 	a.check("the store is not remembered as bribed or banned",
 		not "night_owl" in (gs.boost_bribes_used as Array)
 		and not "night_owl" in (gs.boost_store_bans as Array))
+	gs.active_consequence = {}
+
+# --- 11. the caught decision (0.3.0, ENC-D1..D9) -----------------------------
+#
+# The blown-job answer: a single-roll (tier 1) stickup that comes up Failure
+# over the tier's Heat gate, or Catastrophic at any Heat, now opens
+# fight/run/talk/yield before any arrest resolves -- no more decision-less
+# entry to Booking (ENC-D1). Rooms are untouched (ENC-D2) and keep their own
+# coverage above; this block is the single-roll path's own.
+
+## Heat set BEFORE `chance_for` reads it, mirroring the parity runner's own
+## `_stick_gate_ready` split for the same reason: the chance a day produces
+## moves with the Heat, so each Heat value needs its own scan.
+func _reset_caught_probe(heat: float, slot: int = 0) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.time_slots_today = slot
+	gs.time_slot = ["MORNING", "AFTERNOON", "EVENING", "NIGHT"][slot]
+	gs.stick_daily_count = 0
+	gs.attributes = {"combat": 1, "charisma": 1, "intelligence": 1}
+	gs.heat = heat
+
+## The single-roll path's own day-scan -- `chance_for`, not a room's stage
+## chance, since every tier-1 target (this probe's `washgo_regular`) has no
+## script at all (`has_room` is false for every tier-1 id).
+func _find_tier1_day(heat: float, target_id: String, want_tier: String, slot: int = 0) -> int:
+	_reset_caught_probe(heat, slot)
+	var stickup: RefCounted = gm.system("stickup") as RefCounted
+	var resolver: RefCounted = gm.system("outcome_resolver") as RefCounted
+	var t: Dictionary = gs.stick_target_by_id(target_id)
+	var chance: float = stickup.chance_for(t)
+	for day in range(1, 400):
+		var key := "stickup:%d:%d:%s" % [day, slot, target_id]
+		var outcome: Dictionary = resolver.resolve_action("robbery", chance, 1, gs.run_seed, key)
+		if str(outcome["tier"]) == want_tier:
+			return day
+	return -1
+
+func _check_stick_caught() -> void:
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	var target_id := "washgo_regular"
+
+	# A HOT plain failure opens the decision -- driven end to end, because this
+	# is also where ENC-D9's source-time contract gets proved: owed the moment
+	# the decision opens, still owed through result and into booking, settled
+	# exactly once when the booking itself commits.
+	var hot_day: int = _find_tier1_day(13.0, target_id, "failure")
+	a.check("a hot failure day exists in the scan window", hot_day > 0)
+	if hot_day > 0:
+		_reset_caught_probe(13.0)
+		gs.day = hot_day
+		a.check("the hot robbery dispatches", gm.dispatch("stickup", {"target_id": target_id}))
+		a.eq_str("a hot failure opens the caught decision",
+			str(gs.active_consequence.get("chain_kind", "")), "stick_caught")
+		a.eq_str("it opens at decision, not result", str(_engine().active_stage()), "decision")
+		var decision: Dictionary = gs.active_consequence.get("decision", {})
+		var allowed: Array = decision.get("allowed_choices", [])
+		a.eq_int("the authored four are on offer, and only them", allowed.size(), 4)
+		for verb in ["fight", "run", "talk", "yield"]:
+			a.check("%s is offered" % verb, verb in allowed)
+		a.check("no BRIBE here -- there is no take and no store",
+			not "bribe" in allowed and not "hand_it_back" in allowed)
+		a.eq_bool("the source slot is owed the moment the decision opens",
+			_engine().source_time_owed(), true)
+
+		var cause_before: String = str(gs.active_consequence.get("cause_id", ""))
+		a.check("yield commits", _commit("yield"))
+		var result: Dictionary = _engine().result_summary()
+		a.eq_str("yield's tier is deterministic",
+			str(result.get("resolved_tier", "")), "deterministic")
+		a.eq_bool("yield books, deliberately",
+			bool((result.get("result", {}) as Dictionary).get("arrested", false)), true)
+		a.eq_str("the result stage is reached, not skipped",
+			str(_engine().active_stage()), "result")
+		a.eq_bool("the source slot is still owed at result",
+			_engine().source_time_owed(), true)
+		a.check("continue walks into booking", gm.dispatch("consequence_continue", {}))
+		a.eq_str("booking rides the SAME chain", str(_engine().active_stage()), "booking")
+		a.eq_str("the same cause carries the booking",
+			str(gs.active_consequence.get("cause_id", "")), cause_before)
+		a.eq_bool("the source slot is still owed -- booking has not committed yet",
+			_engine().source_time_owed(), true)
+		a.check("the booking commits", gm.dispatch("resolve_booking_choice", {"choice_id": "serve_time"}))
+		a.eq_bool("the booking commit settles the source slot, exactly once",
+			_engine().source_time_owed(), false)
+		a.eq_int("the release receipt counts the source slot exactly once",
+			int((gs.active_consequence.get("booking", {}) as Dictionary).get("source_slots_settled", -1)), 1)
+		a.check("release settles", gm.dispatch("consequence_continue", {}))
+		a.eq_bool("the chain closes clean", _engine().has_active(), false)
+
+	# A SUB-GATE failure (Heat under the tier's gate) is no ceremony at all --
+	# heat, a log line, move on, exactly as it always has been.
+	var cold_day: int = _find_tier1_day(0.0, target_id, "failure")
+	a.check("a cold failure day exists in the scan window", cold_day > 0)
+	if cold_day > 0:
+		_reset_caught_probe(0.0)
+		gs.day = cold_day
+		a.check("the cold robbery dispatches", gm.dispatch("stickup", {"target_id": target_id}))
+		a.eq_bool("a sub-gate failure opens no chain", _engine().has_active(), false)
+		a.eq_int("it still spends its slot inline, the old sub-gate shape",
+			gs.time_slots_today, 1)
+
+	# CATASTROPHIC opens at every Heat, and its entry degrades the shown odds
+	# by the one authored penalty (ENC-D6) -- the number the player is shown
+	# must be the number that gets rolled, so this is asserted on the LIVE
+	# snapshot, not re-derived from the rule in isolation.
+	var cat_day: int = _find_tier1_day(0.0, target_id, "catastrophic")
+	a.check("a catastrophic day exists in the scan window", cat_day > 0)
+	if cat_day > 0:
+		_reset_caught_probe(0.0)
+		gs.day = cat_day
+		a.check("the catastrophic robbery dispatches", gm.dispatch("stickup", {"target_id": target_id}))
+		a.eq_str("catastrophic opens the caught decision even at zero heat",
+			str(gs.active_consequence.get("chain_kind", "")), "stick_caught")
+		var shown: Dictionary = (gs.active_consequence.get("decision", {}) as Dictionary) \
+			.get("shown_probabilities", {})
+		var resolver: RefCounted = gm.system("outcome_resolver") as RefCounted
+		var expected_run: float = resolver.success_probability("escape",
+			rules.stick_caught_chance("run", true), 1, 0)
+		var undegraded_run: float = resolver.success_probability("escape",
+			rules.stick_caught_chance("run", false), 1, 0)
+		a.near("the shown odds carry the catastrophic-entry penalty",
+			float(shown.get("run", -1.0)), expected_run, 0.0001)
+		a.check("the penalty actually moved the number from an ordinary entry",
+			not is_equal_approx(expected_run, undegraded_run))
+
+	# Cooldown suppresses entry outright -- ArrestSystem's exact current
+	# semantics (ENC-D3): the law does not show, full stop, same as any other
+	# arrest gate the cooldown already covers.
+	var suppressed_day: int = _find_tier1_day(13.0, target_id, "failure")
+	a.check("a suppressible hot-failure day exists", suppressed_day > 0)
+	if suppressed_day > 0:
+		_reset_caught_probe(13.0)
+		gs.day = suppressed_day
+		gs.arrest_record = {"priors": 0, "last_arrest_day": -1,
+			"cooldown_until_day": suppressed_day + 1, "charges": []}
+		a.check("the robbery dispatches under cooldown",
+			gm.dispatch("stickup", {"target_id": target_id}))
+		a.eq_bool("cooldown suppresses the caught decision entirely",
+			_engine().has_active(), false)
+		a.eq_int("a cooldown-suppressed arrest still spends its slot",
+			gs.time_slots_today, 1)
+	gs.arrest_record = {"priors": 0, "last_arrest_day": -1, "charges": []}
 	gs.active_consequence = {}

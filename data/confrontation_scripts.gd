@@ -293,6 +293,23 @@ func choice_label(choice_id: String) -> String:
 func choice_copy(choice_id: String) -> String:
 	return str(STICK_CHOICE_COPY.get(choice_id, ""))
 
+# --- the caught encounter (0.3.0, ENC-D1..D9) --------------------------------
+#
+# The blown-job answer: fight/run/talk/yield, `RULES.CAUGHT_CHOICES`
+# untouched, no label table needed (fight/run/yield fall through to the
+# engine's own `choice_id.capitalize()` default exactly as Boost's own four
+# do — see `boost.gd`'s comment on the same choice). Only the copy differs
+# from Boost's, and only because the voice does (ENC-D7): the responding
+# officer, not the mark, which is also why TALK cannot share the room's own
+# entry above — that TALK is to the mark inside a room; this one is to the
+# law standing in front of you.
+const STICK_CAUGHT_CHOICE_COPY := {
+	"fight": "Get past them by force. Win and you're clear; lose and it's worse than cuffs.",
+	"run": "Outrun the stop before it becomes an arrest.",
+	"talk": "Give the officer a reason to let this go.",
+	"yield": "Hands where they can see them. It ends here, on their terms.",
+}
+
 # =============================================================================
 # AUTHORED, NOT YET WIRED — the remaining scripts, resolved per the build brief
 # so the next slices author nothing, only plumb. Nothing below is read by live

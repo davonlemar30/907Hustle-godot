@@ -677,6 +677,79 @@ preset property, the no-committed-keystore rule, and the legacy-build choice
 are all things `export_presets.cfg` and `android-apk.yml` now depend on, so
 the ruling is recorded where the dependency was created.
 
+## D-13 — Answer For It: the blown job answers to somebody
+
+**Decided** 2026-08-28 · **Ships in** `build/stick-caught-encounter` (0.3.0
+PR A) · **Source:** `BUILD_ANSWER_FOR_IT_PROMPT.md`, closing the legibility
+hole the 0.2.1 phone playtest found
+
+### The question
+
+The owner's first finding on the 0.2.1 phone build was not a crash: doing
+criminal work while carrying Heat, a blown stickup put the player straight
+into Booking ("SERVE IT" / "PUT UP WHAT YOU HAVE") with no encounter, no
+choices, no explanation. `systems/stickup.gd::_open_booking` opened the
+chain directly at `STAGE_RESULT` with `allowed_choices: []`, by design —
+TI-003 §14 called this "there was no decision," because the robbery had
+already resolved on its own tier roll and the arrest was a fact about that
+roll, not a fresh choice.
+
+**The owner ruled that design over.** Every action-sourced caught/cop moment
+in this game now presents a decision before any arrest resolves.
+
+### The rulings
+
+Referenced from code as `ENC-D1` through `ENC-D9`.
+
+| ID | Ruling |
+|---|---|
+| ENC-D1 | No booking without a decision. Every action-sourced caught/cop moment opens a choice surface before any arrest resolves. Supersedes TI-003 §14's decision-less booking entry. The nightly street stop (`heat.gd::settle_street_stop`) is a named exception — a day-lifecycle settlement, not an action. |
+| ENC-D2 | The room boundary (tier 2-3, the REPLACE ruling) is NOT reversed. A room's own stages already are the decision — a beaten room attaching a booking quote at `_room_exit` already satisfies ENC-D1 — so rooms are untouched. What is added is a post-failure caught encounter for the single-roll (tier 1) path only, the same shape as the Lift's: the robbery still resolves on its one roll; the encounter is what happens when the law arrives after it goes wrong. |
+| ENC-D3 | Opens exactly when the old gate would have booked: plain Failure with `pre_source_heat` above `STICK_FAILURE_ARREST_HEAT[tier]`, or any Catastrophic roll, cooldown clear (`ArrestSystem.in_cooldown` unchanged — cooldown active means the law does not show, and the old sub-gate shape runs instead: heat, a log line, move on). |
+| ENC-D4 | New chain kind `KIND_STICK_CAUGHT`, opened at `decision` by `stickup.gd::_open_stick_caught`, mirroring `boost.gd::_open_caught` seam-for-seam. Choices are the authored four (`RULES.CAUGHT_CHOICES`, untouched) — no BRIBE, no HAND IT BACK: there is no contested take (`contested_take: 0`) and no store relationship to buy back into. |
+| ENC-D5 | Single-round. No escalation loop, no `decision.loop` block — a cops-arriving beat is one decision, unlike the Lift's rounds (which exist because a banked contested take justifies them). |
+| ENC-D6 | Odds and effects are stickup-authored (`STICK_CAUGHT_OPPONENT` / `STICK_CAUGHT_EFFECTS`, `data/consequence_rules.gd`), never folded into the Lift's rows. Resolvers reuse the existing `outcome_resolver` action types the Lift's verbs map through (`CAUGHT_RESOLVERS`). A catastrophic entry degrades every rolled verb's odds by one authored constant (`STICK_CAUGHT_CATASTROPHIC_PENALTY`), snapshotted on `source.entry_tier` at open time so the odds shown and the odds rolled can never disagree. Arrest is per-choice, per-tier, stick-authored — never Boost's table. Yield is the deterministic surrender: no roll, straight to cuffs, the lowest authored pressure gain of the four (`STICK_CAUGHT_YIELD_PRESSURE_GAIN`). An arrested resolution attaches Booking to the SAME chain (`ArrestSystem.attach_booking`), exactly as the Lift does. |
+| ENC-D7 | Copy is authored in `data/confrontation_scripts.gd` as `STICK_CAUGHT_CHOICE_COPY`. Voice: the responding officer, not the mark — the mark already had their moment in the source roll. No new label table: fight/run/yield fall through to the engine's own `choice_id.capitalize()` default exactly as Boost's own four already do, and TALK reuses the room's own label ("TALK") because the word is right either way — only the COPY under it needed its own table, since the room's own TALK copy is addressed to the mark, not an officer. |
+| ENC-D8 | Pre-attempt legibility: the Stickup screen shows a warning line per target when current Heat sits above that target's tier's gate — the player learns before attempting that a blown job right now brings the law. Reads the same live `gs.heat` the gate reads at attempt time, so the warning can never promise one thing and the gate deliver another. |
+| ENC-D9 | Time follows the Lift's pattern: the blown-job slot is NOT advanced when the encounter opens; the chain owes it and the engine's existing Continue/Booking settlement pays it exactly once. Proved in the confrontation suite by reading `ConsequenceEngine.source_time_owed()` at every stage of the arc (owed at decision, still owed at result, still owed entering booking, settled exactly once when the booking commits) rather than by asserting a total slot count — the booking's own processing/shortfall math varies independently and is not this ruling's concern. |
+
+### Implementation choices this session made, flagged as choices
+
+The ruling table above is the prompt's own text, verbatim. Everything below is
+this session's reading of it into working code, flagged the way D-1 and D-6
+flag their own implementation choices:
+
+1. **One authored opponent row, not a tier ladder.** Every tier-2/3 stick
+   target already has a room (`confrontation_scripts.gd::has_room`), so
+   `KIND_STICK_CAUGHT` can only ever open from a tier-1 attempt. Authoring
+   `STICK_CAUGHT_OPPONENT` as a tiered table (mirroring `CAUGHT_OPPONENTS`)
+   would invent rows for tiers that can never reach it. If a future build adds
+   an unscripted tier-2/3 stick target, this table is the first thing that
+   needs to grow a tier dimension.
+2. **The catastrophic-entry penalty is `-0.10`**, applied to the base chance
+   before the resolver's own clamp — the same shape and rough size as the
+   Lift's `LIFT_ESCALATION.verb_penalty`, chosen for consistency with the
+   nearest authored precedent rather than measured, since this is a single
+   modifier on an encounter with no economy weight of its own to tune against.
+3. **Yield's pressure gain is `0.25`**, below `PRESSURE_BY_TIER`'s own floor
+   (0.5, `clean`) — an authored number satisfying "lowest of the four," not a
+   measured one.
+4. **A new engine seam, `ConsequenceEngine.choice_guarantee`.** The
+   consequence screen's deterministic-choice line ("Guaranteed: no injury, no
+   Heat, no arrest.") was a hardcoded literal, true for every deterministic
+   choice that shipped before this build. Stick Caught's own YIELD guarantees
+   an arrest rather than avoiding one, which that literal would have
+   misrepresented. Rather than special-case `KIND_STICK_CAUGHT` inside the
+   screen, the line now runs through the same adapter-copy seam
+   `choice_description`/`choice_label` already use, with the old literal kept
+   as the fallback every prior deterministic choice still gets silently.
+
+### Why this PR carries this entry rather than a later PR
+
+Same Slice-0-before-the-code discipline as D-7 through D-12: `stickup.gd`'s
+new adapter and `consequence_rules.gd`'s new tables already depend on every
+row above, so the ruling is recorded where the dependency was created.
+
 ## Standing Policy — Build 5e divergences
 
 **Decided** in Build 5e (predates Batch 18; recorded here in PR 5, migrated

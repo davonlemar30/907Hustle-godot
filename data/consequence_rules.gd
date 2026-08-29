@@ -255,6 +255,143 @@ func pressure_gain(choice_id: String, tier_name: String) -> float:
 		return YIELD_PRESSURE_GAIN
 	return float(PRESSURE_BY_TIER.get(tier_name, 0.0))
 
+# --- Stickup's own caught encounter (0.3.0, ENC-D1..D9) --------------------
+#
+# The blown-job answer TI-003 §14 never built: a single-roll (tier 1) stickup
+# that comes up Failure over the tier's Heat gate, or Catastrophic at any
+# Heat, now opens a DECISION before any arrest resolves — ENC-D1. Rooms
+# (tier 2-3) are untouched: their own stages already are the decision, so a
+# beaten room attaching a booking quote at `_room_exit` already satisfies
+# ENC-D1 and stays exactly as it is (ENC-D2).
+#
+# Parallel to Boost's CAUGHT_OPPONENTS/CAUGHT_EFFECTS, deliberately never
+# folded into them (ENC-D6): the verbs are the same four
+# (`RULES.CAUGHT_CHOICES`, untouched) and the resolver mapping is the same
+# (`CAUGHT_RESOLVERS`/`resolver_for`), but the opponent, the odds and the
+# effect table are Stick's own. One authored row rather than a tier ladder —
+# every tier-2/3 stick target already has a room (see `has_room`), so this
+# encounter can only ever open from a tier-1 attempt, and authoring rows for
+# tiers that can never reach it would be inventing content nobody can see.
+
+## The responding officer, not the mark — ENC-D7: the mark already had their
+## moment in the source robbery's own roll. Base chances before
+## `outcome_resolver`'s attribute-advantage math.
+const STICK_CAUGHT_OPPONENT := {
+	"opponent": "The responding officer",
+	"fight": 0.35, "run": 0.55, "talk": 0.50,
+	"fight_win": [3, 8], "fight_loss": [10, 18],
+}
+
+## ENC-D6: a catastrophic entry (the source robbery's own roll, not merely
+## Heat over the gate) degrades every rolled verb by this many points, once —
+## one modifier, one table, not a second script.
+const STICK_CAUGHT_CATASTROPHIC_PENALTY := -0.10
+
+## ENC-D6's shape, re-authored for the law rather than a store: no `take`
+## (the source robbery already resolved its own cash — ENC-D4's
+## `contested_take: 0`, nothing here to keep, lose or return) and no `ban`
+## (there is no storefront to close a door on). `arrest` and `injury` and
+## `heat` mean exactly what they mean in `CAUGHT_EFFECTS`.
+const STICK_CAUGHT_EFFECTS := {
+	"fight": {
+		"clean":        {"arrest": false, "injury": "",           "heat": 0.5},
+		"messy":        {"arrest": false, "injury": "fight_win",  "heat": 1.0},
+		"failure":      {"arrest": true,  "injury": "fight_loss", "heat": 1.5},
+		"catastrophic": {"arrest": true,  "injury": "fight_loss", "heat": 2.5},
+	},
+	"run": {
+		"clean":        {"arrest": false, "injury": "",          "heat": 0.0},
+		"messy":        {"arrest": false, "injury": "run_messy", "heat": 0.5},
+		"failure":      {"arrest": true,  "injury": "run_messy", "heat": 1.0},
+		"catastrophic": {"arrest": true,  "injury": "run_messy", "heat": 2.0},
+	},
+	# TALK is the safest road precisely because it is the one that is not
+	# trying to get past the officer — only a catastrophic roll (openly
+	# hostile) turns it into an arrest.
+	"talk": {
+		"clean":        {"arrest": false, "injury": "", "heat": 0.0},
+		"messy":        {"arrest": false, "injury": "", "heat": 0.0},
+		"failure":      {"arrest": false, "injury": "", "heat": 0.5},
+		"catastrophic": {"arrest": true,  "injury": "", "heat": 1.0},
+	},
+	# ENC-D6: the deterministic surrender. No roll, straight to cuffs.
+	"yield": {
+		"deterministic": {"arrest": true, "injury": "", "heat": 0.0},
+	},
+}
+
+## ENC-D6: yield's authored dignity — the lowest pressure gain of the four,
+## since giving up is the one response that never makes the encounter worse
+## than it already was. Below `PRESSURE_BY_TIER`'s own floor (`clean`, 0.5).
+const STICK_CAUGHT_YIELD_PRESSURE_GAIN := 0.25
+
+func stick_caught_effects_for(choice_id: String, tier_name: String) -> Dictionary:
+	var by_choice: Dictionary = STICK_CAUGHT_EFFECTS.get(choice_id, {})
+	if choice_id == "yield":
+		return by_choice.get("deterministic", {})
+	return by_choice.get(tier_name, {})
+
+func stick_caught_base_chance(choice_id: String) -> float:
+	return float(STICK_CAUGHT_OPPONENT.get(choice_id, 0.0))
+
+## The chance actually rolled (and shown — the two must never disagree, so
+## both read this). `catastrophic_entry` is snapshotted on the chain's
+## `source` block at open time and never recomputed, the same discipline
+## `_lift_chance`'s `round_number` follows.
+func stick_caught_chance(choice_id: String, catastrophic_entry: bool) -> float:
+	var base: float = stick_caught_base_chance(choice_id)
+	if not catastrophic_entry:
+		return base
+	return clampf(base + STICK_CAUGHT_CATASTROPHIC_PENALTY, 0.0, 1.0)
+
+func stick_caught_arrests(choice_id: String, tier_name: String) -> bool:
+	return bool(stick_caught_effects_for(choice_id, tier_name).get("arrest", false))
+
+func stick_caught_raw_heat(choice_id: String, tier_name: String) -> float:
+	return float(stick_caught_effects_for(choice_id, tier_name).get("heat", 0.0))
+
+func stick_caught_pressure_gain(choice_id: String, tier_name: String) -> float:
+	if choice_id == "yield":
+		return STICK_CAUGHT_YIELD_PRESSURE_GAIN
+	return float(PRESSURE_BY_TIER.get(tier_name, 0.0))
+
+## The injury band to roll, as `[min, max]`, or empty for none. Fixed bands
+## are shared with Boost's table on purpose (a messy dash from an officer is
+## the same fiction as a messy dash from Store Security); `fight_win`/
+## `fight_loss` are this encounter's own opponent row.
+func stick_caught_injury_band(choice_id: String, tier_name: String) -> Array:
+	var row: Dictionary = stick_caught_effects_for(choice_id, tier_name)
+	var band_id := str(row.get("injury", ""))
+	if band_id.is_empty():
+		return []
+	if CAUGHT_FIXED_INJURY.has(band_id):
+		return (CAUGHT_FIXED_INJURY[band_id] as Array).duplicate()
+	match band_id:
+		"fight_win":
+			return (STICK_CAUGHT_OPPONENT.get("fight_win", []) as Array).duplicate()
+		"fight_loss":
+			return (STICK_CAUGHT_OPPONENT.get("fight_loss", []) as Array).duplicate()
+	return []
+
+## Which arrest warning a response carries. Same derivation boost's
+## `caught_arrest_risk` uses (read off the authored table so a balance edit
+## moves the warning with it), simplified: this encounter has no Boost-style
+## "conditional" row, so there is no HEAT/TARGET distinction to draw. Yield
+## reads NONE like every other deterministic choice — its guaranteed cuffs are
+## stated directly by the screen's guarantee line, not framed as a risk.
+func stick_caught_arrest_risk(choice_id: String) -> String:
+	if is_deterministic(choice_id):
+		return ARREST_RISK_NONE
+	var arresting: Array = []
+	for tier_name in ["clean", "messy", "failure", "catastrophic"]:
+		if stick_caught_arrests(choice_id, str(tier_name)):
+			arresting.append(str(tier_name))
+	if arresting.is_empty():
+		return ARREST_RISK_NONE
+	if not "failure" in arresting:
+		return ARREST_RISK_WORST_ONLY
+	return ARREST_RISK_ON_LOSS
+
 # --- Arrest and Booking (TI-003 §13-14, FS-003 §7) -------------------------
 #
 # The severity table is the whole of the arrest economy: what a charge costs,

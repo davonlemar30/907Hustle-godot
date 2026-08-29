@@ -98,9 +98,18 @@ const KIND_WANDER := "wander_encounter"
 ## round-keyed commit receipt in `_resolve_choice` and the `loop_summary()`
 ## projection, because everything else the loop needs the chain already had.
 const KIND_CONFRONTATION := "confrontation"
+## The sixth kind (0.3.0, ENC-D1..D9): the decision a blown TIER-1 stickup
+## opens before any arrest resolves — "the blown job answers to somebody."
+## `KIND_STICK_BOOKING` above is retired as a NEW entry path (ENC-D1 supersedes
+## TI-003 §14's decision-less booking) but stays a known, resolvable kind: a
+## save written before this build can hold one already sitting at `result` or
+## `booking`, and it has to keep loading and resolving exactly as it always
+## has. Rooms (tier 2-3) are untouched — ENC-D2 — because their own stages
+## already are the decision; this kind exists only for the single-roll path.
+const KIND_STICK_CAUGHT := "stick_caught"
 const KNOWN_KINDS: Array[String] = [
 	KIND_BOOST_CAUGHT, KIND_STICK_BOOKING, KIND_RETALIATION, KIND_WANDER,
-	KIND_CONFRONTATION,
+	KIND_CONFRONTATION, KIND_STICK_CAUGHT,
 ]
 
 var gs: Node
@@ -808,6 +817,18 @@ func _adapter_copy(choice_id: String, method: String, fallback: String) -> Strin
 ## The description under a choice, for the screen. Same seam as the label.
 func choice_description(choice_id: String, fallback: String) -> String:
 	return _adapter_copy(choice_id, "choice_copy", fallback)
+
+## The certainty line under a DETERMINISTIC choice, for the screen. Same seam
+## as the label and description, and for the same reason this one exists at
+## all: the screen's own fallback text ("no injury, no Heat, no arrest") is
+## true for every deterministic choice that shipped before 0.3.0 (Boost's
+## YIELD, BRIBE, HAND IT BACK), but Stick Caught's YIELD is a guaranteed
+## SURRENDER — it books, deliberately (ENC-D6). A chain whose guaranteed
+## response is not that fallback says so through its own adapter rather than
+## the screen special-casing a chain kind the fallback was never written to
+## describe.
+func choice_guarantee(choice_id: String, fallback: String) -> String:
+	return _adapter_copy(choice_id, "choice_guarantee", fallback)
 
 ## Per-choice reason a choice cannot be committed right now, or "" when it can
 ## be. Same seam as the label and description above: only the source system

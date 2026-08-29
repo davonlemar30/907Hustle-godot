@@ -12,7 +12,7 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `0.4.0`** — shown bottom-right on the title screen, and stamped into
+**Current: `0.5.0`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
@@ -34,6 +34,35 @@ the first time somebody bumps one copy.
 
 *Full technical detail in [`CHANGELOG.md`](CHANGELOG.md) and
 [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
+
+### 0.5.0 — The Street Answers Back: you can't walk it for free anymore
+
+**Wandering used to be free.** The owner's own words after playtesting
+against *Drug Lord 2*: "I should not be able to continuously hit the
+walk-around button indefinitely." Two ordinary encounter cards at flat
+weights meant a run at BURNING Heat with three districts HOT drew from the
+same gentle deck as a clean day-one kid. A seeded interruption gate now
+reads Heat, District Pressure, Curtis and overdue debt before every walk —
+near-silent for a cold player, impossible to out-wait for a hot one — and
+four new encounters (an armed shakedown with this build's first multi-round
+room, a deepened police stop that finally activates STASH IT after sitting
+authored and unwired since Q4, a Curtis tax stop, a low-stakes charisma
+read) give it something real to say.
+
+**Crossing the city while hot or holding is a decision now, not a coin
+flip.** The same gate rolls on district travel — talk your way through a
+patrol stop, run for it, or hand it over — replacing the older silent
+carry-stop tax for that trip rather than stacking a second tax on top of
+it.
+
+**Debt stops waiting for you to get around to it.** Dre's account, a
+defaulted Book note, and rent arrears now force themselves onto the day's
+agenda once far enough overdue — first a forced decision, then a shared
+physical enforcement room if that's still ignored. No road ends a run
+directly; the worst outcome only ever costs health and the debt itself,
+through the game's existing end conditions. No new save fields: every
+threshold is derived from a due date or a warning counter the game already
+tracked.
 
 ### 0.4.0 — Repeat Business: Dre's book becomes standing work
 
@@ -255,6 +284,11 @@ arrest; Stickup was the 2% this section used to open with, before a second
 Spenard target and a rep-scaled cap, D-15). Boost moved again for 0.4.0, to
 26% — a Score contract's one-time $50 bonus firing for real once its target
 went live (SCR-D1, D-16), a bounded effect rather than a compounding one.
+The `arbitrage` profile — built entirely out of district crossings — moved
+for 0.5.0 too, 180-320% down to 158%: the travel checkpoint's own real cost,
+landing hardest on the one profile most exposed to it by construction, with
+the corridor floor lowered to 140% rather than the mechanic tuned to hold
+the old number (D-22).
 
 **"Wandering reads 288% — the strongest clean path" was true for one batch and
 is retracted here rather than left standing.** It was measured before Territory
@@ -362,7 +396,8 @@ autoload/
 systems/              # the ONLY writers of GameState
   economy.gd          # buy / sell + canon market walk (per-area, nightly)
   time_system.gd      # time slots + day-cross
-  travel.gd           # district change: fare + a slot
+  travel.gd           # district change: fare + a slot, plus the checkpoint —
+                      # the same interruption gate wander rolls, on crossing
   jobs.gd             # apply / work / quit + attendance
   obligations.gd      # rent + phone bill, settled nightly
   phone.gd            # the inbox, the held inbox, and the line coming back
@@ -383,11 +418,16 @@ systems/              # the ONLY writers of GameState
   heat.gd             # the only writer of heat; district x family scaling, relief
   consequence_engine.gd # one blocking chain, receipts, the delayed queue, Pressure
   confrontation_loop.gd # the multi-round chassis shared by every KIND_CONFRONTATION
-                      # chain: verb burning, round log, the tip-payload seam
+                      # chain: verb burning, round log, the tip-payload seam, and
+                      # the luggage-rule effects applier (cash/goods/health/heat)
+                      # every authored effects table resolves through
   tips.gd             # Word of Mouth: the day-start tip generator (Pherris'
                       # route push, Eli's corridor read, Tone's fat-night window)
   arrest.gd           # severity, bail, priors, processing time, the record
   retaliation.gd      # the delayed answer: schedule, ambient warnings, street crew
+  doorstep.gd         # overdue Dre/Book/rent debts forcing the day-start agenda:
+                      # threshold table, worst-first ordering, the shared
+                      # three-tenant enforcement room
   list_adapter.gd     # Pherris running the board: what she buys, and why she stops
   runner_adapter.gd   # Eli covering the bag: which exits nobody watches
   fixer_adapter.gd    # Deshawn working a corner: Pressure off every family on it
@@ -396,7 +436,9 @@ systems/              # the ONLY writers of GameState
                       #  for it, they do not bring their own condition engine)
   territory.gd        # corners, soldiers, passive income
   venues.gd           # the two Spenard interiors: gym sessions, the counter
-  wander.gd           # going out and looking: the ramp, the draw, the encounter
+  wander.gd           # going out and looking: the ramp, the draw, the encounter,
+                      # and the interruption gate that decides whether a walk
+                      # stays ambient or the street answers back
 
 ui/screens/*.tscn|.gd # one scene per screen; screen_base.gd holds shared chrome
 ui/components/        # atmosphere.tscn (grain/vignette), toast.tscn
@@ -441,7 +483,9 @@ data/                  # authored tables the systems above read; no state, no au
   confrontation_scripts.gd # every authored room/scene script, incl. the Lift's
                       # caught-loop beats + bribe rows, and TIP_MODIFIERS
   tip_events.gd       # Word of Mouth's budget ramp numbers (base/per-miss/cap)
-  wander_events.gd    # the discovery ramp + card pool Wander draws from
+  wander_events.gd    # the discovery ramp + card pool Wander draws from, plus
+                      # the interruption gate's own chance/streak-cap tables
+  travel_events.gd    # the travel checkpoint's own authored patrol-stop script
   territory_definitions.gd # the authored board: corners, adjacency, capacity
 ```
 
@@ -470,7 +514,7 @@ every screen's `ScrollContainer` subtree is walked for a Control stuck at
 `MOUSE_FILTER_STOP` or a button wired the wrong way, so the touch-scroll fix
 below can't regress silently.
 
-Current counts: parity 12,637 · save-validation 235 · territory 170 ·
+Current counts: parity 12,763 · save-validation 235 · territory 170 ·
 confrontation 251 · tips 93 · dre 404 · smoke 23/23 screens, 1,101 touch checks.
 
 ## Architecture
@@ -548,6 +592,14 @@ confrontation 251 · tips 93 · dre 404 · smoke 23/23 screens, 1,101 touch chec
   replaying from round one on reload, a deliberate divergence from the
   original build brief: a reload has to show the decision the player was
   actually looking at, snapshotted odds included.
+- **One room can serve three unrelated debts without three implementations.**
+  The doorstep's enforcement room (Dre, a defaulted Book note, rent arrears)
+  is one `confrontation_loop.gd`-built chassis parameterized by which
+  obligation triggered it — the same three verbs, the same round mechanics —
+  with only the exit's own debt-closing call differing per source. The Book's
+  own verbs point the other way from the other two: FIGHT there is the
+  player pressing a resistant borrower, since the Book is the one place in
+  this game the player is the lender, not the debtor.
 - **A day-start generator is a declared step, not a signal listener.**
   `day_lifecycle.gd`'s `DAY_START_ORDER` is a literal array a test reads back;
   adding Word of Mouth's tip generator meant appending `"tips"` to that array
@@ -690,6 +742,7 @@ regardless of how small the source file is.
 | **0.2.1. In Hand: the touch fix and the phone build** | ✅ two PRs off `BUILD_IN_HAND_PROMPT.md`: `card()`/`_card()` and a `screen_base.gd` normalize sweep make every screen's `ScrollContainer` pass-through by default, so a drag starting on a card scrolls everywhere instead of only from bare background — a structural CI gate in `screen_smoke.gd` (1,093 touch checks) guards the property going forward. Plus the first native build: an additive Android debug-APK preset and CI workflow, side by side with the Web export and untouched by it. No schema change. Parity **12,578 checks** (unchanged — behaviour-preserving) |
 | **0.3.0. Answer For It** | ✅ four PRs off `BUILD_ANSWER_FOR_IT_PROMPT.md`: a blown tier-1 stickup opens fight/run/talk/yield before booking instead of skipping straight to it (D-13); Heat gets an unconditional nightly floor alongside a bigger quiet-day discount, and Boost's tier-3 Run failure loses its unconditional arrest (D-14, closes escalation `86bbjk6kk`) — Boost's own share of the day job moves 13% → 24%; a second Spenard stickup target and a rep-scaled daily cap move stickup's measured share 2% → 6% solo, 8% combined with boost (D-15, closes `86bbjngyz`); plus phone/title UI fixes. Save schema unchanged at v24. Parity → **12,618 checks**, floor `MIN_CHECKS := 12618`. (A concurrent `#104` merged alongside this batch — a real Node-leak fix in save validation plus system-lookup hardening — and independently moved save-validation to 235 and smoke to 1,101 touch checks) |
 | **0.4.0. Repeat Business** | ✅ five PRs off `BUILD_REPEAT_BUSINESS_PROMPT.md`: a Score contract proves the Street Opportunity substrate generalizes past Dre's own content (SCR-D1..D3, D-16); a repeatable-contract generator rides the existing collection encounter with zero schema bump (REP-D1..D5, D-17); a four-template catalogue across three roles fills it out (CAT-D1..D4, D-18); Boost and Stick each get a per-family daily District Pressure cap on Market's own precedent, measured honestly as a partial result rather than a full close (PRESS-D1/D2, D-19, closes `86bbjk6jy`); a new `repeat_contractor` economy profile prices standing Dre income for the first time at 109% of the day job (closes `86bbp7cw2`). Save schema unchanged at v24. Parity → **12,637 checks**, floor `MIN_CHECKS := 12637`. Dre suite → **404 checks** (was 331) |
+| **0.5.0. The Street Answers Back** | ✅ five PRs off `BUILD_STREET_ANSWERS_PROMPT.md`: a seeded interruption gate reads Heat/Pressure/Curtis/debt before every wander, replacing two flat-weight encounter cards (STR-D1/D2, D-20); four new encounters including this build's first street multi-round room, and STASH_IT finally activated after sitting authored and unwired since Q4 (STR-D3/D5, D-21); the same gate on district travel, mutually exclusive with the older silent carry-stop tax (STR-D4, D-22); a doorstep forcing Dre/Book/rent debts onto the day's own agenda, worst-first, into a shared three-tenant enforcement room, with zero new persisted state (DOOR-D1/D2, D-23); version/docs close-out plus closing `86bbjnh0x` (pool staging, verified against current code rather than trusted stale) and commenting implementation-slice-one on `86bbnk6en`. Save schema v24 → **v25** (`wander_quiet_streak`, PR A only — the doorstep derives every threshold instead of persisting one). Parity → **12,763 checks**, floor `MIN_CHECKS := 12763` |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

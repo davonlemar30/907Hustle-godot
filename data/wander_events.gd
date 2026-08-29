@@ -66,6 +66,137 @@ const SCRIPTS := preload("res://data/confrontation_scripts.gd")
 ##              the same machinery a blown lift uses, and deliberately the same,
 ##              because the web build made that call too ("reusing EncounterModal
 ##              — no new UI shell").
+##
+## ## The verb triad (SQ-D6, 0.6.0)
+##
+## Every ENCOUNTER card offers all three ROLES. A role is the structural
+## position a choice occupies; the LABEL is what that position says in this
+## card's voice, and the two are deliberately not the same thing:
+##
+##   fight      the CONTESTED road. The one the player chooses to take a roll
+##              on, that can go well or badly on their own answer. On a corner
+##              that is fists (STAND THERE, SWING); at a cruiser window it is
+##              your mouth (TALK TO THEM). The role names the position, not
+##              the act — that is the whole point of having roles at all.
+##   run        the AVOIDING road, also rolled. Keep moving, do not engage,
+##              get past it. It works until it does not.
+##   surrender  the GUARANTEED out. Always deterministic, always present, and
+##              it always costs something real — cash, cargo, or standing.
+##
+## `surrender` being a declared role rather than a per-card habit is how "one
+## guaranteed out per round" stops depending on an author remembering. The
+## suite asserts every card declares all three and that its `surrender` road is
+## in `deterministic` — see `tests/confrontation/confrontation_runner.gd`.
+##
+## Extra roads beyond the triad are allowed and carry no role: `stash_it` on
+## the police stop is one action added under its own condition, not a fourth
+## structural position. Path-specific scripts (the Lift, the corner, the
+## meetup, Stickup's rooms) keep their own authored vocabularies entirely —
+## the triad is the general street's rule, not the whole game's.
+
+const ROLE_FIGHT := "fight"
+const ROLE_RUN := "run"
+const ROLE_SURRENDER := "surrender"
+const ROLES: Array[String] = [ROLE_FIGHT, ROLE_RUN, ROLE_SURRENDER]
+
+## ## Observations (SQ-D8, 0.6.0)
+##
+## Every encounter writes one, on RESOLUTION, keyed by the road taken and the
+## tier reached, at the district it happened in. A card may author its own row
+## (`observation: {npc, type, event}` on the encounter payload, optionally
+## per-role under `observations`); a card that authors none falls back to
+## `OBSERVATION_FALLBACK` below rather than writing nothing, which is what
+## makes the rule hold for cards nobody has written yet.
+##
+## Curtis is the fallback listener because his is the build's one THREAT lens
+## and the only one that reads the street directly — defiance, submission,
+## violence and territory are all his vocabulary. A card whose observation
+## genuinely belongs to somebody else says so in its own row.
+const OBSERVATION_NPC := "curtis"
+
+## Role x tier -> the shape written when a card authors nothing. Tiers are the
+## resolver's four plus `deterministic`; `surrender` only ever reaches the last
+## one, because a deterministic road is never rolled.
+const OBSERVATION_FALLBACK := {
+	ROLE_FIGHT: {
+		"clean": {"type": "defiance", "event": "held_the_block"},
+		"messy": {"type": "violence", "event": "street_fight"},
+		"failure": {"type": "violence", "event": "street_fight"},
+		"catastrophic": {"type": "violence", "event": "street_fight"},
+	},
+	ROLE_RUN: {
+		"clean": {"type": "discretion", "event": "walked_it_off"},
+		"messy": {"type": "discretion", "event": "walked_it_off"},
+		"failure": {"type": "heat_exposure", "event": "caught_in_the_open"},
+		"catastrophic": {"type": "heat_exposure", "event": "caught_in_the_open"},
+	},
+	ROLE_SURRENDER: {
+		"deterministic": {"type": "submission", "event": "gave_it_up"},
+		"clean": {"type": "submission", "event": "gave_it_up"},
+		"messy": {"type": "submission", "event": "gave_it_up"},
+		"failure": {"type": "submission", "event": "gave_it_up"},
+		"catastrophic": {"type": "submission", "event": "gave_it_up"},
+	},
+}
+
+## The authored row for one (card, choice, tier), or the fallback shape.
+## `roles` is the card's own choice_id -> role map; a choice with no role (the
+## conditional extras) resolves through the role its card names for it in
+## `observations`, and writes nothing only if the card names neither.
+static func observation_for(card: Dictionary, choice_id: String, tier: String) -> Dictionary:
+	var encounter: Dictionary = card.get("encounter", {})
+	var authored: Dictionary = encounter.get("observations", {})
+	if authored.has(choice_id):
+		var per_choice: Dictionary = authored[choice_id]
+		# A row may be flat (one shape for every tier) or keyed by tier.
+		if per_choice.has(tier):
+			return (per_choice[tier] as Dictionary).duplicate()
+		if per_choice.has("type"):
+			return per_choice.duplicate()
+		return {}
+	var role := role_of(card, choice_id)
+	if role.is_empty():
+		return {}
+	var by_tier: Dictionary = OBSERVATION_FALLBACK.get(role, {})
+	var row: Variant = by_tier.get(tier)
+	return (row as Dictionary).duplicate() if row is Dictionary else {}
+
+## The role one choice fills on this card, at the door OR inside its room.
+##
+## A room's verbs are declared per BEAT rather than on the card — SWING is the
+## fight road of three different situations and each one prices it its own way
+## — so a lookup that only read the card's own `roles` would find nothing for
+## every road the room offers, and the observation for a fight that took three
+## rounds would be the one road in the build that wrote nothing. Beats are
+## searched after the card so a card-level declaration always wins.
+static func role_of(card: Dictionary, choice_id: String) -> String:
+	var encounter: Dictionary = card.get("encounter", {})
+	var at_the_door := str((encounter.get("roles", {}) as Dictionary).get(choice_id, ""))
+	if not at_the_door.is_empty():
+		return at_the_door
+	for beat in ((encounter.get("room", {}) as Dictionary).get("beats", []) as Array):
+		var role := str(((beat as Dictionary).get("roles", {}) as Dictionary)
+			.get(choice_id, ""))
+		if not role.is_empty():
+			return role
+	return ""
+
+## Which crew calls a card admits (SQ-D9). Declared per card as
+## `admits_crew: true` on the encounter payload; the calls themselves and their
+## availability rules live in `data/confrontation_scripts.gd::CREW_CALLS`.
+static func admits_crew(card: Dictionary) -> bool:
+	return bool((card.get("encounter", {}) as Dictionary).get("admits_crew", false))
+
+## Every role this card declares, choice_id -> role.
+static func roles_of(card: Dictionary) -> Dictionary:
+	return (card.get("encounter", {}) as Dictionary).get("roles", {})
+
+## The one choice id filling `role` on this card, or "" if it declares none.
+static func choice_for_role(card: Dictionary, role: String) -> String:
+	for choice_id in roles_of(card).keys():
+		if str(roles_of(card)[choice_id]) == role:
+			return str(choice_id)
+	return ""
 
 ## The three intents (batch 13).
 ##
@@ -457,6 +588,14 @@ const CARDS: Array[Dictionary] = [
 			"opponent": "Two off the wall",
 			"shape": "confrontation",
 			"choices": ["stand", "walk", "hand_over"],
+			# SQ-D6. This card already offered all three positions; the roles
+			# make that structural instead of coincidental.
+			"roles": {"stand": ROLE_FIGHT, "walk": ROLE_RUN,
+				"hand_over": ROLE_SURRENDER},
+			# SQ-D9: two of them on a corner is exactly the situation Tone's
+			# own terms describe -- he is told when something has already
+			# started, not aimed at something you are starting.
+			"admits_crew": true,
 			"deterministic": ["hand_over"],
 			"base": {"stand": 0.45, "walk": 0.60},
 			# STAND is the fight verb (STR-D5): clean settles it on the spot —
@@ -485,6 +624,118 @@ const CARDS: Array[Dictionary] = [
 					"deterministic": {"health": 0, "cash_fraction": 1.0, "goods_fraction": 1.0},
 				},
 			},
+			# --- SQ-D7: the room, as three authored beats ---------------------
+			#
+			# 0.5.0 shipped this room as ONE verb re-rolled at `base - 0.10 x
+			# round` with generic per-round log copy. That is a re-roll at worse
+			# odds, not a new situation, and it is exactly what the chassis's
+			# round rule forbids -- `data/confrontation_scripts.gd`'s own header
+			# has said so since the loop was written ("a script whose stages
+			# read the same is a script with too many stages").
+			#
+			# Three beats, each a different fight: they close the distance, then
+			# somebody else joins, then the door is behind you. Each authors its
+			# own situation, its own offered roads, its own numbers and its own
+			# exit table. Odds still worsen across the room -- that is honest,
+			# a fight you are still in after two rounds IS going worse -- but
+			# the decay rides on top of a beat that changed, rather than being
+			# the only thing that changed.
+			#
+			# `banked` is health taken so far and carried to whichever exit ends
+			# it, unchanged from 0.5.0. `left` is bodies, not rounds: beat two
+			# adds one, which is what "somebody else joins" costs.
+			"room": {
+				"cap": 3,
+				"left_label": "IN YOUR WAY",
+				"beats": [
+					{
+						"beat": "They close the distance before you have finished deciding. One of them is already inside arm's reach and the other has stopped talking.",
+						"log": "It does not end there. The first one steps in.",
+						"left": 2,
+						"choices": ["swing", "break_for_it", "give_it_up"],
+						"roles": {"swing": ROLE_FIGHT, "break_for_it": ROLE_RUN,
+							"give_it_up": ROLE_SURRENDER},
+						"deterministic": ["give_it_up"],
+						"base": {"swing": 0.52, "break_for_it": 0.55},
+						"banked": 3,
+						"effects": {
+							"swing": {
+								"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+								"messy": {"escalate": true},
+								"failure": {"escalate": true},
+								"catastrophic": {"health": 12, "cash_fraction": 1.0, "goods_fraction": 1.0},
+							},
+							"break_for_it": {
+								"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+								"messy": {"health": 2, "cash_fraction": 0.25, "goods_fraction": 0.25},
+								"failure": {"escalate": true},
+								"catastrophic": {"health": 10, "cash_fraction": 1.0, "goods_fraction": 1.0},
+							},
+							"give_it_up": {
+								"deterministic": {"health": 0, "cash_fraction": 1.0, "goods_fraction": 1.0},
+							},
+						},
+					},
+					{
+						"beat": "A third one comes off the wall behind you, unhurried, and now the two in front of you are not in a hurry either. Nobody here needs this to be quick.",
+						"log": "Somebody else joins. That is three.",
+						"left": 3,
+						"choices": ["swing", "break_for_it", "give_it_up"],
+						"roles": {"swing": ROLE_FIGHT, "break_for_it": ROLE_RUN,
+							"give_it_up": ROLE_SURRENDER},
+						"deterministic": ["give_it_up"],
+						# Three of them: swinging is worse, and running is worse
+						# than swinging because somebody is behind you now.
+						"base": {"swing": 0.38, "break_for_it": 0.30},
+						"banked": 4,
+						"effects": {
+							"swing": {
+								"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+								"messy": {"escalate": true},
+								"failure": {"escalate": true},
+								"catastrophic": {"health": 14, "cash_fraction": 1.0, "goods_fraction": 1.0},
+							},
+							"break_for_it": {
+								"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+								"messy": {"health": 4, "cash_fraction": 0.5, "goods_fraction": 0.5},
+								"failure": {"escalate": true},
+								"catastrophic": {"health": 12, "cash_fraction": 1.0, "goods_fraction": 1.0},
+							},
+							"give_it_up": {
+								"deterministic": {"health": 0, "cash_fraction": 1.0, "goods_fraction": 1.0},
+							},
+						},
+					},
+					{
+						"beat": "You have your back against a door that does not open from this side. There is no third round after this one and everybody standing here knows it.",
+						"log": "The door is behind you. This is the last of it.",
+						"left": 3,
+						# The last beat drops the run: there is nowhere to run TO,
+						# and offering a road that the situation has already closed
+						# is the kind of lie the round rule exists to stop. The
+						# guaranteed out stays, which is the rule that matters.
+						"choices": ["swing", "give_it_up"],
+						"roles": {"swing": ROLE_FIGHT, "give_it_up": ROLE_SURRENDER},
+						"deterministic": ["give_it_up"],
+						"base": {"swing": 0.44},
+						"banked": 0,
+						"effects": {
+							"swing": {
+								"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+								# Nothing escalates out of the last beat: `messy`
+								# and `failure` are terminal here, priced between
+								# a clean win and the catastrophe.
+								"messy": {"health": 5, "cash_fraction": 0.25, "goods_fraction": 0.25},
+								"failure": {"health": 9, "cash_fraction": 0.5, "goods_fraction": 0.5},
+								"catastrophic": {"health": 15, "cash_fraction": 1.0, "goods_fraction": 1.0},
+							},
+							"give_it_up": {
+								"deterministic": {"health": 0, "cash_fraction": 1.0, "goods_fraction": 1.0},
+							},
+						},
+					},
+				],
+			},
 		},
 	},
 	{
@@ -509,10 +760,47 @@ const CARDS: Array[Dictionary] = [
 			# always was. The WATCHED floor this card already gates on is
 			# untouched by any of this — carrying product only ever ADDS a
 			# third road, never changes what makes the stop happen at all.
-			"choices": ["talk", "keep_walking"],
-			"deterministic": [],
+			#
+			# SQ-D6, the missing out. This card shipped in 0.5.0 with
+			# `"deterministic": []` -- two rolled roads and no guaranteed one,
+			# which breaks the chassis rule outright. HANDS OUT is that road:
+			# you end it on their terms. It is deterministic, it costs, and it
+			# is not free -- a stop that ends with your product in an evidence
+			# bag is still a stop that ended.
+			#
+			# No crew call here (SQ-D9): Tone standing next to you does not end
+			# a police stop, it adds a second person in cuffs.
+			"choices": ["talk", "keep_walking", "hands_out"],
+			"roles": {"talk": ROLE_FIGHT, "keep_walking": ROLE_RUN,
+				"hands_out": ROLE_SURRENDER},
+			"admits_crew": false,
+			"deterministic": ["hands_out"],
 			"base": {"talk": 0.62, "keep_walking": 0.48},
+			# A police stop is not a corner beef, and the roles' generic
+			# fallback would write `violence` for a road that is entirely
+			# verbal. Authored per road instead.
+			"observations": {
+				"talk": {"type": "heat_exposure", "event": "stopped_and_questioned"},
+				"keep_walking": {
+					"clean": {"type": "discretion", "event": "walked_past_a_stop"},
+					"messy": {"type": "discretion", "event": "walked_past_a_stop"},
+					"failure": {"type": "heat_exposure", "event": "searched_on_the_street"},
+					"catastrophic": {"type": "heat_exposure", "event": "searched_on_the_street"},
+				},
+				"hands_out": {"type": "submission", "event": "searched_on_the_street"},
+				"stash_it": {
+					"clean": {"type": "discretion", "event": "carried_clean_through"},
+					"failure": {"type": "heat_exposure", "event": "searched_on_the_street"},
+				},
+			},
 			"effects": {
+				# HANDS OUT: the search happens and it finds what is on you.
+				# Cheaper than a failed KEEP WALKING because nothing escalated,
+				# and it takes no health at all -- nobody hit anybody.
+				"hands_out": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0,
+						"goods_fraction": 1.0, "heat": 0.5},
+				},
 				"talk": {
 					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
 					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
@@ -558,10 +846,44 @@ const CARDS: Array[Dictionary] = [
 			"definition_id": "wander_curtis_tax",
 			"opponent": "Curtis's man",
 			"shape": "negotiation",
-			"choices": ["pay_it", "push_back"],
+			# SQ-D6. PAY IT was already the guaranteed out; PUSH BACK was
+			# already the contested road. What this card never had was the
+			# third position -- the answer that is neither paying nor arguing.
+			# KEEP YOUR PACE is it: you do not stop, you do not answer, and you
+			# find out whether that was allowed.
+			"choices": ["push_back", "keep_pace", "pay_it"],
+			"roles": {"push_back": ROLE_FIGHT, "keep_pace": ROLE_RUN,
+				"pay_it": ROLE_SURRENDER},
+			"admits_crew": true,
 			"deterministic": ["pay_it"],
-			"base": {"push_back": 0.42},
+			"base": {"push_back": 0.42, "keep_pace": 0.50},
+			# Curtis's own ledger, both directions, the same shape
+			# `corner_push` authors in `confrontation_scripts.gd`.
+			"observations": {
+				"push_back": {
+					"clean": {"type": "defiance", "event": "refused_the_tax"},
+					"messy": {"type": "defiance", "event": "refused_the_tax"},
+					"failure": {"type": "violence", "event": "street_fight"},
+					"catastrophic": {"type": "violence", "event": "street_fight"},
+				},
+				"keep_pace": {
+					"clean": {"type": "defiance", "event": "walked_past_the_tax"},
+					"messy": {"type": "defiance", "event": "walked_past_the_tax"},
+					"failure": {"type": "submission", "event": "paid_the_tax"},
+					"catastrophic": {"type": "submission", "event": "paid_the_tax"},
+				},
+				"pay_it": {"type": "submission", "event": "paid_the_tax"},
+			},
 			"effects": {
+				# Walking past costs nothing when it works, and costs the toll
+				# plus interest when it does not -- the price of having made
+				# him ask twice.
+				"keep_pace": {
+					"clean": {"health": 0, "cash_flat": 0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_flat": 40, "goods_fraction": 0.0},
+					"failure": {"health": 2, "cash_flat": 60, "goods_fraction": 0.0},
+					"catastrophic": {"health": 6, "cash_flat": 80, "goods_fraction": 0.0},
+				},
 				# The known price. A flat toll rather than a percentage — the
 				# number is what buys the corner's patience, not a cut of
 				# anything specific being carried.
@@ -593,10 +915,33 @@ const CARDS: Array[Dictionary] = [
 			# variance answer for a player who wants respect out of it instead
 			# of just an uneventful walk; nothing here can cost more than a
 			# bruise, because sizing somebody up is not yet a fight.
-			"choices": ["hold_steady", "stare_back"],
-			"deterministic": [],
+			#
+			# SQ-D6, the second missing out. This card also shipped with
+			# `"deterministic": []`. CROSS THE STREET is the deterministic
+			# walk-past: nothing physical happens and nothing is taken, and it
+			# still costs -- you have shown them the block is theirs, and
+			# Curtis's ledger keeps that.
+			"choices": ["stare_back", "hold_steady", "cross_the_street"],
+			"roles": {"stare_back": ROLE_FIGHT, "hold_steady": ROLE_RUN,
+				"cross_the_street": ROLE_SURRENDER},
+			"admits_crew": true,
+			"deterministic": ["cross_the_street"],
 			"base": {"hold_steady": 0.70, "stare_back": 0.50},
+			"observations": {
+				"stare_back": {
+					"clean": {"type": "defiance", "event": "held_the_block"},
+					"messy": {"type": "defiance", "event": "held_the_block"},
+					"failure": {"type": "violence", "event": "street_fight"},
+					"catastrophic": {"type": "violence", "event": "street_fight"},
+				},
+				"hold_steady": {"type": "discretion", "event": "walked_it_off"},
+				"cross_the_street": {"type": "submission", "event": "ceded_the_corner"},
+			},
 			"effects": {
+				# Costs nothing a meter reads. What it costs is in the ledger.
+				"cross_the_street": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
 				"hold_steady": {
 					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
 					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
@@ -629,6 +974,12 @@ const CHOICE_LABELS := {
 	"hand_over": "GIVE IT UP",
 	"talk": "TALK TO THEM",
 	"keep_walking": "DO NOT STOP",
+	# SQ-D6's two missing surrender roads, and the run road Curtis's man never
+	# had. Labels stay in each card's own voice -- the ROLE is the thing the
+	# chassis reads, and it is not any of these strings.
+	"hands_out": "HANDS OUT",
+	"keep_pace": "KEEP YOUR PACE",
+	"cross_the_street": "CROSS THE STREET",
 	# Duplicated from SCRIPTS.STASH_IT's own "label" rather than read off it:
 	# GDScript's const initializer must be a compile-time-foldable expression,
 	# and a cross-script dictionary subscript is not one. The value this
@@ -639,11 +990,18 @@ const CHOICE_LABELS := {
 	"push_back": "PUSH BACK",
 	"hold_steady": "HOLD STEADY",
 	"stare_back": "STARE BACK",
-	# The shakedown room's own two verbs (0.5.0 PR B) — KEEP FIGHTING re-rolls
-	# STAND at the room's own escalating odds; GIVE IT UP is the guaranteed
-	# out mid-fight, the same shape HAND OVER already is at the door.
-	"keep_fighting": "KEEP FIGHTING",
+	# The shakedown room's verbs. SQ-D7 replaced 0.5.0's single KEEP FIGHTING
+	# (which re-rolled STAND at decaying odds) with the triad, offered fresh
+	# against each authored beat: SWING is the fight, BREAK FOR IT is the run
+	# where the beat still has one, GIVE IT UP is the guaranteed out mid-fight
+	# — the same shape HAND OVER already is at the door.
+	"swing": "SWING",
+	"break_for_it": "BREAK FOR IT",
 	"give_it_up": "GIVE IT UP",
+	# SQ-D9's chassis actions. Copy is `CREW_CALLS`' own; the labels are here
+	# because this is where the wander adapter looks its buttons up.
+	"call_tone": "CALL TONE",
+	"let_deshawn_talk": "LET DESHAWN TALK",
 }
 
 const CHOICE_COPY := {
@@ -658,8 +1016,14 @@ const CHOICE_COPY := {
 	"push_back": "Tell him the corner does not have your name on it either.",
 	"hold_steady": "Do not blink first. That is the whole test.",
 	"stare_back": "Make them remember whose block this is too.",
-	"keep_fighting": "It is not finished. Neither are you.",
+	"hands_out": "Hands where they can see them. It ends on their terms, and it ends.",
+	"keep_pace": "Same speed, same direction, no answer. See if that is allowed.",
+	"cross_the_street": "Give them the block. It costs nothing you can count.",
+	"swing": "Hit first and keep hitting. This is not a conversation any more.",
+	"break_for_it": "One gap, one chance. Take it before it closes.",
 	"give_it_up": "Whatever you are holding stops being worth this.",
+	"call_tone": "He ends it by standing there. Costs a favor.",
+	"let_deshawn_talk": "His voice, not yours. Everybody walks.",
 }
 
 static func card_by_id(card_id: String) -> Dictionary:

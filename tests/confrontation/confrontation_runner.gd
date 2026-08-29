@@ -43,7 +43,18 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## split in both directions, the shared builder's single ownership of the
 ## chain's copy, the duplicated palette asserted equal, and the blocking
 ## sheet's two removed dismissal gestures.
-const MIN_CHECKS := 286
+## 0.6.0 (SQ-D6..D9, PR B): +288 for check block 15. The bulk of that is the
+## two STRUCTURAL arms, which sweep every encounter card x every role x every
+## tier rather than driving one example each: 0.5.0 shipped two of four cards
+## with no guaranteed out at all, on a chassis whose stated rule is one
+## guaranteed out per round, and "an author remembered" is exactly the
+## enforcement that failed. These arms are what replace it. The remaining ~16
+## are the two DRIVEN arms: an encounter resolved through the real dispatch
+## putting one row in the real ledger at the district the chain opened in, and
+## the doorstep's enforcement room admitting the same calls on the same terms,
+## and the arm that pins the beat to the SITUATION LINE — the one place the
+## room's own copy was reaching the chip and the log and not the sentence.
+const MIN_CHECKS := 630
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -75,6 +86,7 @@ func _ready() -> void:
 	_check_lift_hand_it_back()
 	_check_stick_caught()
 	_check_encounter_overlay()
+	_check_verb_triad()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -1112,3 +1124,447 @@ func _left_click() -> InputEventMouseButton:
 	event.button_index = MOUSE_BUTTON_LEFT
 	event.pressed = true
 	return event
+
+# --- check block 15: SQ-D6..D9, the triad and what it made structural -------
+#
+# The four arms here are what turn four rulings into things a future author
+# cannot quietly break. Two of them exist because 0.5.0 shipped cards that DID
+# break the rule they were written under — `wander_stopped_on_foot` and
+# `wander_young_ones` both shipped with `"deterministic": []`, no guaranteed
+# out at all, on a chassis whose stated rule is one guaranteed out per round.
+# Care was what enforced that rule, and care missed twice out of four.
+
+const EVENTS := preload("res://data/wander_events.gd")
+
+func _check_verb_triad() -> void:
+	_check_roles_structural()
+	_check_room_beats_authored()
+	_check_observation_rows()
+	_check_observation_written()
+	_check_beat_is_the_situation()
+	_check_crew_calls()
+	_check_doorstep_crew_calls()
+
+## SQ-D6, the arm that makes the ruling unbreakable: EVERY encounter card
+## declares all three roles, each role is filled exactly once, and the
+## `surrender` road is in `deterministic`.
+##
+## Read off the card table rather than off a driven encounter, deliberately —
+## a card that is currently ungated out of the pool is still a card, and the
+## day its requirement is met it must already obey this.
+func _check_roles_structural() -> void:
+	var cards: Array = []
+	for card in EVENTS.CARDS:
+		if str((card as Dictionary)["kind"]) == EVENTS.KIND_ENCOUNTER:
+			cards.append(card)
+	a.check("there are encounter cards to check at all", not cards.is_empty())
+
+	for entry in cards:
+		var card: Dictionary = entry
+		var card_id := str(card["id"])
+		var encounter: Dictionary = card["encounter"]
+		var roles: Dictionary = EVENTS.roles_of(card)
+		var choices: Array = encounter["choices"]
+		var deterministic: Array = encounter.get("deterministic", [])
+
+		for role in EVENTS.ROLES:
+			var filled := str(EVENTS.choice_for_role(card, role))
+			a.check("%s declares a %s road (got '%s')" % [card_id, role, filled],
+				not filled.is_empty())
+			a.check("%s's %s road is one of its own choices" % [card_id, role],
+				filled in choices)
+
+		# Exactly once, not at least once: two choices claiming `surrender`
+		# would make "the guaranteed out" ambiguous, and the chassis reads it
+		# as a single road.
+		var counts: Dictionary = {}
+		for choice_id in roles.keys():
+			var role_name := str(roles[choice_id])
+			counts[role_name] = int(counts.get(role_name, 0)) + 1
+		for role in EVENTS.ROLES:
+			a.eq_int("%s fills %s exactly once" % [card_id, role],
+				int(counts.get(role, 0)), 1)
+
+		# The rule this whole arm exists for.
+		var out := str(EVENTS.choice_for_role(card, EVENTS.ROLE_SURRENDER))
+		a.check("%s's surrender road '%s' is deterministic" % [card_id, out],
+			out in deterministic)
+		# ...and the two rolled roads are NOT, or the odds would render as
+		# CERTAIN on a road that rolls.
+		for role in [EVENTS.ROLE_FIGHT, EVENTS.ROLE_RUN]:
+			var rolled := str(EVENTS.choice_for_role(card, role))
+			a.check("%s's %s road '%s' is not deterministic"
+				% [card_id, role, rolled], not rolled in deterministic)
+			a.check("%s's %s road has an authored base chance"
+				% [card_id, role], (encounter.get("base", {}) as Dictionary).has(rolled))
+
+		# Every offered road has a label, a line, and an effects row per tier.
+		for choice_id in choices:
+			a.check("%s's '%s' has a label" % [card_id, str(choice_id)],
+				not str(EVENTS.CHOICE_LABELS.get(str(choice_id), "")).is_empty())
+			a.check("%s's '%s' has copy" % [card_id, str(choice_id)],
+				not str(EVENTS.CHOICE_COPY.get(str(choice_id), "")).is_empty())
+			a.check("%s's '%s' has an effects table" % [card_id, str(choice_id)],
+				(encounter.get("effects", {}) as Dictionary).has(str(choice_id)))
+
+## SQ-D7 read structurally. The parity suite drives the room; this asserts the
+## AUTHORING rule that makes driving it worth anything — every beat is its own
+## situation, with its own copy, its own roads and its own numbers.
+func _check_room_beats_authored() -> void:
+	for entry in EVENTS.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != EVENTS.KIND_ENCOUNTER:
+			continue
+		var room: Dictionary = (card["encounter"] as Dictionary).get("room", {})
+		if room.is_empty():
+			continue
+		var card_id := str(card["id"])
+		var beats: Array = room.get("beats", [])
+		a.check("%s's room authors beats" % card_id, not beats.is_empty())
+		a.check("%s's room never authors past the chassis cap" % card_id,
+			beats.size() <= int(SCRIPTS.ROUND_CAP))
+		a.eq_int("%s's room cap matches the chassis cap" % card_id,
+			int(room.get("cap", 0)), int(SCRIPTS.ROUND_CAP))
+
+		var seen: Array = []
+		for index in beats.size():
+			var beat: Dictionary = beats[index]
+			var text := str(beat.get("beat", ""))
+			a.check("%s beat %d has its own situation copy" % [card_id, index],
+				not text.is_empty())
+			a.check("%s beat %d is not a repeat of an earlier one"
+				% [card_id, index], not text in seen)
+			seen.append(text)
+			a.check("%s beat %d has its own round-log line" % [card_id, index],
+				not str(beat.get("log", "")).is_empty())
+			# The rule that survives every beat: one guaranteed out, always.
+			var out := ""
+			for choice_id in (beat.get("roles", {}) as Dictionary).keys():
+				if str((beat["roles"] as Dictionary)[choice_id]) == EVENTS.ROLE_SURRENDER:
+					out = str(choice_id)
+			a.check("%s beat %d declares a surrender road" % [card_id, index],
+				not out.is_empty())
+			a.check("%s beat %d's surrender road is deterministic" % [card_id, index],
+				out in (beat.get("deterministic", []) as Array))
+			a.check("%s beat %d offers its surrender road" % [card_id, index],
+				out in (beat.get("choices", []) as Array))
+			# ...and every rolled road it offers has a number and a table.
+			for choice_id in (beat.get("choices", []) as Array):
+				if str(choice_id) == out:
+					continue
+				a.check("%s beat %d's '%s' has a base chance"
+					% [card_id, index, str(choice_id)],
+					(beat.get("base", {}) as Dictionary).has(str(choice_id)))
+				a.check("%s beat %d's '%s' has an effects table"
+					% [card_id, index, str(choice_id)],
+					(beat.get("effects", {}) as Dictionary).has(str(choice_id)))
+
+## SQ-D8: every road of every card resolves to a writable observation — either
+## the card's own authored row or the role fallback — and never to nothing.
+##
+## Structural for the same reason as the roles arm: the rule is "every
+## encounter writes one", and a card added tomorrow has to satisfy it the day
+## it is added, not the day somebody happens to drive it.
+func _check_observation_rows() -> void:
+	var exposure: Node = get_node_or_null("/root/Exposure")
+	if exposure == null:
+		a.check("Exposure is available for the observation arms", false)
+		return
+	var tiers: Array = ["clean", "messy", "failure", "catastrophic"]
+	for entry in EVENTS.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != EVENTS.KIND_ENCOUNTER:
+			continue
+		var card_id := str(card["id"])
+		var roles: Dictionary = EVENTS.roles_of(card)
+		# Every road the card offers AT THE DOOR, and every road any of its
+		# BEATS offers inside a room. The room's roads were the gap: SWING is
+		# declared per beat, not on the card, so a lookup that only read the
+		# card's own roles found nothing for it — and a fight that took three
+		# rounds was the one resolution in the build that wrote no observation
+		# at all. Found live, on the real build, after the structural arm above
+		# passed clean; this is what makes that impossible to repeat.
+		var all_roads: Dictionary = {}
+		for choice_id in roles.keys():
+			all_roads[str(choice_id)] = str(roles[choice_id])
+		for beat in (((card["encounter"] as Dictionary).get("room", {}) as Dictionary)
+				.get("beats", []) as Array):
+			for choice_id in ((beat as Dictionary).get("roles", {}) as Dictionary).keys():
+				all_roads[str(choice_id)] = str((beat["roles"] as Dictionary)[choice_id])
+		for choice_id in all_roads.keys():
+			var role := str(all_roads[choice_id])
+			var check_tiers: Array = ["deterministic"] if role == EVENTS.ROLE_SURRENDER \
+				else tiers
+			for tier in check_tiers:
+				var row: Dictionary = EVENTS.observation_for(card, str(choice_id), str(tier))
+				a.check("%s/%s/%s resolves to an observation"
+					% [card_id, str(choice_id), str(tier)], not row.is_empty())
+				# A category Exposure does not know is dropped with a warning,
+				# which is a silent no-write in everything but the log.
+				a.check("%s/%s/%s names a category Exposure knows"
+					% [card_id, str(choice_id), str(tier)],
+					str(row.get("type", "")) in exposure.CATEGORIES)
+				a.check("%s/%s/%s names an event" % [card_id, str(choice_id), str(tier)],
+					not str(row.get("event", "")).is_empty())
+				var npc := str(row.get("npc", EVENTS.OBSERVATION_NPC))
+				a.check("%s/%s/%s names an NPC with a lens"
+					% [card_id, str(choice_id), str(tier)],
+					exposure.NPC_LENSES.has(npc))
+
+## SQ-D9: availability gating, once per loop, no verb burned, and the ruling's
+## own exclusion — a police stop admits none.
+func _check_crew_calls() -> void:
+	var wander: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+
+	# The ruling's per-card answer, read off the cards themselves.
+	a.eq_bool("the shakedown admits crew calls",
+		EVENTS.admits_crew(EVENTS.card_by_id("wander_shakedown")), true)
+	a.eq_bool("the young ones admit crew calls",
+		EVENTS.admits_crew(EVENTS.card_by_id("wander_young_ones")), true)
+	a.eq_bool("Curtis's tax admits crew calls",
+		EVENTS.admits_crew(EVENTS.card_by_id("wander_curtis_tax")), true)
+	a.eq_bool("a police stop admits NONE",
+		EVENTS.admits_crew(EVENTS.card_by_id("wander_stopped_on_foot")), false)
+
+	# --- not recruited: no call, on a card that admits them ------------------
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.crew_records = {}
+	gs.crew_assignments = {}
+	wander._play_encounter(EVENTS.card_by_id("wander_young_ones"), "test:crew:none")
+	var offered: Array = (gs.active_consequence.get("decision", {}) as Dictionary) \
+		.get("allowed_choices", [])
+	a.eq_bool("an unrecruited Tone is not offered", "call_tone" in offered, false)
+	gs.active_consequence = {}
+
+	# --- recruited, loyal, unassigned: offered, and deterministic ------------
+	_reset_probe()
+	gs.crew_records = {"tone": {"recruited": true, "status": "active", "loyalty": 4, "tier": 1}}
+	gs.crew_assignments = {}
+	wander._play_encounter(EVENTS.card_by_id("wander_young_ones"), "test:crew:ready")
+	var decision: Dictionary = gs.active_consequence.get("decision", {})
+	offered = decision.get("allowed_choices", [])
+	a.eq_bool("a recruited, loyal, unassigned Tone IS offered",
+		"call_tone" in offered, true)
+	a.eq_bool("...and the call is deterministic, never rolled",
+		"call_tone" in (decision.get("deterministic_choices", []) as Array), true)
+	a.eq_bool("...and it does not displace the card's own guaranteed out",
+		"cross_the_street" in (decision.get("deterministic_choices", []) as Array), true)
+	a.eq_int("...and the triad is still all there",
+		(offered as Array).size(), 4)
+
+	# The call resolves the encounter on its authored resolution, costs a point
+	# of loyalty, and burns no verb.
+	var loyalty_before: int = int((gs.crew_record("tone") as Dictionary).get("loyalty", 0))
+	var health_before: int = int(gs.health)
+	var summary: Dictionary = engine.active_summary()
+	a.check("the call dispatches", gm.dispatch("resolve_consequence_choice", {
+		"consequence_id": str(summary.get("consequence_id", "")),
+		"cause_id": str(summary.get("cause_id", "")),
+		"choice_id": "call_tone"}))
+	var result: Dictionary = (gs.active_consequence.get("decision", {}) as Dictionary) \
+		.get("result", {})
+	a.eq_str("Tone's call resolves WON",
+		str(result.get("resolution", "")), SCRIPTS.RESOLUTION_WON)
+	a.eq_int("a call costs exactly its authored loyalty",
+		int((gs.crew_record("tone") as Dictionary).get("loyalty", 0)),
+		loyalty_before - int(SCRIPTS.CREW_CALLS["call_tone"]["loyalty_cost"]))
+	a.eq_int("a call costs no health", int(gs.health), health_before)
+	a.eq_int("a call takes nothing carried", int(result.get("goods", 0)), 0)
+	a.eq_bool("a call burns no verb",
+		"call_tone" in (LOOP.loop_of(gs.active_consequence).get("burned", []) as Array),
+		false)
+	gm.dispatch("consequence_continue", {})
+	gs.active_consequence = {}
+
+	# --- assigned today: not offered ----------------------------------------
+	_reset_probe()
+	gs.crew_records = {"tone": {"recruited": true, "status": "active", "loyalty": 4, "tier": 1}}
+	gs.crew_assignments = {"tone": {"day": int(gs.day), "operation_id": "anything"}}
+	wander._play_encounter(EVENTS.card_by_id("wander_young_ones"), "test:crew:busy")
+	a.eq_bool("a Tone already spent today is not offered",
+		"call_tone" in ((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("allowed_choices", []) as Array), false)
+	gs.active_consequence = {}
+
+	# --- loyalty at zero: not offered ---------------------------------------
+	_reset_probe()
+	gs.crew_records = {"tone": {"recruited": true, "status": "active", "loyalty": 0, "tier": 1}}
+	gs.crew_assignments = {}
+	wander._play_encounter(EVENTS.card_by_id("wander_young_ones"), "test:crew:spent")
+	a.eq_bool("a Tone with no loyalty left is not offered",
+		"call_tone" in ((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("allowed_choices", []) as Array), false)
+	gs.active_consequence = {}
+
+	# --- once per loop: spent inside a room, gone from the next round --------
+	_reset_probe()
+	gs.crew_records = {"tone": {"recruited": true, "status": "active", "loyalty": 4, "tier": 1}}
+	gs.crew_assignments = {}
+	gs.inventory = {"weed": 6}
+	wander._play_encounter(EVENTS.card_by_id("wander_shakedown"), "test:crew:room")
+	var chain: Dictionary = gs.active_consequence
+	wander._open_shakedown_room(chain, "stand")
+	var room_choices: Array = (gs.active_consequence.get("decision", {}) as Dictionary) \
+		.get("allowed_choices", [])
+	a.eq_bool("a call is offered inside the room too",
+		"call_tone" in room_choices, true)
+	var loop: Dictionary = LOOP.loop_of(gs.active_consequence)
+	loop["crew_called"] = true
+	wander._present_beat(gs.active_consequence, loop, 1)
+	a.eq_bool("...and is gone from the next beat once spent",
+		"call_tone" in ((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("allowed_choices", []) as Array), false)
+	a.eq_bool("...while the beat's own guaranteed out is still there",
+		"give_it_up" in ((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("deterministic_choices", []) as Array), true)
+	gs.active_consequence = {}
+	gs.crew_records = {}
+	gs.crew_assignments = {}
+
+## SQ-D8 driven end to end, not just read off the table: an encounter resolved
+## through the real dispatch puts a row in the real ledger, at the district the
+## CHAIN opened in, exactly once.
+##
+## The receipt is the half that matters. A chain sits at `result` until the
+## player presses Continue, and a save taken there and reloaded twice would
+## write the same observation twice without one — the same exactly-once problem
+## `boost_caught:observation` already solved, borrowed rather than re-solved.
+func _check_observation_written() -> void:
+	var wander: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+	var exposure: Node = get_node_or_null("/root/Exposure")
+	if exposure == null:
+		a.check("Exposure is available for the write-through arm", false)
+		return
+
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.npc_ledgers = {}
+	gs.current_district_id = "north_star_lot"
+	wander._play_encounter(EVENTS.card_by_id("wander_young_ones"), "test:obs:write")
+	var opened_district := str(gs.active_consequence.get("district_id", ""))
+	var summary: Dictionary = engine.active_summary()
+	var cause_id := str(summary.get("cause_id", ""))
+
+	# The player answers, and then WALKS somewhere else before pressing
+	# Continue. The observation must still name where it happened.
+	a.check("the surrender road dispatches", gm.dispatch("resolve_consequence_choice", {
+		"consequence_id": str(summary.get("consequence_id", "")),
+		"cause_id": cause_id, "choice_id": "cross_the_street"}))
+	gs.current_district_id = "downtown"
+
+	var ledger: Array = exposure.ledger_of(EVENTS.OBSERVATION_NPC)
+	a.eq_int("resolving wrote exactly one observation", ledger.size(), 1)
+	if ledger.is_empty():
+		gs.active_consequence = {}
+		return
+	var row: Dictionary = ledger[0]
+	a.eq_str("...of the authored category",
+		str(row.get("type", "")), "submission")
+	a.eq_str("...with the authored event",
+		str(row.get("event", "")), "ceded_the_corner")
+	a.eq_str("...at the district the CHAIN opened in, not where the player is now",
+		str(row.get("location", "")), opened_district)
+	a.eq_int("...counted once", int(row.get("count", 0)), 1)
+
+	a.eq_bool("the observation receipt is claimed",
+		engine.has_receipt(cause_id, "wander_encounter:observation"), true)
+	# The reload case, simulated the way the engine itself would see it: the
+	# receipt outlives the chain's stage, so a second pass writes nothing.
+	wander._record_encounter_observation(gs.active_consequence,
+		"cross_the_street", "deterministic")
+	a.eq_int("a second pass over the same chain writes nothing",
+		(exposure.ledger_of(EVENTS.OBSERVATION_NPC) as Array).size(), 1)
+
+	gm.dispatch("consequence_continue", {})
+	gs.active_consequence = {}
+	gs.npc_ledgers = {}
+
+## SQ-D9's second named surface: the doorstep's enforcement room admits the
+## same calls on the same terms, through the same availability question.
+func _check_doorstep_crew_calls() -> void:
+	var doorstep: Object = gm.system("doorstep")
+	if doorstep == null:
+		a.check("the doorstep system is registered", false)
+		return
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.crew_records = {}
+	gs.crew_assignments = {}
+	doorstep._open_enforcement("rent", {})
+	a.eq_bool("no crew, no call in the enforcement room",
+		"call_tone" in ((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("allowed_choices", []) as Array), false)
+	gs.active_consequence = {}
+
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.crew_records = {"tone": {"recruited": true, "status": "active", "loyalty": 3, "tier": 1}}
+	gs.crew_assignments = {}
+	doorstep._open_enforcement("rent", {})
+	var decision: Dictionary = gs.active_consequence.get("decision", {})
+	a.eq_bool("an available Tone IS offered in the enforcement room",
+		"call_tone" in (decision.get("allowed_choices", []) as Array), true)
+	a.eq_bool("...deterministically",
+		"call_tone" in (decision.get("deterministic_choices", []) as Array), true)
+	a.eq_bool("...and the room's own YIELD is still the card's guaranteed out",
+		"yield" in (decision.get("deterministic_choices", []) as Array), true)
+
+	var health_before: int = int(gs.health)
+	var summary: Dictionary = _engine().active_summary()
+	a.check("the enforcement call dispatches", gm.dispatch("resolve_consequence_choice", {
+		"consequence_id": str(summary.get("consequence_id", "")),
+		"cause_id": str(summary.get("cause_id", "")), "choice_id": "call_tone"}))
+	a.eq_str("Tone ends the room the way a clean FIGHT does",
+		str((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("resolved_tier", "")), "fight_clean")
+	a.eq_int("...and nobody gets hurt doing it", int(gs.health), health_before)
+	a.eq_int("...at the authored loyalty cost",
+		int((gs.crew_record("tone") as Dictionary).get("loyalty", 0)), 2)
+	gs.active_consequence = {}
+	gs.crew_records = {}
+	gs.crew_assignments = {}
+
+## SQ-D7's on-screen half: whatever beat is live IS the situation the sheet
+## shows, on every chain kind that runs a room.
+##
+## This arm exists because the beat reached the STAGE chip and the round log
+## and did not reach the situation line — `situation_body` read the beat only
+## inside its `KIND_CONFRONTATION` arm, which was correct while the
+## confrontation chain was the only kind that ran a room. The wander room is
+## the second, and all three of its authored beats rendered under the card's
+## standing opener instead. Caught on the real build, after the structural and
+## driven arms both passed clean, which is exactly the class of thing a
+## screenshot catches and a state assertion does not.
+func _check_beat_is_the_situation() -> void:
+	var wander: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.inventory = {"weed": 6}
+	var card: Dictionary = EVENTS.card_by_id("wander_shakedown")
+	var beats: Array = (card["encounter"] as Dictionary)["room"]["beats"]
+	wander._play_encounter(card, "test:beat:situation")
+	wander._open_shakedown_room(gs.active_consequence, "stand")
+
+	var summary: Dictionary = engine.active_summary()
+	# Every authored beat, not just the first: the bug rendered the same wrong
+	# line on all three, so an arm that only checked one would have to be
+	# lucky as well as right.
+	for index in beats.size():
+		wander._present_beat(gs.active_consequence,
+			LOOP.loop_of(gs.active_consequence), index)
+		a.eq_str("beat %d is the situation the sheet renders" % index,
+			ENCOUNTER_SHEET.situation_body(engine, summary),
+			str((beats[index] as Dictionary)["beat"]))
+
+	# ...and with no room live, the kind's own standing line is still what
+	# shows. The fix is a precedence, not a replacement.
+	gs.active_consequence = {}
+	wander._play_encounter(card, "test:beat:no_room")
+	a.eq_str("with no beat live, the kind's own line still shows",
+		ENCOUNTER_SHEET.situation_body(engine, engine.active_summary()),
+		"You went out to see what was around. This is what was around.")
+	gs.active_consequence = {}

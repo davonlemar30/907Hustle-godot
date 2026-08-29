@@ -1761,6 +1761,60 @@ exposure observation.
 | screen smoke | 23/23 screens, 1101 touch | 23/23 screens, 1101 touch, +67 component |
 | territory / tips / dre | 170 / 93 / 404 | unchanged |
 
+### Real bugs caught in PR B
+
+3. **The room's own copy reached the chip and the log and not the sentence.**
+   `encounter_sheet.situation_body()` read `loop.beat` only inside its
+   `KIND_CONFRONTATION` arm — correct while the confrontation chain was the
+   only kind that ran a room. The wander shakedown's room is the second, so
+   all three of its newly authored beats rendered under the card's standing
+   opener ("You went out to see what was around"), with a correct STAGE 3/3
+   chip and a correct round log directly above and below the wrong line. The
+   structural arm and the driven arm both passed clean; a **screenshot** is
+   what caught it. Fixed by hoisting the beat above the kind match entirely —
+   "the situation IS the current beat" is what the round rule means on screen
+   and it was never a fact about one chain kind.
+
+4. **The room's roads wrote no observation at all.** SQ-D8's fallback resolves
+   a role, and a room declares its roles per BEAT rather than on the card
+   (SWING is the fight road of three different situations and each prices it
+   its own way). So `observation_for` found no role for SWING, returned `{}`,
+   and a fight that took three rounds became the one resolution in the build
+   that observed nothing. Found by driving the room live after the structural
+   arm — which only ever swept the card's own roles — passed clean. The arm
+   now sweeps every road any beat offers as well, which is the shape the rule
+   always meant.
+
+### Measured results, PR B
+
+| Suite | After PR A | After PR B |
+| --- | --- | --- |
+| parity | 12817 | 12836 |
+| confrontation | 286 | 630 |
+| save validation | 247 | 247 |
+| screen smoke | 23/23, 1101 touch, 67 component | unchanged |
+| territory / tips / dre | 170 / 93 / 404 | unchanged |
+
+Confrontation's +344 is mostly the two STRUCTURAL sweeps — every encounter
+card x every role x every tier, rather than one driven example each. That is
+deliberate and it is the point of the PR: 0.5.0 shipped two of four cards with
+no guaranteed out on a chassis whose stated rule is one guaranteed out per
+round, and "an author remembered" is precisely the enforcement that failed.
+
+**MEAS-D1, the encounter wall-clock.** Measured on the real build against the
+40-second budget, worst case (a full three-beat room, open to chain cleared):
+
+- **machine time: 30 / 31 / 31 / 46 ms** across four passes — sheet build,
+  three beat rebuilds, the commit, the result build and the clear.
+- **animation budget: 0.67 s** total, and it is fixed rather than per-round:
+  sheet entry 0.18 s + exit 0.14 s + one health-bar drain 0.35 s. A beat
+  change swaps content in place and re-fits; it does not re-enter.
+
+So the build's own contribution to a three-round encounter is under a second,
+and the 40-second budget is spent entirely on reading. The copy is what has to
+stay inside it, not the code, and three beats of ~30 words each plus three
+choice lanes reads inside 40 seconds comfortably.
+
 ### Why this PR carries this entry
 
 Same rule as every entry above: SQ-D1..D5 are load-bearing for PR A's own

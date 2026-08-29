@@ -726,6 +726,138 @@ func _conditional_choices(card_id: String) -> Array:
 		return ["stash_it"]
 	return []
 
+# --- SQ-D9: crew calls as chassis actions ------------------------------------
+#
+# `CREW_CALLS` has been authored in `data/confrontation_scripts.gd` since the
+# loop was written and nothing has ever consumed it. It is not a wander feature
+# and this is not the file that owns it: the rules (who, what resolution, what
+# it costs) stay in the script table, and this reads them the same way it reads
+# an authored `effects` row.
+#
+# Availability is the existing language, not a new one: recruited AND active
+# (`gs.is_recruited`, which folds both), loyalty above zero, and unassigned
+# today -- `crew_unassigned_today` is already how `systems/requirements.gd`
+# spells "they are around", and this asks the same question of the same field.
+#
+# Once per loop, and calling burns no verb: Tone is not your swing. Both of
+# those are enforced in `_crew_call_available` and `_resolve_crew_call` rather
+# than by the card, because they are chassis rules and a card that forgot one
+# would be a card that quietly broke the chassis.
+
+## Which calls this card admits AND could actually place right now, in
+## `CREW_CALLS` declaration order so the buttons never reshuffle.
+func _crew_calls_for(card: Dictionary, loop: Dictionary) -> Array:
+	if not EVENTS.admits_crew(card):
+		return []
+	if bool(loop.get("crew_called", false)):
+		return []
+	var out: Array = []
+	for call_id in SCRIPTS.CREW_CALLS.keys():
+		if _crew_call_available(str(call_id)):
+			out.append(str(call_id))
+	return out
+
+func _crew_call_available(call_id: String) -> bool:
+	var call: Dictionary = SCRIPTS.CREW_CALLS.get(call_id, {})
+	if call.is_empty():
+		return false
+	var crew_id := str(call.get("crew_id", ""))
+	if not gs.is_recruited(crew_id):
+		return false
+	if int((gs.crew_record(crew_id) as Dictionary).get("loyalty", 0)) <= 0:
+		return false
+	var entry: Variant = gs.crew_assignments.get(crew_id)
+	if entry is Dictionary and int((entry as Dictionary).get("day", -1)) == int(gs.day):
+		return false
+	return true
+
+## A call, resolved. Ends the encounter on the call's own authored resolution:
+## Tone ends it won, Deshawn ends it surrendered with the stakes returned --
+## which for a wander encounter means nothing is taken at all, because what was
+## on the table was what the player was carrying.
+##
+## Costs a point of loyalty and whatever Heat the call authors. The loyalty
+## cost is what stops this being a free out on every card that admits it: a
+## crew member you call twice a week is a crew member who stops answering.
+func _resolve_crew_call(chain: Dictionary, call_id: String) -> Dictionary:
+	var engine: Object = gm.system("consequence")
+	var call: Dictionary = SCRIPTS.CREW_CALLS.get(call_id, {})
+	var decision: Dictionary = chain.get("decision", {})
+	var crew_id := str(call.get("crew_id", ""))
+
+	var record: Dictionary = gs.crew_record(crew_id)
+	record["loyalty"] = maxi(0, int(record.get("loyalty", 0))
+		- int(call.get("loyalty_cost", 1)))
+	gs.crew_records[crew_id] = record
+
+	var heat_gain: float = 0.0
+	if float(call.get("heat", 0.0)) > 0.0:
+		heat_gain = LOOP.apply_heat(gs, gm, float(call["heat"]), "wander_encounter")
+
+	var resolution := str(call.get("resolution", SCRIPTS.RESOLUTION_WON))
+	if resolution == SCRIPTS.RESOLUTION_WON:
+		gs.log_activity("Tone gets there before it goes anywhere. Nobody argues with that.", GREEN)
+	else:
+		gs.log_activity("Deshawn talks it down to nothing. Everybody walks.", GREEN)
+
+	# The loop is over however it was called, so the call is stamped on it —
+	# a reload mid-chain must not offer a call that has already been spent.
+	var loop: Dictionary = LOOP.loop_of(chain)
+	if not loop.is_empty():
+		loop["crew_called"] = true
+		LOOP.append_log(loop, "You made a call. It ended there.")
+		decision["loop"] = loop
+
+	var result := {
+		"choice_id": call_id, "tier": "deterministic", "resolution": resolution,
+		"arrested": false, "banned": false,
+		"cash": 0, "goods": 0, "health": 0, "heat": heat_gain, "pressure": 0,
+		"take_disposition": "keep",
+	}
+	decision["resolved_tier"] = "deterministic"
+	decision["result"] = result
+	chain["decision"] = decision
+	_record_encounter_observation(chain, call_id, "deterministic")
+	engine.advance_stage(engine.STAGE_RESULT)
+	return {"ok": true, "tier": "deterministic", "arrested": false}
+
+# --- SQ-D8: every encounter writes an observation ----------------------------
+
+## One observation per RESOLVED encounter, at the district it happened in,
+## keyed by the road taken and the tier reached.
+##
+## Receipted on the chain's own cause (`boost.gd`'s `boost_caught:observation`
+## precedent), so a save reloaded at the result stage and continued cannot
+## write the same row twice. The receipt is claimed even when the row turns out
+## empty: "this chain already had its chance to observe" is the fact being
+## recorded, and re-asking on the next reload would be the bug.
+##
+## A crew call writes one too. Somebody watched Tone end it, and that is
+## exactly the kind of thing a THREAT lens keeps.
+func _record_encounter_observation(chain: Dictionary, choice_id: String,
+		tier: String) -> void:
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine == null:
+		return
+	var cause_id := str(chain.get("cause_id", ""))
+	if cause_id.is_empty() or not engine.record_receipt(cause_id,
+			"wander_encounter:observation"):
+		return
+	var card_id := str((chain.get("source", {}) as Dictionary).get("card_id", ""))
+	var card: Dictionary = EVENTS.card_by_id(card_id)
+	var row: Dictionary = EVENTS.observation_for(card, choice_id, tier)
+	if row.is_empty():
+		return
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure == null:
+		return
+	var npc := str(row.get("npc", EVENTS.OBSERVATION_NPC))
+	row.erase("npc")
+	# The district the chain OPENED in, not wherever the player is standing by
+	# the time they answered — a chain can outlive a travel across a reload.
+	row["location"] = str(chain.get("district_id", gs.current_district_id))
+	exposure.record_observation(npc, row)
+
 func _play_encounter(card: Dictionary, key: String) -> Dictionary:
 	var engine: Object = gm.system("consequence") if gm != null else null
 	var spec: Dictionary = card.get("encounter", {})
@@ -739,6 +871,12 @@ func _play_encounter(card: Dictionary, key: String) -> Dictionary:
 	for extra in _conditional_choices(card_id):
 		if not extra in choices:
 			choices.append(extra)
+	# SQ-D9. Appended after the card's own roads so the triad keeps its
+	# authored vertical order and a call reads as the extra thing it is.
+	var crew_calls: Array = _crew_calls_for(card, {})
+	for call_id in crew_calls:
+		if not call_id in choices:
+			choices.append(str(call_id))
 	var base_table: Dictionary = spec.get("base", {})
 	if card_id == "wander_stopped_on_foot" and "stash_it" in choices:
 		base_table = base_table.duplicate()
@@ -779,7 +917,11 @@ func _play_encounter(card: Dictionary, key: String) -> Dictionary:
 		"decision": {
 			"definition_id": str(spec["definition_id"]),
 			"allowed_choices": choices,
-			"deterministic_choices": (spec.get("deterministic", []) as Array).duplicate(),
+			# A crew call is deterministic by construction -- it does not roll,
+			# it ends the encounter on the authored resolution -- so it joins
+			# the card's own guaranteed out rather than needing odds.
+			"deterministic_choices": (spec.get("deterministic", []) as Array)
+				.duplicate() + crew_calls,
 			"resolver_inputs": inputs,
 			"shown_probabilities": shown,
 			"arrest_risks": {},
@@ -942,11 +1084,17 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	var source: Dictionary = chain.get("source", {})
 	var card_id := str(source.get("card_id", ""))
 
-	# The shakedown room (STR-D5): once `decision.loop` exists, every further
-	# commit on this chain is a round of it, never a fresh resolution — the
-	# same branch stickup.gd's own `resolve_consequence` takes for its rooms.
-	if card_id == "wander_shakedown" and LOOP.has_loop(chain):
-		return _shakedown_room_round(chain, choice_id)
+	# SQ-D9: a crew call ends the encounter wherever it was placed — at the
+	# door or mid-room — so it is answered before either of the branches below.
+	if SCRIPTS.CREW_CALLS.has(choice_id):
+		return _resolve_crew_call(chain, choice_id)
+
+	# The room (STR-D5, rewritten to authored beats by SQ-D7): once
+	# `decision.loop` exists, every further commit on this chain is a round of
+	# it, never a fresh resolution — the same branch stickup.gd's own
+	# `resolve_consequence` takes for its rooms.
+	if LOOP.has_loop(chain):
+		return _room_round(chain, choice_id)
 
 	var decision: Dictionary = chain.get("decision", {})
 	var encounter_shape := str(source.get("shape", "confrontation"))
@@ -986,6 +1134,9 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 
 	var applied: Dictionary = LOOP.apply_effects(gs, gm, effects, choice_id, "wander_encounter")
 	_feed_line_for(choice_id, tier)
+	# SQ-D8. On RESOLUTION, which is here — an escalating road has not resolved
+	# anything yet and the room writes its own when it finally ends.
+	_record_encounter_observation(chain, choice_id, tier)
 
 	var result := {
 		"choice_id": choice_id,
@@ -1075,138 +1226,226 @@ func _resolve_legacy(chain: Dictionary, choice_id: String, tier: String) -> Dict
 	decision["resolved_tier"] = tier
 	decision["result"] = result
 	chain["decision"] = decision
+	_record_encounter_observation(chain, choice_id, tier)
 	engine.advance_stage(engine.STAGE_RESULT)
 	return {"ok": true, "tier": tier, "arrested": false}
 
-# --- STR-D5: the shakedown room (0.5.0 PR B) ---------------------------------
+# --- the room (STR-D5, rewritten to authored beats by SQ-D7) -----------------
 #
-# The build's first street room outside Stickup's own. Deliberately simpler
-# than Stickup's stage/pot/beat script: a heist partitions an authored take
-# across authored physical stages, and a street mugging is not a heist — it
-# is one fight that either ends or does not. Two verbs (KEEP FIGHTING re-rolls
-# at escalating odds, GIVE IT UP is the guaranteed exit), a round cap, and a
-# round log satisfy STR-D5's "rounds, the round log, escalating odds" without
-# borrowing machinery authored for a different shape of encounter. No verb
-# gets burned across rounds — there is no third, one-time verb here to burn —
-# which is a real, disclosed scope difference from Stickup's own rooms, not
-# an oversight; `ConfrontationLoop`'s shared helpers are used everywhere they
-# apply (`loop_of`, `has_loop`, `append_log`, `present_round`) and left alone
-# everywhere they do not.
+# 0.5.0 shipped this as one verb (KEEP FIGHTING) re-rolled at
+# `base + (-0.10 x round)` with generic per-round log copy. That is a re-roll
+# at worse odds, not a new situation, and the chassis's own round rule forbids
+# it in as many words: "each stage is a NEW SITUATION... never a re-roll of the
+# last one" (`data/confrontation_scripts.gd`'s header). Two of the four 0.5.0
+# cards broke a rule the file that states it also owns; this closes one of
+# them.
+#
+# What the room is now: an index into the card's authored `room.beats`. Each
+# beat is its own situation with its own copy, its own offered roads, its own
+# numbers and its own exit table -- exactly the shape `STICK_SCRIPTS` and
+# `LIFT_BEATS` already have, which is why nothing new was invented to hold it.
+# The chassis half is still `ConfrontationLoop`'s shared helpers (`loop_of`,
+# `has_loop`, `append_log`, `burn`, `without_burned`, `present_round`) and the
+# room is still not a system.
+#
+# What is deliberately NOT here: escalating odds as a mechanic of their own.
+# The beats' own `base` tables already worsen (0.52 -> 0.38 on SWING), because
+# a fight you are still in after two rounds IS going worse -- but that lives in
+# the authored numbers where an author can read it, not in a constant applied
+# to a number that never changed.
 
-const SHAKEDOWN_ROUND_CAP := 3
-## LIFT_ESCALATION's own `verb_penalty`, matched rather than re-picked — the
-## nearest authored precedent for "an escalating room degrades its own odds
-## by a fixed step per round," so this reads as one house rule, not two.
-const SHAKEDOWN_ROUND_PENALTY := -0.10
+## The card's own room block, or {} for a card with no room.
+func _room_of(card_id: String) -> Dictionary:
+	return EVENTS.card_by_id(card_id).get("encounter", {}).get("room", {})
 
+func _beat_at(card_id: String, index: int) -> Dictionary:
+	var beats: Array = _room_of(card_id).get("beats", [])
+	if beats.is_empty():
+		return {}
+	return beats[clampi(index, 0, beats.size() - 1)]
+
+## Open the room on its FIRST authored beat. Reached from a card-level road
+## whose authored effects row says `escalate: true` -- the fight did not end
+## where it started.
 func _open_shakedown_room(chain: Dictionary, choice_id: String) -> Dictionary:
-	var engine: Object = gm.system("consequence")
 	var source: Dictionary = chain.get("source", {})
-	var decision: Dictionary = chain.get("decision", {})
-	var base_chance: float = float((decision.get("shown_probabilities", {}) as Dictionary)
-		.get(choice_id, 0.45))
+	var card_id := str(source.get("card_id", ""))
+	var room: Dictionary = _room_of(card_id)
+	if room.is_empty():
+		# A card that escalates without authoring a room is an authoring bug,
+		# not a crash: resolve it as the worst ordinary outcome of the road
+		# that escalated rather than leaving a chain with no next round.
+		return _resolve_legacy(chain, choice_id, "failure")
+
 	var loop: Dictionary = {
 		"round": 1,
-		"base_chance": base_chance,
+		"beat_index": 0,
 		"log": [],
 		"banked_health": 0,
+		"burned": [],
+		"crew_called": false,
 		# The shared stakes-strip chrome renders STAGE/#LEFT/BANKED for ANY
-		# non-empty loop. Boost's own escalation room hit the same "nothing to
-		# bank" case first: there is no cash riding on a fistfight, so BANKED
-		# stays honestly $0, and ROUNDS LEFT overrides the generic #LEFT chip
-		# for a countdown that actually means something here.
+		# non-empty loop. There is no cash riding on a fistfight, so BANKED
+		# stays honestly $0; #LEFT counts BODIES here (the beats author it),
+		# which is the chassis's own "they are people" promise.
 		"stage": 0,
-		"stage_count": SHAKEDOWN_ROUND_CAP,
-		"left_label": "ROUNDS LEFT",
-		"left": SHAKEDOWN_ROUND_CAP - 1,
+		"stage_count": int(room.get("cap", 3)),
+		"left_label": str(room.get("left_label", "IN YOUR WAY")),
+		"left": 0,
 		"banked": 0,
 	}
-	LOOP.append_log(loop, "It does not end there. Round one goes to nobody.")
 	gs.log_activity("They do not scatter. This is a fight now.", AMBER)
-	var shown: Dictionary = {"keep_fighting": clampf(base_chance + SHAKEDOWN_ROUND_PENALTY, 0.10, 0.95)}
-	# GIVE IT UP is deterministic every round, same guarantee HAND OVER
-	# always was at the door.
-	LOOP.present_round(chain, loop, ["keep_fighting", "give_it_up"], ["give_it_up"], shown)
-	gs.active_consequence = chain
-	return {"ok": true, "tier": "escalated", "arrested": false}
+	return _present_beat(chain, loop, 0)
 
-func _shakedown_room_round(chain: Dictionary, choice_id: String) -> Dictionary:
-	var engine: Object = gm.system("consequence")
-	var decision: Dictionary = chain.get("decision", {})
-	var loop: Dictionary = LOOP.loop_of(chain)
+## Put one authored beat on the table. The ONE place a beat becomes a round,
+## so the situation copy, the offered roads, the shown odds and the #LEFT chip
+## cannot come from different beats.
+func _present_beat(chain: Dictionary, loop: Dictionary, index: int) -> Dictionary:
 	var source: Dictionary = chain.get("source", {})
+	var card_id := str(source.get("card_id", ""))
+	var beat: Dictionary = _beat_at(card_id, index)
+	var cap: int = int(_room_of(card_id).get("cap", 3))
 
-	if choice_id == "give_it_up":
-		return _shakedown_room_exit(chain, loop, "deterministic", int(loop.get("banked_health", 0)))
+	loop["beat_index"] = index
+	loop["stage"] = index
+	loop["left"] = int(beat.get("left", 0))
+	# The situation IS the beat. `consequence_engine.loop_summary()` hands this
+	# to the sheet, which is what makes "each round is a new situation" a thing
+	# the player reads rather than a thing the code believes.
+	loop["beat"] = str(beat.get("beat", ""))
+	LOOP.append_log(loop, str(beat.get("log", "")))
 
-	var round_num: int = int(loop.get("round", 1))
-	var chance: float = clampf(float(loop.get("base_chance", 0.45))
-		+ SHAKEDOWN_ROUND_PENALTY * float(round_num), 0.10, 0.95)
-	var resolver: Object = gm.system("outcome_resolver")
-	var attributes: Object = gm.system("attributes")
-	var raw: int = int(attributes.effective("combat")) if attributes != null else 1
-	var tier := "failure"
-	if resolver != null:
-		tier = str((resolver.resolve_action("confrontation", chance, raw, gs.run_seed,
-			"%d:%s:stand:room" % [round_num, str(source.get("source_rng_key", ""))]
-			) as Dictionary)["tier"])
+	# Burned verbs come off the offer; the deterministic out never burns, so it
+	# survives this by construction rather than by exemption.
+	var offered: Array = LOOP.without_burned(loop, beat.get("choices", []))
+	for call_id in _crew_calls_for(EVENTS.card_by_id(card_id), loop):
+		if not call_id in offered:
+			offered.append(str(call_id))
+	var deterministic: Array = (beat.get("deterministic", []) as Array).duplicate()
+	for call_id in offered:
+		if SCRIPTS.CREW_CALLS.has(call_id) and not call_id in deterministic:
+			deterministic.append(call_id)
 
-	if tier == "clean":
-		LOOP.append_log(loop, "Round %d: it breaks your way. They back off." % round_num)
-		return _shakedown_room_exit(chain, loop, "clean", int(loop.get("banked_health", 0)))
-	if tier in ["failure", "catastrophic"]:
-		LOOP.append_log(loop, "Round %d: it does not break your way." % round_num)
-		return _shakedown_room_exit(chain, loop, tier, int(loop.get("banked_health", 0)))
+	var shown: Dictionary = {}
+	for choice_id in offered:
+		var base: Variant = (beat.get("base", {}) as Dictionary).get(str(choice_id))
+		if base != null:
+			shown[str(choice_id)] = float(base)
 
-	# MESSY: the fight keeps going, at a real cost banked toward whichever
-	# exit finally ends it. Capped at SHAKEDOWN_ROUND_CAP rounds — a street
-	# fight that has gone this long ends on the cap the same way it would
-	# have ended badly on its own.
-	var banked: int = int(loop.get("banked_health", 0)) + 4
-	loop["banked_health"] = banked
-	LOOP.append_log(loop, "Round %d: it gets loud again. Nobody has backed off yet." % round_num)
-	if round_num >= SHAKEDOWN_ROUND_CAP:
-		return _shakedown_room_exit(chain, loop, "messy", banked)
-	loop["round"] = round_num + 1
-	loop["stage"] = round_num
-	loop["left"] = SHAKEDOWN_ROUND_CAP - (round_num + 1)
-	var next_chance: float = clampf(float(loop.get("base_chance", 0.45))
-		+ SHAKEDOWN_ROUND_PENALTY * float(round_num + 1), 0.10, 0.95)
-	LOOP.present_round(chain, loop, ["keep_fighting", "give_it_up"], ["give_it_up"],
-		{"keep_fighting": next_chance})
+	LOOP.present_round(chain, loop, offered, deterministic, shown)
+	# `present_round` bumps `decision.round`; the loop's own round counter
+	# tracks beats, and the two are the same number here only because this room
+	# advances exactly one beat per round. Kept separate anyway: a room that
+	# ever repeats a beat would make them differ, and the commit receipt reads
+	# the decision's.
+	loop["round"] = index + 1
+	var decision: Dictionary = chain.get("decision", {})
+	decision["loop"] = loop
+	chain["decision"] = decision
 	gs.active_consequence = chain
-	return {"ok": true, "tier": "continued", "arrested": false}
+	return {"ok": true, "tier": "escalated", "arrested": false,
+		"beat": index, "cap": cap}
 
-## The room's own exit, on every road: deterministic give-up, a clean escape,
-## or the fight finally going badly (messy from the round cap, or an
-## outright failure/catastrophic roll). Cash and cargo route through
-## `LOOP.apply_effects` — a room is still a wander encounter underneath,
-## STR-D3's rule does not stop applying because it took three rounds instead
-## of one.
-func _shakedown_room_exit(chain: Dictionary, loop: Dictionary, exit_tier: String,
-		banked_health: int) -> Dictionary:
+## One committed answer inside the room.
+func _room_round(chain: Dictionary, choice_id: String) -> Dictionary:
+	var source: Dictionary = chain.get("source", {})
+	var card_id := str(source.get("card_id", ""))
+	var loop: Dictionary = LOOP.loop_of(chain)
+	var index: int = int(loop.get("beat_index", 0))
+	var beat: Dictionary = _beat_at(card_id, index)
+	var room: Dictionary = _room_of(card_id)
+	var cap: int = int(room.get("cap", 3))
+	var beats: Array = room.get("beats", [])
+
+	var deterministic: Array = beat.get("deterministic", [])
+	var tier := "deterministic"
+	if not choice_id in deterministic:
+		var resolver: Object = gm.system("outcome_resolver")
+		var attributes: Object = gm.system("attributes")
+		var role := str((beat.get("roles", {}) as Dictionary).get(choice_id, EVENTS.ROLE_FIGHT))
+		# Role decides the roll, not the label: the fight road is Combat on the
+		# `confrontation` shape, the run road is Combat on `escape` (mid-fight
+		# the problem is the grip, not the map — the same call Stickup's own
+		# fork made and recorded). Neither invents a shape the oracle does not
+		# already carry (SQ-D11).
+		var shape := "escape" if role == EVENTS.ROLE_RUN else "confrontation"
+		var chance: float = float((beat.get("base", {}) as Dictionary).get(choice_id, 0.45))
+		tier = "failure"
+		if resolver != null:
+			# Keyed on the BEAT rather than a round counter, varying component
+			# first (house style), so two beats offering the same verb never
+			# share a roll and a reload re-derives the same one.
+			tier = str((resolver.resolve_action(shape, chance,
+				int(attributes.effective("combat")) if attributes != null else 1,
+				gs.run_seed, "%d:%s:%s:room" % [index,
+					str(source.get("source_rng_key", "")), choice_id]
+				) as Dictionary)["tier"])
+
+	var effects: Dictionary = (beat.get("effects", {}) as Dictionary) \
+		.get(choice_id, {}).get(tier, {})
+
+	if bool(effects.get("escalate", false)):
+		# The chassis's verb-burn rule (Q6): a rolled verb that resolves plain
+		# `failure` is spent for the rest of the encounter. A `messy` that
+		# escalates does not burn — the verb still works, the fight just did
+		# not end.
+		if tier == "failure":
+			LOOP.burn(loop, choice_id)
+			LOOP.append_log(loop, "%s does not work twice." % str(
+				EVENTS.CHOICE_LABELS.get(choice_id, choice_id)).capitalize())
+		loop["banked_health"] = int(loop.get("banked_health", 0)) \
+			+ int(beat.get("banked", 0))
+		var next_index: int = index + 1
+		# The cap, and the end of the authored beats, are the same wall: a room
+		# that runs out of situations to author is a room that is over.
+		if next_index >= mini(cap, beats.size()):
+			return _room_exit(chain, loop, "messy", choice_id,
+				{"health": int(loop.get("banked_health", 0)) + 4,
+					"cash_fraction": 0.5, "goods_fraction": 0.5},
+				"Nobody wins outright. You both just stop.")
+		return _present_beat(chain, loop, next_index)
+
+	if effects.is_empty():
+		# An unauthored (choice, tier) pair. Ends the room rather than silently
+		# doing nothing, at the worst road's price, and the suite's own
+		# authored-table arm is what stops this ever being reached in shipped
+		# content.
+		effects = {"health": int(loop.get("banked_health", 0)) + 10,
+			"cash_fraction": 1.0, "goods_fraction": 1.0}
+
+	var costed: Dictionary = effects.duplicate()
+	costed["health"] = int(costed.get("health", 0)) + int(loop.get("banked_health", 0))
+	return _room_exit(chain, loop, tier, choice_id, costed,
+		_room_exit_line(tier, choice_id))
+
+func _room_exit_line(tier: String, choice_id: String) -> String:
+	if tier == "deterministic":
+		return "You give it up mid-fight. Whatever was in hand is gone."
+	match tier:
+		"clean":
+			return "It finally breaks your way. You keep what you had left."
+		"messy":
+			return "You get out of it. Not clean, and not for free."
+		"failure":
+			return "It does not break your way."
+	return "It goes badly, all the way through."
+
+## The room's exit, on every road. Cash and cargo route through
+## `LOOP.apply_effects` — a room is still a wander encounter underneath, and
+## STR-D3's rule does not stop applying because it took three rounds.
+func _room_exit(chain: Dictionary, loop: Dictionary, exit_tier: String,
+		choice_id: String, effects: Dictionary, line: String) -> Dictionary:
 	var engine: Object = gm.system("consequence")
 	var decision: Dictionary = chain.get("decision", {})
-	var effects: Dictionary
-	match exit_tier:
-		"deterministic":
-			effects = {"health": banked_health, "cash_fraction": 1.0, "goods_fraction": 1.0}
-			gs.log_activity("You give it up mid-fight. Whatever was in hand is gone.", AMBER)
-		"clean":
-			effects = {"health": banked_health, "cash_fraction": 0.0, "goods_fraction": 0.0}
-			gs.log_activity("It finally breaks your way. You keep what you had left.", GREEN)
-		"messy":
-			effects = {"health": banked_health + 4, "cash_fraction": 0.5, "goods_fraction": 0.5}
-			gs.log_activity("Nobody wins outright. You both just stop.", AMBER)
-		_:
-			effects = {"health": banked_health + 10, "cash_fraction": 1.0, "goods_fraction": 1.0}
-			gs.log_activity("It goes badly, all the way through.", AMBER)
+	gs.log_activity(line, GREEN if exit_tier == "clean" else AMBER)
+	LOOP.append_log(loop, line)
 
-	var applied: Dictionary = LOOP.apply_effects(gs, gm, effects, "stand", "wander_encounter")
+	var applied: Dictionary = LOOP.apply_effects(gs, gm, effects, choice_id,
+		"wander_encounter")
 	var result := {
-		"choice_id": "stand", "tier": exit_tier, "arrested": false, "banned": false,
+		"choice_id": choice_id, "tier": exit_tier, "arrested": false, "banned": false,
 		"cash": -int(applied["cash"]), "goods": -int(applied["goods"]),
-		"health": -int(applied["health"]), "heat": 0.0, "pressure": 0,
+		"health": -int(applied["health"]), "heat": float(applied["heat"]), "pressure": 0,
 		"take_disposition": "lose" if (int(applied["goods"]) > 0 or int(applied["cash"]) > 0) else "keep",
 		"room_log": (loop.get("log", []) as Array).duplicate(),
 	}
@@ -1214,5 +1453,6 @@ func _shakedown_room_exit(chain: Dictionary, loop: Dictionary, exit_tier: String
 	decision["result"] = result
 	decision["loop"] = loop
 	chain["decision"] = decision
+	_record_encounter_observation(chain, choice_id, exit_tier)
 	engine.advance_stage(engine.STAGE_RESULT)
 	return {"ok": true, "tier": exit_tier, "arrested": false}

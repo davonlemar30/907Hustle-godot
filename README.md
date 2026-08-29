@@ -424,15 +424,15 @@ scripts/check_glyph_coverage.py
 
 Each harness prints its own `<name>: PASS` line and CI greps for it, because a
 Godot run that dies part-way still exits 0. CI additionally fails any run whose
-log carries `SCRIPT ERROR` or `Invalid access`: a PASS line only says the checks
-that RAN all passed, and `screen_smoke.gd` calls `refresh()` while ignoring
-every error it raises. Smoke carries a structural gate of its own as of 0.2.1:
+log carries an engine `ERROR:`, `SCRIPT ERROR`, or `Invalid access`: a PASS line
+only says the checks that RAN all passed, and even an object leak can be reported
+after that line. Smoke carries a structural gate of its own as of 0.2.1:
 every screen's `ScrollContainer` subtree is walked for a Control stuck at
 `MOUSE_FILTER_STOP` or a button wired the wrong way, so the touch-scroll fix
 below can't regress silently.
 
-Current counts: parity 12,578 · save-validation 229 · territory 170 ·
-confrontation 212 · tips 93 · dre 331 · smoke 23/23 screens, 1,093 touch checks.
+Current counts: parity 12,591 · save-validation 235 · territory 170 ·
+confrontation 250 · tips 93 · dre 331 · smoke 23/23 screens, 1,093 touch checks.
 
 ## Architecture
 

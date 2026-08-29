@@ -155,14 +155,15 @@ jobs:
       # screens for as long as it did.
       #
       # So stderr is a gate now. `SCRIPT ERROR` is Godot's prefix for an
-      # uncaught GDScript fault and `Invalid access` is the specific one that
-      # indexing an empty Dictionary raises. Neither appears in a clean run of
-      # any of the three harnesses; both are checked against the logs the steps
-      # above already tee'd, so this adds no runtime.
-      - name: No script errors in any harness
+      # uncaught GDScript fault, `Invalid access` is the specific one that
+      # indexing an empty Dictionary raises, and a leading `ERROR:` catches
+      # engine-level failures such as leaked Nodes/resources. None appears in
+      # a clean run of any harness; the logs already exist, so this adds no
+      # runtime.
+      - name: No engine or script errors in any harness
         run: |
-          if grep -nE "SCRIPT ERROR|Invalid access" parity.log sv.log territory.log confrontation.log tips.log dre.log smoke.log; then
-            echo "::error::A harness raised a script error. A suite that crashed part-way is not a green suite - see the matched lines above."
+          if grep -nE "^[[:space:]]*ERROR:|SCRIPT ERROR|Invalid access" parity.log sv.log territory.log confrontation.log tips.log dre.log smoke.log; then
+            echo "::error::A harness raised an engine or script error. A suite that crashed or leaked after PASS is not a green suite - see the matched lines above."
             exit 1
           fi
 

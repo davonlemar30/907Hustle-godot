@@ -22,6 +22,7 @@ func _ready() -> void:
 	_test_v9_fields()
 	_test_v10_fields()
 	_test_v15_boost_discovery()
+	_test_validator_node_lifetime()
 	_test_v16_territory_nodes()
 	_test_v17_market_discovery()
 	_test_v18_boost_bribes_used()
@@ -374,6 +375,20 @@ func _test_v18_boost_bribes_used() -> void:
 	_check("and arrives with nothing bought",
 		not v17.has("boost_bribes_used")
 		or (v17["boost_bribes_used"] as Array).is_empty())
+
+## SaveValidator used to call `GAME_STATE.new()` independently for the Boost
+## discovery and bribe catalogues without freeing either Node. A load then
+## leaked two complete state objects while every harness still printed PASS.
+## Count live Nodes around repeated validations so this remains a lifecycle
+## contract rather than something visible only in Godot's shutdown warning.
+func _test_validator_node_lifetime() -> void:
+	var before: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	for _probe in range(3):
+		var state := _state("boost_targets_discovered", ["night_owl"])
+		state["boost_bribes_used"] = ["night_owl"]
+		_fixed(state)
+	var after: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	_check("save validation releases temporary GameState nodes", after == before)
 
 ## 0.1.2 (Word of Mouth): `tip_effects` (a row per active payload) and
 ## `tip_misses` (the ramp counter), same two-field split as v9's arrest

@@ -454,6 +454,16 @@ func _sell(p: Dictionary) -> Dictionary:
 	# Sales only. Buying product is not what makes a corner recognisable — the
 	# repeated handoff is. And it is one gain per TRANSACTION, not per unit: a
 	# ten-unit sale is one handoff.
+	# SQ-D10: the corner's own trigger, asked BEFORE the pressure gain below.
+	# `corner_stiff`'s once-per-district-per-day bound is DERIVED from
+	# `add_market_pressure`'s own day-stamped counter (see
+	# `systems/corner.gd::first_sale_today`), and after that call the answer is
+	# always "something sold today" -- so the order of these two lines is
+	# load-bearing and not incidental.
+	var corner: Object = gm.system("corner") if gm != null else null
+	var corner_opened: bool = corner != null \
+		and bool(corner.try_open_stiff(str(gs.current_district_id), id, revenue))
+
 	var engine: Object = gm.system("consequence") if gm != null else null
 	if engine != null:
 		engine.add_market_pressure(gs.current_district_id)
@@ -476,11 +486,15 @@ func _sell(p: Dictionary) -> Dictionary:
 	# by hand rather than dispatched, the same way Boost, Stickup, Jobs and the
 	# 907List all spend their slot — a nested dispatch would fire a second
 	# notify_changed inside this one's stack and break the one-refresh contract.
+	# The slot is still spent when the corner opens: the handoff happened and
+	# the hour went with it. What the chain decides is whether the last of the
+	# money stays, which is a different question from whether the sale did.
 	if rules.MARKET_SELL_COSTS_SLOT:
 		var time_system: Object = gm.system("time") if gm != null else null
 		if time_system != null:
 			time_system.handle("advance_time", {})
-	return {"ok": true, "unit_price": unit, "revenue": revenue}
+	return {"ok": true, "unit_price": unit, "revenue": revenue,
+		"corner": corner_opened}
 
 ## Canon evolveMarkets (game-core.js:4483): one stream batch off rng_state,
 ## every area in districts (canon NEIGHBORHOODS) order, cursor written back

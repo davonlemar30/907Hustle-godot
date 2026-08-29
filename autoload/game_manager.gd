@@ -144,6 +144,13 @@ func _ready() -> void:
 	var doorstep = preload("res://systems/doorstep.gd").new()
 	doorstep.setup(_gs, self)
 	register_system("doorstep", doorstep)
+
+	# SQ-D10 (0.6.0 PR D): the corner. Wires `MARKET_SCRIPTS`, authored since
+	# the loop was written and consumed by nothing until now. Dispatches no
+	# action of its own -- it is a trigger site plus a chain adapter.
+	var corner = preload("res://systems/corner.gd").new()
+	corner.setup(_gs, self)
+	register_system("corner", corner)
 	# DOOR-D2: runs after every `DAY_START_ORDER` step, so a chain it opens
 	# cannot land ahead of anything else the day already decided -- see
 	# `DayLifecycle`'s own "7. DAY_START -- DAY_START_ORDER, then hooks".
@@ -268,6 +275,9 @@ func _ready() -> void:
 	# same way dre_collector's two encounters already are: by
 	# chain.source.kind, not by a second action_id.
 	consequence_engine.register_source_adapter("doorstep", doorstep)
+	# Both corner scripts share one adapter -- see `systems/corner.gd`'s header
+	# on why two action ids would be two places for the round rules to drift.
+	consequence_engine.register_source_adapter("corner", corner)
 	# The seventh kind (0.5.0 PR C, STR-D4): a checkpoint resolves itself the
 	# same way a wander encounter does -- the trip that produced it is over,
 	# and there is no source system holding a table about it.

@@ -182,7 +182,14 @@ func _post_up() -> Dictionary:
 	var time_sys: Object = gm.system("time") if gm != null else null
 	if time_sys != null:
 		time_sys.handle("advance_time", {})
-	try_surface_delayed(int(gs.day), str(gs.current_district_id))
+	var surfaced := str(try_surface_delayed(int(gs.day), str(gs.current_district_id)))
+	# SQ-D10: `corner_push`, after the delayed check has had its say. A
+	# consequence that was already queued outranks a fresh corner push, the
+	# same precedence every other surfacing site uses -- and `try_open_push`
+	# refuses outright while a chain is active, so this is belt and braces.
+	var corner: Object = gm.system("corner") if gm != null else null
+	if surfaced.is_empty() and corner != null:
+		corner.try_open_push(str(gs.current_district_id))
 	return {"ok": true}
 
 # --- source adapters --------------------------------------------------------

@@ -62,7 +62,12 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## The remaining +28 is `_check_guaranteed_prices_are_stated`, added after the
 ## real build showed a road labelled CERTAIN under a fallback line promising it
 ## cost nothing, on the one card where surrender is the WORST road.
-const MIN_CHECKS := 1130
+## 0.6.0 (SQ-D10, PR D): 1130 -> 1203, +73 for check block 16 — the corner's
+## two trigger sites in both directions, the derived once-per-district-per-day
+## bound, both of Curtis's observation roads reaching his ledger receipted,
+## and the arm that matters most: an ordinary sale on a corner that CANNOT
+## fire is byte-for-byte what it was.
+const MIN_CHECKS := 1203
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -95,6 +100,7 @@ func _ready() -> void:
 	_check_stick_caught()
 	_check_encounter_overlay()
 	_check_verb_triad()
+	_check_corner()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -1620,3 +1626,310 @@ func _check_guaranteed_prices_are_stated() -> void:
 	a.eq_bool("...and it is the card's declared surrender road",
 		str(EVENTS.choice_for_role(EVENTS.card_by_id("wander_warrant_check"),
 			EVENTS.ROLE_SURRENDER)) == "wait_it_out", true)
+
+# --- check block 16: SQ-D10, the corner (0.6.0 PR D) -------------------------
+#
+# `MARKET_SCRIPTS` had sat authored and unconsumed since the loop was written.
+# What these arms are actually guarding is the two things a trigger site can
+# get wrong in ways nothing else notices: it fires when it should not, and an
+# ordinary sale stops being ordinary.
+
+const CORNER_SCRIPTS := SCRIPTS.MARKET_SCRIPTS
+const RULES_CONST := preload("res://data/consequence_rules.gd")
+
+func _check_corner() -> void:
+	_check_corner_scripts_authored()
+	_check_corner_stiff_trigger()
+	_check_corner_stiff_day_bound()
+	_check_ordinary_sell_unchanged()
+	_check_corner_push_trigger()
+	_check_corner_push_ledger()
+
+## The beats SQ-D7 required and SQ-D10 said to author only if missing. Both
+## scripts declared `cap: 2` and no beats, which under the round rule is a
+## script that cannot run two rounds.
+func _check_corner_scripts_authored() -> void:
+	for script_id in CORNER_SCRIPTS.keys():
+		var script: Dictionary = CORNER_SCRIPTS[script_id]
+		var beats: Array = script.get("beats", [])
+		a.eq_int("%s authors one beat per round of its own cap" % str(script_id),
+			beats.size(), int(script["cap"]))
+		var seen: Array = []
+		for index in beats.size():
+			var beat: Dictionary = beats[index]
+			var text := str(beat.get("beat", ""))
+			a.check("%s beat %d has its own situation" % [str(script_id), index],
+				not text.is_empty() and not text in seen)
+			seen.append(text)
+			a.check("%s beat %d declares a guaranteed out" % [str(script_id), index],
+				not (beat.get("deterministic", []) as Array).is_empty())
+			for choice_id in (beat.get("deterministic", []) as Array):
+				a.check("%s beat %d's out '%s' is one of its choices"
+					% [str(script_id), index, str(choice_id)],
+					str(choice_id) in (beat.get("choices", []) as Array))
+			for choice_id in (beat.get("choices", []) as Array):
+				a.check("%s beat %d's '%s' is in the script's action table"
+					% [str(script_id), index, str(choice_id)],
+					(script["actions"] as Dictionary).has(str(choice_id))
+						or SCRIPTS.CREW_CALLS.has(str(choice_id)))
+
+	# SQ-D10's header correction, asserted rather than trusted: the file may no
+	# longer claim the four wired tables are unwired.
+	var src: String = FileAccess.get_file_as_string(
+		"res://data/confrontation_scripts.gd")
+	a.check("the scripts file no longer claims MARKET_SCRIPTS is unwired",
+		not src.contains("MARKET_SCRIPTS and STASH_IT — corner scripts"))
+	a.check("...and names where STASH_IT actually is",
+		src.contains("NOT on the Lift"))
+
+## Fires when authored, never otherwise. Each precondition is removed one at a
+## time so a gate that has quietly stopped mattering shows up as a card that
+## still fires without it.
+func _check_corner_stiff_trigger() -> void:
+	var corner: Object = gm.system("corner")
+	var engine: Object = gm.system("consequence")
+	var district := "north_star_lot"
+
+	# Baseline: everything satisfied EXCEPT the band. A quiet corner produces
+	# no buyer who thinks he can shave the count.
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.current_district_id = district
+	a.eq_bool("a QUIET corner never stiffs you",
+		corner.try_open_stiff(district, "weed", 200), false)
+
+	# Band satisfied. Seeds are walked to find one that fires, which also
+	# proves the roll is a roll rather than a constant.
+	var fired := false
+	for day in range(1, 40):
+		_reset_probe()
+		gs.active_consequence = {}
+		gs.current_district_id = district
+		gs.day = day
+		engine.add_pressure(district, "market", 4.0, "cause:corner:probe:%d" % day)
+		if corner.try_open_stiff(district, "weed", 200):
+			fired = true
+			break
+	a.eq_bool("a KNOWN-or-worse corner does stiff you, some days", fired, true)
+	if fired:
+		a.eq_str("...and it opens a confrontation chain",
+			str(gs.active_consequence.get("chain_kind", "")), engine.KIND_CONFRONTATION)
+		var decision: Dictionary = gs.active_consequence.get("decision", {})
+		a.eq_str("...on the corner_stiff script",
+			str(decision.get("definition_id", "")), "corner_stiff")
+		a.eq_str("...opening on the script's first authored beat",
+			str((decision.get("loop", {}) as Dictionary).get("beat", "")),
+			str((CORNER_SCRIPTS["corner_stiff"]["beats"] as Array)[0]["beat"]))
+		a.check("...offering the beat's own roads",
+			(decision.get("allowed_choices", []) as Array)
+				== (CORNER_SCRIPTS["corner_stiff"]["beats"] as Array)[0]["choices"])
+		a.eq_bool("...with LET IT RIDE as the guaranteed out",
+			"let_it_ride" in (decision.get("deterministic_choices", []) as Array), true)
+		# The take in dispute is derived from the sale, not authored flat.
+		a.eq_int("...over a fifth of the sale, floored and capped",
+			int((gs.active_consequence.get("source", {}) as Dictionary).get("shorted", 0)),
+			40)
+
+	# A sale too small to argue about never opens one, however hot the corner.
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.current_district_id = district
+	engine.add_pressure(district, "market", 8.0, "cause:corner:tiny")
+	a.eq_bool("a sale too small to be worth arguing over never stiffs you",
+		corner.try_open_stiff(district, "weed", 20), false)
+	# ...and neither does anything, while a chain is already open.
+	gs.active_consequence = {"stage": "decision", "chain_kind": "wander_encounter"}
+	a.eq_bool("the corner never opens over a live chain",
+		corner.try_open_stiff(district, "weed", 400), false)
+	gs.active_consequence = {}
+
+## Once per district per day, and DERIVED — the whole reason this PR needed no
+## schema bump. `first_sale_today` reads `add_market_pressure`'s own day-stamped
+## counter, so the bound cannot drift from what the game thinks "today" is.
+func _check_corner_stiff_day_bound() -> void:
+	var corner: Object = gm.system("corner")
+	var engine: Object = gm.system("consequence")
+	var district := "north_star_lot"
+
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.current_district_id = district
+	a.eq_bool("before any sale, today is a first sale", corner.first_sale_today(district), true)
+	engine.add_market_pressure(district)
+	a.eq_bool("after one sale, it is not", corner.first_sale_today(district), false)
+	a.eq_bool("...so the corner cannot fire a second time today",
+		corner.try_open_stiff(district, "weed", 400), false)
+
+	# A different district is a different corner.
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	a.eq_bool("a different district is still a first sale",
+		corner.first_sale_today("downtown"), true)
+
+	# Tomorrow starts over, on the counter the game already keeps.
+	gs.day = int(gs.day) + 1
+	a.eq_bool("tomorrow starts over", corner.first_sale_today(district), true)
+	gs.active_consequence = {}
+
+## The other half, and the one a trigger site most often breaks: an ordinary
+## sale must be byte-for-byte what it was. Driven through the real dispatch on
+## a corner that CANNOT fire, with every accounting the sell path owns compared
+## against a run with the corner system removed from the equation entirely.
+func _check_ordinary_sell_unchanged() -> void:
+	var economy: Object = gm.system("economy")
+	var engine: Object = gm.system("consequence")
+	var wallet: Object = gm.system("wallet")
+	var district := "north_star_lot"
+
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.current_district_id = district
+	gs.inventory = {"weed": 10}
+	gs.time_slots_today = 0
+	var dirty_before: int = int(wallet.dirty_balance())
+	var pressure_before: float = float(engine.pressure_score(district, "market"))
+	var heat_before: float = float(gs.heat)
+	var slots_before: int = int(gs.time_slots_today)
+
+	# QUIET corner: the trigger's band gate refuses, so this is an ordinary
+	# sale by construction rather than by luck.
+	var result: Dictionary = economy.handle("market_sell",
+		{"product_id": "weed", "quantity": 4})
+	a.check("an ordinary sale still succeeds (%s)"
+		% str(result.get("reason", "")), bool(result.get("ok", false)))
+	a.eq_bool("...and did not open a corner", bool(result.get("corner", false)), false)
+	a.eq_bool("...and left no chain behind", engine.has_active(), false)
+	a.eq_int("...crediting its revenue to DIRTY",
+		int(wallet.dirty_balance()) - dirty_before, int(result.get("revenue", 0)))
+	a.eq_int("...taking the units it sold", int(gs.inventory.get("weed", 0)), 6)
+	a.check("...adding the district's own market pressure",
+		float(engine.pressure_score(district, "market")) > pressure_before)
+	a.check("...adding the sale's own heat", float(gs.heat) > heat_before)
+	# `MARKET_SELL_COSTS_SLOT` is authored `false` today, so the honest
+	# assertion is that the corner's trigger did not change whatever that
+	# constant says — read from the rules rather than restated, so this arm
+	# keeps holding the day somebody flips it.
+	a.eq_int("...and spending exactly the slots the rules authorise",
+		int(gs.time_slots_today),
+		slots_before + (1 if RULES_CONST.MARKET_SELL_COSTS_SLOT else 0))
+	gs.active_consequence = {}
+
+## Curtis-gated, Spenard only, and rare.
+func _check_corner_push_trigger() -> void:
+	var corner: Object = gm.system("corner")
+
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.current_district_id = "north_star_lot"
+	gs.curtis_phase = "invisible"
+	a.eq_bool("no push before Curtis is looking",
+		corner.try_open_push("north_star_lot"), false)
+
+	gs.curtis_phase = "watching"
+	a.eq_bool("no push outside his own corner",
+		corner.try_open_push("downtown"), false)
+
+	var fired := false
+	for day in range(1, 60):
+		_reset_probe()
+		gs.active_consequence = {}
+		gs.current_district_id = "north_star_lot"
+		gs.curtis_phase = "watching"
+		gs.day = day
+		if corner.try_open_push("north_star_lot"):
+			fired = true
+			break
+	a.eq_bool("a watching Curtis does push, some days", fired, true)
+	if fired:
+		var decision: Dictionary = gs.active_consequence.get("decision", {})
+		a.eq_str("the push runs the corner_push script",
+			str(decision.get("definition_id", "")), "corner_push")
+		a.eq_bool("...offering STAND ON IT",
+			"stand_on_it" in (decision.get("allowed_choices", []) as Array), true)
+		a.eq_bool("...and STEP OFF as a guaranteed out",
+			"step_off" in (decision.get("deterministic_choices", []) as Array), true)
+		# CALL TONE is authored into the beat but is a CREW call, so it is
+		# offered only when he is actually available -- no crew on this probe.
+		a.eq_bool("...but not CALL TONE with no crew recruited",
+			"call_tone" in (decision.get("allowed_choices", []) as Array), false)
+	gs.active_consequence = {}
+
+## The whole political point: STAND ON IT writes `defiance`, STEP OFF writes
+## `submission`, and Curtis's THREAT lens has to see both.
+func _check_corner_push_ledger() -> void:
+	var corner: Object = gm.system("corner")
+	var engine: Object = gm.system("consequence")
+	var exposure: Node = get_node_or_null("/root/Exposure")
+	if exposure == null:
+		a.check("Exposure is available for the ledger arms", false)
+		return
+
+	for road in [["stand_on_it", "defiance", "held_the_corner"],
+			["step_off", "submission", "ceded_the_corner"]]:
+		var choice_id := str((road as Array)[0])
+		var wanted_type := str((road as Array)[1])
+		var wanted_event := str((road as Array)[2])
+		# A day whose push opens AND whose chosen road resolves in one round.
+		#
+		# The second condition is not fussiness: a STAND ON IT that rolls a
+		# plain `failure` BURNS itself (the chassis's Q6 rule) and opens the
+		# script's second beat, where the only road left is STEP OFF — so a
+		# search that took the first day a push opened would end up asserting
+		# `defiance` against a chain that had, correctly, resolved as
+		# `submission`. Found by writing exactly that test first.
+		var resolved := false
+		for day in range(1, 90):
+			_reset_probe()
+			gs.active_consequence = {}
+			gs.npc_ledgers = {}
+			gs.current_district_id = "north_star_lot"
+			gs.curtis_phase = "watching"
+			gs.day = day
+			if not corner.try_open_push("north_star_lot"):
+				continue
+			var probe: Dictionary = engine.active_summary()
+			gm.dispatch("resolve_consequence_choice", {
+				"consequence_id": str(probe.get("consequence_id", "")),
+				"cause_id": str(probe.get("cause_id", "")), "choice_id": choice_id})
+			if engine.has_active() and str(engine.active_stage()) == "result":
+				resolved = true
+				break
+			# Otherwise it escalated to beat two; clear and try the next day.
+			while engine.has_active():
+				if str(engine.active_stage()) == "decision":
+					var s2: Dictionary = engine.active_summary()
+					gm.dispatch("resolve_consequence_choice", {
+						"consequence_id": str(s2.get("consequence_id", "")),
+						"cause_id": str(s2.get("cause_id", "")), "choice_id": "step_off"})
+				else:
+					gm.dispatch("consequence_continue", {})
+			gs.active_consequence = {}
+			gs.npc_ledgers = {}
+		a.eq_bool("a push resolves on the %s road in one round" % choice_id,
+			resolved, true)
+		if not resolved:
+			continue
+		var ledger: Array = exposure.ledger_of("curtis")
+		a.eq_int("%s writes exactly one row into Curtis's ledger" % choice_id,
+			ledger.size(), 1)
+		if not ledger.is_empty():
+			a.eq_str("...of the authored category",
+				str((ledger[0] as Dictionary).get("type", "")), wanted_type)
+			a.eq_str("...with the authored event",
+				str((ledger[0] as Dictionary).get("event", "")), wanted_event)
+			a.eq_str("...at the corner it happened on",
+				str((ledger[0] as Dictionary).get("location", "")), "north_star_lot")
+			# His THREAT lens must actually price it, or the row is decoration.
+			a.check("...and his lens has a weight for it",
+				exposure.CIVILIAN.has(wanted_type) or exposure.THREAT.has(wanted_type))
+		# Receipted, so a save reloaded at the result stage and continued
+		# cannot write the row twice. Asserted through the receipt rather than
+		# by calling the writer again: `Exposure.record_observation` refuses
+		# outside a dispatch by design, so a direct second call would prove
+		# nothing about the receipt.
+		a.eq_bool("...and the receipt that stops a reload double-writing is claimed",
+			engine.has_receipt(str(engine.active_summary().get("cause_id", "")),
+				"corner:observation"), true)
+		if engine.has_active():
+			gm.dispatch("consequence_continue", {})
+		gs.active_consequence = {}
+	gs.npc_ledgers = {}

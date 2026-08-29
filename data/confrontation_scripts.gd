@@ -35,21 +35,38 @@ extends RefCounted
 ## never income. Full-commit expected value equals the authored band; leaving
 ## early lands under it.
 ##
-## ## Authored and NOT yet wired (each named so the gap is legible)
+## ## What is wired, and what is not (SQ-D10, corrected 0.6.0 PR D)
 ##
-##   - LIFT_BEATS / LIFT_ESCALATION / BRIBE — the Lift's caught-loop and its
-##     bribe valve. Wiring touches the boost_caught chain, whose per-tier flow
-##     is pinned by the parity suite, so it ships as its own slice with its own
-##     test updates rather than riding this one.
-##   - MARKET_SCRIPTS and STASH_IT — corner scripts; triggers live in the sell
-##     path and Post Up.
-##   - MEETUP_SCRIPT — the one 907List entry, on the catastrophic meetup tier.
-##   - TIP_MODIFIERS — read defensively (see `tip_modifiers_for` in
-##     `systems/confrontation_loop.gd`); rows arrive when the phone-tip system
-##     lands and modify entry parameters only, never exit tables.
-##   - CREW_CALLS — Tone/Deshawn as loop actions. No stickup script admits
-##     them (Tone does not start things — his own bio's terms), so nothing
-##     here consumes the rules yet.
+## This header was stale for four of its five entries and said so with
+## confidence, which is the worst way for a file to be wrong. Corrected:
+##
+##   - **LIFT_BEATS / LIFT_ESCALATION / LIFT_BRIBE — WIRED (0.1.2).**
+##     `systems/boost.gd` consumes all three: escalation on plain failure,
+##     SETTLE IT (the bribe, per-store capped), HAND IT BACK, and
+##     `LIFT_CHOICE_LABELS`/`LIFT_CHOICE_COPY` through the engine's adapter
+##     seam. The audit against the original spec is in D-24's PR D section.
+##   - **STASH_IT — WIRED (0.5.0 PR B), and NOT on the Lift.** It is one
+##     conditional action on the *wander* police stop
+##     (`data/wander_events.gd`'s `wander_stopped_on_foot`), offered only
+##     while carrying product, resolved by its own direct Intelligence roll
+##     rather than through the oracle (`wander.gd::_stash_it_tier` — the
+##     SQ-D11 precedent). Anybody looking for it in `boost.gd` will not find
+##     it, which is why this line names where it actually is.
+##   - **MARKET_SCRIPTS — WIRED (0.6.0 PR D).** `corner_stiff` triggers on the
+##     market sell path, `corner_push` on Post Up; both resolve through
+##     `systems/corner.gd`. Their `beats` arrays were the piece genuinely
+##     missing and were authored in that PR (SQ-D7).
+##   - **MEETUP_SCRIPT — WIRED (0.6.0 PR E)**, on the 907List meetup's
+##     catastrophic tier above `value_floor`.
+##   - **CREW_CALLS — WIRED (0.6.0 PR B).** Offered by any script declaring
+##     `admits_crew`, on the general street and in the doorstep's enforcement
+##     room. Stickup scripts still admit none — Tone does not start things,
+##     his own bio's terms, unchanged.
+##   - **TIP_MODIFIERS — genuinely not wired, and deliberately.** Read
+##     defensively (`tip_modifiers_for` in `systems/confrontation_loop.gd`);
+##     rows arrive when the phone-tip system lands and modify entry parameters
+##     only, never exit tables. This is the one entry the original header got
+##     right.
 
 # --- resolution states -------------------------------------------------------
 #
@@ -401,6 +418,26 @@ const MARKET_SCRIPTS := {
 		"sheet_title": "SHORT COUNT",
 		"opponent": "The buyer",
 		"cap": 2,
+		# SQ-D7 (0.6.0 PR D). This script authored `cap: 2` and no beats, which
+		# under the round rule is a script that cannot run two rounds. The two
+		# beats below are the missing half, not a redesign: the recount, and
+		# then the part where he has already decided the conversation is over.
+		# Distinct situations, distinct stakes -- round two has no COUNT IT
+		# AGAIN, because there is nothing left to count.
+		"beats": [
+			{
+				"beat": "He is thirty short and he knows it. He is also still standing here, which means he expects that to be the end of it.",
+				"log": "The count is short. He has not moved.",
+				"choices": ["count_again", "press_him", "let_it_ride"],
+				"deterministic": ["let_it_ride"],
+			},
+			{
+				"beat": "He has stopped talking about the money and started talking about the weather, and he is already half turned toward the street.",
+				"log": "He is done discussing it.",
+				"choices": ["press_him", "let_it_ride"],
+				"deterministic": ["let_it_ride"],
+			},
+		],
 		"actions": {
 			"count_again": {"label": "COUNT IT AGAIN", "attribute": "intelligence",
 				"shape": "negotiation", "base": 0.60,
@@ -416,6 +453,24 @@ const MARKET_SCRIPTS := {
 		"sheet_title": "THE CORNER",
 		"opponent": "Two of Curtis's people",
 		"cap": 2,
+		# SQ-D7, same as above. The second beat is what makes this Curtis's
+		# and not a generic shakedown: the first is two men asking, the second
+		# is the block watching them ask, and standing on it in front of an
+		# audience is a different act from standing on it in private.
+		"beats": [
+			{
+				"beat": "Two of them, unhurried, and neither is asking whether you work here. They are telling you what working here costs.",
+				"log": "Curtis's people have a number.",
+				"choices": ["stand_on_it", "call_tone", "step_off"],
+				"deterministic": ["call_tone", "step_off"],
+			},
+			{
+				"beat": "Doors have opened up and down the block. Whatever happens now happens where everybody can see it, and everybody will know by tonight.",
+				"log": "The block is watching.",
+				"choices": ["stand_on_it", "call_tone", "step_off"],
+				"deterministic": ["call_tone", "step_off"],
+			},
+		],
 		"actions": {
 			"stand_on_it": {"label": "STAND ON IT", "attribute": "combat",
 				"shape": "confrontation", "base": 0.44,

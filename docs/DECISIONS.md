@@ -1879,6 +1879,63 @@ any slot, with no requirements, so the pool has a floor of three whatever the
 player has done. The suite now asserts that floor, so an author who gates all
 three gets a red suite telling them the gate just became silenceable.
 
+### Measured results, PR D
+
+| Suite | After PR C | After PR D |
+| --- | --- | --- |
+| parity | 13276 | 13276 (+1 adapter id, −1 nothing; the corner's coverage is in the confrontation suite) |
+| confrontation | 1130 | 1203 |
+| save validation / territory / tips / dre / smoke | — | unchanged |
+
+**No schema bump.** `corner_stiff`'s "once per district per day" is derived
+from `add_market_pressure`'s own day-stamped counter on the district's Market
+pressure row (`market_gain_day` / `market_gain_today`), which already answers
+"has anything sold here today". Read BEFORE `_sell` adds its pressure — after
+that call the answer is always yes, so the order of those two lines in
+`economy.gd::_sell` is load-bearing and is commented as such.
+
+Confirmed live: a real `market_sell` dispatch on a KNOWN corner opened SHORT
+COUNT over Home with $28 in dispute (a fifth of a $138 sale, floored and
+capped), `first_sale_today` flipped to false, and a second sell the same day
+opened nothing. A `corner_push` on a watching Curtis resolved STEP OFF and put
+exactly one `submission / ceded_the_corner` row in his ledger at
+`north_star_lot`.
+
+### The Lift audit (SQ-D10, PR D)
+
+Ruled: audit the shipped Lift against the ClickUp spec, correct the stale
+header, report the delta, and **add no new verb without the owner's ruling**.
+
+The spec names **Run / Talk / Drop It / Shove Past**, with Intelligence for
+talk and run and Combat for shove. What ships is **fight / run / talk / yield**
+(the shared caught table) plus **SETTLE IT** (`bribe`) and **HAND IT BACK**
+(`hand_it_back`), on an escalating multi-round loop with per-tier authored
+beats. The delta, verb by verb:
+
+| Spec verb | Shipped as | Note |
+|---|---|---|
+| Run | `run` | direct |
+| Talk | `talk` | direct |
+| Drop It | `yield`, and `hand_it_back` | the spec's one verb is shipped as two: YIELD gives it up under the caught table's own terms, HAND IT BACK is the softer road that keeps the door (no ban) |
+| Shove Past | `fight` | the physical road, on Combat, as specified — under a different name |
+| — | `bribe` (SETTLE IT) | **not in the spec.** Per-tier capped, once per store, and the reason the Lift has the widest action set in the game |
+
+So all four spec verbs are present in different words, one is split in two, and
+one road exists that the spec never named. **Recommendation held: no new verb.**
+Six is already the widest action set in the build, and SHOVE PAST would be a
+fifth name for the road `fight` already is.
+
+Wiring confirmed live: `boost.gd` consumes `LIFT_BEATS` (per-tier, per-round
+situation copy), `LIFT_ESCALATION` (`verb_penalty` −0.10, `heat_per_round` 0.5,
+`round_cap` = the shared `ROUND_CAP`), `LIFT_BRIBE` (2× multiplier, per-tier
+floors, `per_store_limit` 1), and `LIFT_CHOICE_LABELS`/`LIFT_CHOICE_COPY`
+through the engine's adapter seam. **Nothing was missing and nothing was
+added.** What was wrong was the file's own header, which listed all of it as
+"authored and NOT yet wired" — along with STASH_IT (wired in 0.5.0, and not on
+the Lift at all), MARKET_SCRIPTS, MEETUP_SCRIPT and CREW_CALLS. Four of five
+entries stale, stated with confidence, which is the worst way for a file to be
+wrong. Corrected in place, and the suite now asserts the corrected text.
+
 ### Why this PR carries this entry
 
 Same rule as every entry above: SQ-D1..D5 are load-bearing for PR A's own

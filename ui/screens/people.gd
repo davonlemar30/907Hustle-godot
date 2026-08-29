@@ -58,14 +58,14 @@ func _bind_dre_extras(v: VBoxContainer) -> void:
 	if not gs.dre_intro_offered:
 		return
 	if not gs.dre_introduced:
-		v.add_child(label("Juan mentioned him. Word is he's easy to find in Spenard.",
+		v.add_child(label("Juan gave you Dre's name. In Spenard, that's enough of an address.",
 			"Muted", 11, MUTED, true))
 		var seek := button("SEEK HIM OUT", true, _on_seek_dre, 40)
 		v.add_child(seek)
 		return
 	var status := str(gs.dre_account.get("status", "clear"))
 	var status_line := "Clear what you owe before asking again." if status != "clear" \
-		else "He'll put up money if you need it."
+		else "He'll put up money. What he's buying is your word."
 	v.add_child(label(status_line, "Muted", 11, MUTED, true))
 	if gs.debt > 0:
 		v.add_child(label("Debt to Dre: $%d, due Day %d" \
@@ -78,17 +78,17 @@ func _bind_dre_extras(v: VBoxContainer) -> void:
 		if dre_system != null:
 			var principal: int = int(dre_system.FIRST_LOAN_PRINCIPAL)
 			var total: int = principal + int(dre_system.FIRST_LOAN_INTEREST)
-			v.add_child(label("First offer: $%d now, $%d back in %d days." \
+			v.add_child(label("Dre's terms: $%d now. $%d back in %d days." \
 					% [principal, total, int(dre_system.FIRST_LOAN_TERM_DAYS)],
 				"Muted", 11, MUTED, true))
 			v.add_child(button("BORROW $%d" % principal, true, _on_borrow_dre, 40))
 	if _offer_exists("dre_a_reminder"):
-		v.add_child(label("Dontae Wells owes Dre. He'd like it handled.",
+		v.add_child(label("Dontae Wells has Dre's money. This job is about what your name can move.",
 			"Muted", 11, MUTED, true))
 		v.add_child(button("TALK IT LOOSE", true, _on_collect_negotiate, 40))
 		v.add_child(button("GO COLLECT", true, _on_collect_hard, 40))
 	if gs.dre_pending_penance:
-		v.add_child(label("The money's square. He still wants to hear it from you.",
+		v.add_child(label("The money is square. Your word still isn't.",
 			"Muted", 11, MUTED, true))
 		v.add_child(button("MAKE IT RIGHT", true, _on_do_penance, 40))
 

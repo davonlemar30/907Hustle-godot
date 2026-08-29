@@ -585,8 +585,8 @@ const DRE_COLLECTION_CHOICE_LABELS := {
 	"press": "PRESS HIM", "walk": "WALK AWAY",
 }
 const DRE_COLLECTION_CHOICE_COPY := {
-	"press": "Make it clear you're not leaving without it.",
-	"walk": "Not worth it today.",
+	"press": "Put Dre's name on the table. Make Dontae decide what refusing it costs.",
+	"walk": "Leave the debt where it is. Dre will price that choice into your name.",
 }
 
 ## The player-default ultimatum: Dre's own response once an account has sat
@@ -597,6 +597,6 @@ const DRE_ULTIMATUM_CHOICE_LABELS := {
 	"pay_now": "PAY NOW", "stall": "I CAN'T RIGHT NOW",
 }
 const DRE_ULTIMATUM_CHOICE_COPY := {
-	"pay_now": "Clear it in full, right now.",
-	"stall": "You don't have it. He's not going to like that.",
+	"pay_now": "Pay the balance. The account closes; Dre still remembers when it got closed.",
+	"stall": "Tell Dre you still don't have it. From here, the debt is about more than money.",
 }

@@ -139,10 +139,10 @@ func _negotiate() -> Dictionary:
 
 func _negotiate_line(tier: String) -> String:
 	match tier:
-		"clean": return "Dontae hands it over before you finish the sentence."
-		"messy": return "It takes longer than it should, but it's in your hand."
-		"failure": return "He talks in circles. You leave with nothing."
-		_: return "It goes sideways fast. You leave with nothing, and word gets around."
+		"clean": return "Dontae hears Dre's name and pays before you finish the ask."
+		"messy": return "Dontae makes you earn every word. The money still comes home."
+		"failure": return "Dontae keeps talking until your leverage runs out. You leave with nothing."
+		_: return "Dontae sends you away empty, then makes sure Spenard hears how."
 
 # --- hard (opens a chain) -----------------------------------------------------
 
@@ -175,7 +175,7 @@ func _open_hard() -> Dictionary:
 			"shown_probabilities": shown,
 		},
 	})
-	gs.log_activity("You go find Dontae Wells.", AMBER)
+	gs.log_activity("You go find Dontae Wells carrying Dre's name.", AMBER)
 	return {"ok": true}
 
 # --- the player-default ultimatum (opened by dre_lender.gd, no dispatch) -----
@@ -198,7 +198,7 @@ func open_player_default_encounter() -> void:
 			"deterministic_choices": ["pay_now", "stall"],
 		},
 	})
-	gs.log_activity("Dre wants to talk about what you owe.", RED)
+	gs.log_activity("Dre wants the money and an answer.", RED)
 
 ## Blocks PAY NOW when the player cannot actually cover it — checked before
 ## the round's one commit receipt is claimed, so a blocked tap costs nothing.
@@ -224,7 +224,7 @@ func _resolve_borrower_collection(chain: Dictionary, choice_id: String) -> Dicti
 	var opportunities: Object = _opportunities()
 
 	if choice_id == "walk":
-		gs.log_activity("You leave Dontae alone. Dre hears about it.", AMBER)
+		gs.log_activity("You leave Dontae with Dre's money. Dre learns what your word is worth.", AMBER)
 		if engine.record_receipt(cause_id, "dre_collection:refused_work"):
 			var exposure: Node = _exposure()
 			if exposure != null:
@@ -293,10 +293,10 @@ func _resolve_borrower_collection(chain: Dictionary, choice_id: String) -> Dicti
 
 func _press_line(tier: String) -> String:
 	match tier:
-		"clean": return "Dontae pays up fast once he sees you mean it."
-		"messy": return "It gets loud before it gets paid, but it gets paid."
-		"failure": return "He's got nothing on him. You leave empty-handed."
-		_: return "It gets physical. You leave without the money and worse off."
+		"clean": return "Dontae sees the decision in your face and pays before it turns ugly."
+		"messy": return "The money comes home. So does the story of how you took it."
+		"failure": return "Dontae has nothing and knows you can't manufacture it. You leave empty."
+		_: return "You leave without Dre's money and with proof Dontae had more than words."
 
 ## The account already cleared on payment (D-4/D-7) or is about to be
 ## suspended — nothing here reads or writes `Opportunities`; the ultimatum
@@ -319,12 +319,12 @@ func _resolve_ultimatum(chain: Dictionary, choice_id: String) -> Dictionary:
 	account["status"] = "suspended"
 	gs.dre_account = account
 	gs.log_activity(
-		"Dre stops answering. Make this right before you ask him for anything else.", RED)
+		"You leave Dre unpaid. His door closes before the conversation does.", RED)
 	var phone: Object = gm.system("phone")
 	if phone != null:
 		phone.push_message("Dre",
-			"This is what happens now. Straighten this out and we can go back " \
-			+ "to how it was.", {"kind": "dre_debt"})
+			"You chose not to pay. Until you make that right, my name and my " \
+			+ "money are closed to you.", {"kind": "dre_debt"})
 	if engine.record_receipt(cause_id, "dre_collection:walked_a_debt"):
 		var exposure: Node = _exposure()
 		if exposure != null:

@@ -12,7 +12,7 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `0.1.2`** — shown bottom-right on the title screen, and stamped into
+**Current: `0.2.1`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
@@ -30,41 +30,55 @@ the constant out of the file, and the parity suite asserts both the value and
 its shape. A version written down twice is a version that disagrees with itself
 the first time somebody bumps one copy.
 
-## What's new in 0.1.2 — "She Said Get a Job"
+## What's new since 0.1.2
 
-*Five PRs, one release. Full technical detail in [`CHANGELOG.md`](CHANGELOG.md)
-and [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
+*Full technical detail in [`CHANGELOG.md`](CHANGELOG.md) and
+[`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
 
-**A new opening.** Yalonda introduces the run now instead of a standalone
-title-screen slideshow — you meet her in scene, same beats, less clicking.
+### 0.2.1 — In Hand: the touch fix and the phone build
 
-**The home screen keeps its secrets a little longer.** Turf and Crew don't
-show up greyed-out on day one anymore — they stay off the board entirely
-until you've earned them, same as Market and Boost already did.
+**The game scrolls from anywhere now.** On almost every screen, a thumb had
+to land on bare space between the cards to scroll at all — starting a drag on
+a card, a button, or a line of text just stopped it dead, because that was
+the one thing on the block that could actually stop something. Market, Jobs,
+Phone, the works: touch any card and drag, and the screen moves with your
+hand the way it always should have.
 
-**Finding something now feels like finding something.** A new job, a Lift
-target, or the Street Market turning up on a walk gets an actual card, not a
-toast that scrolls past before you read it.
+**907Hustle finally has a phone build.** Not the browser tab it's been tested
+through this whole time — an installable Android APK, built fresh in CI on
+every merge to `main`. See [On a phone](#on-a-phone) below.
 
-**Your crew texts you now.** Word gets around. Recruit Pherris and some
-mornings she'll text the best market route before you've checked yourself.
-Recruit Eli and he'll tell you which side of town is quiet today. Nobody on
-your crew ever burns you — and most days, nobody has anything worth
-texting about. That silence is on purpose.
+### 0.2.0 — Dre Lending & Loan-Shark Progression
 
-**Getting caught is a scene now, not a coin flip.** Tier 2-3 stickups — the
-till, the register, the dice game, Goodie's stash — play out as staged rooms:
-bank what you've got and go, or push for more. And Boost's caught state has
-real outs: talk your way clear, buy off the store (once, ever, per store), or
-just hand back what you took and walk — no clean roll, but no charge either.
+**Dre fronts money now, and the debt is real.** Juan puts you onto him when
+things get tight — not on a clock, on whether you actually need it — and the
+first loan is a plain number with a plain deadline: what you get, what you
+owe back, and the day it's due. Pay it and Dre trusts you with more. Miss it
+and he doesn't come for you himself; he sends somebody, and that's its own
+conversation.
 
-**Some nights are fat nights.** Every so often Tone hears about a room
-that's flush that same night. Hit the window he names and the take doubles,
-sometimes better. Miss it and it's just a normal night.
+**Trust him enough and he starts handing you work:** a name to collect from,
+talked loose or taken the hard way, your call. Handle it clean and he'll put
+your own name forward — one borrower, his vouch, funded through the same
+book everybody else's money runs through. See that loan through and the Book
+opens for real: THE BOOK is yours to run, other people's money at your own
+interest, THE SHARK surface retired under a name that actually says what it
+is. It was never a Day 5 unlock. You earn it, in order, or you don't see it
+at all.
 
-**Up next:** Stickup and the Lift are two versions of "take something that
-isn't yours." The next build starts folding them into one ladder — SCORES —
-petty theft up through organized crew work, one progression instead of two.
+Finances now says the two things it always meant to say as two things: DEBT
+TO DRE, what you owe him, and THE BOOK, what they owe you. Never one number
+pretending to be both.
+
+*Between the two: **0.1.3** taught the game to let go of what's finished —
+old texts, settled Shark notes, resolved consequence records — after long
+runs measurably slowed down under their own history. Save schema v22; an
+existing save gets the cleanup applied once on load.*
+
+**Up next:** the authored Dre chain is the whole of his content for now —
+repeatable contracts after Junior Lender are deliberately deferred until the
+chain has proven itself in play. Stickup and the Lift folding into one
+SCORES ladder is deferred for the same reason.
 
 ## Status
 
@@ -154,7 +168,10 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Have the people you robbed find you days later | automatic, in the district you did it in |
 | Hear the block warn you they are coming, and hear it stop when you leave | Activity feed · Phone |
 | Pay a formal bill in street money and draw attention for it | automatic, on rent · phone · bail |
-| Lend at interest and decide what a default costs | Hustle → Shark |
+| Borrow from Dre when cash gets tight, on a plain deadline | automatic, once Juan mentions him |
+| Pay Dre back, or miss it and answer to whoever he sends | Phone · Activity feed |
+| Work off a contract for Dre — collect from a borrower, talked loose or taken hard | automatic, once Dre trusts you enough |
+| Earn THE BOOK and lend at interest yourself, deciding what a default costs | Hustle → THE BOOK (was Shark, retired under a name that says what it is) |
 | Hire crew, pay wages, watch loyalty, move them up the ranks | Street → People → Crew |
 | Give Pherris the day to work the board, and get the money back at night | automatic, once she is Trusted enough |
 | Hear from her when she can do it, what she took, and how the night went | Phone · Activity feed · Home · Hustle |
@@ -314,7 +331,10 @@ systems/              # the ONLY writers of GameState
   outcome_resolver.gd # the four tiers, advantage, and what the block learns
   recovery.gd         # first aid, the clinic ladder, and laying low
   stickup.gd          # armed robbery, tiers, the two-a-day cap
-  shark.gd            # lending, terms, defaults
+  shark.gd            # THE BOOK: lending, terms, defaults — earned via Dre, not a Day 5 unlock
+  dre_lender.gd       # Dre's own loans: the account state machine, tiers, restitution
+  dre_collector.gd    # Dre's contracts: A Reminder and the collection encounter
+  opportunities.gd    # the shared offered/active/resolved lifecycle Dre's contracts run on
   nine07list.gd       # the flip board and its tiers
   boost.gd            # lifting, the technique ladder, the fence
   crew.gd             # roster, loyalty, ranks, the nightly wage clock
@@ -367,8 +387,13 @@ tests/confrontation/  # CI gate: the confrontation loop's own suite (tier
 tests/tips/           # CI gate: Word of Mouth's own suite (seeded determinism,
                       # the budget ramp, each generator's gating, a fat-night
                       # payload consumed by a driven room), same shared harness
+tests/dre/            # CI gate: Dre Lending's own suite — the account state
+                      # machine, save/load at every state, the v20-v24 legacy-
+                      # debt migrations, and the full-arc integration drive
 tests/smoke/          # CI gate: every screen instantiates WITH its script
-                      # attached, and refreshes without raising
+                      # attached and refreshes without raising; as of 0.2.1
+                      # also walks every ScrollContainer for the touch-scroll
+                      # structural gate (TOUCH-D5)
 ```
 
 ```
@@ -381,9 +406,9 @@ data/                  # authored tables the systems above read; no state, no au
   territory_definitions.gd # the authored board: corners, adjacency, capacity
 ```
 
-### The six gates
+### The seven gates
 
-All six run in CI on every push and pull request, and all six are green on
+All seven run in CI on every push and pull request, and all seven are green on
 `main`. The `--script` form does **not** exit in this project; use the scene.
 
 ```bash
@@ -392,6 +417,7 @@ godot --headless --path . --scene tests/save_validation/save_validation_runner.t
 godot --headless --path . --scene tests/territory/territory_runner.tscn
 godot --headless --path . --scene tests/confrontation/confrontation_runner.tscn
 godot --headless --path . --scene tests/tips/tips_runner.tscn
+godot --headless --path . --scene tests/dre/dre_runner.tscn
 godot --headless --path . --scene tests/smoke/screen_smoke.tscn
 scripts/check_glyph_coverage.py
 ```
@@ -400,10 +426,13 @@ Each harness prints its own `<name>: PASS` line and CI greps for it, because a
 Godot run that dies part-way still exits 0. CI additionally fails any run whose
 log carries `SCRIPT ERROR` or `Invalid access`: a PASS line only says the checks
 that RAN all passed, and `screen_smoke.gd` calls `refresh()` while ignoring
-every error it raises.
+every error it raises. Smoke carries a structural gate of its own as of 0.2.1:
+every screen's `ScrollContainer` subtree is walked for a Control stuck at
+`MOUSE_FILTER_STOP` or a button wired the wrong way, so the touch-scroll fix
+below can't regress silently.
 
-Current counts: parity 12,533 · save-validation 151 · territory 169 ·
-confrontation 212 · tips 93 · smoke 23/23 screens.
+Current counts: parity 12,578 · save-validation 229 · territory 170 ·
+confrontation 212 · tips 93 · dre 331 · smoke 23/23 screens, 1,093 touch checks.
 
 ## Architecture
 
@@ -492,6 +521,21 @@ confrontation 212 · tips 93 · smoke 23/23 screens.
   (`ConfrontationLoop.tip_modifiers_for`) the confrontation loop was already
   reading defensively before Word of Mouth existed — the field arrived as
   data, not as a new read path.
+- **An opportunity is offered, then active, then resolved — one shared
+  lifecycle, not one per contract.** `systems/opportunities.gd` is the
+  substrate every Dre contract (and any future one) runs on: a catalogue
+  entry becomes an offer, an offer becomes active, an outcome resolves it.
+  `dre_lender.gd` and `dre_collector.gd` are callers, not owners, of that
+  state — the same shape `crew_operations.gd` already established for
+  delegation, applied to narrative contracts instead of income streams.
+- **Pass-through is the default inside every scroll, not an exception
+  wired per screen.** `card()`/`_card()` (the helpers behind 70+ card call
+  sites) set `MOUSE_FILTER_PASS` on the panel they build, and
+  `screen_base.gd` runs a normalize sweep after every `refresh()` that
+  catches anything the helpers don't — a `.tscn`-authored panel, a future
+  screen author's oversight. Interactivity stays a separate, opt-in concern
+  (`tap_connect`/`make_tappable`): the fix makes cards transparent to a drag,
+  it never makes an inert card tappable.
 
 ## Running it
 
@@ -501,9 +545,11 @@ export requires. The `godot_ai` MCP bridge is committed but optional for a plain
 
 ### On a phone
 
-Every push to `main` builds a web export and publishes it to GitHub Pages at the URL
-above. Pull requests build the export too but do not publish, so a broken export gets
-caught before it reaches the live URL.
+Two ways, side by side, neither one a replacement for the other.
+
+**In the browser.** Every push to `main` builds a web export and publishes it to
+GitHub Pages at the URL above. Pull requests build the export too but do not publish,
+so a broken export gets caught before it reaches the live URL.
 
 The build runs with thread support off (Godot's default), which avoids
 `SharedArrayBuffer` and therefore the COOP/COEP response headers GitHub Pages cannot
@@ -511,6 +557,15 @@ send. `html/experimental_virtual_keyboard` is **on** — that is Godot's own hid
 workaround and it is what makes the name field usable on a phone. The `godot_ai` addon
 is stripped during the build; its autoload dials a local WebSocket that does not exist
 in a browser.
+
+**As an installed app.** As of 0.2.1, `.github/workflows/android-apk.yml` exports a
+debug-signed, arm64 APK on every push to `main` and on demand, uploaded as a CI
+artifact — a separate preset (`export_presets.cfg`'s `preset.1`), additive to the Web
+one above, which stays byte-for-byte untouched. No release keystore and nothing
+committed: CI generates a throwaway debug keystore every run. Download the latest
+artifact from the [workflow's runs](../../actions/workflows/android-apk.yml), install,
+and run [`docs/ANDROID_SMOKE.md`](docs/ANDROID_SMOKE.md)'s checklist before trusting a
+build on-device.
 
 ## Assets
 
@@ -591,6 +646,9 @@ regardless of how small the source file is.
 | Batch 18 PR 4. Territory's operating cost, D-1 | ✅ the only player-visible change in Build 18: a $20/soldier/night upkeep, charged on the full roster whether posted or idle. `settler` moves **636% → 409%** of the day job — 636% was the bug, not a floor worth defending. Every economy profile is now asserted within a floor/ceiling corridor instead of a bare `print()`. Parity → 12,524 checks |
 | The Rooms — confrontation loop | ✅ tier 2-3 stickup targets play out as authored multi-round rooms (bank-or-push, TAKE AND GO, the exit fork) on a new fifth `ConsequenceEngine` chain kind, `confrontation`. New CI gate `tests/confrontation/`. Parity → 12,530 checks |
 | **0.1.2. She Said Get a Job** | ✅ five PRs: Turf & Crew hide until earned; discovery gets a real card instead of a toast; Yalonda replaces the opening screen; the Lift's caught loop gets BRIBE and a same-day HAND IT BACK follow-up; Word of Mouth slice 1 (Pherris' route push, Eli's corridor read, Tone's fat-night window) on a new seeded day-start tip generator. Save v16 → v19. New CI gate `tests/tips/`. Parity → **12,533 checks**, floor `MIN_CHECKS := 12533` |
+| **0.1.3. The long-run memory fix** | ✅ a driven 60-day run had grown ~1,400 phone-inbox UI nodes (rebuilt on every action) and a six-figure-byte save. The inbox keeps its newest 30; settled Shark notes and resolved consequence records shed on the next settle/morning. Save v19 → **v22**; an existing save gets the cleanup applied once on load. Odds, prices and outcomes unchanged — the parity suite's market-stream drift check proves it |
+| **0.2.0. Dre Lending & Loan-Shark Progression** | ✅ five PRs off `BUILD_DRE_LENDING_PROMPT.md`: structured debt to Dre (a real account state machine, not the old dormant flat fields); Juan's introduction on a real cash/rent-pressure trigger; the shared opportunity substrate and First Money (Dre's first loan); A Reminder (Dre's first real contract — collect from a borrower, talked loose or taken hard); and the Book, earned through a sponsored loan — THE SHARK retired under a name that says what it is, gated by access tier rather than by day count. New systems `dre`, `dre_collector`, `opportunities`; new CI gate `tests/dre/` (331 checks). Save v22 → v24 (no fields added in PR E — the catalogue's new borrower metadata resets fresh every run). Parity → **12,578 checks** |
+| **0.2.1. In Hand: the touch fix and the phone build** | ✅ two PRs off `BUILD_IN_HAND_PROMPT.md`: `card()`/`_card()` and a `screen_base.gd` normalize sweep make every screen's `ScrollContainer` pass-through by default, so a drag starting on a card scrolls everywhere instead of only from bare background — a structural CI gate in `screen_smoke.gd` (1,093 touch checks) guards the property going forward. Plus the first native build: an additive Android debug-APK preset and CI workflow, side by side with the Web export and untouched by it. No schema change. Parity **12,578 checks** (unchanged — behaviour-preserving) |
 | 6. Cutover | — |
 
 Full roadmap and the design-decision log live in the project's ClickUp master doc.

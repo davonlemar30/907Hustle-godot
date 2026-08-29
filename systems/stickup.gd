@@ -402,27 +402,32 @@ func _run(target_id: String) -> Dictionary:
 		result["arrest_suppressed"] = "cooldown"
 	result["arrested"] = arrested
 	if arrested and engine != null and not engine.has_active():
-		var opened: Dictionary = _open_booking(t, tier, cause_id, pre_source_heat, result)
+		# ENC-D1: no booking without a decision. The old direct-to-Booking
+		# entry (`_open_booking`, still below) is retired as an ENTRY path —
+		# the player answers fight/run/talk/yield to the responding officer
+		# before any arrest resolves. See `_open_stick_caught`.
+		var opened: Dictionary = _open_stick_caught(t, tier, cause_id, pre_source_heat, result)
 		if bool(opened.get("ok", false)):
-			# TI-003 §14: "Arrest enters Booking under the same Cause and keeps
-			# source time unsettled until Booking commits it." So no
-			# `advance_time` here — the robbery's own slot is settled by the
-			# booking commit, exactly once, alongside the time being held.
+			# ENC-D9: the blown job's slot is owed, not spent — the chain
+			# owes it and the engine's existing Continue/Booking settlement
+			# pays it exactly once, same as the old entry's own time contract.
 			return result
 
 	# A robbery is a slot, the same as any other district action.
 	time_system.handle("advance_time", {})
 	return result
 
-# --- the arrest adapter (TI-003 §14) ---------------------------------------
+# --- the arrest adapter (TI-003 §14, ENC-D1..D9) ----------------------------
 
-## Open the booking chain for a robbery that ended in cuffs.
-##
-## The chain opens directly at `result` rather than at `decision`. There was no
-## decision: the robbery already resolved through this system's own tier roll,
-## and the player answers for it rather than choosing how it went. Opening at
-## `decision` with an empty choice list and immediately walking past it would
-## put a stage in the save that nothing ever rendered.
+## Open the booking chain directly at `result`, with no decision. **Retired as
+## an ENTRY path (ENC-D1) — nothing calls this any more.** Kept, unedited, as a
+## RESOLUTION target: a save written before this build can already hold a
+## `KIND_STICK_BOOKING` chain sitting at `result`, `booking` or `release`, and
+## it has to keep loading and resolving exactly as it always did. The engine's
+## own stage machine and `ArrestSystem`'s projections carry a chain from here
+## on regardless of which adapter opened it, so this function needs no live
+## caller to keep doing its job. See `_open_stick_caught` for the entry every
+## new arrest actually takes.
 func _open_booking(target: Dictionary, tier_name: String, cause_id: String,
 		pre_source_heat: float, source_result: Dictionary) -> Dictionary:
 	var engine: Object = gm.system("consequence")
@@ -472,6 +477,173 @@ func _open_booking(target: Dictionary, tier_name: String, cause_id: String,
 		"cause_id": cause_id,
 	})
 	return {"ok": true}
+
+## ENC-D3/D4: the real entry. Opened at `decision` the moment the authored
+## gate says the law shows up — mirrors `boost.gd::_open_caught` seam-for-seam:
+## snapshotted `shown_probabilities`, `arrest_risks` and `resolver_inputs`, so
+## a reload reproduces exactly the decision the player was looking at.
+##
+## `contested_take: 0` and `entry_tier` on `source` are this encounter's own
+## facts, not Boost's: there is no cash or merchandise in dispute (the source
+## robbery already resolved its own take, or lack of one — ENC-D4), and
+## `entry_tier` is read back at resolve time so a catastrophic entry's odds
+## penalty (ENC-D6) is applied exactly once, from the same snapshot the shown
+## odds were computed against.
+func _open_stick_caught(target: Dictionary, tier_name: String, cause_id: String,
+		pre_source_heat: float, _source_result: Dictionary) -> Dictionary:
+	var engine: Object = _engine()
+	if engine == null:
+		return {"ok": false, "reason": "Nothing to answer to."}
+	var rules: RefCounted = RULES.new()
+	var resolver: Object = gm.system("outcome_resolver")
+	var catastrophic_entry: bool = tier_name == "catastrophic"
+
+	var shown: Dictionary = {}
+	var inputs: Dictionary = {}
+	var risks: Dictionary = {}
+	for choice_key in rules.CAUGHT_CHOICES:
+		var choice_id := str(choice_key)
+		risks[choice_id] = rules.stick_caught_arrest_risk(choice_id)
+		if rules.is_deterministic(choice_id):
+			continue
+		var action_type: String = rules.resolver_for(choice_id)
+		var attribute: String = resolver.attribute_for(action_type)
+		# The RAW stored attribute, never compat() — see outcome_resolver's header.
+		var raw: int = int(gs.attributes.get(attribute, 0))
+		inputs[choice_id] = {"attribute": attribute, "raw": raw}
+		shown[choice_id] = resolver.success_probability(action_type,
+			rules.stick_caught_chance(choice_id, catastrophic_entry), raw, 0)
+
+	return engine.open_chain(engine.KIND_STICK_CAUGHT, {
+		"cause_id": cause_id,
+		"district_id": gs.current_district_id,
+		"return_route": "STICKUP",
+		"source": {
+			"family": "stick",
+			"action_id": "stickup",
+			"target_id": str(target["id"]),
+			"target_name": str(target["name"]),
+			"target_tier": int(target["tier"]),
+			"source_day": int(gs.day),
+			"source_slot": int(gs.time_slots_today),
+			"source_rng_key": "stickup:%d:%d:%s" % [gs.day, gs.time_slots_today, str(target["id"])],
+			"pre_encounter_heat": pre_source_heat,
+			"contested_take": 0,
+			"entry_tier": tier_name,
+		},
+		"decision": {
+			"definition_id": "stick_caught",
+			"allowed_choices": rules.CAUGHT_CHOICES.duplicate(),
+			"deterministic_choices": rules.CAUGHT_DETERMINISTIC.duplicate(),
+			"resolver_inputs": inputs,
+			"shown_probabilities": shown,
+			"arrest_risks": risks,
+		},
+	})
+
+## ENC-D6's effect order, mirroring `boost.gd::resolve_consequence`: resolve
+## the tier (or take Yield's authored row), injury, heat, pressure, the
+## resolver's own observation, then the arrest gate — every mutating step
+## behind its own receipt so a reload between two of them cannot replay one.
+##
+## No cooldown re-check here: `_run` already asked `ArrestSystem.in_cooldown`
+## before this chain ever opened (ENC-D3), so being inside the decision means
+## the law is already standing in front of the player — whether THIS answer
+## ends in cuffs is a fresh question the cooldown does not reach twice.
+func _resolve_caught(chain: Dictionary, choice_id: String) -> Dictionary:
+	var engine: Object = _engine()
+	if engine == null:
+		return {"ok": false, "reason": "Nothing to answer to."}
+	var rules: RefCounted = RULES.new()
+	var source: Dictionary = chain.get("source", {})
+	var cause_id := str(chain.get("cause_id", ""))
+	var catastrophic_entry: bool = str(source.get("entry_tier", "")) == "catastrophic"
+
+	var tier_name: String = "deterministic"
+	if not rules.is_deterministic(choice_id):
+		var action_type: String = rules.resolver_for(choice_id)
+		var resolver: Object = gm.system("outcome_resolver")
+		var attribute: String = resolver.attribute_for(action_type)
+		var raw: int = int(gs.attributes.get(attribute, 0))
+		var outcome: Dictionary = resolver.resolve_action(action_type,
+			rules.stick_caught_chance(choice_id, catastrophic_entry), raw,
+			gs.run_seed, "consequence:%s:stick_caught:%s:outcome" % [cause_id, choice_id])
+		tier_name = str(outcome["tier"])
+
+	var result: Dictionary = {
+		"choice_id": choice_id, "tier": tier_name,
+		"health": 0, "heat": 0.0, "arrested": false,
+	}
+
+	# 1. Injury, on its own key.
+	var band: Array = rules.stick_caught_injury_band(choice_id, tier_name)
+	if band.size() == 2 and engine.record_receipt(cause_id, "stick_caught:injury"):
+		var damage: int = rng.seeded_int_range(gs.run_seed,
+			"consequence:%s:stick_caught:%s:injury" % [cause_id, choice_id],
+			int(band[0]), int(band[1]))
+		damage = _crew_absorbed(damage)
+		gs.health = clampi(gs.health - damage, 0, gs.health_max)
+		result["health"] = -damage
+
+	# 2. Heat, through the one owner — raw here, HeatSystem applies Deshawn and
+	#    district scaling same as every other criminal gain.
+	var raw_heat: float = rules.stick_caught_raw_heat(choice_id, tier_name)
+	if raw_heat > 0.0 and engine.record_receipt(cause_id, "stick_caught:heat"):
+		result["heat"] = _apply_heat(raw_heat)
+
+	# 3. District Pressure, once — the same "stick" family ledger the source
+	#    robbery itself already fed.
+	var pressure: float = rules.stick_caught_pressure_gain(choice_id, tier_name)
+	if pressure > 0.0 and engine.record_receipt(cause_id, "stick_caught:pressure"):
+		engine.add_pressure(gs.current_district_id, "stick", pressure, cause_id)
+		result["pressure"] = pressure
+
+	# 4. The resolver's own footprint for the shape that was rolled. Yield
+	#    rolls nothing, so it carries none.
+	if not rules.is_deterministic(choice_id) \
+			and engine.record_receipt(cause_id, "stick_caught:observation"):
+		var resolver_obs: Object = gm.system("outcome_resolver")
+		resolver_obs.broadcast_outcome(rules.resolver_for(choice_id), tier_name,
+			str(chain.get("district_id", "")))
+
+	# 5. The arrest gate. Stick-authored, per-choice, per-tier — never the
+	#    Boost table's. Yield is the deterministic surrender: no roll in, no
+	#    way out of it either.
+	var arrested: bool = rules.stick_caught_arrests(choice_id, tier_name)
+	result["arrested"] = arrested
+
+	var decision: Dictionary = chain.get("decision", {})
+	decision["resolved_tier"] = tier_name
+	decision["result"] = result
+	chain["decision"] = decision
+
+	engine.advance_stage(engine.STAGE_RESULT)
+	if arrested:
+		var arrest_owner: Object = gm.system("arrest") if gm != null else null
+		if arrest_owner != null:
+			arrest_owner.attach_booking(chain, {
+				"family": "stick",
+				"tier": int(source.get("target_tier", 1)),
+				"target_id": str(source.get("target_id", "")),
+				"cause_id": cause_id,
+			})
+
+	_caught_feed_line(choice_id, tier_name, result)
+	return {"ok": true, "tier": tier_name, "arrested": arrested}
+
+func _caught_feed_line(choice_id: String, tier_name: String, result: Dictionary) -> void:
+	if choice_id == "yield":
+		gs.log_activity("You put your hands up before it went any further.", AMBER)
+		return
+	var arrested: bool = bool(result.get("arrested", false))
+	var verb: String = str({"fight": "went at", "run": "ran from", "talk": "talked to"}
+		.get(choice_id, "answered"))
+	if arrested:
+		gs.log_activity("You %s the officer and it ends in cuffs." % verb, RED)
+	elif tier_name in ["clean", "messy"]:
+		gs.log_activity("You %s the officer and got clear." % verb, GREEN)
+	else:
+		gs.log_activity("You %s the officer, and talk was as far as it got." % verb, AMBER)
 
 ## The two-a-day cap, reset for the new day.
 ##
@@ -534,12 +706,37 @@ func _engine() -> Object:
 	return gm.system("consequence") if gm != null else null
 
 ## The engine's adapter-copy seam: the loop's vocabulary is this file's, not
-## the engine's fallback table's.
+## the engine's fallback table's. No branch on chain kind needed here — the
+## room's own TALK/PRESS/WATCH/etc. labels are the only ones this table
+## carries, and the caught encounter's fight/run/talk/yield fall through to
+## the engine's own `choice_id.capitalize()` default for their LABEL exactly
+## as Boost's four already do (see `boost.gd`'s comment on the same choice);
+## "talk" happens to resolve to the same word either way.
 func choice_label(choice_id: String) -> String:
 	return _scripts().choice_label(choice_id)
 
+## Unlike the label, TALK's copy genuinely differs by kind (ENC-D7: the caught
+## encounter's TALK is to the responding officer, not the mark), so this one
+## does branch — on the ACTIVE chain, the same fact `_is_caught_active` reads
+## for `choice_guarantee` below.
 func choice_copy(choice_id: String) -> String:
+	if _is_caught_active():
+		return str(SCRIPTS.STICK_CAUGHT_CHOICE_COPY.get(choice_id, ""))
 	return _scripts().choice_copy(choice_id)
+
+## ENC-D6: Stick Caught's YIELD is a guaranteed SURRENDER — it books,
+## deliberately — so the screen's own "no injury, no Heat, no arrest" default
+## would be a lie for this one choice. See `ConsequenceEngine.choice_guarantee`
+## for why this seam exists at all.
+func choice_guarantee(choice_id: String) -> String:
+	if choice_id == "yield" and _is_caught_active():
+		return "Guaranteed: no injury, no Heat. Straight to cuffs."
+	return ""
+
+func _is_caught_active() -> bool:
+	var engine: Object = _engine()
+	return engine != null \
+		and str(gs.active_consequence.get("chain_kind", "")) == engine.KIND_STICK_CAUGHT
 
 ## Open the room. The chain owes the robbery's one slot (settled on Continue),
 ## and NOTHING is counted yet: attempts and the daily cap move on the first
@@ -684,7 +881,10 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	var engine: Object = _engine()
 	if engine == null:
 		return {"ok": false, "reason": "Nothing to answer to."}
-	if str(chain.get("chain_kind", "")) != engine.KIND_CONFRONTATION:
+	var kind := str(chain.get("chain_kind", ""))
+	if kind == engine.KIND_STICK_CAUGHT:
+		return _resolve_caught(chain, choice_id)
+	if kind != engine.KIND_CONFRONTATION:
 		return {"ok": false, "reason": "Not a moment this system owns."}
 	var loop: Dictionary = LOOP.loop_of(chain)
 	if loop.is_empty():

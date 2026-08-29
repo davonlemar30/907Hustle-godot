@@ -6,6 +6,8 @@ extends "res://ui/screens/surface_base.gd"
 ## real chance and the real heat cost: the point of this surface is that the
 ## player can see exactly what they are trading.
 
+const RULES := preload("res://data/consequence_rules.gd")
+
 func _build_body() -> void:
 	var sys: Object = _gm.system("stickup")
 	if sys == null:
@@ -69,6 +71,13 @@ func _target_row(sys: Object, t: Dictionary) -> Control:
 	var chance: float = sys.chance_for(t)
 	var odds_col: Color = GREEN if chance >= 0.55 else (AMBER if chance >= 0.35 else RED)
 	v.add_child(label("%d%% odds  ·  +%d heat if it lands  ·  tier %d" % [int(round(chance * 100.0)), int(t["heat"]), int(t["tier"])], "Muted", 11, odds_col))
+
+	# ENC-D8: the same pre-encounter Heat the arrest gate reads, so this can
+	# never promise one thing and the gate deliver another. A blown job right
+	# now brings the law before the player spends the slot finding out.
+	var gate: float = float(RULES.STICK_FAILURE_ARREST_HEAT.get(int(t["tier"]), 10.0))
+	if float(gs.heat) > gate:
+		v.add_child(label("HOT ENOUGH THAT A BLOWN JOB BRINGS THE LAW", "Mono", 11, RED, true))
 
 	var blocked: String = sys.blocker(str(t["id"]))
 	var b := button("RUN IT" if blocked.is_empty() else blocked.to_upper(), blocked.is_empty(), _on_hit.bind(str(t["id"])), 46)

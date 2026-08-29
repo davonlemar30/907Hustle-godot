@@ -31,6 +31,7 @@ func _ready() -> void:
 	_test_v22_growth_caps()
 	_test_v23_opportunities()
 	_test_v24_dre_pending_penance()
+	_test_stick_booking_still_validates()
 	_test_load_pipeline()
 	if failures.is_empty():
 		print("save_validation: PASS — %d checks, 0 failures" % checks)
@@ -959,6 +960,40 @@ func _test_v24_dre_pending_penance() -> void:
 	var v23 := _state("day", 9)
 	var migrated: Dictionary = save_system._migrate({"save_version": 23, "state": v23})
 	_check("a v23 save with no restitution latch migrates", not migrated.is_empty())
+
+## PR A (0.3.0, ENC-D1..D9): new stickup arrests open `stick_caught` at
+## decision, but a save written before this build can already hold a
+## `stick_booking` chain opened the old way -- direct to `result`, no
+## decision, `allowed_choices: []`. `_validate_active_consequence` has no
+## enumerated kind list (it coerces by KEY, never by `chain_kind`'s value —
+## see its own loop over `["consequence_id", "cause_id", "chain_kind", ...]`),
+## so this proves nothing added one that would reject an old save on load.
+func _test_stick_booking_still_validates() -> void:
+	var old_chain := {
+		"consequence_id": "consequence:00000001", "cause_id": "cause:00000001",
+		"chain_kind": "stick_booking", "stage": "result",
+		"district_id": "north_star_lot", "return_route": "STICKUP",
+		"source": {"family": "stick", "action_id": "stickup", "target_id": "washgo_regular"},
+		"decision": {
+			"definition_id": "stick_booking", "allowed_choices": [],
+			"resolved_tier": "catastrophic",
+			"result": {"choice_id": "", "tier": "catastrophic", "arrested": true},
+		},
+		"booking": {},
+		"time": {"source_slots_remaining": 1, "source_time_settled": false},
+	}
+	var fixed := _fixed(_state("active_consequence", old_chain))
+	var chain: Dictionary = fixed["active_consequence"]
+	_check("an old stick_booking chain kind survives untouched",
+		chain.get("chain_kind", "") == "stick_booking")
+	_check("its decision-less choice list survives",
+		(chain["decision"] as Dictionary).get("allowed_choices", ["x"]) == [])
+	_check("its already-resolved arrest survives",
+		((chain["decision"] as Dictionary).get("result", {}) as Dictionary).get("arrested", false) == true)
+	_check("it still owes its source slot",
+		int((chain["time"] as Dictionary).get("source_slots_remaining", 0)) == 1)
+	_check("it is still sitting at result, not fast-forwarded",
+		chain.get("stage", "") == "result")
 
 func _test_load_pipeline() -> void:
 	var save_system: Node = get_node("/root/SaveSystem")

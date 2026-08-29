@@ -1480,9 +1480,18 @@ func _run_stickup_case(gs: Node, gm: Node, exposure: Node, target: Dictionary,
 		_expect_int(label + " holds its slot while booked",
 			gs.time_slots_today, slot_before)
 		_expect_true(label + " owes its source slot", engine_probe.source_time_owed())
-		_expect_str(label + " opens a stick booking chain",
+		# ENC-D1 (0.3.0): a blown single-roll stickup no longer books directly —
+		# it opens the caught DECISION first, exactly as any other action-sourced
+		# arrest does. Only "catastrophic" reaches this branch from this probe
+		# (heat sits at 0 here, well under every tier's Failure gate).
+		_expect_str(label + " opens the caught decision, not a direct booking",
 			str((gs.active_consequence as Dictionary).get("chain_kind", "")),
-			engine_probe.KIND_STICK_BOOKING)
+			engine_probe.KIND_STICK_CAUGHT)
+		_expect_str(label + " has not been resolved for the player",
+			engine_probe.active_stage(), engine_probe.STAGE_DECISION)
+		_expect_true(label + " presents a real choice surface",
+			not ((gs.active_consequence as Dictionary).get("decision", {}) as Dictionary)
+				.get("allowed_choices", []).is_empty())
 	else:
 		_expect_int(label + " advances one slot", gs.time_slots_today, slot_before + 1)
 
@@ -10023,6 +10032,10 @@ func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
 				gm.dispatch("stickup", {"target_id": target_id}))
 			if tier >= 2:
 				_drive_room_to_failure(gm)
+			elif tier == 1:
+				# ENC-D1: the single-roll path answers through a decision
+				# before booking now. Yield is the deterministic road to it.
+				gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"})
 			_expect_true("tier %d failure at heat %.1f books" % [tier, above],
 				_stick_outcome_arrested(gs))
 			_expect_str("tier %d books under the stick severity" % tier,
@@ -10062,6 +10075,10 @@ func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
 			if tier >= 2:
 				# The catastrophe lands on the first press — no fork exists.
 				gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+			elif tier == 1:
+				# ENC-D1: catastrophic opens the caught decision too. Yield is
+				# the deterministic road to a booked outcome.
+				gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"})
 			_expect_true("tier %d catastrophic books at zero heat" % tier,
 				_stick_outcome_arrested(gs))
 			gs.active_consequence = {}
@@ -10107,7 +10124,12 @@ func _stick_outcome_arrested(gs: Node) -> bool:
 	var chain: Dictionary = gs.active_consequence
 	if chain.is_empty():
 		return false
-	if str(chain.get("chain_kind", "")) == "confrontation":
+	# 0.3.0 (ENC-D1..D9): the single-roll path's own chain is a DECISION now,
+	# not a verdict -- it exists the moment the law shows up, before the
+	# player has answered for it, so "exists at all" can no longer mean
+	# "arrested" the way the old direct-to-booking shape let it. Read the
+	# resolved result the same way a room's is read.
+	if str(chain.get("chain_kind", "")) in ["confrontation", "stick_caught"]:
 		var decision: Dictionary = chain.get("decision", {})
 		return bool((decision.get("result", {}) as Dictionary).get("arrested", false))
 	return true
@@ -13111,18 +13133,32 @@ func _check_ti003_scenarios(gs: Node, gm: Node, engine: RefCounted) -> void:
 			engine.active_stage() == engine.STAGE_RELEASE or gs.game_over)
 		gs.active_consequence = {}
 
-	# --- Stickup catastrophic → arrest → booking ---
+	# --- Stickup catastrophic → the caught decision → yield → booking ---
+	#
+	# 0.3.0 (ENC-D1..D9): a catastrophic single-roll stickup no longer books
+	# directly — it opens fight/run/talk/yield first, and only THAT answer
+	# decides whether Booking follows. Yield is the deterministic road to it
+	# (ENC-D6), so this scenario drives exactly the same shape the old direct
+	# entry proved, plus the decision ENC-D1 now requires in front of it.
 	var cat_day: int = _find_stick_day(gs, gm, 1, "catastrophic", 0.0, 0)
 	if cat_day > 0:
 		_stick_gate_ready(gs, 0.0, 0)
 		gs.day = cat_day
 		_expect_true("scenario: the catastrophic robbery dispatches",
 			gm.dispatch("stickup", {"target_id": "washgo_regular"}))
-		_expect_str("scenario: a catastrophic robbery books",
+		_expect_str("scenario: a catastrophic robbery opens the caught decision",
 			str((gs.active_consequence as Dictionary).get("chain_kind", "")),
-			engine.KIND_STICK_BOOKING)
-		_expect_true("scenario: the robbery result continues into booking",
+			engine.KIND_STICK_CAUGHT)
+		_expect_str("scenario: the decision has not resolved on its own",
+			engine.active_stage(), engine.STAGE_DECISION)
+		_expect_true("scenario: yield resolves the caught decision",
+			gm.dispatch("resolve_consequence_choice", {"choice_id": "yield"}))
+		_expect_true("scenario: yield books deterministically",
+			bool(((engine.result_summary() as Dictionary)["result"] as Dictionary)["arrested"]))
+		_expect_true("scenario: the caught result continues into booking",
 			gm.dispatch("consequence_continue", {}))
+		_expect_str("scenario: the robbery reaches booking",
+			engine.active_stage(), engine.STAGE_BOOKING)
 		_expect_true("scenario: the robbery booking commits",
 			gm.dispatch("resolve_booking_choice", {"choice_id": "serve_time"}))
 		_expect_true("scenario: the robbery booking releases",
@@ -19225,7 +19261,12 @@ func _fail(label: String, detail: String) -> void:
 ## same disclaimer every seeded sweep in this file already carries. Five
 ## hardcoded `SAVE_VERSION == 17` assertions become 18, one per schema-version
 ## check this file pins independently rather than through one shared constant.
-const MIN_CHECKS := 12578
+##
+## 0.3.0 (ENC-D1..D9): +6. A blown tier-1 stickup now answers through the
+## caught decision before booking — `_run_stickup_case`'s catastrophic arm and
+## `_check_ti003_scenarios`' own catastrophic-arrest scenario both drive the
+## new decision (yield) rather than reading a chain that used to book itself.
+const MIN_CHECKS := 12584
 
 func _finish() -> void:
 	# The floor, enforced rather than merely declared.

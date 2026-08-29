@@ -201,6 +201,8 @@ func _title(summary: Dictionary) -> String:
 			return "CAUGHT"
 		_engine.KIND_STICK_BOOKING:
 			return "YOU'RE IN"
+		_engine.KIND_STICK_CAUGHT:
+			return "CAUGHT"
 		_engine.KIND_RETALIATION:
 			return "THEY WERE WAITING"
 		_engine.KIND_WANDER:
@@ -226,6 +228,9 @@ func _context_line(summary: Dictionary) -> String:
 				parts.append(opponent.to_upper())
 		_engine.KIND_STICK_BOOKING:
 			parts.append("STICK UP")
+		_engine.KIND_STICK_CAUGHT:
+			parts.append("STICK UP")
+			parts.append(str(summary.get("source_target_name", "")).to_upper())
 		_engine.KIND_RETALIATION:
 			parts.append(str(summary.get("source_target_name", "SOMEBODY")).to_upper())
 		_engine.KIND_WANDER:
@@ -256,6 +261,8 @@ func _situation_body(summary: Dictionary) -> String:
 			return "The guard sees the lift and closes the distance before you clear the room."
 		_engine.KIND_STICK_BOOKING:
 			return "The move is over. Now the choice is how much cash you are willing to trade for time."
+		_engine.KIND_STICK_CAUGHT:
+			return "Blue and reds behind you before you're two blocks clear. The robbery already happened — this is what it costs."
 		_engine.KIND_RETALIATION:
 			return "%s tracked it back to you. They found you before the neighborhood forgot." \
 				% str(summary.get("source_target_name", "Somebody"))
@@ -332,8 +339,12 @@ func _choice_card(row: Dictionary) -> Control:
 
 	# Yield's whole value is certainty, so it states its guaranteed price rather
 	# than an odds band (PX-003 §4: "Yield has no probability treatment").
+	# Through the engine's adapter seam: the fallback is true for every
+	# deterministic choice that shipped before 0.3.0, but Stick Caught's own
+	# YIELD guarantees an arrest rather than avoiding one (ENC-D6).
 	if bool(row.get("deterministic", false)):
-		v.add_child(label("Guaranteed: no injury, no Heat, no arrest.", "Muted", 11, CYAN, true))
+		v.add_child(label(_engine.choice_guarantee(choice_id,
+			"Guaranteed: no injury, no Heat, no arrest."), "Muted", 11, CYAN, true))
 
 	var warning := str(ARREST_WARNINGS.get(str(row.get("arrest_risk", "")), ""))
 	if not warning.is_empty():
@@ -454,6 +465,12 @@ func _result_headline(summary: Dictionary, choice: String, tier: String,
 		if tier in ["clean", "messy"]:
 			return "YOU HELD ONTO IT"
 		return "THEY FOUND NOTHING"
+	if str(summary.get("chain_kind", "")) == _engine.KIND_STICK_CAUGHT:
+		if bool(effects.get("arrested", false)):
+			return "IT ENDS IN CUFFS"
+		if tier in ["clean", "messy"]:
+			return "YOU GOT CLEAR"
+		return "THEY DIDN'T BUY IT"
 	if choice == "yield":
 		return "YOU GAVE IT BACK"
 	var kept: bool = int(effects.get("cash", 0)) + int(effects.get("goods", 0)) > 0
@@ -478,6 +495,12 @@ func _result_body(summary: Dictionary, choice: String, tier: String,
 		if int(effects.get("cash", 0)) < 0:
 			return "They take what they came for and go."
 		return "They leave without what they came for. That is not the end of it."
+	if str(summary.get("chain_kind", "")) == _engine.KIND_STICK_CAUGHT:
+		if bool(effects.get("arrested", false)):
+			return "The responding officer isn't interested in a conversation. Whatever happens next goes through the book."
+		if tier in ["clean", "messy"]:
+			return "You get clear of it. The robbery already happened; this part didn't."
+		return "It doesn't end here, but it doesn't end in cuffs either — not this time."
 	if choice == "yield":
 		return "You lose the take and stop the situation from climbing any higher."
 	if bool(effects.get("banned", false)) and not bool(effects.get("arrested", false)):

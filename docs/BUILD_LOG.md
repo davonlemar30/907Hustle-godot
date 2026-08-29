@@ -28,6 +28,80 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 0.3.0 — Answer For It: four PRs (added 2026-08-29)
+
+Four PRs against `BUILD_ANSWER_FOR_IT_PROMPT.md`, each its own branch, merged
+in order, closing the legibility hole the 0.2.1 phone playtest found and two
+standing decisions that had been waiting on it. `docs/DECISIONS.md` D-13
+through D-15 carry the closed rulings; this entry is the narrative.
+
+**PR A — The blown job answers to somebody.** A blown tier-1 stickup used to
+open Booking directly, at `STAGE_RESULT`, with `allowed_choices: []` — by
+original design (TI-003 §14: "there was no decision," because the robbery
+had already resolved on its own roll). The owner ruled that design over
+after playtesting it on a phone: every action-sourced caught moment now
+opens fight/run/talk/yield first, mirroring Boost's own caught chain
+seam-for-seam but authored fresh (`STICK_CAUGHT_OPPONENT`/`STICK_CAUGHT_
+EFFECTS`, `data/consequence_rules.gd`) — there is no contested take here, so
+no bribe and nothing to hand back. Rooms (tier 2-3) are untouched: their own
+stages already are the decision. `KIND_STICK_BOOKING` survives, unedited, as
+a resolution target for saves already mid-booking. A new engine seam,
+`ConsequenceEngine.choice_guarantee`, lets a chain's own guaranteed choice
+say something other than the screen's old "no injury, no Heat, no arrest"
+default — Stick Caught's own YIELD is a guaranteed surrender, not a
+guaranteed reprieve. No save-version bump: the new chain kind is data inside
+the already-persisted `active_consequence`.
+
+**PR B — Heat can breathe.** The quiet-day rule shed nothing on any day that
+generated Heat, and an every-day criminal profile generates Heat every day
+by definition, so it asymptoted at the ceiling with no way back down short
+of an arrest or a lucky street stop. A new unconditional nightly floor
+(`HeatSystem.settle_active_decay`, authored at 2.0) now runs alongside the
+existing (raised, 0.75→1.5) quiet-day rule from the same declared
+`"heat_decay"` rollover step. Measured against a new economy profile,
+`everyday_criminal` (daily boost AND stickup, since neither existing solo
+profile represented that combined intensity): mean ending Heat fell from
+14.1 (every seed above the 12.0 gate) to 10.5 (every seed below). Boost's
+own tier-3 Run failure lost its unconditional arrest — `RUN_FAILURE_ARREST_
+HEAT` is a tier-scaled table now (`{1: 9.0, 2: 7.5, 3: 6.0}`) instead of a
+flat 6.0 with an OR-clause, closing an escalation (`86bbjk6kk`) that had sat
+open since Batch 18. One measured side effect, disclosed rather than hidden:
+Boost's own share of the day job moved 13% → 24%, and `hustler` (259%→942%)
+and `arbitrage` (110%→259%) both moved well past their old corridors,
+because the courier risk term reads the same shared Heat meter — widened
+rather than fought, since retuning that term itself is a separate decision.
+
+**PR C — Stickup earns its place.** Closes a standing high-priority decision
+(`86bbjngyz`): stickup earned 2% of the day job, with one starved tier-1
+target (`washgo_regular`) absorbing 98% of every attempt. A second any-slot
+Spenard target (`spenard_diner_regular`, $95-160 — `washgo_regular`'s own
+band is $30-50) and a daily cap that scales with rep (2 base, +1 at each
+tier milestone the ladder already reads, ceiling 4) moved the measured
+share to 6% solo, 8% combined with boost. The band was tuned empirically
+against the post-A/B baseline, not picked once and trusted — several
+candidates measured worse than the 2% hole itself before landing on one
+that held mid-single-digits with real margin.
+
+**PR D — The phone answers too.** Three small, unrelated fixes. The Texts
+screen's bulk "clear all" button was 40pt, four short of the tap-target
+floor its own per-message dismiss already held — now 44. The title screen's
+foreground UI had no width cap, so a desktop-width viewport stretched every
+Control (buttons, text) to the full viewport width instead of the authored
+mobile proportions; a new `Content` node caps the foreground at a centered
+375px column while the background photo still fills the frame. The tofu
+glyphs ↗ and ♛ named in an earlier audit were already fixed in a prior
+batch — confirmed by direct search, nothing to do.
+
+**Verification note:** a concurrent PR (`#104`, "Harden save validation and
+system lookup" — a real Node-leak fix and a system-lookup perf hardening,
+unrelated to this build) merged to `main` between PR D and this entry and
+brought its own HANDOFF.md/README.md check-count update along with it. That
+update undercounted parity (12,591) and confrontation (250) against what the
+suites actually enforce and report (`MIN_CHECKS := 12618` and `251`,
+confirmed by a fresh full run against post-#104 `main` before this entry was
+written). The figures in this batch's docs are the freshly-run ones, not
+carried forward from either PR's own claim.
+
 ## 0.2.1 — In Hand: the touch fix and the phone build: two PRs  (added 2026-08-28)
 
 Two PRs against `BUILD_IN_HAND_PROMPT.md`, in the fixed order the prompt set:

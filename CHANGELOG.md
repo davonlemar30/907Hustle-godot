@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `0.2.1`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `0.3.0`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,51 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 0.3.0 — Answer For It: the cops talk to you now (2026-08-29)
+
+Doing criminal work while carrying Heat, a blown stickup used to put the
+player straight into Booking — no encounter, no choices, no explanation. It
+looked like a missing feature; it was a design decision, and the owner's
+phone playtest called it out as the first real finding. That design is over.
+Every action-sourced caught moment in the game now presents a decision
+before any arrest resolves. Heat, which never came down under ordinary
+criminal play, now breathes. And stickup, which earned 2% of the day job
+with one starved target absorbing 98% of every attempt, has a second target
+and a cap that grows with rep.
+
+#### Added
+
+- **The stickup caught decision**: a blown tier-1 job that comes up Failure
+  over Heat, or Catastrophic at any Heat, now opens fight/run/talk/yield
+  before any arrest resolves — the same response vocabulary Boost's own
+  caught chain already taught the player, authored fresh for the responding
+  officer rather than the mark. Rooms (tier 2-3) are untouched; their own
+  multi-round stages already are the decision. A pre-attempt warning on the
+  Stickup screen reads the same Heat the arrest gate reads, so a blown job's
+  risk is never a surprise. Old saves holding an already-open booking keep
+  resolving exactly as they did.
+- **Heat comes back down**: a small decay now runs every night regardless of
+  how loud the day was, alongside a bigger (and now more meaningful)
+  quiet-day rule. An every-day criminal profile that used to asymptote at
+  the ceiling now measurably returns below the tier-1 arrest gate. Boost's
+  own tier-3 Run failure no longer arrests unconditionally — Heat has to
+  clear a bar at every tier now, the bar just gets lower the bigger the job.
+  Measured: Boost's own share of the day job moved 13% → 24% as a result.
+- **Stickup earns its place**: a second any-slot Spenard target with a
+  meaningfully bigger band, and a daily cap that scales with rep instead of
+  sitting flat at two forever. Stickup's measured share moved from 2% of the
+  day job to 6% solo, 8% combined with boost.
+- **Phone and title polish**: the Texts screen's "clear all" control is a
+  real 44pt tap target now, matching the per-message dismiss beside it; the
+  title screen keeps its authored mobile proportions — a centered,
+  width-capped column — on a desktop-width viewport instead of stretching
+  edge to edge.
+
+#### Fixed
+
+- Boost's tier-3 Run failure no longer arrests regardless of the player's
+  Heat (see above).
 
 ## 0.2.1 — In Hand: the touch fix and the phone build (2026-08-28)
 

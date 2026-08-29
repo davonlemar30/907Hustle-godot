@@ -25,7 +25,13 @@ extends Node
 ## debug build. Neither ships a player-facing surface or system against the
 ## rule above — the game plays the same, it just scrolls correctly now and
 ## also runs natively on a phone — so this is PATCH, not MINOR.
-const VERSION := "0.2.1"
+##
+## 0.3.0 (Answer For It): a blown tier-1 stickup gets its own caught decision
+## instead of skipping straight to Booking (D-13) — a new player-facing chain,
+## which is the MINOR case squarely. Riding with it: Heat's own unconditional
+## nightly decay (D-14) and a second Spenard stickup target with a rep-scaled
+## daily cap (D-15).
+const VERSION := "0.3.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

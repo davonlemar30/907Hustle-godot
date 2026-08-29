@@ -14,6 +14,11 @@ signal action_failed(action: String, reason: String)
 signal surfaces_announced(surface_ids: Array)
 
 var _systems: Array = []
+## Direct registry for collaborator lookups. Dispatch keeps `_systems` because
+## its order is the routing contract, but `system()` sits on 200+ static call
+## sites and should not rescan every registered system each time the build adds
+## another feature.
+var _systems_by_name: Dictionary = {}
 var _gs: Node
 var _dispatch_depth: int = 0
 
@@ -246,15 +251,16 @@ func _ready() -> void:
 	register_system("consequence", consequence_engine)
 
 func register_system(sys_name: String, instance: Object) -> void:
+	if _systems_by_name.has(sys_name):
+		push_error("GameManager: duplicate system registration '%s'." % sys_name)
+		return
 	_systems.append({"name": sys_name, "node": instance})
+	_systems_by_name[sys_name] = instance
 
 ## Read-only handle on a system, for screens that need to ask it a question
 ## (e.g. "why can't I work right now?"). Mutations still go through dispatch.
 func system(sys_name: String) -> Object:
-	for entry in _systems:
-		if entry["name"] == sys_name:
-			return entry["node"]
-	return null
+	return _systems_by_name.get(sys_name, null)
 
 ## True while an action and all of its synchronous side effects are running.
 ## Persisted mutators on the Exposure/Curtis autoloads use this as their

@@ -15,6 +15,13 @@ const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 ## Word of Mouth's ramp cap, for the same reason `WANDER_EVENTS` is here: the
 ## clamp on a corrupt `tip_misses` has to agree with the ramp it is clamping.
 const TIP_EVENTS := preload("res://data/tip_events.gd")
+
+## Built lazily because the authored Boost table still lives on GameState.
+## GameState extends Node, so every temporary instance must be freed explicitly;
+## otherwise each save validation leaks two complete state objects (one for the
+## discovery latch and one for the bribe latch). One validator handles both
+## fields, so cache the ids for that validation pass and allocate only once.
+var _boost_target_ids_cache: Dictionary = {}
 ## Nested save-shape repair for load-time payloads.
 ##
 ## This validator is deliberately load-only. It returns a deep copy, repairs
@@ -696,10 +703,7 @@ func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> voi
 		_repair(repairs, "boost_targets_discovered", "wrong type; defaulted")
 		return
 	# The authored ids, off the state script rather than a list retyped here.
-	var authored: Dictionary = {}
-	for target in (GAME_STATE.new().boost_targets as Array):
-		if target is Dictionary:
-			authored[str((target as Dictionary).get("id", ""))] = true
+	var authored: Dictionary = _boost_target_ids()
 	var found: Array = state["boost_targets_discovered"]
 	var cleaned: Array = []
 	for index in range(found.size()):
@@ -728,10 +732,7 @@ func _validate_boost_bribes_used(state: Dictionary, repairs: Array[String]) -> v
 		state["boost_bribes_used"] = []
 		_repair(repairs, "boost_bribes_used", "wrong type; defaulted")
 		return
-	var authored: Dictionary = {}
-	for target in (GAME_STATE.new().boost_targets as Array):
-		if target is Dictionary:
-			authored[str((target as Dictionary).get("id", ""))] = true
+	var authored: Dictionary = _boost_target_ids()
 	var found: Array = state["boost_bribes_used"]
 	var cleaned: Array = []
 	for index in range(found.size()):
@@ -750,6 +751,18 @@ func _validate_boost_bribes_used(state: Dictionary, repairs: Array[String]) -> v
 			continue
 		cleaned.append(str(entry))
 	state["boost_bribes_used"] = cleaned
+
+## The Boost catalogue has not yet moved to its own data resource, so read it
+## from a temporary default GameState without leaving that Node alive forever.
+func _boost_target_ids() -> Dictionary:
+	if not _boost_target_ids_cache.is_empty():
+		return _boost_target_ids_cache
+	var defaults: Node = GAME_STATE.new()
+	for target in (defaults.boost_targets as Array):
+		if target is Dictionary:
+			_boost_target_ids_cache[str((target as Dictionary).get("id", ""))] = true
+	defaults.free()
+	return _boost_target_ids_cache
 
 ## 0.1.2 (Word of Mouth). Structural only, same as `_validate_active_consequence`
 ## — `type` is not checked against a known set because `tip_modifiers_for`

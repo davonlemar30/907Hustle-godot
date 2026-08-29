@@ -114,6 +114,13 @@ func _target_row(sys: Object, t: Dictionary) -> Control:
 		line += "  ·  best %s" % names[window]
 	v.add_child(label(line, "Muted", 11, col))
 
+	var opportunities: Object = _gm.system("opportunities")
+	var score: Dictionary = opportunities.score_offer_for_target(str(t["id"])) if opportunities != null else {}
+	if not score.is_empty():
+		var days: int = int(score["days_left"])
+		var window_line := "today only" if days <= 0 else ("%d days left" % days)
+		v.add_child(label("%s wants this one · +$%d · %s" % [str(score["title"]), int(score["bonus"]), window_line], "Muted", 11, AMBER))
+
 	var blocked: String = sys.blocker(str(t["id"]))
 	var b := button("WALK IN" if blocked.is_empty() else blocked.to_upper(), blocked.is_empty(), _on_boost.bind(str(t["id"])), 46)
 	b.disabled = not blocked.is_empty()

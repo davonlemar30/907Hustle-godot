@@ -172,7 +172,12 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## still owes its follow-up penance contract. No v23 save has ever suspended
 ## through the real collection encounter this build adds, so `false` is that
 ## save's honest history.
-const SAVE_VERSION := 24
+## v25: `wander_quiet_streak` (The Street Answers Back PR A, STR-D2) --
+## purely additive, one counter of consecutive quiet wanders that did not
+## exist as a concept before this build's interruption gate. No v24 save has
+## ever had a streak running, so `0` is that save's honest history -- the
+## same call `wander_misses` itself got at v13.
+const SAVE_VERSION := 25
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -247,6 +252,9 @@ const PERSIST_FIELDS: Array[String] = [
 	# Wander (v13). The ramp and the seen-cards ledger; both are the run's own
 	# history of going out and looking, and neither can be reconstructed.
 	"wander_misses", "wander_count", "wander_seen", "wander_recent",
+	# The interruption gate's quiet streak (v25, STR-D2). Same reasoning as
+	# wander_misses above: the run's own history of a mechanic that reads it.
+	"wander_quiet_streak",
 	# The day's walk count (v14), for the effort falloff.
 	"wanders_today",
 	# Boost's discovery axis (v15). A one-way latch like `districts_unlocked`:
@@ -888,6 +896,10 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				pass
 			23:
 				# v23 -> v24: dre_pending_penance. Purely additive -- see this
+				# arm's own paragraph by SAVE_VERSION.
+				pass
+			24:
+				# v24 -> v25: wander_quiet_streak. Purely additive -- see this
 				# arm's own paragraph by SAVE_VERSION.
 				pass
 			_:

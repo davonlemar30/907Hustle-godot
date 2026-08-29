@@ -191,12 +191,21 @@ func facts() -> Dictionary:
 
 ## Every card that could come up right now: right district, right time of day,
 ## requirements met, not spent, not one of the last few seen.
+##
+## STR-D1 (0.5.0 PR A): `KIND_ENCOUNTER` cards are excluded here — they fold
+## into the interruption gate below and are no longer ordinary pool citizens.
+## `eligible_encounters()` is their own filter, sharing every OTHER rule this
+## function already enforces (district, slot, once, recency, requirements) so
+## a gated encounter is held to exactly the same authoring discipline as
+## everything else in the deck.
 func eligible_cards() -> Array:
 	var out: Array = []
 	var district := str(gs.current_district_id)
 	var slot: int = int(gs.time_slots_today)
 	var live: Dictionary = facts()
 	for card in EVENTS.CARDS:
+		if str(card["kind"]) == EVENTS.KIND_ENCOUNTER:
+			continue
 		var districts: Array = card["districts"]
 		if not districts.is_empty() and not district in districts:
 			continue
@@ -221,6 +230,161 @@ func eligible_cards() -> Array:
 			continue
 		out.append(card)
 	return out
+
+## The encounter-only pool the gate picks from, held to the exact same
+## district/slot/once/recency/requirements discipline `eligible_cards()`
+## enforces for everything else — POOL-D1's own requirement is that a staged
+## card declares through `requirements.gd` like any other, not through a
+## second eligibility idea invented for encounters specifically.
+func eligible_encounters() -> Array:
+	var out: Array = []
+	var district := str(gs.current_district_id)
+	var slot: int = int(gs.time_slots_today)
+	var live: Dictionary = facts()
+	for card in EVENTS.CARDS:
+		if str(card["kind"]) != EVENTS.KIND_ENCOUNTER:
+			continue
+		var districts: Array = card["districts"]
+		if not districts.is_empty() and not district in districts:
+			continue
+		var slots: Array = card["slots"]
+		if not slots.is_empty() and not slot in slots:
+			continue
+		var card_id := str(card["id"])
+		if bool(card.get("once", false)) and int(gs.wander_seen.get(card_id, 0)) > 0:
+			continue
+		if card_id in gs.wander_recent:
+			continue
+		if not bool(requirements.evaluate_requirements(card["requirements"], live)["ok"]):
+			continue
+		out.append(card)
+	return out
+
+# --- STR-D1/D2: the interruption gate (0.5.0 PR A) --------------------------
+
+## Any debt a player is carrying past its own due point — Dre's account, a
+## defaulted Book note, or rent gone unpaid at least once. Reads `gs.debt_
+## due_days` rather than `dre_account["status"]` directly: the negative-means-
+## overdue sign convention is already the one every existing reader (the HUD,
+## Finances, Phone's obligations list) depends on, so this is the same fact
+## through the same seam rather than a second way to ask Dre's own account
+## whether it is late.
+func _has_overdue_debt() -> bool:
+	if int(gs.debt_due_days) < 0:
+		return true
+	if int(gs.rent_missed) >= 1:
+		return true
+	for entry in gs.shark_loans:
+		if str((entry as Dictionary).get("status", "")) == "defaulted":
+			return true
+	return false
+
+## Total attention steps: how loudly the street already knows this player,
+## right now, in this district. Each of Heat, District Pressure, and Curtis
+## contributes 0-3 off that system's OWN existing band vocabulary — nothing
+## here invents a second scale for any of them — and any overdue debt adds a
+## flat `GATE_OVERDUE_STEPS`, per STR-D2's own framing of the three
+## conditions (elevated Heat, HOT pressure, overdue debt) as independent
+## alternatives rather than one blended score.
+func _attention_steps() -> int:
+	var steps := 0
+	var heat: Object = gm.system("heat") if gm != null else null
+	if heat != null:
+		match str(heat.band()):
+			heat.BAND_NOTICED:
+				steps += 1
+			heat.BAND_WATCHED:
+				steps += 2
+			heat.BAND_BURNING:
+				steps += 3
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine != null:
+		var summary: Dictionary = engine.local_attention_summary(str(gs.current_district_id))
+		var loudest: String = str(summary.get("loudest_family", ""))
+		if not loudest.is_empty():
+			var families: Dictionary = summary.get("families", {})
+			steps += int((families.get(loudest, {}) as Dictionary).get("steps", 0))
+	match str(gs.curtis_phase):
+		"ambient":
+			steps += 1
+		"watching":
+			steps += 2
+		"approaching":
+			steps += 3
+	if _has_overdue_debt():
+		steps += EVENTS.GATE_OVERDUE_STEPS
+	return steps
+
+## Roll the gate for this walk. Returns `{}` if the street stays quiet —
+## either nothing eligible exists to fire at all, or something was eligible
+## and the roll missed — or `{"card": <picked>, "key": <the roll's own
+## seeded key>}` if it opened, the key handed back so the caller opens the
+## chain on the SAME draw rather than reconstructing it a second time.
+##
+## The quiet streak is read and written here, and nowhere else: this is the
+## one place per walk that knows whether the gate just opened. An empty pool
+## STILL counts as a quiet walk for the streak's own purposes — the player
+## experienced an uneventful walk either way, and the streak measures that
+## experience, not which internal reason produced it. A hot player standing
+## somewhere with genuinely nothing eligible gets no encounter regardless of
+## how loud the cap says they should be — the guarantee cannot force a card
+## that does not exist — but the walk still banks toward forcing one open
+## the moment something becomes eligible again, rather than the wait
+## resetting for free every time the pool happens to run dry.
+func _roll_gate() -> Dictionary:
+	var steps: int = _attention_steps()
+	var cap: int = EVENTS.quiet_streak_cap(steps)
+	var forced: bool = cap >= 0 and int(gs.wander_quiet_streak) >= cap
+	var pool: Array = eligible_encounters()
+	if pool.is_empty():
+		gs.wander_quiet_streak = int(gs.wander_quiet_streak) + 1
+		return {}
+	var key := "%d:%d:%d:wander:%s:gate" % [gs.day, gs.time_slots_today,
+		int(gs.wander_count), str(gs.current_district_id)]
+	var opened: bool = forced \
+		or rng.seeded_random(gs.run_seed, key) < EVENTS.gate_chance(steps)
+	if not opened:
+		gs.wander_quiet_streak = int(gs.wander_quiet_streak) + 1
+		return {}
+	gs.wander_quiet_streak = 0
+	return {"card": _pick_encounter(pool, key), "key": key}
+
+## WHICH encounter, once the gate is open — weighted toward whatever kind of
+## trouble actually caused it (PR A item 2). Overdue debt outweighs every
+## other reason a script can be tagged for, since STR-D2 names it as its own
+## trigger rather than a component of one blended score; short of that, a
+## script tagged for the loudest live signal (Pressure's recognition scripts,
+## or Heat's) gets the same boost. A card with no `gate_bias` tag is neutral
+## everywhere — today's two legacy cards carry none, so this reduces to a
+## plain weighted pick until PR B's roster gives it something to prefer.
+func _pick_encounter(pool: Array, key: String) -> Dictionary:
+	var overdue: bool = _has_overdue_debt()
+	var loudest_family := ""
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine != null:
+		loudest_family = str(engine.local_attention_summary(
+			str(gs.current_district_id)).get("loudest_family", ""))
+	var weights: Array[int] = []
+	var total := 0
+	for card in pool:
+		var w: float = float(maxi(1, int((card as Dictionary)["weight"])))
+		var bias := str((card as Dictionary).get("gate_bias", ""))
+		if overdue and bias == "debt":
+			w *= EVENTS.GATE_BIAS_MATCH
+		elif not loudest_family.is_empty() and bias == loudest_family:
+			w *= EVENTS.GATE_BIAS_MATCH
+		var scaled: int = maxi(1, int(round(w)))
+		weights.append(scaled)
+		total += scaled
+	var roll: int = rng.seeded_int_range(gs.run_seed, key + ":pick", 0, total - 1)
+	var picked: Dictionary = pool[0]
+	var running := 0
+	for index in pool.size():
+		running += weights[index]
+		if roll < running:
+			picked = pool[index]
+			break
+	return picked
 
 # --- the action --------------------------------------------------------------
 
@@ -262,6 +426,18 @@ func _wander(intent: String) -> Dictionary:
 		if bool(engine.has_active()):
 			time_system.handle("advance_time", {})
 			return {"ok": true, "kind": "surfaced", "card_id": ""}
+
+	# STR-D1: the interruption gate, rolled before anything else gets a turn.
+	# If it opens, the walk IS the encounter — nothing below this fires, the
+	# same "the blocking encounter is the outcome" rule the retaliation check
+	# above already follows.
+	var gate: Dictionary = _roll_gate()
+	if not (gate.get("card", {}) as Dictionary).is_empty():
+		report = _play_encounter(gate["card"], str(gate["key"]))
+		report["intent"] = intent
+		report["effort"] = spent
+		time_system.handle("advance_time", {})
+		return report
 
 	# The ramped roll. Day and slot lead the key, per the v0.1.0 seeded-key
 	# audit: they are what moves between two wanders, and the district mostly is

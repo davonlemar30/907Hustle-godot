@@ -184,6 +184,93 @@ const BREADCRUMBS: Array[String] = [
 	"Third time out. The same face keeps turning up, and this time it looks back.",
 ]
 
+# --- STR-D1/D2: the interruption gate (0.5.0 PR A) --------------------------
+#
+# The owner's ruling, verbatim: "I should not be able to continuously hit the
+# walk-around button on the Home screen indefinitely. Events should happen
+# that force the player to do something." Before this, `wander_shakedown`
+# and `wander_stopped_on_foot` were two ordinary cards in the pool above,
+# competing against ~14 ambient/read/opportunity cards at flat weights that
+# read nothing about the player — a player at BURNING Heat with three
+# districts HOT drew from the same gentle deck as a clean day-one kid. This
+# is the table that replaces "flat weight" with "reads the player."
+#
+# Owned here rather than in `data/consequence_rules.gd`: this gate is
+# Wander's own draw-time decision (WHETHER a walk gets interrupted at all),
+# not a cross-system consequence rule anything else reads — `EFFORT_BY_WALK`
+# and `DISCOVERY_BASE` above are this file's own precedent for "a number that
+# shapes one system's own draw lives with that draw," and Pressure's family
+# table stays exactly what it is, a fact this gate READS rather than owns.
+#
+# The four inputs are each banded 0-3 by their OWNING system's own existing
+# vocabulary — Heat's four bands, Pressure's four bands (already numbered by
+# `ConsequenceEngine.pressure_steps()`), Curtis's four phases — plus a flat
+# bonus for any overdue debt, since STR-D2 names "any overdue debt" as its
+# own threshold condition rather than a graduated one. `systems/wander.gd`
+# does the reading; this is only the arithmetic once the steps are counted.
+#
+# Base and cap are new, authored numbers, not measured yet — MEAS-D1's own
+# job is to measure them against the five-profile table and report honestly,
+# the same discipline PRESS-D1 just went through for District Pressure's own
+# cap. Chosen for a cold player (0 steps, every signal quiet) to land near
+# the floor — "near-silent," STR-D2's own words — and a maximally hot one (a
+# BURNING/HOT/approaching player also carrying overdue debt, 3+3+3+3 = 12
+# steps) to approach the ceiling without guaranteeing an encounter on every
+# single walk; the guarantee is the streak cap below, not this roll.
+const GATE_BASE_CHANCE := 0.03
+const GATE_PER_STEP_CHANCE := 0.05
+const GATE_CAP := 0.60
+## Flat step bonus for "any overdue debt" — sized to match the top of any one
+## graduated signal's own 0-3 scale, so a debt problem alone reads as
+## seriously as being at BURNING Heat or a HOT district, per STR-D2's own
+## framing of the three conditions as equally weighted alternatives.
+const GATE_OVERDUE_STEPS := 3
+
+## The quiet-streak cap, by total attention steps — STR-D2's "the Nth walk
+## forces the gate open," N authored per band, small. Checked highest
+## threshold first. Zero steps (the cold, clean, paid-up player) matches no
+## row at all, which is what "no cap" means here: `wander.gd` reads an empty
+## match as "let the streak run," so early-game wandering keeps its current
+## gentleness exactly as STR-D2 asks.
+##
+## The lowest row fires the moment ANY single signal leaves its own floor
+## (one step is reachable from Heat's NOTICED band alone, Pressure's KNOWN
+## band alone, or Curtis's AMBIENT phase alone) — "elevated Heat band" in the
+## ruling's own text is not "BURNING specifically," so the cap has to start
+## working before a player is already at the top of every scale at once.
+const QUIET_STREAK_CAPS: Array[Dictionary] = [
+	{"min_steps": 6, "cap": 2},
+	{"min_steps": 3, "cap": 3},
+	{"min_steps": 1, "cap": 5},
+]
+
+## The chance this walk's gate opens, given the total attention steps
+## `wander.gd` has already counted. Clamped at the authored floor and
+## ceiling — never truly zero (every walk rolls, per STR-D1), never a
+## guarantee (the streak cap is what guarantees, not this number).
+static func gate_chance(total_steps: int) -> float:
+	return clampf(GATE_BASE_CHANCE + GATE_PER_STEP_CHANCE * float(maxi(0, total_steps)),
+		GATE_BASE_CHANCE, GATE_CAP)
+
+## The streak cap for this many steps, or -1 for "no cap" (steps at or below
+## every authored row's floor). -1 rather than 0 so a caller can never
+## mistake "uncapped" for "the very next walk forces it."
+static func quiet_streak_cap(total_steps: int) -> int:
+	for row in QUIET_STREAK_CAPS:
+		if total_steps >= int((row as Dictionary)["min_steps"]):
+			return int((row as Dictionary)["cap"])
+	return -1
+
+## How much an encounter card's weight is boosted when its own `gate_bias` tag
+## (a pressure family name, or the literal `"debt"`) matches what actually
+## caused the gate to open this walk — PR A item 2's "a debt-driven opening
+## prefers the debt-flavored script, a pressure-driven one prefers the
+## recognition scripts." A card with no tag, or a tag that does not match
+## today's cause, draws at its own authored weight, unboosted — this is a
+## thumb on the scale, not a filter; the untagged legacy cards below are
+## still fully eligible every time the gate opens.
+const GATE_BIAS_MATCH := 3.0
+
 # --- the cards ---------------------------------------------------------------
 
 const CARDS: Array[Dictionary] = [

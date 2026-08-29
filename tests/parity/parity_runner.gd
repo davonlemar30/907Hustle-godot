@@ -181,6 +181,7 @@ func _ready() -> void:
 		_check_batch15(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch16(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch17(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_street_interruption_gate(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -2046,7 +2047,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
 	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
 	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
-	_expect_int("save version is 24", saves.SAVE_VERSION, 24)
+	_expect_int("save version is 25", saves.SAVE_VERSION, 25)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -13656,7 +13657,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v24", saves.SAVE_VERSION, 24)
+	_expect_int("the schema is v25", saves.SAVE_VERSION, 25)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -19778,7 +19779,7 @@ func _fail(label: String, detail: String) -> void:
 ## 0.3.0 (STK-D1): +8. `_check_stick_daily_cap_scaling`'s own coverage of the
 ## rep-scaled cap, through both the bare function and the real `blocker()`
 ## gate.
-const MIN_CHECKS := 12637
+const MIN_CHECKS := 12660
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -20573,7 +20574,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v24", int(saves.SAVE_VERSION), 24)
+	_expect_int("the schema is v25", int(saves.SAVE_VERSION), 25)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -21019,7 +21020,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v24 for Heat's teeth", int(saves.SAVE_VERSION), 24)
+	_expect_int("the schema is v25 for Heat's teeth", int(saves.SAVE_VERSION), 25)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -21481,9 +21482,9 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v24 for Wander", int(saves.SAVE_VERSION), 24)
+	_expect_int("the schema is v25 for Wander", int(saves.SAVE_VERSION), 25)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
-			"market_discovered"]:
+			"market_discovered", "wander_quiet_streak"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
 	var v12 := {"save_version": 12, "state": {"day": 9, "cash": 400,
@@ -21500,6 +21501,7 @@ func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var bad: Dictionary = validator.validate_state({
 		"day": 10, "wander_misses": 9000, "wander_count": -3,
 		"wander_seen": {"a": -1}, "wander_recent": ["ok", 7],
+		"wander_quiet_streak": -5,
 	})
 	var fixed: Dictionary = bad["state"]
 	_expect_true("a save cannot pin the ramp at its cap",
@@ -21509,14 +21511,22 @@ func _check_wander_persistence(gs: Node, gm: Node) -> void:
 		int((fixed["wander_seen"] as Dictionary)["a"]), 0)
 	_expect_int("and a non-string card id is dropped",
 		(fixed["wander_recent"] as Array).size(), 1)
-	_expect_true("with every repair reported", (bad["repairs"] as Array).size() >= 4)
+	# STR-D2 (0.5.0 PR A): a negative streak is defaulted the same way its
+	# siblings above are -- no cap clamp of its own, see the validator's own
+	# header on why a cap here would need to replay the whole gate read.
+	_expect_int("a negative quiet streak is defaulted",
+		int(fixed["wander_quiet_streak"]), 0)
+	_expect_true("with every repair reported", (bad["repairs"] as Array).size() >= 5)
 
 	var good: Dictionary = validator.validate_state({
 		"day": 10, "wander_misses": 2, "wander_count": 7,
 		"wander_seen": {"spenard_cold_snap": 3}, "wander_recent": ["spenard_cold_snap"],
+		"wander_quiet_streak": 3,
 	})
 	_expect_int("an honest ramp survives validation",
 		int((good["state"] as Dictionary)["wander_misses"]), 2)
+	_expect_int("and an honest streak survives with it",
+		int((good["state"] as Dictionary)["wander_quiet_streak"]), 3)
 	_expect_int("with no repairs", (good["repairs"] as Array).size(), 0)
 	gs.reset_to_new_game()
 
@@ -21788,6 +21798,229 @@ func _check_wander_card_is_reachable(gs: Node, gm: Node) -> void:
 		_expect_true("the old MOVE PRODUCT control is out of the layout",
 			not stale_row.visible)
 	home.queue_free()
+	gs.reset_to_new_game()
+
+# === 0.5.0 PR A — The interruption gate (STR-D1/D2) =========================
+#
+# MEAS-D1's own arms: the cold profile stays under its ceiling, the hot one
+# provably cannot exceed its streak bound, a mid-streak reload reproduces the
+# same forced-open result, and `blocker()`'s existing seam still holds once
+# the gate itself is what opens the chain. Homed here in `tests/parity/`
+# rather than the confrontation/dre suites the build prompt names — every
+# OTHER Wander behavioral test already lives here (`_check_batch10/11`
+# above), and a second home for the same system's tests would be the thing
+# this repo's own header warns against inventing. Noted in the PR body per
+# the Divergence Protocol (`docs/DECISIONS.md`), not silently substituted.
+
+func _check_street_interruption_gate(gs: Node, gm: Node) -> void:
+	_check_gate_arithmetic()
+	_check_gate_cold_profile(gs, gm)
+	_check_gate_hot_profile(gs, gm)
+	_check_gate_reload(gs, gm)
+	_check_gate_blocker_seam(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+## The two pure functions, against literals rather than against themselves —
+## the same discipline `_check_pressure_market_cap` uses for Market's own
+## cap: reading a value back out of the module under test would make this
+## agree with whatever it says rather than with what was authored.
+func _check_gate_arithmetic() -> void:
+	_expect_float("zero steps sits at the authored floor",
+		B10_EVENTS.gate_chance(0), 0.03)
+	_expect_float("one step is a nickel above the floor",
+		B10_EVENTS.gate_chance(1), 0.08)
+	_expect_float("the chance never exceeds its authored ceiling",
+		B10_EVENTS.gate_chance(999), 0.60)
+	_expect_int("zero steps carries no streak cap", B10_EVENTS.quiet_streak_cap(0), -1)
+	_expect_int("one step is the widest cap", B10_EVENTS.quiet_streak_cap(1), 5)
+	_expect_int("three steps tightens it", B10_EVENTS.quiet_streak_cap(3), 3)
+	_expect_int("six steps is the tightest authored row",
+		B10_EVENTS.quiet_streak_cap(6), 2)
+
+## Close out whatever encounter the gate just opened, whichever of the two
+## cards it happened to be — the FIRST authored choice always resolves
+## something, and which tier it rolls into is not this helper's concern.
+func _close_gate_encounter(gs: Node, gm: Node) -> void:
+	var decision: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+	var choices: Array = decision.get("allowed_choices", [])
+	if choices.is_empty():
+		return
+	gm.dispatch("resolve_consequence_choice", {"choice_id": str(choices[0])})
+	var engine: Object = gm.system("consequence")
+	if engine != null and bool(engine.has_active()):
+		# A resolved choice lands the chain at STAGE_RESULT, not closed — the
+		# screen's own Continue button is `consequence_continue`, the action
+		# that actually clears `has_active()` and pays whatever slot the
+		# source still owes (ENC-D9).
+		gm.dispatch("consequence_continue", {})
+
+## STR-D2: below every authored threshold, the gate stays near-silent and the
+## streak runs uncapped — early-game wandering keeps its current gentleness.
+##
+## Measured rather than asserted against a single walk: `GATE_BASE_CHANCE` is
+## a real, non-zero floor (STR-D1 requires every walk to roll), so a handful
+## of the 30 can legitimately open. What may never happen is the STREAK
+## itself ever being capped — a cold player has no row in `QUIET_STREAK_CAPS`
+## that applies to them at all.
+##
+## Carries inventory so `wander_shakedown` is eligible on its own authored
+## evening/night slots — none of Heat, Pressure, Curtis or debt is touched,
+## so every attention signal stays at its own floor throughout. Found live:
+## a first draft left inventory empty, which leaves BOTH encounter cards
+## ineligible on a fresh run (`wander_stopped_on_foot` needs WATCHED+ Heat;
+## `wander_shakedown` needs something to hand over) — `eligible_encounters()`
+## then returns empty every walk, `_roll_gate()` never rolls at all, and the
+## streak sits inertly at 0 forever, which is a dead test passing for the
+## wrong reason rather than proof of anything.
+func _check_gate_cold_profile(gs: Node, gm: Node) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 2000
+	gs.inventory = {"weed": 5}
+	var opens := 0
+	var max_streak_seen := 0
+	for _walk in range(30):
+		gm.dispatch("wander", {})
+		max_streak_seen = maxi(max_streak_seen, int(gs.wander_quiet_streak))
+		if bool((gm.system("consequence") as Object).has_active()):
+			opens += 1
+			_close_gate_encounter(gs, gm)
+	_expect_true("a cold profile's gate stays near-silent (%d/30 opened)" % opens,
+		opens <= 6)
+	_expect_true("and the streak was free to climb past every authored cap",
+		max_streak_seen > 5)
+	gs.reset_to_new_game()
+
+## STR-D2's actual guarantee: a player already loud enough to matter cannot
+## out-wait the street. Heat pinned at BURNING, the current district's Market
+## family pinned HOT, and one missed rent payment together clear every row in
+## `QUIET_STREAK_CAPS` at once (the tightest, cap 2) — so the gate MUST open
+## by the second consecutive quiet walk, every time, seed after seed.
+##
+## `rent_missed = 1` rather than a rigged `dre_account`, deliberately: an
+## account hand-set to "overdue" with a `due_day` days in the past ALSO
+## satisfies `dre_lender.gd::settle_night`'s own trigger for the real
+## player-default encounter (`ended_day - due_day >= OVERDUE_RESPONSE_DELAY_
+## DAYS`), which opens a second, unrelated chain the moment this test's own
+## day-cross runs — found live, by tracing exactly this scenario through
+## `game_eval` when this test first failed for a reason that looked like a
+## broken Continue and was actually a correctly-behaving Dre encounter this
+## fixture had no business triggering. Rent arrears carries no such side
+## door: `_household_warning` only logs and, far past this test's own
+## horizon, ends the run — never a chain.
+func _check_gate_hot_profile(gs: Node, gm: Node) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 2000
+	gs.inventory = {"weed": 5}
+	var engine: Object = gm.system("consequence")
+	_expect_int("the rigged state clears the tightest authored row",
+		B10_EVENTS.quiet_streak_cap(6), 2)
+	var longest_quiet := 0
+	var current_quiet := 0
+	for _walk in range(20):
+		# Re-pinned every walk, deliberately: Heat decays nightly (HEAT-D1)
+		# and District Pressure recovers (PRESS-D1), so a state rigged once
+		# at the top of a 20-walk loop spanning several in-game days would
+		# quietly cool off partway through and relax the very cap this test
+		# exists to prove is unbreakable — found live, tracing a streak that
+		# climbed to 3 under a cap the test still believed was 2. A player
+		# who stays this loud is exactly what the ruling means by "already
+		# loud enough to matter"; one who naturally cools mid-test is a
+		# different (and already-covered) claim.
+		gs.heat = 14.0
+		engine.add_pressure("north_star_lot", "market", 9.0,
+			"cause:gate_test:hot:%d" % _walk)
+		gs.rent_missed = 1
+		gm.dispatch("wander", {})
+		if bool((engine as Object).has_active()):
+			longest_quiet = maxi(longest_quiet, current_quiet)
+			current_quiet = 0
+			_close_gate_encounter(gs, gm)
+		else:
+			current_quiet += 1
+	longest_quiet = maxi(longest_quiet, current_quiet)
+	_expect_true("a maximally hot player never goes quiet longer than the cap",
+		longest_quiet <= 2)
+	gs.reset_to_new_game()
+
+## Determinism under reload, mid-streak — a release blocker per this build's
+## own danger list. `SaveSystem.capture()`/`_apply()` round-trip in memory
+## (the same technique `tests/dre/dre_runner.gd`'s own save/load arms use) so
+## this never touches the real `user://` slot. The key is read off the LIVE
+## state at each dispatch rather than hand-assembled, so a mismatch between
+## what this test assumes and what `_wander()` actually reads cannot hide a
+## real bug behind an assertion comparing two guesses to each other.
+func _check_gate_reload(gs: Node, gm: Node) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 2000
+	gs.heat = 8.0
+	gs.inventory = {"weed": 5}
+	var engine: Object = gm.system("consequence")
+	# A few quiet walks to bank a real streak before the snapshot — reload
+	# fidelity that only proves itself at zero is not proof of anything.
+	var streak_before := -1
+	for _walk in range(6):
+		gm.dispatch("wander", {})
+		if bool((engine as Object).has_active()):
+			_close_gate_encounter(gs, gm)
+			continue
+		if int(gs.wander_quiet_streak) > 0:
+			streak_before = int(gs.wander_quiet_streak)
+			break
+	_expect_true("a real streak banked before the snapshot", streak_before > 0)
+
+	var saves := get_node("/root/SaveSystem")
+	var snapshot: Dictionary = saves.capture()
+	var key := "%d:%d:%d:wander:%s:gate" % [gs.day, gs.time_slots_today,
+		int(gs.wander_count), str(gs.current_district_id)]
+	gm.dispatch("wander", {})
+	var live_opened: bool = bool((engine as Object).has_active())
+	if live_opened:
+		_close_gate_encounter(gs, gm)
+
+	saves._apply(snapshot)
+	_expect_int("the reload restored the exact streak", int(gs.wander_quiet_streak),
+		streak_before)
+	var replayed_key := "%d:%d:%d:wander:%s:gate" % [gs.day, gs.time_slots_today,
+		int(gs.wander_count), str(gs.current_district_id)]
+	_expect_str("the same walk keys identically after reload", replayed_key, key)
+	gm.dispatch("wander", {})
+	var reloaded_opened: bool = bool((engine as Object).has_active())
+	if reloaded_opened:
+		_close_gate_encounter(gs, gm)
+	_expect_true("and resolves the same way the live walk just did",
+		reloaded_opened == live_opened)
+	gs.reset_to_new_game()
+
+## The existing seam, re-proven rather than assumed: `blocker()` already
+## refuses a wander while any chain is active, and the gate now opens chains
+## too — a regression here would let a player queue a second encounter on
+## top of the one the street just put in front of them.
+func _check_gate_blocker_seam(gs: Node, gm: Node) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 2000
+	gs.heat = 14.0
+	gs.inventory = {"weed": 5}
+	var engine: Object = gm.system("consequence")
+	engine.add_pressure("north_star_lot", "market", 9.0, "cause:gate_test:blocker")
+	var wander_sys: Object = gm.system("wander")
+	var opened_once := false
+	for _walk in range(6):
+		if opened_once:
+			break
+		gm.dispatch("wander", {})
+		opened_once = bool((engine as Object).has_active())
+	_expect_true("the rigged state opened a chain to test against", opened_once)
+	if opened_once:
+		_expect_true("blocker refuses while the gate's own chain is active",
+			not str(wander_sys.blocker()).is_empty())
+		_expect_true("and a second wander cannot be dispatched on top of it",
+			not bool(gm.dispatch("wander", {})))
+		_close_gate_encounter(gs, gm)
 	gs.reset_to_new_game()
 
 # === batch 12 — Wander, measured ============================================

@@ -22139,6 +22139,7 @@ func _check_street_roster(gs: Node, gm: Node) -> void:
 	_check_roster_curtis_tax(gs, gm)
 	_check_roster_young_ones(gs, gm)
 	_check_roster_pool_reachable(gs, gm)
+	_check_roster_2026(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -22495,6 +22496,335 @@ func _check_roster_pool_reachable(gs: Node, gm: Node) -> void:
 			found_young = true
 	_expect_true("the Curtis tax stop is reachable once he is watching", found_tax)
 	_expect_true("the low-stakes test is reachable with no gate at all", found_young)
+	gs.reset_to_new_game()
+
+# === 0.6.0 PR C — The street roster (POOL-D1, SQ-D6..D8) ====================
+#
+# Eight new cards, and the coverage is deliberately GENERIC rather than eight
+# hand-written blocks. What matters about a roster is that every card in it
+# obeys the same rules, so the arm below drives EVERY encounter card in the
+# registry down EVERY road it offers and asserts the same six things of each:
+# the chain opens, it resolves, its deltas match its own authored table for
+# the tier that was rolled, every asset moved through exactly one owner, cash
+# came out of DIRTY only, and exactly one observation was written.
+#
+# A card added tomorrow is covered the day it is added, which is the property
+# a per-card block cannot have. The count moves with the registry, and that is
+# correct: the floor is a floor for the roster that exists.
+
+## Reachability, per card, with its own gate satisfied. Reads
+## `eligible_encounters()` -- the real filter, requirements and all -- rather
+## than asserting a card exists in the table, which would prove nothing about
+## whether the player can ever meet it.
+const ROSTER_GATES := {
+	"wander_vehicle_search": "on_the_road_and_noticed",
+	"wander_warrant_check": "priors",
+	"wander_desperate_approach": "none",
+	"wander_lot_side": "night",
+	"wander_wrong_place": "night",
+	"wander_mistaken_identity": "none",
+	"wander_territorial_beef": "market_watched",
+	"wander_somebody_elses_problem": "curtis_visible",
+}
+
+func _stage_roster_gate(gs: Node, gm: Node, gate: String) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 600
+	gs.dirty_cash = 400
+	gs.clean_cash = 200
+	gs.inventory = {"weed": 8}
+	gs.time_slots_today = 1
+	gs.time_slot = "AFTERNOON"
+	match gate:
+		"on_the_road_and_noticed":
+			gs.districts_unlocked = ["north_star_lot", "downtown"]
+			gs.heat = 6.0
+		"priors":
+			gs.arrest_record = {"priors": 1, "last_arrest_day": 1,
+				"cooldown_until_day": -1, "charges": []}
+		"night":
+			gs.time_slots_today = 3
+			gs.time_slot = "NIGHT"
+		"market_watched":
+			(gm.system("consequence") as Object).add_pressure("north_star_lot",
+				"market", 7.0, "cause:roster:probe")
+		"curtis_visible":
+			gs.curtis_phase = "watching"
+
+func _check_roster_2026(gs: Node, gm: Node) -> void:
+	_check_roster_reachability(gs, gm)
+	_check_roster_every_road(gs, gm)
+	_check_roster_police_never_book(gs, gm)
+	_check_gate_rate_independent_of_pool(gs, gm)
+	gs.reset_to_new_game()
+
+func _check_roster_reachability(gs: Node, gm: Node) -> void:
+	var wander_sys: Object = gm.system("wander")
+	for card_id in ROSTER_GATES.keys():
+		# Gate unsatisfied: the card must NOT be reachable. Half of a gate is
+		# not a gate, and a requirement nobody ever fails is decoration.
+		gs.reset_to_new_game()
+		gs.current_district_id = "north_star_lot"
+		gs.time_slots_today = 1
+		gs.time_slot = "AFTERNOON"
+		var ungated: Array = []
+		for card in wander_sys.eligible_encounters():
+			ungated.append(str((card as Dictionary)["id"]))
+		if str(ROSTER_GATES[card_id]) != "none":
+			_expect_true("%s is NOT reachable with its gate unmet" % str(card_id),
+				not str(card_id) in ungated)
+		else:
+			_expect_true("%s is reachable with no gate at all" % str(card_id),
+				str(card_id) in ungated)
+
+		# Gate satisfied: it must be.
+		_stage_roster_gate(gs, gm, str(ROSTER_GATES[card_id]))
+		var gated: Array = []
+		for card in wander_sys.eligible_encounters():
+			gated.append(str((card as Dictionary)["id"]))
+		_expect_true("%s IS reachable once its gate is met" % str(card_id),
+			str(card_id) in gated)
+	gs.reset_to_new_game()
+
+## Every road of every encounter card, driven through the real dispatch, with
+## the authored table read back and compared against what actually moved.
+func _check_roster_every_road(gs: Node, gm: Node) -> void:
+	var events: RefCounted = preload("res://data/wander_events.gd").new()
+	var wander_sys: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+	var exposure: Node = get_node("/root/Exposure")
+	var wallet: Object = gm.system("wallet")
+
+	for entry in events.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != events.KIND_ENCOUNTER:
+			continue
+		var card_id := str(card["id"])
+		var encounter: Dictionary = card["encounter"]
+		for choice_entry in (encounter["choices"] as Array):
+			var choice_id := str(choice_entry)
+			_stage_roster_gate(gs, gm, str(ROSTER_GATES.get(card_id, "none")))
+			gs.npc_ledgers = {}
+			gs.health = 100
+			var goods_before: int = int(gs.cargo_used())
+			var dirty_before: int = int(wallet.dirty_balance())
+			var clean_before: int = int(wallet.clean_balance())
+			var health_before: int = int(gs.health)
+
+			wander_sys._play_encounter(card, "roster:%s:%s" % [card_id, choice_id])
+			if not bool(engine.has_active()):
+				_fail("roster", "%s did not open a chain" % card_id)
+				continue
+			var summary: Dictionary = engine.active_summary()
+			_expect_true("%s/%s dispatches" % [card_id, choice_id],
+				gm.dispatch("resolve_consequence_choice", {
+					"consequence_id": str(summary.get("consequence_id", "")),
+					"cause_id": str(summary.get("cause_id", "")),
+					"choice_id": choice_id}))
+
+			var decision: Dictionary = gs.active_consequence.get("decision", {})
+			var tier := str(decision.get("resolved_tier", ""))
+			var escalated: bool = str(gs.active_consequence.get("stage", "")) == "decision"
+			if escalated:
+				# The road opened a room instead of resolving. The room has its
+				# own arms; what this one asserts is that an escalating road
+				# applied NOTHING on the way in -- the room's exit table is the
+				# only thing that ever charges.
+				_expect_int("%s/%s escalates without charging anything"
+					% [card_id, choice_id], int(wallet.dirty_balance()), dirty_before)
+				_expect_int("%s/%s escalates without taking cargo"
+					% [card_id, choice_id], int(gs.cargo_used()), goods_before)
+				gs.active_consequence = {}
+				continue
+
+			var authored: Dictionary = (encounter["effects"] as Dictionary) \
+				.get(choice_id, {}).get(tier, {})
+			_expect_true("%s/%s/%s has an authored effects row"
+				% [card_id, choice_id, tier], not authored.is_empty())
+
+			# Health: the authored number, through the crew absorber (no crew
+			# on this probe, so it is the authored number exactly).
+			_expect_int("%s/%s/%s costs its authored health"
+				% [card_id, choice_id, tier], health_before - int(gs.health),
+				int(authored.get("health", 0)))
+
+			# Cash: DIRTY only, never clean. The luggage rule's sharpest edge —
+			# clean, documented money is not street-visible.
+			_expect_int("%s/%s/%s never reaches clean cash"
+				% [card_id, choice_id, tier], int(wallet.clean_balance()), clean_before)
+			var cash_taken: int = dirty_before - int(wallet.dirty_balance())
+			var expected_cash: int = int(authored.get("cash_flat", 0)) if authored.has("cash_flat") \
+				else int(round(float(dirty_before) * float(authored.get("cash_fraction", 0.0))))
+			_expect_int("%s/%s/%s takes its authored cash"
+				% [card_id, choice_id, tier], cash_taken, mini(expected_cash, dirty_before))
+
+			# Goods: through `lose_cargo`'s one owner, floored at one unit for
+			# any authored fraction above zero.
+			var goods_taken: int = goods_before - int(gs.cargo_used())
+			var goods_fraction: float = float(authored.get("goods_fraction", 0.0))
+			if goods_fraction <= 0.0:
+				_expect_int("%s/%s/%s takes no cargo when it authors none"
+					% [card_id, choice_id, tier], goods_taken, 0)
+			else:
+				_expect_true("%s/%s/%s takes cargo when it authors some"
+					% [card_id, choice_id, tier], goods_taken > 0)
+				_expect_true("%s/%s/%s never takes more cargo than was held"
+					% [card_id, choice_id, tier], goods_taken <= goods_before)
+
+			# SQ-D8: exactly one row, and it names where it happened.
+			var ledger: Array = exposure.ledger_of(events.OBSERVATION_NPC)
+			_expect_int("%s/%s/%s writes exactly one observation"
+				% [card_id, choice_id, tier], ledger.size(), 1)
+			if not ledger.is_empty():
+				_expect_str("%s/%s/%s observes where it happened"
+					% [card_id, choice_id, tier],
+					str((ledger[0] as Dictionary).get("location", "")),
+					str(gs.active_consequence.get("district_id", "")))
+
+			# Nothing in this file books an arrest, and nothing may start.
+			_expect_true("%s/%s/%s never books an arrest" % [card_id, choice_id, tier],
+				not bool((decision.get("result", {}) as Dictionary).get("arrested", false)))
+
+			gm.dispatch("consequence_continue", {})
+			gs.active_consequence = {}
+	gs.reset_to_new_game()
+	gs.npc_ledgers = {}
+
+## The owner's open ruling, held as-specified: a police encounter does not
+## reach custody. Seizure and Heat are the worst road, and the SEAM is
+## `arrest_risks` — empty on every police card, filled by every chain kind
+## that does book. A card that gains custody fills it and changes nothing else,
+## which is what "leave the seam obvious" means concretely.
+func _check_roster_police_never_book(gs: Node, gm: Node) -> void:
+	var events: RefCounted = preload("res://data/wander_events.gd").new()
+	var wander_sys: Object = gm.system("wander")
+	for card_id in ["wander_stopped_on_foot", "wander_vehicle_search",
+			"wander_warrant_check"]:
+		_stage_roster_gate(gs, gm, str(ROSTER_GATES.get(str(card_id), "none")))
+		gs.heat = 12.0
+		gs.arrest_record = {"priors": 2, "last_arrest_day": 1,
+			"cooldown_until_day": -1, "charges": []}
+		wander_sys._play_encounter(events.card_by_id(str(card_id)),
+			"roster:nobook:%s" % str(card_id))
+		var decision: Dictionary = gs.active_consequence.get("decision", {})
+		_expect_true("%s carries no arrest risk on any road" % str(card_id),
+			(decision.get("arrest_risks", {}) as Dictionary).is_empty())
+		gs.active_consequence = {}
+	gs.reset_to_new_game()
+
+## MEAS-D1's own question for this PR, answered structurally rather than by
+## measurement alone: **a bigger pool must not make a clean player's street
+## louder.**
+##
+## The gate is explicitly out of scope for 0.6.0 and no line of it changed, but
+## "we did not touch it" is not the same claim as "it did not get louder" —
+## tripling the roster is exactly the kind of change that could move a rate
+## through a back door. So the property is asserted directly: the gate's own
+## predicate is re-derived here from ONLY the two inputs it is allowed to read
+## (`attention_steps()` and `wander_quiet_streak`, through `gate_chance` and
+## `quiet_streak_cap`), on the same seeded key, and compared against what
+## `_roll_gate()` actually decided. A pool-size term anywhere in that predicate
+## would show up as a disagreement.
+##
+## Driven through `_roll_gate()` rather than through `dispatch("wander")`:
+## a full dispatch spends a slot, and thirty of them cross ten days, each of
+## which can open a doorstep or a Dre chain that has nothing to do with this
+## gate. Measuring `has_active()` after a dispatch measures those too — which
+## is exactly what the first version of this arm did, and it reported 24/30
+## agreement for a gate that was in fact agreeing every time.
+##
+## `_roll_gate` reads the pool for exactly one thing — whether it is EMPTY, in
+## which case nothing can open — and that branch is asserted separately below.
+## WHICH card comes up is `_pick_encounter`'s job and is a different question.
+func _check_gate_rate_independent_of_pool(gs: Node, gm: Node) -> void:
+	var wander_sys: Object = gm.system("wander")
+	var rng := get_node("/root/RngManager")
+	var agreements := 0
+	var opens := 0
+
+	# A cold day-one profile with the roster fully staged, so the pool is at
+	# its LARGEST — the case that would be loudest if pool size leaked into the
+	# rate at all. Night, because four of the twelve are evening/night cards.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 2000
+	gs.inventory = {"weed": 5}
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.curtis_phase = "watching"
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	gs.heat = 6.0
+	gs.arrest_record = {"priors": 1, "last_arrest_day": 1,
+		"cooldown_until_day": -1, "charges": []}
+	(gm.system("consequence") as Object).add_pressure("north_star_lot", "market",
+		7.0, "cause:gate:probe")
+	var pool_size: int = (wander_sys.eligible_encounters() as Array).size()
+	_expect_true("the staged roster pool is genuinely large (%d cards)" % pool_size,
+		pool_size >= 9)
+
+	# Thirty gate rolls, walked by `wander_count` — the varying component of
+	# the gate's own seeded key — rather than by spending slots.
+	for walk in range(30):
+		gs.wander_count = walk
+		var steps: int = int(wander_sys.attention_steps())
+		var cap: int = B10_EVENTS.quiet_streak_cap(steps)
+		var forced: bool = cap >= 0 and int(gs.wander_quiet_streak) >= cap
+		var key := "%d:%d:%d:wander:%s:gate" % [gs.day, gs.time_slots_today,
+			int(gs.wander_count), str(gs.current_district_id)]
+		var predicted: bool = forced \
+			or rng.seeded_random(gs.run_seed, key) < B10_EVENTS.gate_chance(steps)
+
+		var rolled: Dictionary = wander_sys._roll_gate()
+		var actually_opened: bool = not rolled.is_empty()
+		if predicted == actually_opened:
+			agreements += 1
+		if actually_opened:
+			opens += 1
+
+	_expect_int("the gate's decision is a pure function of steps and streak, "
+		+ "never of pool size (30 rolls)", agreements, 30)
+	# The profile above is deliberately LOUD (Heat noticed, Market WATCHED,
+	# priors, Curtis watching) because that is what stages the largest pool.
+	# A loud player is SUPPOSED to be interrupted often -- STR-D2 is the
+	# ruling that says so -- so its open count is not the near-silence claim
+	# and is only sanity-bounded here.
+	_expect_true("a loud profile with the full roster is interrupted often, "
+		+ "not constantly (%d/30 opened)" % opens, opens > 6 and opens < 30)
+
+	# The near-silence claim, on a genuinely COLD profile against the SAME
+	# twelve-card registry. This is the number the roster could have moved and
+	# did not: zero attention steps has no streak-cap row at all (STR-D2), so
+	# nothing forces, and the base roll is all there is.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 2000
+	gs.inventory = {"weed": 5}
+	var cold_opens := 0
+	for walk in range(30):
+		gs.wander_count = walk
+		if not (wander_sys._roll_gate() as Dictionary).is_empty():
+			cold_opens += 1
+	_expect_true("a cold profile stays near-silent with the roster tripled "
+		+ "(%d/30 opened)" % cold_opens, cold_opens <= 6)
+
+	# The one thing the pool DOES decide is whether the gate can open at all --
+	# and the honest finding is that in shipped content it never blocks:
+	# `wander_desperate_approach`, `wander_mistaken_identity` and
+	# `wander_young_ones` are authored for any district, any slot, with no
+	# requirements, so the pool has a floor of three no matter what the player
+	# has or has not done. `_roll_gate`'s empty-pool branch is therefore
+	# DEFENSIVE rather than reachable, and this is what says so -- a future
+	# author who gates all three has a red suite telling them the gate just
+	# became silenceable.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	_expect_true("the pool has an ungated floor, so the gate is never silenced "
+		+ "by content (%d cards at a cold morning)"
+		% (wander_sys.eligible_encounters() as Array).size(),
+		(wander_sys.eligible_encounters() as Array).size() >= 3)
 	gs.reset_to_new_game()
 
 # === 0.5.0 PR C — The checkpoint (STR-D4) ===================================

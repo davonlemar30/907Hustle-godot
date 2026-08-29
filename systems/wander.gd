@@ -197,7 +197,40 @@ func facts() -> Dictionary:
 		# (PR 4) — a card about somebody asking product prices makes no
 		# sense before the player knows where the corner is.
 		"market_discovered": bool(gs.market_discovered),
+		# --- 0.6.0 PR C, the roster's own three new gates -------------------
+		#
+		# All three read state the build ALREADY keeps. That is the whole bar
+		# for a fact: `facts()` is a projection of GameState, not a second
+		# place to compute anything, and a gate that needed a new field would
+		# be a gate that needed a schema bump for a card.
+		#
+		# `has_priors` gates the warrant check. A warrant check on somebody
+		# who has never been booked is not a warrant check.
+		"has_priors": int((gs.arrest_record as Dictionary).get("priors", 0)) > 0,
+		# `on_the_road` gates the vehicle search: the player has somewhere
+		# else to be, which is what makes being in a car plausible at all.
+		# Read off districts unlocked rather than a travel counter -- travel
+		# is a slot action with its own checkpoint chain (STR-D4), and a
+		# wander encounter is what happens on the walk, not on the drive.
+		"on_the_road": (gs.districts_unlocked as Array).size() > 1,
+		# `market_pressure_visible` gates the territorial beef. Reads the
+		# engine's own band for the district the player is standing in --
+		# the same read `_read_pressure()` renders, not a second scale.
+		"market_pressure_visible": _market_band_at_least("WATCHED"),
 	}
+
+## Whether the district underfoot is at `floor` or worse for MARKET pressure.
+## Band names, never the score: TI-003 §19 keeps the number away from anything
+## the player can reach, and a requirement is one of those things.
+func _market_band_at_least(floor_band: String) -> bool:
+	var engine: Object = gm.system("consequence") if gm != null else null
+	if engine == null:
+		return false
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	var order: Array = [rules.BAND_QUIET, rules.BAND_KNOWN, rules.BAND_WATCHED,
+		rules.BAND_HOT]
+	var band := str(engine.pressure_band(str(gs.current_district_id), "market"))
+	return order.find(band) >= order.find(floor_band)
 
 ## Every card that could come up right now: right district, right time of day,
 ## requirements met, not spent, not one of the last few seen.
@@ -1061,6 +1094,12 @@ func choice_label(choice_id: String) -> String:
 
 func choice_copy(choice_id: String) -> String:
 	return str(EVENTS.CHOICE_COPY.get(choice_id, ""))
+
+## The certainty line under a deterministic road (ENC-D6's seam). Empty falls
+## back to the screen's own "no injury, no Heat, no arrest" — which is true for
+## none of this file's surrender roads, so every one of them authors its own.
+func choice_guarantee(choice_id: String) -> String:
+	return str(EVENTS.CHOICE_GUARANTEE.get(choice_id, ""))
 
 
 ## What the choice does. The engine calls exactly this one method on a source

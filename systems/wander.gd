@@ -60,6 +60,12 @@ extends RefCounted
 ## EncounterModal — no new UI shell."
 
 const EVENTS := preload("res://data/wander_events.gd")
+## The shared multi-round chassis (0.5.0 PR B) — `loop_of`/`has_loop`/
+## `append_log`/`present_round`, the same helpers Stickup's own rooms use.
+const LOOP := preload("res://systems/confrontation_loop.gd")
+## `STASH_IT`'s own authored row (0.5.0 PR B) — see `data/wander_events.gd`'s
+## own header on why this file reads it rather than `EVENTS` re-exporting it.
+const SCRIPTS := preload("res://data/confrontation_scripts.gd")
 
 const GREEN := Color(0.451, 0.722, 0.404)
 const AMBER := Color(0.882, 0.651, 0.227)
@@ -183,6 +189,10 @@ func facts() -> Dictionary:
 		"curtis_visible": str(gs.curtis_phase) != "invisible",
 		"heat_burning": band == "BURNING",
 		"carrying_dirty": int(gs.dirty_cash) > 0,
+		# 0.5.0 PR B: gates `wander_curtis_tax` — his own people only start
+		# collecting once he is actually watching, the same phase floor
+		# `_read_curtis()` already treats as worth telling the player about.
+		"curtis_watching_or_worse": str(gs.curtis_phase) in ["watching", "approaching"],
 		# So a future card can gate on whether the corner is even known yet
 		# (PR 4) — a card about somebody asking product prices makes no
 		# sense before the player knows where the corner is.
@@ -678,20 +688,63 @@ func _play_opportunity(card: Dictionary, key: String, spent: float) -> Dictionar
 	return report
 
 ## A card that is a person standing in front of you. Opens a real chain.
+## Choice ids whose resolution shape differs from their own card's overall
+## `shape` — 0.5.0 PR B's one exception, `stash_it`, which rolls Intelligence
+## on a card whose main verbs (`talk`/`keep_walking`) roll Charisma. Named
+## directly by ATTRIBUTE rather than by a second `outcome_resolver` shape:
+## `OUTCOME_SHAPES`/`ACTION_ATTRIBUTE_MAP` are oracle-parity tables, checked
+## byte-for-byte against fixtures recorded off the web build, and a shape
+## this Godot-only port invents has no oracle entry to check against —
+## `_stash_it_tier()` already rolls its own chance directly for the same
+## reason. This override exists purely so the confirmation screen LABELS the
+## roll correctly; it never reaches the resolver at all. Keyed by card id so
+## a future card reusing the same choice id under a different attribute is
+## never ambiguous.
+const CHOICE_ATTRIBUTE_OVERRIDES := {
+	"wander_stopped_on_foot": {"stash_it": "intelligence"},
+}
+
+func _attribute_for_choice(card_id: String, encounter_shape: String, choice_id: String) -> String:
+	var overrides: Dictionary = CHOICE_ATTRIBUTE_OVERRIDES.get(card_id, {})
+	if overrides.has(choice_id):
+		return str(overrides[choice_id])
+	return _attribute_for(encounter_shape)
+
+## Choices offered beyond a card's own static list, added only when their own
+## condition holds. `stash_it` is `SCRIPTS.STASH_IT`'s own authored condition
+## (Q4: "added... when inventory > 0") reactivated here rather than baked
+## into `wander_stopped_on_foot`'s static `choices` — an empty-handed stop
+## must read as the two-choice encounter it always was.
+func _conditional_choices(card_id: String) -> Array:
+	if card_id == "wander_stopped_on_foot" and int(gs.cargo_used()) > 0:
+		return ["stash_it"]
+	return []
+
 func _play_encounter(card: Dictionary, key: String) -> Dictionary:
 	var engine: Object = gm.system("consequence") if gm != null else null
 	var spec: Dictionary = card.get("encounter", {})
 	if engine == null or spec.is_empty():
 		return _play_ambient(card)
 
+	var card_id := str(card["id"])
+	var encounter_shape := str(spec["shape"])
 	var attributes: Object = gm.system("attributes") if gm != null else null
+	var choices: Array = (spec["choices"] as Array).duplicate()
+	for extra in _conditional_choices(card_id):
+		if not extra in choices:
+			choices.append(extra)
+	var base_table: Dictionary = spec.get("base", {})
+	if card_id == "wander_stopped_on_foot" and "stash_it" in choices:
+		base_table = base_table.duplicate()
+		base_table["stash_it"] = SCRIPTS.STASH_IT["base"]
+
 	var shown: Dictionary = {}
 	var inputs: Dictionary = {}
-	var attribute := _attribute_for(str(spec["shape"]))
-	for choice_id in (spec["choices"] as Array):
-		var base: Variant = (spec["base"] as Dictionary).get(str(choice_id))
+	for choice_id in choices:
+		var base: Variant = base_table.get(str(choice_id))
 		if base == null:
 			continue
+		var attribute := _attribute_for_choice(card_id, encounter_shape, str(choice_id))
 		shown[str(choice_id)] = float(base)
 		inputs[str(choice_id)] = {
 			"attribute": attribute,
@@ -705,10 +758,10 @@ func _play_encounter(card: Dictionary, key: String) -> Dictionary:
 		"source": {
 			"family": "wander",
 			"action_id": "wander",
-			"card_id": str(card["id"]),
+			"card_id": card_id,
 			"opponent": str(spec.get("opponent", "")),
-			"shape": str(spec["shape"]),
-			"target_id": str(card["id"]),
+			"shape": encounter_shape,
+			"target_id": card_id,
 			"target_name": str(spec.get("opponent", "")),
 			"target_tier": 1,
 			"contested_take": 0,
@@ -719,14 +772,14 @@ func _play_encounter(card: Dictionary, key: String) -> Dictionary:
 		},
 		"decision": {
 			"definition_id": str(spec["definition_id"]),
-			"allowed_choices": (spec["choices"] as Array).duplicate(),
+			"allowed_choices": choices,
 			"deterministic_choices": (spec.get("deterministic", []) as Array).duplicate(),
 			"resolver_inputs": inputs,
 			"shown_probabilities": shown,
 			"arrest_risks": {},
 		},
 	})
-	return {"ok": true, "kind": "encounter", "card_id": str(card["id"]),
+	return {"ok": true, "kind": "encounter", "card_id": card_id,
 		"opened": bool(opened.get("ok", false))}
 
 func _attribute_for(shape: String) -> String:
@@ -869,73 +922,200 @@ func choice_copy(choice_id: String) -> String:
 ## a crime the player committed, and the two chains that DO reach custody both
 ## open off an action the player chose to take. Losing the bag is the worst of
 ## it, and that is bad enough at the moment it happens.
+##
+## STR-D3 (0.5.0 PR B): reads the card's own `effects` table generically
+## instead of one tier→outcome match applied to every encounter alike — see
+## `data/wander_events.gd`'s own header on that table for why. A card with no
+## `effects` table (there is none left, but a future author could still omit
+## one) falls back to the original PR-A-era match, so an incomplete card
+## degrades rather than crashes.
 func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	var engine: Object = gm.system("consequence") if gm != null else null
 	if engine == null:
 		return {"ok": false, "reason": "Nothing to answer to."}
 	var source: Dictionary = chain.get("source", {})
+	var card_id := str(source.get("card_id", ""))
+
+	# The shakedown room (STR-D5): once `decision.loop` exists, every further
+	# commit on this chain is a round of it, never a fresh resolution — the
+	# same branch stickup.gd's own `resolve_consequence` takes for its rooms.
+	if card_id == "wander_shakedown" and LOOP.has_loop(chain):
+		return _shakedown_room_round(chain, choice_id)
+
 	var decision: Dictionary = chain.get("decision", {})
-	var shape := str(source.get("shape", "confrontation"))
+	var encounter_shape := str(source.get("shape", "confrontation"))
 	var deterministic: Array = decision.get("deterministic_choices", [])
 
 	var tier := "deterministic"
 	if not choice_id in deterministic:
-		var resolver: Object = gm.system("outcome_resolver") if gm != null else null
-		var attributes: Object = gm.system("attributes") if gm != null else null
-		var chance: float = float((decision.get("shown_probabilities", {}) as Dictionary)
-			.get(choice_id, 0.5))
-		var attribute := _attribute_for(shape)
-		tier = "failure"
-		if resolver != null:
-			tier = str((resolver.resolve_action(shape, chance,
-				int(attributes.effective(attribute)) if attributes != null else 1,
-				gs.run_seed, "%s:%s" % [str(source.get("source_rng_key", "")), choice_id]
-				) as Dictionary)["tier"])
+		if choice_id == "stash_it":
+			# Not the shared outcome-resolver seam: `OUTCOME_SHAPES` and
+			# `ACTION_ATTRIBUTE_MAP` are oracle-parity tables, checked
+			# byte-for-byte against fixtures recorded off the web build — a
+			# shape this Godot-only port invents has no oracle entry and
+			# never should. STASH_IT was authored as a two-outcome roll
+			# anyway (`base`/`heat_on_failure`, no tiers at all), so it gets
+			# its own direct chance roll instead of borrowing infrastructure
+			# built for a table it cannot honestly belong to.
+			tier = _stash_it_tier(chain, choice_id)
+		else:
+			var resolver: Object = gm.system("outcome_resolver") if gm != null else null
+			var attributes: Object = gm.system("attributes") if gm != null else null
+			var chance: float = float((decision.get("shown_probabilities", {}) as Dictionary)
+				.get(choice_id, 0.5))
+			var attribute := _attribute_for(encounter_shape)
+			tier = "failure"
+			if resolver != null:
+				tier = str((resolver.resolve_action(encounter_shape, chance,
+					int(attributes.effective(attribute)) if attributes != null else 1,
+					gs.run_seed, "%s:%s" % [str(source.get("source_rng_key", "")), choice_id]
+					) as Dictionary)["tier"])
 
-	var lost: int = 0
-	var hurt: int = 0
-	match tier:
-		"deterministic":
-			# Handing it back. No roll, and the known loss is the whole content
-			# of the option being on the card.
-			lost = _lose_cargo(1.0)
-			gs.log_activity("You give it up and keep walking. %d units gone." % lost, AMBER)
-		"clean":
-			gs.log_activity("It comes to nothing. They decide you are not worth it.", GREEN)
-		"messy":
-			hurt = 4
-			gs.log_activity("It gets loud before it gets finished. You walk away sore.", AMBER)
-		"failure":
-			lost = _lose_cargo(0.5)
-			gs.log_activity("It does not go your way. %d units gone." % lost, AMBER)
-		_:
-			lost = _lose_cargo(1.0)
-			hurt = 12
-			gs.log_activity("It goes badly. %d units gone and you are wearing it." % lost, AMBER)
+	var effects: Dictionary = EVENTS.card_by_id(card_id).get("encounter", {}) \
+		.get("effects", {}).get(choice_id, {}).get(tier, {})
+	if effects.is_empty():
+		return _resolve_legacy(chain, choice_id, tier)
+	if bool(effects.get("escalate", false)):
+		return _open_shakedown_room(chain, choice_id)
 
-	if hurt > 0:
-		# Through Tone, like both of the build's other damage sites.
-		var crew: Object = gm.system("crew") if gm != null else null
-		if crew != null:
-			hurt = int(crew.absorbed_damage(hurt))
-		gs.health = clampi(gs.health - hurt, 0, gs.health_max)
+	var applied: Dictionary = _apply_effects(effects, choice_id)
+	_feed_line_for(choice_id, tier)
 
-	# The result block, in the shape every other chain writes, then the stage.
-	#
-	# **No arrest, structurally.** The two chains that reach custody both open
-	# off a crime the player chose to commit; this one opens because they went
-	# for a walk. Nothing here can reach ArrestSystem, and that absence is the
-	# design rather than an omission.
 	var result := {
 		"choice_id": choice_id,
 		"tier": tier,
 		"arrested": false,
 		"banned": false,
-		"cash": 0,
-		"goods": -lost,
-		"health": -hurt,
-		"heat": 0.0,
+		"cash": -int(applied["cash"]),
+		"goods": -int(applied["goods"]),
+		"health": -int(applied["health"]),
+		"heat": float(applied["heat"]),
 		"pressure": 0,
+		"take_disposition": "lose" if (int(applied["goods"]) > 0 or int(applied["cash"]) > 0) else "keep",
+	}
+	decision["resolved_tier"] = tier
+	decision["result"] = result
+	chain["decision"] = decision
+	engine.advance_stage(engine.STAGE_RESULT)
+	return {"ok": true, "tier": tier, "arrested": false}
+
+## STASH_IT's own roll: `SCRIPTS.STASH_IT["base"]` (0.55) adjusted by
+## Intelligence the same shape-independent way `outcome_resolver` already
+## reads attributes, degrees-of-success excluded on purpose — the authored
+## row names exactly two outcomes ("success hides... failure worsens it"),
+## so this returns "clean" or "failure" and never "messy"/"catastrophic".
+## `wander_stopped_on_foot`'s own `effects["stash_it"]` table only ever
+## authors those two keys for exactly this reason.
+func _stash_it_tier(chain: Dictionary, choice_id: String) -> String:
+	var source: Dictionary = chain.get("source", {})
+	var attributes: Object = gm.system("attributes") if gm != null else null
+	var raw: int = int(attributes.effective("intelligence")) if attributes != null else 1
+	# The same +/-0.10-per-point-off-center shape `chance_for`-style reads use
+	# elsewhere would invent a curve STASH_IT's own header never asked for;
+	# its one authored number is a flat base, nudged a little by attribute
+	# rather than swung hard by it — a small, deliberate divergence from a
+	# roll built for combat/charisma odds, named here rather than silently
+	# reusing a formula tuned for a different kind of check.
+	var chance: float = clampf(float(SCRIPTS.STASH_IT["base"])
+		+ (float(raw) - 2.0) * 0.05, 0.10, 0.90)
+	var roll: float = rng.seeded_random(gs.run_seed,
+		"%s:%s" % [str(source.get("source_rng_key", "")), choice_id])
+	return "clean" if roll < chance else "failure"
+
+## Apply one authored effects row through the owners that actually hold
+## health, cash and cargo — STR-D3's own rule that no encounter system owns
+## money, health or time itself. Returns what actually moved, since a
+## fraction of zero cargo or a Tone-absorbed hit is not what was authored.
+func _apply_effects(effects: Dictionary, choice_id: String) -> Dictionary:
+	# `_lose_cargo` rounds UP so a bag with anything in it always loses
+	# something once called — correct for an authored fraction, wrong for an
+	# authored ZERO. A clean tier's own "goods_fraction: 0.0" means no loss
+	# was authored at all, so the call is skipped rather than made and
+	# floored to 1 anyway.
+	var goods_fraction: float = float(effects.get("goods_fraction", 0.0))
+	var lost_goods: int = _lose_cargo(goods_fraction) if goods_fraction > 0.0 else 0
+	var lost_cash: int = 0
+	var wallet: Object = gm.system("wallet") if gm != null else null
+	if wallet != null:
+		var fraction: float = float(effects.get("cash_fraction", 0.0))
+		var flat: int = int(effects.get("cash_flat", 0))
+		# The luggage rule reads DIRTY in-hand cash only (STR-D3, the
+		# street-stop precedent: clean, documented money is not street-
+		# visible) — capped at the dirty balance before spending, the same
+		# discipline `retaliation.gd`'s own cash loss already applies, so
+		# `ROUTINE_DIRTY_FIRST` can never actually reach clean underneath it.
+		var owed: int = flat if flat > 0 \
+			else int(round(float(wallet.dirty_balance()) * fraction))
+		lost_cash = mini(owed, int(wallet.dirty_balance()))
+		if lost_cash > 0:
+			wallet.spend(lost_cash, wallet.ROUTINE_DIRTY_FIRST,
+				{"source_id": "wander_encounter:%s" % choice_id})
+	var hurt: int = int(effects.get("health", 0))
+	if hurt > 0:
+		var crew: Object = gm.system("crew") if gm != null else null
+		if crew != null:
+			hurt = int(crew.absorbed_damage(hurt))
+		gs.health = clampi(gs.health - hurt, 0, gs.health_max)
+	var heat_gain: float = float(effects.get("heat", 0.0))
+	if heat_gain > 0.0:
+		heat_gain = _apply_heat(heat_gain)
+	return {"goods": lost_goods, "cash": lost_cash, "health": hurt, "heat": heat_gain}
+
+## Heat through the one owner, same as every other criminal-adjacent gain —
+## STASH_IT's own +0.5-on-failure is the only nonzero Heat any wander
+## encounter has ever authored. `FAMILY_NONE`: getting watched hiding a bag
+## from a cop is not a Boost, Stick or Market action, and inventing a fifth
+## family for one authored value would be a family with exactly one source
+## forever.
+func _apply_heat(amount: float) -> float:
+	var heat: Object = gm.system("heat") if gm != null else null
+	if heat == null:
+		return 0.0
+	return heat.apply_gain(amount, heat.FAMILY_NONE,
+		gs.current_district_id, {"source_id": "wander_encounter"})
+
+func _feed_line_for(choice_id: String, tier: String) -> void:
+	match tier:
+		"deterministic":
+			gs.log_activity("You give it up and keep walking.", AMBER)
+		"clean":
+			gs.log_activity("It comes to nothing. They decide you are not worth it.", GREEN)
+		"messy":
+			gs.log_activity("It gets loud before it gets finished. You walk away sore.", AMBER)
+		"failure":
+			gs.log_activity("It does not go your way.", AMBER)
+		_:
+			gs.log_activity("It goes badly, and you are carrying less than you were.", AMBER)
+	if choice_id == "stash_it" and tier in ["failure", "catastrophic"]:
+		gs.log_activity("They watched you try. That is its own kind of trouble.", AMBER)
+
+## PR-A-era fallback, unchanged, for a card that ships with no `effects`
+## table of its own — see `resolve_consequence`'s own header.
+func _resolve_legacy(chain: Dictionary, choice_id: String, tier: String) -> Dictionary:
+	var engine: Object = gm.system("consequence")
+	var decision: Dictionary = chain.get("decision", {})
+	var lost: int = 0
+	var hurt: int = 0
+	match tier:
+		"deterministic":
+			lost = _lose_cargo(1.0)
+		"messy":
+			hurt = 4
+		"failure":
+			lost = _lose_cargo(0.5)
+		"clean":
+			pass
+		_:
+			lost = _lose_cargo(1.0)
+			hurt = 12
+	if hurt > 0:
+		var crew: Object = gm.system("crew") if gm != null else null
+		if crew != null:
+			hurt = int(crew.absorbed_damage(hurt))
+		gs.health = clampi(gs.health - hurt, 0, gs.health_max)
+	var result := {
+		"choice_id": choice_id, "tier": tier, "arrested": false, "banned": false,
+		"cash": 0, "goods": -lost, "health": -hurt, "heat": 0.0, "pressure": 0,
 		"take_disposition": "lose" if lost > 0 else "keep",
 	}
 	decision["resolved_tier"] = tier
@@ -943,6 +1123,145 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	chain["decision"] = decision
 	engine.advance_stage(engine.STAGE_RESULT)
 	return {"ok": true, "tier": tier, "arrested": false}
+
+# --- STR-D5: the shakedown room (0.5.0 PR B) ---------------------------------
+#
+# The build's first street room outside Stickup's own. Deliberately simpler
+# than Stickup's stage/pot/beat script: a heist partitions an authored take
+# across authored physical stages, and a street mugging is not a heist — it
+# is one fight that either ends or does not. Two verbs (KEEP FIGHTING re-rolls
+# at escalating odds, GIVE IT UP is the guaranteed exit), a round cap, and a
+# round log satisfy STR-D5's "rounds, the round log, escalating odds" without
+# borrowing machinery authored for a different shape of encounter. No verb
+# gets burned across rounds — there is no third, one-time verb here to burn —
+# which is a real, disclosed scope difference from Stickup's own rooms, not
+# an oversight; `ConfrontationLoop`'s shared helpers are used everywhere they
+# apply (`loop_of`, `has_loop`, `append_log`, `present_round`) and left alone
+# everywhere they do not.
+
+const SHAKEDOWN_ROUND_CAP := 3
+## LIFT_ESCALATION's own `verb_penalty`, matched rather than re-picked — the
+## nearest authored precedent for "an escalating room degrades its own odds
+## by a fixed step per round," so this reads as one house rule, not two.
+const SHAKEDOWN_ROUND_PENALTY := -0.10
+
+func _open_shakedown_room(chain: Dictionary, choice_id: String) -> Dictionary:
+	var engine: Object = gm.system("consequence")
+	var source: Dictionary = chain.get("source", {})
+	var decision: Dictionary = chain.get("decision", {})
+	var base_chance: float = float((decision.get("shown_probabilities", {}) as Dictionary)
+		.get(choice_id, 0.45))
+	var loop: Dictionary = {
+		"round": 1,
+		"base_chance": base_chance,
+		"log": [],
+		"banked_health": 0,
+		# The shared stakes-strip chrome renders STAGE/#LEFT/BANKED for ANY
+		# non-empty loop. Boost's own escalation room hit the same "nothing to
+		# bank" case first: there is no cash riding on a fistfight, so BANKED
+		# stays honestly $0, and ROUNDS LEFT overrides the generic #LEFT chip
+		# for a countdown that actually means something here.
+		"stage": 0,
+		"stage_count": SHAKEDOWN_ROUND_CAP,
+		"left_label": "ROUNDS LEFT",
+		"left": SHAKEDOWN_ROUND_CAP - 1,
+		"banked": 0,
+	}
+	LOOP.append_log(loop, "It does not end there. Round one goes to nobody.")
+	gs.log_activity("They do not scatter. This is a fight now.", AMBER)
+	var shown: Dictionary = {"keep_fighting": clampf(base_chance + SHAKEDOWN_ROUND_PENALTY, 0.10, 0.95)}
+	# GIVE IT UP is deterministic every round, same guarantee HAND OVER
+	# always was at the door.
+	LOOP.present_round(chain, loop, ["keep_fighting", "give_it_up"], ["give_it_up"], shown)
+	gs.active_consequence = chain
+	return {"ok": true, "tier": "escalated", "arrested": false}
+
+func _shakedown_room_round(chain: Dictionary, choice_id: String) -> Dictionary:
+	var engine: Object = gm.system("consequence")
+	var decision: Dictionary = chain.get("decision", {})
+	var loop: Dictionary = LOOP.loop_of(chain)
+	var source: Dictionary = chain.get("source", {})
+
+	if choice_id == "give_it_up":
+		return _shakedown_room_exit(chain, loop, "deterministic", int(loop.get("banked_health", 0)))
+
+	var round_num: int = int(loop.get("round", 1))
+	var chance: float = clampf(float(loop.get("base_chance", 0.45))
+		+ SHAKEDOWN_ROUND_PENALTY * float(round_num), 0.10, 0.95)
+	var resolver: Object = gm.system("outcome_resolver")
+	var attributes: Object = gm.system("attributes")
+	var raw: int = int(attributes.effective("combat")) if attributes != null else 1
+	var tier := "failure"
+	if resolver != null:
+		tier = str((resolver.resolve_action("confrontation", chance, raw, gs.run_seed,
+			"%s:stand:room:%d" % [str(source.get("source_rng_key", "")), round_num]
+			) as Dictionary)["tier"])
+
+	if tier == "clean":
+		LOOP.append_log(loop, "Round %d: it breaks your way. They back off." % round_num)
+		return _shakedown_room_exit(chain, loop, "clean", int(loop.get("banked_health", 0)))
+	if tier in ["failure", "catastrophic"]:
+		LOOP.append_log(loop, "Round %d: it does not break your way." % round_num)
+		return _shakedown_room_exit(chain, loop, tier, int(loop.get("banked_health", 0)))
+
+	# MESSY: the fight keeps going, at a real cost banked toward whichever
+	# exit finally ends it. Capped at SHAKEDOWN_ROUND_CAP rounds — a street
+	# fight that has gone this long ends on the cap the same way it would
+	# have ended badly on its own.
+	var banked: int = int(loop.get("banked_health", 0)) + 4
+	loop["banked_health"] = banked
+	LOOP.append_log(loop, "Round %d: it gets loud again. Nobody has backed off yet." % round_num)
+	if round_num >= SHAKEDOWN_ROUND_CAP:
+		return _shakedown_room_exit(chain, loop, "messy", banked)
+	loop["round"] = round_num + 1
+	loop["stage"] = round_num
+	loop["left"] = SHAKEDOWN_ROUND_CAP - (round_num + 1)
+	var next_chance: float = clampf(float(loop.get("base_chance", 0.45))
+		+ SHAKEDOWN_ROUND_PENALTY * float(round_num + 1), 0.10, 0.95)
+	LOOP.present_round(chain, loop, ["keep_fighting", "give_it_up"], ["give_it_up"],
+		{"keep_fighting": next_chance})
+	gs.active_consequence = chain
+	return {"ok": true, "tier": "continued", "arrested": false}
+
+## The room's own exit, on every road: deterministic give-up, a clean escape,
+## or the fight finally going badly (messy from the round cap, or an
+## outright failure/catastrophic roll). Cash and cargo route through the
+## exact same owners `_apply_effects` uses — a room is still a wander
+## encounter underneath, STR-D3's rule does not stop applying because it
+## took three rounds instead of one.
+func _shakedown_room_exit(chain: Dictionary, loop: Dictionary, exit_tier: String,
+		banked_health: int) -> Dictionary:
+	var engine: Object = gm.system("consequence")
+	var decision: Dictionary = chain.get("decision", {})
+	var effects: Dictionary
+	match exit_tier:
+		"deterministic":
+			effects = {"health": banked_health, "cash_fraction": 1.0, "goods_fraction": 1.0}
+			gs.log_activity("You give it up mid-fight. Whatever was in hand is gone.", AMBER)
+		"clean":
+			effects = {"health": banked_health, "cash_fraction": 0.0, "goods_fraction": 0.0}
+			gs.log_activity("It finally breaks your way. You keep what you had left.", GREEN)
+		"messy":
+			effects = {"health": banked_health + 4, "cash_fraction": 0.5, "goods_fraction": 0.5}
+			gs.log_activity("Nobody wins outright. You both just stop.", AMBER)
+		_:
+			effects = {"health": banked_health + 10, "cash_fraction": 1.0, "goods_fraction": 1.0}
+			gs.log_activity("It goes badly, all the way through.", AMBER)
+
+	var applied: Dictionary = _apply_effects(effects, "stand")
+	var result := {
+		"choice_id": "stand", "tier": exit_tier, "arrested": false, "banned": false,
+		"cash": -int(applied["cash"]), "goods": -int(applied["goods"]),
+		"health": -int(applied["health"]), "heat": 0.0, "pressure": 0,
+		"take_disposition": "lose" if (int(applied["goods"]) > 0 or int(applied["cash"]) > 0) else "keep",
+		"room_log": (loop.get("log", []) as Array).duplicate(),
+	}
+	decision["resolved_tier"] = exit_tier
+	decision["result"] = result
+	decision["loop"] = loop
+	chain["decision"] = decision
+	engine.advance_stage(engine.STAGE_RESULT)
+	return {"ok": true, "tier": exit_tier, "arrested": false}
 
 ## Take a fraction of what is being carried, rounded up so a bag with anything
 ## in it always loses something.

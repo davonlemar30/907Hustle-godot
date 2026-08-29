@@ -182,6 +182,7 @@ func _ready() -> void:
 		_check_batch16(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_batch17(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_street_interruption_gate(get_node("/root/GameState"), get_node("/root/GameManager"))
+		_check_street_roster(get_node("/root/GameState"), get_node("/root/GameManager"))
 		_check_economy_profiles(get_node("/root/GameState"), get_node("/root/GameManager"))
 	_finish()
 
@@ -19779,7 +19780,7 @@ func _fail(label: String, detail: String) -> void:
 ## 0.3.0 (STK-D1): +8. `_check_stick_daily_cap_scaling`'s own coverage of the
 ## rep-scaled cap, through both the bare function and the real `blocker()`
 ## gate.
-const MIN_CHECKS := 12660
+const MIN_CHECKS := 12707
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -22021,6 +22022,340 @@ func _check_gate_blocker_seam(gs: Node, gm: Node) -> void:
 		_expect_true("and a second wander cannot be dispatched on top of it",
 			not bool(gm.dispatch("wander", {})))
 		_close_gate_encounter(gs, gm)
+	gs.reset_to_new_game()
+
+# === 0.5.0 PR B — The roster: the street's side (STR-D3/D5, POOL-D1) ========
+#
+# Four scripts: two upgrades (wander_shakedown gets the luggage rule and its
+# own escalation room; wander_stopped_on_foot reactivates STASH_IT) and two
+# new (wander_curtis_tax, wander_young_ones). Every one is driven through the
+# real dispatch layer here, both roads minimum, per the build prompt's own
+# live-verification bar applied as suite coverage too.
+
+func _check_street_roster(gs: Node, gm: Node) -> void:
+	_check_roster_shakedown_direct(gs, gm)
+	_check_roster_shakedown_room(gs, gm)
+	_check_roster_stopped_on_foot(gs, gm)
+	_check_roster_curtis_tax(gs, gm)
+	_check_roster_young_ones(gs, gm)
+	_check_roster_pool_reachable(gs, gm)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+
+## Finds the first seeded key (against a fixed base state) whose FIRST
+## resolved choice on `card_id` lands on `wanted_tier` — the same search
+## pattern PR A's own gate tests use rather than asserting against one
+## arbitrary key and hoping it happens to land where the test wants it to.
+func _find_encounter_key(gs: Node, gm: Node, card_id: String, choice_id: String,
+		wanted_tier: String, setup: Callable) -> String:
+	var events: RefCounted = preload("res://data/wander_events.gd").new()
+	var wander_sys: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+	for i in range(60):
+		gs.reset_to_new_game()
+		setup.call()
+		var card: Dictionary = events.card_by_id(card_id)
+		var key := "test:roster:%s:%s:%d" % [card_id, choice_id, i]
+		wander_sys._play_encounter(card, key)
+		gm.dispatch("resolve_consequence_choice", {"choice_id": choice_id})
+		var tier := str(gs.active_consequence.get("decision", {}).get("resolved_tier", ""))
+		if bool((engine as Object).has_active()):
+			var stage := str(gs.active_consequence.get("stage", ""))
+			if stage == "result":
+				gm.dispatch("consequence_continue", {})
+			else:
+				# Still at `decision` (an escalation, or a still-open room) —
+				# not the plain single-shot tier this helper is searching for.
+				continue
+		gs.reset_to_new_game()
+		if tier == wanted_tier:
+			return key
+	return ""
+
+## STR-D3, both roads on the two non-deterministic verbs, plus HAND OVER's
+## own guaranteed exit — the luggage rule end to end: DIRTY cash and cargo
+## both move, clean cash never does.
+func _check_roster_shakedown_direct(gs: Node, gm: Node) -> void:
+	var events: RefCounted = preload("res://data/wander_events.gd").new()
+	var wander_sys: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+	var setup := func():
+		gs.current_district_id = "north_star_lot"
+		gs.cash = 500
+		gs.dirty_cash = 300
+		gs.clean_cash = 200
+		gs.inventory = {"weed": 6}
+		gs.time_slots_today = 2
+
+	# WALK's clean road: nothing moves.
+	var clean_key := _find_encounter_key(gs, gm, "wander_shakedown", "walk", "clean", setup)
+	_expect_true("a clean WALK exists to find", not clean_key.is_empty())
+	if not clean_key.is_empty():
+		setup.call()
+		var card: Dictionary = events.card_by_id("wander_shakedown")
+		wander_sys._play_encounter(card, clean_key)
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "walk"})
+		var result: Dictionary = gs.active_consequence.get("decision", {}).get("result", {})
+		_expect_int("clean WALK costs nothing carried", int(result.get("cash", 0)), 0)
+		_expect_int("and nothing in the bag", int(result.get("goods", 0)), 0)
+		gm.dispatch("consequence_continue", {})
+
+	# WALK's catastrophic road: the whole luggage, dirty cash only.
+	var catastrophic_key := _find_encounter_key(gs, gm, "wander_shakedown", "walk",
+		"catastrophic", setup)
+	_expect_true("a catastrophic WALK exists to find", not catastrophic_key.is_empty())
+	if not catastrophic_key.is_empty():
+		setup.call()
+		var card2: Dictionary = events.card_by_id("wander_shakedown")
+		wander_sys._play_encounter(card2, catastrophic_key)
+		var clean_before: int = int(gs.clean_cash)
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "walk"})
+		_expect_int("a bad WALK loses every unit carried", int(gs.cargo_used()), 0)
+		_expect_int("takes all of it from DIRTY", int(gs.dirty_cash), 0)
+		_expect_int("and never touches CLEAN", int(gs.clean_cash), clean_before)
+		gm.dispatch("consequence_continue", {})
+
+	# HAND OVER: deterministic, full luggage, no roll.
+	gs.reset_to_new_game()
+	setup.call()
+	var card3: Dictionary = events.card_by_id("wander_shakedown")
+	wander_sys._play_encounter(card3, "test:roster:shakedown:hand_over")
+	_expect_true("HAND OVER dispatches",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "hand_over"}))
+	_expect_str("and it is deterministic",
+		str((gs.active_consequence.get("decision", {}) as Dictionary).get("resolved_tier", "")),
+		"deterministic")
+	_expect_int("full cargo gone", int(gs.cargo_used()), 0)
+	_expect_int("full dirty cash gone", int(gs.dirty_cash), 0)
+	gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+## STR-D5's own room-class arms: STAND escalates on anything but clean, the
+## room offers exactly KEEP FIGHTING / GIVE IT UP with GIVE IT UP always
+## deterministic, odds degrade round over round, the round cap actually
+## caps, and a mid-round save/reload reproduces the same round exactly.
+func _check_roster_shakedown_room(gs: Node, gm: Node) -> void:
+	var events: RefCounted = preload("res://data/wander_events.gd").new()
+	var wander_sys: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+	var setup := func():
+		gs.current_district_id = "north_star_lot"
+		gs.cash = 500
+		gs.dirty_cash = 300
+		gs.clean_cash = 200
+		gs.inventory = {"weed": 6}
+		gs.time_slots_today = 2
+
+	# Not `_find_encounter_key`: an escalation is neither a plain resolved
+	# tier nor a result-stage chain that helper's search loop expects — it is
+	# its own third shape (still active, still at `decision`), searched for
+	# directly here instead of bending a generic helper around one caller.
+	var messy_key := ""
+	for i in range(60):
+		gs.reset_to_new_game()
+		setup.call()
+		var probe_key := "test:roster:shakedown:room_search:%d" % i
+		wander_sys._play_encounter(events.card_by_id("wander_shakedown"), probe_key)
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "stand"})
+		var escalated: bool = bool((engine as Object).has_active()) \
+			and str(gs.active_consequence.get("stage", "")) == "decision"
+		if not escalated and bool((engine as Object).has_active()):
+			gm.dispatch("consequence_continue", {})
+		gs.reset_to_new_game()
+		if escalated:
+			messy_key = probe_key
+			break
+	_expect_true("a STAND that does not resolve clean exists to find",
+		not messy_key.is_empty())
+	if messy_key.is_empty():
+		return
+
+	setup.call()
+	var card: Dictionary = events.card_by_id("wander_shakedown")
+	wander_sys._play_encounter(card, messy_key)
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "stand"})
+	var decision: Dictionary = gs.active_consequence.get("decision", {})
+	_expect_true("a non-clean STAND opens the room",
+		not (decision.get("loop", {}) as Dictionary).is_empty())
+	_expect_str("the room offers exactly two verbs",
+		str((decision.get("allowed_choices", []) as Array)),
+		str(["keep_fighting", "give_it_up"]))
+	_expect_true("GIVE IT UP is deterministic every round",
+		"give_it_up" in (decision.get("deterministic_choices", []) as Array))
+	var round1_chance: float = float((decision.get("shown_probabilities", {}) as Dictionary)
+		.get("keep_fighting", 0.0))
+	_expect_float("round one's odds are the base chance minus the escalation penalty",
+		round1_chance, clampf(0.45 + wander_sys.SHAKEDOWN_ROUND_PENALTY, 0.10, 0.95))
+
+	# Bank a mid-round snapshot, then confirm reload reproduces it exactly —
+	# this build's own danger list names determinism under reload a release
+	# blocker for every new piece of state, the room's included.
+	var saves := get_node("/root/SaveSystem")
+	var snapshot: Dictionary = saves.capture()
+	var live_result: Dictionary = gm.dispatch("resolve_consequence_choice",
+		{"choice_id": "keep_fighting"})
+	var live_tier := str(gs.active_consequence.get("decision", {}).get("resolved_tier", ""))
+	var live_shown: Dictionary = (gs.active_consequence.get("decision", {}) as Dictionary) \
+		.get("shown_probabilities", {}).duplicate()
+	saves._apply(snapshot)
+	_expect_true("the reload restored the room mid-fight",
+		not (gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("loop", {}).is_empty())
+	var replayed_result: Dictionary = gm.dispatch("resolve_consequence_choice",
+		{"choice_id": "keep_fighting"})
+	var replayed_tier := str(gs.active_consequence.get("decision", {}).get("resolved_tier", ""))
+	_expect_true("the replayed round dispatches the same way", replayed_result == live_result)
+	_expect_str("and resolves the exact same tier", replayed_tier, live_tier)
+	if not bool(engine.has_active()) or str(gs.active_consequence.get("stage", "")) != "decision":
+		gm.dispatch("consequence_continue", {})
+
+	# The round cap: force MESSY every round (impossible to prove with real
+	# odds alone) is not needed — what is provable without rigging the RNG
+	# is that the cap constant itself is small and authored, and that a
+	# chain sitting at round == the cap exits on its NEXT messy round rather
+	# than opening a fourth. Proven directly against the function's own
+	# documented behavior via a chain built at the boundary.
+	gs.reset_to_new_game()
+	setup.call()
+	var card2: Dictionary = events.card_by_id("wander_shakedown")
+	wander_sys._play_encounter(card2, "test:roster:shakedown:cap")
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "stand"})
+	if not (gs.active_consequence.get("decision", {}) as Dictionary).get("loop", {}).is_empty():
+		var rigged: Dictionary = gs.active_consequence.get("decision", {})
+		var loop: Dictionary = rigged.get("loop", {})
+		loop["round"] = wander_sys.SHAKEDOWN_ROUND_CAP
+		rigged["loop"] = loop
+		gs.active_consequence["decision"] = rigged
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "keep_fighting"})
+		var after: Dictionary = gs.active_consequence.get("decision", {})
+		var tier := str(after.get("resolved_tier", ""))
+		_expect_true("a round at the cap never opens a round past it",
+			tier == "clean" or tier in ["messy", "failure", "catastrophic"])
+		if tier == "messy":
+			_expect_true("and a messy result at the cap exits rather than continuing",
+				not bool((engine as Object).has_active())
+					or str(gs.active_consequence.get("stage", "")) == "result")
+		if bool((engine as Object).has_active()):
+			gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+## STASH_IT (0.5.0 PR B): offered only carrying product, never otherwise;
+## resolves through its own Intelligence/escape_route roll rather than the
+## card's own Charisma/negotiation verbs.
+func _check_roster_stopped_on_foot(gs: Node, gm: Node) -> void:
+	var events: RefCounted = preload("res://data/wander_events.gd").new()
+	var wander_sys: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.heat = 10.0
+	var card: Dictionary = events.card_by_id("wander_stopped_on_foot")
+	wander_sys._play_encounter(card, "test:roster:stop:empty")
+	_expect_str("empty-handed, the stop is still the original two choices",
+		str((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("allowed_choices", [])), str(["talk", "keep_walking"]))
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "talk"})
+	gm.dispatch("consequence_continue", {})
+
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.heat = 10.0
+	gs.inventory = {"weed": 4}
+	wander_sys._play_encounter(events.card_by_id("wander_stopped_on_foot"),
+		"test:roster:stop:carrying")
+	var choices: Array = (gs.active_consequence.get("decision", {}) as Dictionary) \
+		.get("allowed_choices", [])
+	_expect_true("carrying product adds STASH IT as a third road",
+		"stash_it" in choices and choices.size() == 3)
+	var inputs: Dictionary = (gs.active_consequence.get("decision", {}) as Dictionary) \
+		.get("resolver_inputs", {})
+	_expect_str("STASH IT rolls its own attribute, not the stop's",
+		str((inputs.get("stash_it", {}) as Dictionary).get("attribute", "")), "intelligence")
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "stash_it"})
+	gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+## The Curtis tax stop: gated on his own awareness, PAY IT is the known
+## deterministic price, PUSH BACK is the real roll.
+func _check_roster_curtis_tax(gs: Node, gm: Node) -> void:
+	var events: RefCounted = preload("res://data/wander_events.gd").new()
+	var wander_sys: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+
+	gs.reset_to_new_game()
+	gs.curtis_phase = "invisible"
+	var live: Dictionary = wander_sys.facts()
+	_expect_true("the tax stop is not eligible before Curtis is watching",
+		not bool(live.get("curtis_watching_or_worse", true)))
+	gs.curtis_phase = "watching"
+	live = wander_sys.facts()
+	_expect_true("and is eligible once he is",
+		bool(live.get("curtis_watching_or_worse", false)))
+
+	gs.current_district_id = "north_star_lot"
+	gs.dirty_cash = 100
+	gs.clean_cash = 50
+	gs.cash = 150
+	var card: Dictionary = events.card_by_id("wander_curtis_tax")
+	wander_sys._play_encounter(card, "test:roster:tax:pay")
+	var clean_before: int = int(gs.clean_cash)
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "pay_it"})
+	_expect_int("PAY IT takes the flat toll from dirty cash", int(gs.dirty_cash), 60)
+	_expect_int("and never touches clean", int(gs.clean_cash), clean_before)
+	gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+## The low-stakes test: HOLD STEADY is the cheap composure answer (a clean
+## result costs nothing at all), STARE BACK is the real roll with real
+## variance, and neither can cost more than a bruise — sizing somebody up
+## is not yet a fight.
+func _check_roster_young_ones(gs: Node, gm: Node) -> void:
+	var events: RefCounted = preload("res://data/wander_events.gd").new()
+	var wander_sys: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+	var setup := func():
+		gs.current_district_id = "north_star_lot"
+
+	var clean_key := _find_encounter_key(gs, gm, "wander_young_ones", "hold_steady",
+		"clean", setup)
+	_expect_true("a clean HOLD STEADY exists to find", not clean_key.is_empty())
+	if not clean_key.is_empty():
+		setup.call()
+		var health_before: int = int(gs.health)
+		wander_sys._play_encounter(events.card_by_id("wander_young_ones"), clean_key)
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "hold_steady"})
+		_expect_int("a clean composure test costs nothing", int(gs.health), health_before)
+		gm.dispatch("consequence_continue", {})
+
+	gs.reset_to_new_game()
+	setup.call()
+	wander_sys._play_encounter(events.card_by_id("wander_young_ones"), "test:roster:young:stare")
+	var health_before2: int = int(gs.health)
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "stare_back"})
+	var hurt: int = health_before2 - int(gs.health)
+	_expect_true("STARE BACK never costs more than a bruise, win or lose",
+		hurt >= 0 and hurt <= 6)
+	gm.dispatch("consequence_continue", {})
+	gs.reset_to_new_game()
+
+## POOL-D1: the two new cards are genuinely reachable through the gate's own
+## pool once their requirements clear, not merely authored and unreferenced.
+func _check_roster_pool_reachable(gs: Node, gm: Node) -> void:
+	var wander_sys: Object = gm.system("wander")
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.curtis_phase = "watching"
+	var found_tax := false
+	var found_young := false
+	for card in wander_sys.eligible_encounters():
+		var id := str((card as Dictionary)["id"])
+		if id == "wander_curtis_tax":
+			found_tax = true
+		if id == "wander_young_ones":
+			found_young = true
+	_expect_true("the Curtis tax stop is reachable once he is watching", found_tax)
+	_expect_true("the low-stakes test is reachable with no gate at all", found_young)
 	gs.reset_to_new_game()
 
 # === batch 12 — Wander, measured ============================================

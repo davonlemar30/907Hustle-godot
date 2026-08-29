@@ -176,7 +176,12 @@ func _build_situation(summary: Dictionary) -> void:
 		stakes.append("TAKE $%d" % contested)
 	stakes.append("HEALTH %d/%d" % [int(gs.health), int(gs.health_max)])
 	stakes.append("HEAT %d/%d" % [gs.heat_shown(), int(gs.heat_max)])
-	v.add_child(label("  ·  ".join(stakes), "Mono", 12, AMBER))
+	# `wrap`: a loop chain's strip ("STAGE 2/5  ·  IN YOUR WAY 3  ·  BANKED
+	# $340  ·  HEALTH 80/100  ·  HEAT 5/15") routinely exceeds the card's
+	# width at this font size. Unwrapped, a Label reports its full unbroken
+	# text as its minimum size, which drags every ancestor up to Shell wider
+	# than the viewport — the strip does not clip, the whole screen shifts.
+	v.add_child(label("  ·  ".join(stakes), "Mono", 12, AMBER, not loop.is_empty()))
 	c.add_child(v)
 	body.add_child(c)
 

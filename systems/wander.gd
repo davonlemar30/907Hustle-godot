@@ -937,6 +937,10 @@ func _play_encounter(card: Dictionary, key: String) -> Dictionary:
 			"action_id": "wander",
 			"card_id": card_id,
 			"opponent": str(spec.get("opponent", "")),
+			# BB-D2 (0.7.0): the card's own line rides the chain so the sheet
+			# can open on it. The feed still gets it above; the feed is behind
+			# the sheet, which is the whole reason it rides here too.
+			"opener": str(card.get("line", "")),
 			"shape": encounter_shape,
 			"target_id": card_id,
 			"target_name": str(spec.get("opponent", "")),
@@ -1098,8 +1102,85 @@ func choice_copy(choice_id: String) -> String:
 ## The certainty line under a deterministic road (ENC-D6's seam). Empty falls
 ## back to the screen's own "no injury, no Heat, no arrest" — which is true for
 ## none of this file's surrender roads, so every one of them authors its own.
+##
+## BB-D7 (0.7.0): the authored line is followed by the PRICE, computed. A
+## guaranteed road that takes "everything you are carrying" took $0 on a
+## clean-cash profile in the live probe that started this build, because the
+## luggage rule only ever reaches dirty cash (`confrontation_loop.gd::
+## apply_effects`) -- a correct rule the copy did not know about. The player
+## prices the road against what is actually in hand, so that is what the line
+## says: dirty cash and carried product, read the same way the seizure will
+## read them, without moving either.
 func choice_guarantee(choice_id: String) -> String:
-	return str(EVENTS.CHOICE_GUARANTEE.get(choice_id, ""))
+	var line := str(EVENTS.CHOICE_GUARANTEE.get(choice_id, ""))
+	if line.is_empty():
+		return ""
+	return line + _price_suffix(choice_id)
+
+func _price_suffix(choice_id: String) -> String:
+	var chain: Dictionary = gs.active_consequence
+	if chain.is_empty():
+		return ""
+	var card_id := str((chain.get("source", {}) as Dictionary).get("card_id", ""))
+	var card: Dictionary = EVENTS.card_by_id(card_id)
+	if card.is_empty():
+		return ""
+	var effects: Dictionary
+	if LOOP.has_loop(chain):
+		var beat: Dictionary = _beat_at(card_id, int(LOOP.loop_of(chain).get("beat_index", 0)))
+		effects = beat.get("effects", {})
+	else:
+		effects = (card.get("encounter", {}) as Dictionary).get("effects", {})
+	var row: Dictionary = (effects.get(choice_id, {}) as Dictionary).get("deterministic", {})
+	var cash_fraction: float = float(row.get("cash_fraction", 0.0))
+	var goods_fraction: float = float(row.get("goods_fraction", 0.0))
+	if cash_fraction <= 0.0 and goods_fraction <= 0.0:
+		return ""
+	var parts: Array = []
+	if cash_fraction > 0.0:
+		var wallet: Object = gm.system("wallet") if gm != null else null
+		var dirty: int = int(wallet.dirty_balance()) if wallet != null else 0
+		var cash: int = mini(dirty, int(round(float(dirty) * cash_fraction)))
+		if cash > 0:
+			parts.append("$%d in hand" % cash)
+	if goods_fraction > 0.0:
+		var units: int = _units_at_risk(goods_fraction)
+		if units > 0:
+			parts.append("%d unit%s of product" % [units, "" if units == 1 else "s"])
+	if parts.is_empty():
+		return " Right now that is nothing: your pockets are clean and you are not carrying."
+	return " Right now that is %s." % " and ".join(parts)
+
+## The same arithmetic `LOOP.lose_cargo` will do, without doing it.
+func _units_at_risk(fraction: float) -> int:
+	var total: int = 0
+	for product_id in gs.inventory.keys():
+		var held: int = int(gs.inventory[product_id])
+		if held <= 0:
+			continue
+		var lose: int = held if fraction >= 1.0 else maxi(1, int(ceil(float(held) * fraction)))
+		total += mini(lose, held)
+	return total
+
+## BB-D1 (0.7.0): what happened, in the card's own voice, through the engine's
+## result seam. The room's roads and the door's roads are different situations
+## and read from different halves of the table; a crew call reads the same on
+## every card because a call is a call. `EVENTS.result_copy` is the one lookup,
+## shared with the suite that renders every road.
+func result_headline(choice_id: String, tier: String, _effects: Dictionary) -> String:
+	var row: Array = _result_row(choice_id, tier)
+	return str(row[0]) if row.size() == 2 else ""
+
+func result_body(choice_id: String, tier: String, _effects: Dictionary) -> String:
+	var row: Array = _result_row(choice_id, tier)
+	return str(row[1]) if row.size() == 2 else ""
+
+func _result_row(choice_id: String, tier: String) -> Array:
+	var chain: Dictionary = gs.active_consequence
+	if chain.is_empty():
+		return []
+	var card_id := str((chain.get("source", {}) as Dictionary).get("card_id", ""))
+	return EVENTS.result_copy(card_id, choice_id, tier, LOOP.has_loop(chain))
 
 
 ## What the choice does. The engine calls exactly this one method on a source

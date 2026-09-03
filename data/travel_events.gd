@@ -66,3 +66,28 @@ const CHOICE_COPY := {
 	"run_it": "Nobody said stop loud enough to matter. Go.",
 	"hand_over": "Let them find it. You keep your feet and your health; the bag stays with them.",
 }
+
+## What happened at the line, in the checkpoint's own voice -- BB-D1 (0.7.0).
+## Same shape as `wander_events.gd`'s `RESULT_COPY`: choice -> tier ->
+## [HEADLINE, body]. A patrol stop is business, and the copy stays that way:
+## nobody here is a rival, and what it costs is product, paper and time.
+const RESULT_COPY := {
+	"talk": {
+		"clean": ["THEY WAVE YOU THROUGH", "Plates, papers, a reason to be out here. You had all three, and the reason was boring."],
+		"messy": ["THEY LET YOU GO, WITH A NOTE", "It takes a second cruiser and a long look. Your plate is in a file it was not in this morning."],
+		"failure": ["THEY SEARCH THE CAR", "The reason was not boring enough. Part of what you were moving stays at the line."],
+		"catastrophic": ["THE WHOLE LOAD", "They found what they were looking for, and then kept looking. You cross the line lighter than you left, and louder."],
+	},
+	"run_it": {
+		"clean": ["YOU MAKE THE LINE", "Nobody said stop loud enough to matter. By the time they decide, you are a different district's problem."],
+		"messy": ["YOU GET CLEAR, JUST", "Something fell out of the bag on the way. They keep it, and the memory of your plate."],
+		"failure": ["THEY CUT YOU OFF", "The road ended before you did. They took half the load and a piece of you for the trouble of the chase."],
+		"catastrophic": ["END OF THE ROAD", "You did not get far, and the report will say you ran. Everything in the car is theirs and so is your face."],
+	},
+	"hand_over": {
+		"deterministic": ["YOU HAND IT OVER", "They take the bag and wave you through. You keep your feet, your health, and the rest of the trip."],
+	},
+}
+
+static func result_copy(choice_id: String, tier: String) -> Array:
+	return (RESULT_COPY.get(choice_id, {}) as Dictionary).get(tier, [])

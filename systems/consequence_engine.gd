@@ -802,6 +802,10 @@ func active_summary() -> Dictionary:
 		# words the source system already had for the same thing.
 		"source_target_name": str(source.get("target_name", "")),
 		"source_opponent": str(source.get("opponent", "")),
+		# BB-D2 (0.7.0): the card's own opening line, written into the chain by
+		# the adapter that opened it, so the sheet can put the moment on screen
+		# instead of a standing line that was true of every card at once.
+		"source_opener": str(source.get("opener", "")),
 		"source_target_tier": int(source.get("target_tier", 0)),
 		"contested_take": int(source.get("contested_take", 0)),
 		"pre_encounter_heat": float(source.get("pre_encounter_heat", 0.0)),
@@ -857,6 +861,39 @@ func choice_guarantee(choice_id: String, fallback: String) -> String:
 ## that never happened, with no way to try again this round.
 func choice_blocked(choice_id: String) -> String:
 	return _adapter_copy(choice_id, "choice_blocked", "")
+
+## BB-D1 (0.7.0): the result's own words, from the adapter that resolved it.
+##
+## Until this seam existed the sheet carried one result-copy table for every
+## chain kind and fell through to Boost's vocabulary for anything it had no
+## arm for -- which was every street encounter, every checkpoint, and every
+## doorstep. A three-round fistfight on a corner with nothing at stake read
+## "The take is gone and the room remembers your face." The adapter that
+## resolved the choice is the only thing that knows what actually happened, so
+## it is asked first; an empty answer (or no method at all) falls back to the
+## sheet's own arms, exactly the way `choice_description` already degrades.
+##
+## The adapter receives the committed choice, the resolved tier, and a COPY of
+## the result block -- plain data, never a handle into the chain.
+func result_headline(fallback: String) -> String:
+	return _adapter_result_copy("result_headline", fallback)
+
+func result_body(fallback: String) -> String:
+	return _adapter_result_copy("result_body", fallback)
+
+func _adapter_result_copy(method: String, fallback: String) -> String:
+	if not has_active():
+		return fallback
+	var action_id := str((gs.active_consequence.get("source", {}) as Dictionary)
+		.get("action_id", ""))
+	var adapter: Object = source_adapter(action_id)
+	if adapter == null or not adapter.has_method(method):
+		return fallback
+	var decision: Dictionary = gs.active_consequence.get("decision", {})
+	var said := str(adapter.call(method, str(decision.get("committed_choice", "")),
+		str(decision.get("resolved_tier", "")),
+		(decision.get("result", {}) as Dictionary).duplicate(true)))
+	return said if not said.is_empty() else fallback
 
 func choice_summaries() -> Array:
 	if not has_active():
@@ -956,6 +993,12 @@ func loop_summary() -> Dictionary:
 		"left": int(state.get("left", 0)),
 		"left_label": str(state.get("left_label", "")),
 		"banked": int(state.get("banked", 0)),
+		# BB-D5 (0.7.0): whether BANKED is money at all. A stickup room banks
+		# cash stage by stage (`take_total` is its budget); the corner and the
+		# meetup open with a real sum on the table. A street fight banks
+		# nothing the strip should print as dollars, and the sheet reads this
+		# rather than guessing from the kind.
+		"banks_cash": state.has("take_total") or int(state.get("banked", 0)) > 0,
 		"beat": str(state.get("beat", "")),
 		"log": (state.get("log", []) as Array).duplicate(),
 		"mode": str(state.get("mode", "stage")),

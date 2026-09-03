@@ -444,6 +444,52 @@ func _record_observation(chain: Dictionary, action: Dictionary) -> void:
 
 # --- the engine's copy seam ---------------------------------------------------
 
+## BB-D1 (0.7.0): the corner's own endings. Keyed by script, then by the road
+## taken, then by the resolution `_exit` recorded -- a short count recovered
+## and a short count eaten are different facts about the same thirty dollars.
+const RESULT_COPY := {
+	"corner_stiff": {
+		"let_it_ride": {
+			"surrendered": ["YOU EAT THE SHORT", "Thirty dollars to keep the corner quiet. Sometimes that is the play, and nobody but you will remember it."],
+		},
+		"count_again": {
+			"won": ["HE FINDS THE REST", "You count it back to him out loud. Numbers do not get embarrassed, and neither do you."],
+			"beaten": ["HE HAS HIS OWN NUMBER", "It is not yours. He leaves with the difference, and the corner watches him do it."],
+		},
+		"press_him": {
+			"won": ["HE PAYS THE REST", "Full price. He will remember being made to, and so will the two people who watched."],
+			"beaten": ["OVER THIRTY DOLLARS", "It turns physical over a short count and it does not go your way. The corner takes note of both facts."],
+		},
+	},
+	"corner_push": {
+		"stand_on_it": {
+			"won": ["STILL ON THE CORNER", "They leave it before you do. The block saw that, and by tonight so will Curtis."],
+			"beaten": ["THEY TAKE THE CORNER", "And they make sure it is remembered. Curtis will hear you stood, and he will hear how it ended."],
+		},
+		"step_off": {
+			"surrendered": ["YOU STEP OFF", "Live to sell somewhere else. The block remembers who moved, and Curtis keeps the block's records."],
+		},
+		"call_tone": {
+			"won": ["TONE STANDS WHERE THEY WERE", "Nobody argues with it. It cost a favor, and Curtis noticed who you called."],
+		},
+	},
+}
+
+func result_copy(choice_id: String, effects: Dictionary) -> Array:
+	var loop: Dictionary = LOOP.loop_of(gs.active_consequence)
+	var script_id := str(loop.get("script_id",
+		(gs.active_consequence.get("source", {}) as Dictionary).get("kind", "")))
+	return ((RESULT_COPY.get(script_id, {}) as Dictionary).get(choice_id, {}) as Dictionary) \
+		.get(str(effects.get("resolution", "")), [])
+
+func result_headline(choice_id: String, _tier: String, effects: Dictionary) -> String:
+	var row: Array = result_copy(choice_id, effects)
+	return str(row[0]) if row.size() == 2 else ""
+
+func result_body(choice_id: String, _tier: String, effects: Dictionary) -> String:
+	var row: Array = result_copy(choice_id, effects)
+	return str(row[1]) if row.size() == 2 else ""
+
 func choice_label(choice_id: String) -> String:
 	for script in SCRIPTS.MARKET_SCRIPTS.values():
 		var action: Dictionary = (script as Dictionary)["actions"].get(choice_id, {})

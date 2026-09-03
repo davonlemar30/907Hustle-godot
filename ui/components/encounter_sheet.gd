@@ -181,8 +181,12 @@ static func build_situation(engine: Object, gs: Node, summary: Dictionary) -> Ar
 	var c := _card()
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
-	v.add_child(_label("CONSEQUENCE", "Kicker", 10, ORANGE))
-	v.add_child(_label(title_for(engine, summary), "CardTitle", 17, CREAM))
+	# BB-D2 (0.7.0): the WHO is the headline. The kind's own phrase (SOMEBODY
+	# STOPS YOU, CAUGHT, CHECKPOINT) moves up into the kicker, where the word
+	# CONSEQUENCE used to sit -- the engine's name for itself, which the player
+	# was never meant to read.
+	v.add_child(_label(kicker_for(engine, summary), "Kicker", 10, ORANGE))
+	v.add_child(_label(headline_for(engine, summary), "CardTitle", 17, CREAM))
 	var context := context_line(engine, gs, summary)
 	if not context.is_empty():
 		v.add_child(_label(context, "Muted", 11, MUTED))
@@ -207,7 +211,10 @@ static func build_situation(engine: Object, gs: Node, summary: Dictionary) -> Ar
 			maxi(1, int(loop.get("stage_count", 1)))])
 		stakes.append("%s %d" % [str(loop.get("left_label", "LEFT")),
 			int(loop.get("left", 0))])
-		stakes.append("BANKED $%d" % int(loop.get("banked", 0)))
+		# BB-D5 (0.7.0): money only when it is money. A street fight banks
+		# health, not dollars, and printed BANKED $0 through three rounds of it.
+		if bool(loop.get("banks_cash", false)):
+			stakes.append("BANKED $%d" % int(loop.get("banked", 0)))
 	elif contested > 0:
 		stakes.append("TAKE $%d" % contested)
 	stakes.append("HEAT %d/%d" % [gs.heat_shown(), int(gs.heat_max)])
@@ -235,6 +242,27 @@ static func build_situation(engine: Object, gs: Node, summary: Dictionary) -> Ar
 			lc.add_child(lv)
 			out.append(lc)
 	return out
+
+## BB-D2: who is in front of you, or "" when the chain has nobody named.
+static func opponent_for(summary: Dictionary) -> String:
+	var who := str(summary.get("source_opponent", ""))
+	if who.is_empty():
+		who = str(summary.get("source_target_name", ""))
+	return who
+
+## The kicker: the kind's own phrase when there is somebody to headline,
+## otherwise a plain marker so the title below can carry the phrase itself.
+static func kicker_for(engine: Object, summary: Dictionary) -> String:
+	if opponent_for(summary).is_empty():
+		return "RIGHT NOW"
+	return title_for(engine, summary)
+
+## The title: the opponent, in caps, or the kind's phrase when nobody is named.
+static func headline_for(engine: Object, summary: Dictionary) -> String:
+	var who := opponent_for(summary)
+	if who.is_empty():
+		return title_for(engine, summary)
+	return who.to_upper()
 
 static func title_for(engine: Object, summary: Dictionary) -> String:
 	match str(summary.get("chain_kind", "")):
@@ -296,7 +324,13 @@ static func context_line(engine: Object, gs: Node, summary: Dictionary) -> Strin
 	var district := str(summary.get("district_id", ""))
 	if not district.is_empty():
 		parts.append(str(gs.district_by_id(district).get("name", "")).to_upper())
-	return "  ·  ".join(parts)
+	# BB-D2: whoever is now the headline does not repeat one line under it.
+	var head := headline_for(engine, summary)
+	var kept: Array = []
+	for part in parts:
+		if str(part).to_upper() != head:
+			kept.append(part)
+	return "  ·  ".join(kept)
 
 ## PX-003 §4: one or two short sentences naming what is happening in the world.
 ## The opponent's own tier decides the line, because a clerk and an armed guard
@@ -332,10 +366,15 @@ static func situation_body(engine: Object, summary: Dictionary) -> String:
 			return "%s tracked it back to you. They found you before the neighborhood forgot." \
 				% str(summary.get("source_target_name", "Somebody"))
 		engine.KIND_WANDER:
-			# Wander's own cards carry their opening line into the feed already,
-			# so this is the body of the moment rather than a second retelling
-			# of how it started.
-			return "You went out to see what was around. This is what was around."
+			# BB-D2 (0.7.0): the card's own line IS the moment. It used to go
+			# only to the activity feed -- which is behind the sheet, where the
+			# player cannot read it -- while every one of twelve cards opened
+			# on the same standing sentence. A card with no opener is an
+			# authoring bug the confrontation suite catches; the engine's own
+			# last line below is what it would show meanwhile.
+			var opener := str(summary.get("source_opener", ""))
+			if not opener.is_empty():
+				return opener
 		engine.KIND_TRAVEL_STOP:
 			return "Lights come up behind you before you clear the line. This is the toll for moving while they're watching."
 	return "Somebody is waiting on an answer."
@@ -472,18 +511,24 @@ static func build_result(engine: Object, _gs: Node, summary: Dictionary,
 		out.append(d)
 
 	if arrested:
-		out.append(_note("The store is done with you and police take over from here."))
+		out.append(_note("The store is done with you and police take over from here."
+			if str(summary.get("chain_kind", "")) == engine.KIND_BOOST_CAUGHT
+			else "Police take over from here."))
 	out.append(_action_button("BOOKING" if arrested else "CONTINUE",
 		ACTION_CONTINUE, "", wire))
 	return out
 
+## BB-D1 (0.7.0): the adapter that resolved the chain is asked FIRST. What
+## follows is the fallback ladder, and the only chain that should ever reach
+## its bottom rungs is Boost's own caught encounter -- the vocabulary those
+## rungs were written in. The confrontation suite renders every road of every
+## authored card and script and refuses to pass if any other chain kind lands
+## on them.
 static func result_headline(engine: Object, summary: Dictionary, choice: String,
 		tier: String, effects: Dictionary) -> String:
-	if str(summary.get("chain_kind", "")) == engine.KIND_CONFRONTATION:
-		var headline := str(CONF_SCRIPTS.STICK_RESULT_HEADLINES.get(
-			str(effects.get("resolution", "")), ""))
-		if not headline.is_empty():
-			return headline
+	var said := str(engine.result_headline(""))
+	if not said.is_empty():
+		return said
 	if str(summary.get("chain_kind", "")) == engine.KIND_RETALIATION:
 		if int(effects.get("cash", 0)) < 0:
 			return "THEY GOT PAID"
@@ -511,11 +556,9 @@ static func result_headline(engine: Object, summary: Dictionary, choice: String,
 
 static func result_body(engine: Object, summary: Dictionary, choice: String,
 		tier: String, effects: Dictionary) -> String:
-	if str(summary.get("chain_kind", "")) == engine.KIND_CONFRONTATION:
-		var conf_body := str(CONF_SCRIPTS.STICK_RESULT_BODIES.get(
-			str(effects.get("resolution", "")), ""))
-		if not conf_body.is_empty():
-			return conf_body
+	var said := str(engine.result_body(""))
+	if not said.is_empty():
+		return said
 	if str(summary.get("chain_kind", "")) == engine.KIND_RETALIATION:
 		if int(effects.get("cash", 0)) < 0:
 			return "They take what they came for and go."

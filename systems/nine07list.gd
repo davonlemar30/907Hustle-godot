@@ -621,6 +621,35 @@ func _exit_meetup(chain: Dictionary, loop: Dictionary, choice_id: String,
 	engine.advance_stage(engine.STAGE_RESULT)
 	return {"ok": true, "tier": tier, "arrested": false}
 
+## BB-D1 (0.7.0): the meetup's own endings, keyed by road then by the
+## resolution `_exit_meetup` recorded. Commercial to the last line: the worst
+## ordinary outcome here is a reversed deal, and the copy never forgets it.
+const MEETUP_RESULT_COPY := {
+	"refund_him": {
+		"surrendered": ["YOU GIVE IT BACK", "You count it back into his hand and take the box. Somebody with fewer friends will want it tomorrow."],
+	},
+	"read_it": {
+		"won": ["YOU SAW IT COMING", "A beat before it started, you were already moving. Everything leaves with you."],
+		"escaped": ["MOST OF IT", "You get out of the lot with most of the money and none of the argument."],
+		"beaten": ["THE FRIEND WAS THE POINT", "You read it wrong. The money stays in the lot, and so does some of you."],
+	},
+	"stay_commercial": {
+		"won": ["EVERYBODY'S DAY CONTINUES", "Receipts, handshakes, nobody raises a voice. The money is yours."],
+		"escaped": ["THE PRICE CHANGES HANDS TWICE", "One more time than it should have. You keep half of it and all of the lot."],
+		"beaten": ["NOBODY WAS BUYING A CAMERA", "It stops being a conversation. The money goes back across the lot the hard way."],
+	},
+}
+
+func result_headline(choice_id: String, _tier: String, effects: Dictionary) -> String:
+	var row: Array = ((MEETUP_RESULT_COPY.get(choice_id, {}) as Dictionary)
+		.get(str(effects.get("resolution", "")), []) as Array)
+	return str(row[0]) if row.size() == 2 else ""
+
+func result_body(choice_id: String, _tier: String, effects: Dictionary) -> String:
+	var row: Array = ((MEETUP_RESULT_COPY.get(choice_id, {}) as Dictionary)
+		.get(str(effects.get("resolution", "")), []) as Array)
+	return str(row[1]) if row.size() == 2 else ""
+
 func choice_label(choice_id: String) -> String:
 	return str((SCRIPTS.MEETUP_SCRIPT["actions"] as Dictionary)
 		.get(choice_id, {}).get("label", ""))

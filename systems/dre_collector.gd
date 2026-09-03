@@ -416,6 +416,36 @@ func _resolve_ultimatum(chain: Dictionary, choice_id: String) -> Dictionary:
 
 # --- adapter copy -------------------------------------------------------------
 
+## BB-D1 (0.7.0): both of Dre's encounters ride `KIND_CONFRONTATION`, and
+## until this seam both ended on the stickup room's copy. Keyed by the
+## result's own `resolution` -- the press tiers, `walked`, and the ultimatum's
+## two answers. `%s` is the borrower's name, read off the chain.
+const RESULT_COPY := {
+	"clean": ["%s PAYS UP", "Fast, once he sees you mean it. Dre hears that it was fast."],
+	"messy": ["IT GETS LOUD, THEN PAID", "Louder than it needed to be, and paid anyway. Dre will hear both halves."],
+	"failure": ["HE HAS NOTHING ON HIM", "Nothing to collect and nothing to prove. You leave empty-handed, and Dre gets a story instead of money."],
+	"catastrophic": ["IT GETS PHYSICAL", "You leave without the money and worse off than you came. Dre sends people who come back with the money."],
+	"walked": ["YOU LEAVE HIM ALONE", "Dre hears about it. He does not say anything, which is what he says when he is deciding something."],
+	"paid": ["PAID IN FULL", "The account closes and Dre's face does not change. That is how you know it counted."],
+	"suspended": ["DRE STOPS ANSWERING", "You do not have it, and he is not going to like that. He does not say so. He just stops picking up."],
+}
+
+func result_copy(effects: Dictionary) -> Array:
+	var row: Array = RESULT_COPY.get(str(effects.get("resolution", "")), [])
+	if row.size() != 2:
+		return []
+	var name := str((gs.active_consequence.get("source", {}) as Dictionary)
+		.get("target_name", "He")).to_upper()
+	return [str(row[0]).replace("%s", name), str(row[1])]
+
+func result_headline(_choice_id: String, _tier: String, effects: Dictionary) -> String:
+	var row: Array = result_copy(effects)
+	return str(row[0]) if row.size() == 2 else ""
+
+func result_body(_choice_id: String, _tier: String, effects: Dictionary) -> String:
+	var row: Array = result_copy(effects)
+	return str(row[1]) if row.size() == 2 else ""
+
 func choice_label(choice_id: String) -> String:
 	if (SCRIPTS.DRE_COLLECTION_CHOICE_LABELS as Dictionary).has(choice_id):
 		return str(SCRIPTS.DRE_COLLECTION_CHOICE_LABELS[choice_id])

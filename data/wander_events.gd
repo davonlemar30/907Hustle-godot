@@ -1643,6 +1643,273 @@ const CHOICE_GUARANTEE := {
 	"let_deshawn_talk": "Guaranteed: everybody walks, and you keep what you were carrying.",
 }
 
+## What happened, in the card's own voice -- BB-D1 (0.7.0).
+##
+## Until this table existed a street encounter's result fell through to the
+## sheet's boost-caught copy: a three-round fistfight over nothing ended on
+## "The take is gone and the room remembers your face." Every road of every
+## card now says what it did, and the confrontation suite renders all of them
+## and refuses the boost fallback on any of them.
+##
+## Shape: card -> choice -> tier -> [HEADLINE, body]. `"*"` under a choice is
+## that road's default for any tier not authored by name. A card's `"room"`
+## block is the same shape for the roads offered INSIDE its room, which are
+## different situations from the roads at the door and read that way. Tiers
+## that escalate into the room have no entry here, because nothing has
+## resolved yet -- the room writes its own ending.
+##
+## VOX-D1 holds: short declaratives, terms rather than threats, the addicts
+## without comedy or pity. A headline is what happened; the body is what it
+## means. Neither ever prints a number -- WHAT IT COST is rendered under them,
+## exact and signed, by the sheet.
+const RESULT_COPY := {
+	"wander_shakedown": {
+		"stand": {
+			"clean": ["THEY THINK BETTER OF IT", "You do not move and you do not raise your voice. The one doing the talking runs out of things to say, and they go find an easier evening."],
+		},
+		"walk": {
+			"clean": ["YOU KEEP WALKING", "You do not speed up. By the time they decide, you are somebody else's problem on somebody else's block."],
+			"messy": ["THEY GET A HAND ON THE BAG", "You are clear of them before it turns into anything, but not before one of them got a hand in. Part of what you were carrying stayed on the corner."],
+			"failure": ["THEY CATCH YOU AT THE CORNER", "The gap you were counting on was never there. They take what they can reach and let you keep walking, which was their idea of generous."],
+			"catastrophic": ["IT GOES THE WAY THEY PLANNED", "You were carrying, and now they are. They went through your pockets the way you would go through a drawer."],
+		},
+		"hand_over": {
+			"deterministic": ["YOU HAND IT OVER", "Nobody has to touch you. Whatever was in your pockets and on your back goes with them, and the corner goes back to being a corner."],
+		},
+		"room": {
+			"swing": {
+				"clean": ["THE FIRST ONE GOES DOWN", "He was closer than he should have been and now he is on the ground. The others look at him and decide the arithmetic changed."],
+				"messy": ["NOBODY WINS OUTRIGHT", "It stops because everybody is tired of it. You leave with less than you came with and more than they wanted you to keep."],
+				"failure": ["THEY WEAR YOU DOWN", "Two of them is one too many. You stayed on your feet, which is the whole of the good news."],
+				"catastrophic": ["IT ENDS ON THE GROUND", "You do not remember the last one landing. When you can stand, your pockets are already empty and the street is quiet."],
+				"*": ["NOBODY WINS OUTRIGHT", "It stops because everybody is tired of it. You leave with less than you came with and more than they wanted you to keep."],
+			},
+			"break_for_it": {
+				"clean": ["YOU FIND THE GAP", "One of them turned his head. It was enough."],
+				"messy": ["YOU GET CLEAR, MOSTLY", "Somebody got a fistful of your jacket on the way past. What was in it is theirs now."],
+				"failure": ["THEY CLOSE THE GAP", "You were a step slow and they were not. It is a fight again, and it is worse than it was."],
+				"catastrophic": ["THEY CLOSE IT", "You run into the third one. Everything you had is gone before you hit the ground."],
+				"*": ["NOBODY WINS OUTRIGHT", "It stops because everybody is tired of it. You leave with less than you came with and more than they wanted you to keep."],
+			},
+			"give_it_up": {
+				"deterministic": ["YOU GIVE IT UP", "You stop, open your hands, and say the one word that ends a fight on this block. They take it all and take their time."],
+			},
+		},
+	},
+	"wander_stopped_on_foot": {
+		"talk": {
+			"clean": ["HE LETS YOU GO", "You answer the questions he asks and none of the ones he did not. He runs out of reasons before you run out of answers."],
+			"messy": ["HE LETS YOU GO, EVENTUALLY", "It takes longer than it should, and he writes something down. You keep everything but the ten minutes."],
+			"failure": ["HE FINDS A REASON", "The conversation was never the point. He pats you down like he was always going to, and part of what you carried goes into a bag with a number on it."],
+			"catastrophic": ["IT GOES INTO EVIDENCE", "Wrong answer, wrong tone, wrong block. He puts you against the car and takes his time about the rest."],
+		},
+		"keep_walking": {
+			"clean": ["HE DRIVES ON", "The cruiser stays with you for another half block and then it is somewhere else. You never looked at it."],
+			"messy": ["HE MAKES YOU STOP", "He gets out. You get put against the fence hard enough to mean it, and then he loses interest."],
+			"failure": ["HE SEARCHES YOU ANYWAY", "Not stopping was an answer, and he did not like it. Half of what you were carrying is his now."],
+			"catastrophic": ["WRONG ANSWER", "He gets out fast and puts you on the ground. Everything on you is theirs, and so is the rest of your afternoon."],
+		},
+		"hands_out": {
+			"deterministic": ["THE SEARCH FINDS WHAT IS THERE", "You keep your hands where he can see them and let him find what he finds. It ends on his terms, and it ends."],
+		},
+		"stash_it": {
+			"clean": ["NOTHING ON YOU", "By the time his hand reaches your pocket there is nothing in it. He knows there was. He cannot prove it."],
+			"failure": ["HE WATCHED YOU DO IT", "Fast hands, but not faster than his eyes. He takes what you tried to drop and remembers your face for the trying."],
+		},
+	},
+	"wander_curtis_tax": {
+		"push_back": {
+			"clean": ["HE LETS IT GO, FOR NOW", "He hears the answer and does not argue with it. That is not the same as agreeing. Curtis will hear how you said it."],
+			"messy": ["YOU PAY ANYWAY", "You said your piece, and it cost exactly what it would have cost to say nothing. He took the money and the attitude both."],
+			"failure": ["HE MAKES HIS POINT", "It got physical in the time it takes to say no. You paid, plus the interest for making him ask twice."],
+			"catastrophic": ["CURTIS'S ANSWER", "He does not hit you like somebody who is angry. He hits you like somebody sending a message, and then goes through your pockets for the postage."],
+		},
+		"keep_pace": {
+			"clean": ["HE FALLS AWAY", "Same speed, same direction, no answer. Half a block later he is not beside you anymore."],
+			"messy": ["HE STOPS YOU", "Not answering was allowed for exactly half a block. He takes the toll off you at the corner."],
+			"failure": ["IT COSTS YOU EXTRA", "He decided your silence was expensive. You paid the toll and something for the walk."],
+			"catastrophic": ["HE MAKES SURE YOU REMEMBER", "He does not raise his voice. When it is over you have paid more than he first asked, and you understand why he only asks once."],
+		},
+		"pay_it": {
+			"deterministic": ["YOU PAY THE TOLL", "The money changes hands like it was always going to. He nods like a cashier. Curtis knows the corner is still his."],
+		},
+	},
+	"wander_young_ones": {
+		"stare_back": {
+			"clean": ["THEY LOOK AWAY FIRST", "One of them finds something interesting on his phone. The other one follows. The block noticed who blinked."],
+			"messy": ["THEY REMEMBER YOU", "It ends with a word from the older one and a shove that was meant to be a joke. You are on their list now, and their list is short."],
+			"failure": ["THEY CROSS OVER", "You made it a thing, and now it is a thing. A few punches on a cold street, thrown by people with nothing better to do."],
+			"catastrophic": ["ALL OF THEM AT ONCE", "They were waiting for a reason. You gave them one, and it took three of them to accept it."],
+		},
+		"hold_steady": {
+			"clean": ["THEY LOSE INTEREST", "You keep your pace and your face. They were looking for a reaction and did not get one."],
+			"messy": ["THEY LET YOU PASS", "One of them says something as you go by. You do not turn around, and that turns out to be correct."],
+			"failure": ["ONE OF THEM FOLLOWS", "He walks behind you for a block saying your name, or a name. Nothing happens. You do not feel like nothing happened."],
+			"catastrophic": ["FROM BEHIND", "You held it together right up until the one you did not see. One punch, no words, and they are gone."],
+		},
+		"cross_the_street": {
+			"deterministic": ["YOU CROSS THE STREET", "Nothing happens to you. They watch it not happen, and they know what it means, and so does the block."],
+		},
+	},
+	"wander_vehicle_search": {
+		"ask_why": {
+			"clean": ["HE HAS NO REASON", "You ask him to say it out loud, politely. He cannot, and he knows you know it. Plates come back clean and so do you."],
+			"messy": ["HE WRITES IT DOWN", "He finds a taillight to talk about. The stop ends with paper, and your name in a system it was not in this morning."],
+			"failure": ["HE SEARCHES THE CAR", "The question annoyed him into probable cause. Part of what was in the trunk is now in his."],
+			"catastrophic": ["THE WHOLE TRUNK", "You made him prove it and he proved it. He calls a second car so the two of them can take their time."],
+		},
+		"roll_slow": {
+			"clean": ["HE WAVES YOU ON", "Two inches of window, license ready, nothing to see. He was already looking for somebody else."],
+			"messy": ["HE TAKES A LOOK", "Two inches was not enough. He leans in, sees something, and takes the smallest part of it to make a point."],
+			"failure": ["OUT OF THE CAR", "The slow window told him something. So did the trunk."],
+			"catastrophic": ["THEY TAKE IT APART", "The car gets pulled onto the shoulder and emptied onto it. Everything you carried is theirs, and your plate is on a list."],
+		},
+		"open_it_up": {
+			"deterministic": ["YOU LET THEM LOOK", "Trunk, doors, all of it. They take what they find and let you keep the car."],
+		},
+	},
+	"wander_warrant_check": {
+		"give_a_name": {
+			"clean": ["THE NAME COMES BACK CLEAN", "Close enough to be boring. Boring got waved through."],
+			"messy": ["IT TAKES A WHILE", "The name comes back, but not before he has looked at you for a long time. He lets you go with a warning that was not about the name."],
+			"failure": ["THE NAME DOES NOT HOLD", "The computer had a different opinion. He takes what you are carrying and does not explain which name it was for."],
+			"catastrophic": ["TWO NAMES IN THE SYSTEM", "Yours and the one you gave. He empties your pockets into an evidence bag and puts both names on it."],
+		},
+		"walk_now": {
+			"clean": ["GONE BEFORE IT LANDS", "Half a block, around a corner, and he is still in the car reading. Whatever it said, it said it to nobody."],
+			"messy": ["HE CATCHES UP", "He puts a hand on your shoulder hard enough to count. You keep what you have. Your name goes in twice."],
+			"failure": ["HE DOES NOT LET YOU", "Walking away from a name that is already on a screen goes the way it goes. Half of what you carried stays with him."],
+			"catastrophic": ["ON THE HOOD", "You did not get ten feet. He puts you on the hood and takes everything, and the report will say you ran."],
+		},
+		"wait_it_out": {
+			"deterministic": ["IT COMES BACK", "You stand there while a computer decides. It decides the expensive way. Nobody lays a hand on you; they do not have to."],
+		},
+	},
+	"wander_desperate_approach": {
+		"shut_it_down": {
+			"clean": ["HE HEARS YOU", "You say it once, in the voice that means once. He goes to find somebody softer."],
+			"messy": ["HE HITS YOU FIRST", "One wild swing, the kind that lands by accident. Then he is gone, still talking."],
+			"failure": ["HE DOES NOT STOP", "He is not calculating, which is the problem. It takes more than you wanted to give to make him leave."],
+			"catastrophic": ["HE HAD SOMETHING IN HIS HAND", "You did not see it until it was in you. He takes what he can grab and runs, and you sit down on the curb for a while."],
+		},
+		"keep_moving_past": {
+			"clean": ["HE LOSES INTEREST", "You do not slow down and you do not answer. He is talking to your back and then to nobody."],
+			"messy": ["HE FOLLOWS YOU A BLOCK", "A whole block of it. Then he sees somebody he knows, and you were never here."],
+			"failure": ["HE GRABS YOU", "A hand on your arm and then your pocket. Not much, taken fast, by somebody who needed it more."],
+			"catastrophic": ["FROM BEHIND", "You should have turned around. He hits you with everything he has, which is not much, and takes what he can carry."],
+		},
+		"give_him_something": {
+			"deterministic": ["HE TAKES IT", "Twenty dollars and he is somebody else's problem. He does not say thank you. He does not say anything you have not already heard."],
+		},
+	},
+	"wander_lot_side": {
+		"put_them_down": {
+			"clean": ["BOTH OF THEM, FAST", "Neither of them was in any state to stop you. Everybody on the lot saw it, and the lot is lit."],
+			"messy": ["YOU WIN UGLY", "It took longer than it should have and one of them got a hand up. The lot saw all of it."],
+			"failure": ["THEY TURN ON YOU", "Whatever they were arguing about, they agree about you. Two on one under a streetlight, and the light is not on your side."],
+			"catastrophic": ["THE LOT WAS WATCHING", "You went down under a light with an audience. They take what they want and leave you for whoever comes next."],
+		},
+		"go_around": {
+			"clean": ["THE LONG WAY", "Well lit, nobody's business but yours. They never look up."],
+			"messy": ["ONE OF THEM LOOKS UP", "He watches you go the long way and says something to the other one. Nothing follows you but the feeling."],
+			"failure": ["ONE OF THEM FOLLOWS", "The argument ends and you are the next thing. A shove, a hand in your pocket, and he is back to the argument."],
+			"catastrophic": ["BOTH OF THEM", "They stopped arguing when they saw you. You were the thing they could agree on."],
+		},
+		"hands_up": {
+			"deterministic": ["HANDS UP", "Nobody swings. Half of what is on you leaves with the two of them, and the argument resumes without you."],
+		},
+	},
+	"wander_wrong_place": {
+		"say_your_piece": {
+			"clean": ["THEY BELIEVE YOU", "You tell them what you saw, which was nothing, and it comes out sounding true. They go back to whatever it was."],
+			"messy": ["THEY DECIDE YOU ARE NOBODY", "One of them shoves you toward the street to see if you argue. You do not. That was the right answer."],
+			"failure": ["THEY DO NOT BELIEVE YOU", "A witness is a problem, and you look like one. They solve it with their hands and take something for the trouble."],
+			"catastrophic": ["YOU SAW TOO MUCH", "Whatever happened here, you are now part of it. They make sure you will not describe it well."],
+		},
+		"keep_it_moving": {
+			"clean": ["YOU WERE NEVER HERE", "Eyes forward, same pace. By the time somebody says something, you are past the corner."],
+			"messy": ["SOMEBODY SAYS YOUR NAME", "Or a name. You do not turn around. You will not be sure for a week whether it was yours."],
+			"failure": ["THEY CATCH YOU", "Walking away looked like knowing something. They take a piece of what you have and all of your certainty about the block."],
+			"catastrophic": ["FROM BEHIND", "You were never here, and they make sure you will remember that. What was on you is theirs."],
+		},
+		"back_out": {
+			"deterministic": ["YOU BACK OUT", "The way you came, at the speed you came. Nothing lost but the walk, and the block writes it down."],
+		},
+	},
+	"wander_mistaken_identity": {
+		"set_him_straight": {
+			"clean": ["HE SEES IT", "Something in your face finally does not match. He apologizes the way a man apologizes to someone he almost hit."],
+			"messy": ["HE HALF BELIEVES YOU", "He backs off with a shove and a look. He is not sure. He is going to keep not being sure."],
+			"failure": ["HE DOES NOT BUY IT", "Whoever you are, you are the one in front of him. The other man's beating finds a home."],
+			"catastrophic": ["THE OTHER MAN'S DEBT", "You paid it in full, in the currency he came to collect. He goes through your pockets for the interest."],
+		},
+		"let_him_talk": {
+			"clean": ["HE TALKS HIMSELF OUT OF IT", "You let him finish. Somewhere in the middle he says a detail that does not fit, and he hears it too."],
+			"messy": ["HE TAKES A DEPOSIT", "He is not sure enough to hurt you and not unsure enough to leave. He takes some money on account."],
+			"failure": ["HE COLLECTS", "The other man owed him. Now you do, and he takes it in cash while you are still deciding what to say."],
+			"catastrophic": ["HE COLLECTS ALL OF IT", "Whatever the other man owed, you had it on you, and now you do not. He hits you once on the way out, for the other man."],
+		},
+		"be_who_he_wants": {
+			"deterministic": ["YOU ANSWER TO IT", "You take a name that is not yours and pay the debt that came with it. He will remember the face he collected from."],
+		},
+	},
+	"wander_territorial_beef": {
+		"it_is_my_block": {
+			"clean": ["THE BLOCK IS YOURS", "You do not move, and they see something in that. They go, and the corner is quieter than it was."],
+			"messy": ["YOU HOLD IT, BARELY", "It took blood to make the point. The corner is yours tonight. Tomorrow is a separate conversation."],
+			"failure": ["THEY RUN YOU OFF", "The argument was you working here. They win it the old way and take a cut of the evidence."],
+			"catastrophic": ["THE BLOCK TAKES ITS CUT", "They leave you on the corner you said was yours, with your pockets turned out, so the block can see who was right."],
+		},
+		"not_today": {
+			"clean": ["NOT TODAY", "You do not argue and you do not run. There will be another block, and they let you go find it."],
+			"messy": ["THEY TAKE A SAMPLE", "You leave, but not with everything. They keep a little of what you were selling, so the block knows it was theirs."],
+			"failure": ["THEY WALK YOU OFF", "Run off a corner in front of the corner, with half of what you brought staying behind. The block keeps the score."],
+			"catastrophic": ["THEY MAKE AN EXAMPLE", "They do not just want you gone. They want it remembered."],
+		},
+		"off_the_block": {
+			"deterministic": ["OFF THE BLOCK", "You agree not to work here and leave half of what you brought as the agreement. The block saw who moved."],
+		},
+	},
+	"wander_somebody_elses_problem": {
+		"step_in": {
+			"clean": ["YOU END IT", "They did not expect a third person, and they did not expect that one. Somebody you do not know gets to walk away, and remembers who let him."],
+			"messy": ["YOU END IT, BLEEDING", "It stops. You are not sure who won and neither are they. The one on the ground got up while nobody was looking."],
+			"failure": ["IT WAS NOT YOUR PROBLEM", "You made it yours and they made it your body. The one you stepped in for is long gone."],
+			"catastrophic": ["TWO FOR THE PRICE OF ONE", "They finish what they were doing and then finish you, and go through your pockets while they are down there."],
+		},
+		"cross_over": {
+			"clean": ["OTHER SIDE OF THE STREET", "Same pace, eyes forward. Whatever that was, it was on the other side."],
+			"messy": ["ONE OF THEM WATCHES YOU GO", "He looks up long enough to make sure you saw him look. Nothing else happens. That was the message."],
+			"failure": ["HE COMES ACROSS", "One of them decides you saw too much from over there. A shove, a hand, a piece of what you were carrying."],
+			"catastrophic": ["THEY BOTH COME ACROSS", "Crossing the street was not far enough. What they were doing up the block, they do to you."],
+		},
+		"look_away": {
+			"deterministic": ["YOU LOOK AWAY", "Nothing happens to you at all. Somebody up the block is going to remember that you saw and did not."],
+		},
+	},
+}
+
+## The two chassis actions read the same on every card: a call is a call.
+const CREW_RESULT_COPY := {
+	"call_tone": ["TONE ENDS IT", "He does not say much. He does not need to. They look at him and decide the evening is over."],
+	"let_deshawn_talk": ["DESHAWN TALKS", "His voice, not yours. By the time he is done everybody has somewhere better to be, and you still have what you came with."],
+}
+
+## The one lookup, so the adapter and the suite read the table the same way.
+## Returns `[headline, body]` or `[]` when nothing is authored for the road.
+static func result_copy(card_id: String, choice_id: String, tier: String,
+		in_room: bool) -> Array:
+	if CREW_RESULT_COPY.has(choice_id):
+		return CREW_RESULT_COPY[choice_id]
+	var card_table: Dictionary = RESULT_COPY.get(card_id, {})
+	var table: Dictionary = card_table.get("room", {}) if in_room else card_table
+	var road: Dictionary = table.get(choice_id, {})
+	if road.has(tier):
+		return road[tier]
+	if road.has("*"):
+		return road["*"]
+	return []
+
 static func card_by_id(card_id: String) -> Dictionary:
 	for card in CARDS:
 		if str(card["id"]) == card_id:

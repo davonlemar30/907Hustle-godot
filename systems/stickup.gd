@@ -735,6 +735,10 @@ func _engine() -> Object:
 ## as Boost's four already do (see `boost.gd`'s comment on the same choice);
 ## "talk" happens to resolve to the same word either way.
 func choice_label(choice_id: String) -> String:
+	# WS-D2 (0.8.0): the caught encounter speaks the universal verbs; the
+	# room keeps the robbery's own. Same branch `choice_copy` below takes.
+	if _is_caught_active() and SCRIPTS.STICK_CAUGHT_CHOICE_LABELS.has(choice_id):
+		return str(SCRIPTS.STICK_CAUGHT_CHOICE_LABELS[choice_id])
 	return _scripts().choice_label(choice_id)
 
 ## BB-D1 (0.7.0): the room's own result copy reaches the sheet through the

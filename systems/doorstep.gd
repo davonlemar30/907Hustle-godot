@@ -705,13 +705,13 @@ func choice_label(choice_id: String) -> String:
 	match choice_id:
 		"fight": return "FIGHT"
 		"talk": return "TALK"
-		"yield": return "YIELD"
+		"yield": return "SURRENDER"
 		"call_tone": return "CALL TONE"
 		"let_deshawn_talk": return "LET DESHAWN TALK"
 		"enforce": return "ENFORCE"
 		"extend": return "EXTEND"
 		"forgive": return "FORGIVE"
-		"pay": return "PAY IT OFF"
+		"pay": return "PAY"
 		"ignore": return "NOT TODAY"
 		_: return choice_id.capitalize()
 

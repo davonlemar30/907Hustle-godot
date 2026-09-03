@@ -305,6 +305,15 @@ func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dicti
 		# walks in" and "there is at least one of these" are different
 		# questions, and a gate that says `min: 3` should read as one.
 
+		"day_max":
+			# WS-D2 (0.8.0): a card that belongs to the first days and stops
+			# making sense after them. Absent reads as day zero, which PASSES
+			# -- the open direction, because a ceiling is the one gate whose
+			# closed direction would hide every card from a fact-less caller.
+			var today: float = _num(facts.get("current_day"))
+			var ceiling: float = _num(req.get("max"))
+			return _result(req, today <= ceiling, today, ceiling)
+
 		"day_min":
 			# `current_day` is already minted above, off the same fact every
 			# tenure gate reads. Reading it a second time here would be a

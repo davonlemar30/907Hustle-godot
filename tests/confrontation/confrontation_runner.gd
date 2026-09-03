@@ -77,7 +77,7 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## range, plus the two things that deliberately survive (the arrest warning and
 ## the guaranteed road's price) and the proof that the ENGINE still projects
 ## odds it no longer shows.
-const MIN_CHECKS := 3161
+const MIN_CHECKS := 3445
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -2674,6 +2674,8 @@ const PAY_CARDS := {
 	"wander_stopped_on_foot": "slip_him_something",
 	"wander_lot_side": "pay_them_off",
 	"wander_territorial_beef": "settle_it_here",
+	# WS-D2 (0.8.0): Curtis's probe, the Weight-phase card, prices its quiet.
+	"wt_curtis_probe": "probe_pay",
 }
 
 func _check_pay_roads() -> void:
@@ -2705,7 +2707,7 @@ func _check_pay_roads() -> void:
 			EVENTS.CHOICE_LABELS.has(pay_road))
 		a.check("%s's pay road states its price" % card["id"],
 			str(EVENTS.CHOICE_GUARANTEE.get(pay_road, "")).contains("$%d" % EVENTS.pay_price(card, pay_road)))
-	a.eq_int("four cards carry a priced road", carriers.size(), PAY_CARDS.size())
+	a.eq_int("five cards carry a priced road", carriers.size(), PAY_CARDS.size())
 	for card_id in PAY_CARDS.keys():
 		a.check("%s carries %s" % [card_id, PAY_CARDS[card_id]],
 			str(EVENTS.choice_for_role(EVENTS.card_by_id(str(card_id)), EVENTS.ROLE_PAY))
@@ -2797,6 +2799,31 @@ const UNIVERSAL_VERBS: Array[String] = ["FIGHT", "RUN", "TALK", "PAY", "SURRENDE
 func _check_meetings() -> void:
 	var wander: Object = gm.system("wander")
 	var engine: Object = _engine()
+	# WS-D2: every road on every encounter card reads as one of the seven
+	# universal verbs (or a crew call's name); the situation is the line under
+	# it, and a card with a phrase on the button is a card that regressed.
+	for entry in EVENTS.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != EVENTS.KIND_ENCOUNTER:
+			continue
+		var roads: Array = ((card["encounter"] as Dictionary)["choices"] as Array).duplicate()
+		for beat in (((card["encounter"] as Dictionary).get("room", {}) as Dictionary).get("beats", []) as Array):
+			for road in ((beat as Dictionary).get("choices", []) as Array):
+				if not road in roads:
+					roads.append(road)
+		for road in roads:
+			var label := str(EVENTS.CHOICE_LABELS.get(road, ""))
+			a.check("%s's '%s' reads as a universal verb (%s)" % [str(card["id"]), str(road), label],
+				label in UNIVERSAL_VERBS or SCRIPTS.CREW_CALLS.has(road))
+			a.check("%s's '%s' carries the situation under the verb" % [str(card["id"]), str(road)],
+				str(EVENTS.CHOICE_COPY.get(road, "")).length() > 20)
+	a.check("the Lift speaks the verbs", str(SCRIPTS.LIFT_CHOICE_LABELS.get("yield", "")) == "SURRENDER"
+		and str(SCRIPTS.LIFT_CHOICE_LABELS.get("bribe", "")) == "PAY"
+		and str(SCRIPTS.LIFT_CHOICE_LABELS.get("hand_it_back", "")) == "COMPLY")
+	a.check("the corner speaks the verbs",
+		str(((SCRIPTS.MARKET_SCRIPTS["corner_stiff"] as Dictionary)["actions"] as Dictionary)["press_him"]["label"]) == "FIGHT")
+	a.check("the meetup speaks the verbs",
+		str((SCRIPTS.MEETUP_SCRIPT["actions"] as Dictionary)["refund_him"]["label"]) == "PAY")
 	for entry in EVENTS.CARDS:
 		var card: Dictionary = entry
 		if str(card["kind"]) != EVENTS.KIND_MEETING:

@@ -397,9 +397,9 @@ static func situation_body(engine: Object, summary: Dictionary) -> String:
 ## PX-003 §16 asks for "stable vertical ordering for Fight, Run, Talk, Yield" so
 ## the vocabulary becomes something the player learns rather than re-reads.
 const CHOICE_COPY := {
-	"fight": "Highest upside. Win and you leave with it. Losing costs blood.",
-	"run": "Keep it if you get clear. A bad escape costs the take and worse.",
-	"talk": "Hand it back and try to keep this from turning physical.",
+	"fight": "Through him and out the door with it. Losing costs blood.",
+	"run": "Out the door with it and hope the door is enough.",
+	"talk": "Hand it back and keep this from turning physical.",
 	"yield": "Give it back and stop the escalation here.",
 }
 

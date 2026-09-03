@@ -1666,6 +1666,8 @@ const RESULT_COPY := {
 	"wander_shakedown": {
 		"stand": {
 			"clean": ["THEY THINK BETTER OF IT", "You do not move and you do not raise your voice. The one doing the talking runs out of things to say, and they go find an easier evening."],
+			# BB-D4: the door's own round, when it does not end there.
+			"escalate": ["IT DOES NOT END THERE", "They do not scatter. This is a fight now, and the first one is already stepping in."],
 		},
 		"walk": {
 			"clean": ["YOU KEEP WALKING", "You do not speed up. By the time they decide, you are somebody else's problem on somebody else's block."],
@@ -1678,6 +1680,7 @@ const RESULT_COPY := {
 		},
 		"room": {
 			"swing": {
+				"escalate": ["HE STAYS UP", "You landed it and he took it. There are more of them than there were a second ago, and you are still in it."],
 				"clean": ["THE FIRST ONE GOES DOWN", "He was closer than he should have been and now he is on the ground. The others look at him and decide the arithmetic changed."],
 				"messy": ["NOBODY WINS OUTRIGHT", "It stops because everybody is tired of it. You leave with less than you came with and more than they wanted you to keep."],
 				"failure": ["THEY WEAR YOU DOWN", "Two of them is one too many. You stayed on your feet, which is the whole of the good news."],
@@ -1685,6 +1688,7 @@ const RESULT_COPY := {
 				"*": ["NOBODY WINS OUTRIGHT", "It stops because everybody is tired of it. You leave with less than you came with and more than they wanted you to keep."],
 			},
 			"break_for_it": {
+				"escalate": ["NO GAP", "You went for it and it closed. Somebody has a hand on you, and you are still in it."],
 				"clean": ["YOU FIND THE GAP", "One of them turned his head. It was enough."],
 				"messy": ["YOU GET CLEAR, MOSTLY", "Somebody got a fistful of your jacket on the way past. What was in it is theirs now."],
 				"failure": ["THEY CLOSE THE GAP", "You were a step slow and they were not. It is a fight again, and it is worse than it was."],

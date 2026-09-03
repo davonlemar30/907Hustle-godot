@@ -98,6 +98,58 @@ static func present_round(chain: Dictionary, loop: Dictionary, allowed: Array,
 	decision["loop"] = loop
 	chain["decision"] = decision
 
+# --- BB-D4 (0.7.0): the interim result --------------------------------------
+#
+# A round that escalated used to hand the player the next decision with no
+# result in between: one log line under SO FAR was all that said what had just
+# happened, and the health bar had nothing to move for. Drug Lord 2's whole
+# hook is the opposite -- you tried to run, you could not, you took the hit
+# right there -- and that is what the owner asked this loop to feel like.
+#
+# An interim result is a `STAGE_RESULT` the chain does NOT close from. It
+# carries the round's own words and deltas, the sheet renders it exactly like
+# a final result, and CONTINUE hands the chain back to the adapter's
+# `present_next_round` instead of clearing it (`consequence_engine.gd::
+# _continue`). `loop.pending` is whatever the adapter needs to present that
+# next round -- a beat index, a stage number, the word "fork" -- and it is the
+# adapter's to read, never the engine's.
+#
+# `kind` names WHAT the interim is (escalate / banked / watched / slipped) so
+# the adapter's result copy can say the right thing without re-deriving it.
+
+static func present_interim(engine: Object, gs: Node, chain: Dictionary,
+		loop: Dictionary, choice_id: String, tier: String, kind: String,
+		delta: Dictionary, pending: Variant) -> Dictionary:
+	var decision: Dictionary = chain.get("decision", {})
+	loop["pending"] = pending
+	var result := {
+		"choice_id": choice_id, "tier": tier,
+		"interim": true, "interim_kind": kind,
+		"arrested": false, "banned": false,
+		"cash": int(delta.get("cash", 0)), "goods": int(delta.get("goods", 0)),
+		"health": int(delta.get("health", 0)), "heat": float(delta.get("heat", 0.0)),
+		"pressure": 0, "take_disposition": "keep",
+		"room_log": (loop.get("log", []) as Array).duplicate(),
+	}
+	decision["resolved_tier"] = tier
+	decision["result"] = result
+	decision["loop"] = loop
+	chain["decision"] = decision
+	gs.active_consequence = chain
+	engine.advance_stage(engine.STAGE_RESULT)
+	return {"ok": true, "tier": "escalated", "interim": true}
+
+## Whether the active chain is sitting on an interim result.
+static func is_interim(chain: Dictionary) -> bool:
+	return bool(((chain.get("decision", {}) as Dictionary).get("result", {}) as Dictionary)
+		.get("interim", false))
+
+## The adapter's own note to itself about what comes next, consumed once.
+static func take_pending(loop: Dictionary) -> Variant:
+	var pending: Variant = loop.get("pending", null)
+	loop.erase("pending")
+	return pending
+
 # --- fractions ---------------------------------------------------------------
 
 static func banked_fraction(loop: Dictionary) -> float:

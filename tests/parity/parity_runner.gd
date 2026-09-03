@@ -7613,6 +7613,18 @@ func _check_engine_stage_machine(gs: Node, engine: RefCounted) -> void:
 				"advanced" if should_pass else "unchanged"],
 				engine.active_stage(), str(to_stage) if should_pass else str(from_stage))
 
+	# BB-D4 (0.7.0): the one exception to the matrix above, and it is gated
+	# on the result itself. An INTERIM result -- a round's own ending inside
+	# a loop that goes on -- may reopen its decision; a final result still
+	# may not, which the matrix already pinned.
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	gs.active_consequence["stage"] = engine.STAGE_RESULT
+	(gs.active_consequence["decision"] as Dictionary)["result"] = {"interim": true}
+	_expect_true("an interim result may reopen its decision",
+		bool((engine.advance_stage(engine.STAGE_DECISION) as Dictionary)["ok"]))
+	_expect_str("...and the stage moves", engine.active_stage(), engine.STAGE_DECISION)
+
 	# With nothing open there is nothing to advance.
 	_engine_ready(gs)
 	_expect_true("advancing with no chain is refused",
@@ -10344,7 +10356,7 @@ func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
 				gm.dispatch("stickup", {"target_id": target_id}))
 			if tier >= 2:
 				# The catastrophe lands on the first press — no fork exists.
-				gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+				_room_press(gm)
 			elif tier == 1:
 				# ENC-D1: catastrophic opens the caught decision too. Yield is
 				# the deterministic road to a booked outcome.
@@ -10378,7 +10390,7 @@ func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
 				gs.day = day_take
 				_expect_true("tier %d room dispatches at high heat" % tier,
 					gm.dispatch("stickup", {"target_id": target_id}))
-				gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+				_room_press(gm)
 				gm.dispatch("resolve_consequence_choice", {"choice_id": "take_and_go"})
 				_expect_true("tier %d banked exit never books, even at heat 14" % tier,
 					not _stick_outcome_arrested(gs))
@@ -10407,8 +10419,27 @@ func _stick_outcome_arrested(gs: Node) -> bool:
 ## Walk an open room to its beaten-failure exit: the slipped first stage, then
 ## the failed run. The finder already proved both rolls land there.
 func _drive_room_to_failure(gm: Node) -> void:
-	gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+	_room_press(gm)
 	gm.dispatch("resolve_consequence_choice", {"choice_id": "run_with_it"})
+
+## BB-D4 (0.7.0): a stage that banks, a watch, and a slip all end in an
+## INTERIM result now -- a round's own ending the player reads before the
+## next stage is on the table -- and CONTINUE is what presents that next
+## stage. Every room drive in this file presses through this helper so the
+## interim is stepped over the way a player steps over it, and a press that
+## ended the room (a win, a catastrophe) is left exactly where it landed.
+func _room_press(gm: Node) -> void:
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+	_continue_if_interim(gm)
+
+func _continue_if_interim(gm: Node) -> void:
+	var state: Node = get_node("/root/GameState")
+	var chain: Dictionary = state.active_consequence
+	if chain.is_empty() or str(chain.get("stage", "")) != "result":
+		return
+	if bool(((chain.get("decision", {}) as Dictionary).get("result", {}) as Dictionary)
+			.get("interim", false)):
+		gm.dispatch("consequence_continue", {})
 
 ## The Cause sequence this section pins its lifts to.
 ##
@@ -12181,7 +12212,7 @@ func _check_retaliation_schedule(gs: Node, gm: Node, engine: RefCounted,
 	# proved every stage of this day presses clean — the all-clean won exit,
 	# which is the "clean" the 1.00 row answers.
 	for _stage in range(3):
-		gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+		_room_press(gm)
 	_expect_int("a guaranteed schedule queues one row", gs.consequence_queue.size(), 1)
 	var row: Dictionary = gs.consequence_queue[0]
 	_expect_str("the row names its actor", str(row["actor_id"]), "goodie")
@@ -12651,7 +12682,7 @@ func _check_retaliation_arrest_suppression(gs: Node, gm: Node,
 		gm.dispatch("stickup", {"target_id": "goodie_stash"}))
 	# The stash is a room: the catastrophe lands on the first press, and the
 	# schedule and the booking both land at the exit rather than the door.
-	gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+	_room_press(gm)
 	_expect_int("the robbery queued its retaliation", gs.consequence_queue.size(), 1)
 	_expect_true("and it also booked",
 		_stick_outcome_arrested(gs))
@@ -13590,7 +13621,7 @@ func _check_ti003_scenarios(gs: Node, gm: Node, engine: RefCounted) -> void:
 		# clean — then hand the chain back, so the nights below can surface
 		# the answer into a slot that is actually free.
 		for _stage in range(3):
-			gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+			_room_press(gm)
 		_expect_int("scenario: the hit queued a retaliation", gs.consequence_queue.size(), 1)
 		_expect_true("scenario: the room hands back",
 			gm.dispatch("consequence_continue", {}))
@@ -22275,8 +22306,12 @@ func _check_roster_shakedown_room(gs: Node, gm: Node) -> void:
 		var probe_key := "test:roster:shakedown:room_search:%d" % i
 		wander_sys._play_encounter(events.card_by_id("wander_shakedown"), probe_key)
 		gm.dispatch("resolve_consequence_choice", {"choice_id": "stand"})
+		# BB-D4 (0.7.0): an escalation is an INTERIM result now -- still
+		# active, at `result`, with the first beat pending behind CONTINUE.
 		var escalated: bool = bool((engine as Object).has_active()) \
-			and str(gs.active_consequence.get("stage", "")) == "decision"
+			and (str(gs.active_consequence.get("stage", "")) == "decision"
+				or bool(((gs.active_consequence.get("decision", {}) as Dictionary)
+					.get("result", {}) as Dictionary).get("interim", false)))
 		if not escalated and bool((engine as Object).has_active()):
 			gm.dispatch("consequence_continue", {})
 		gs.reset_to_new_game()
@@ -22301,6 +22336,14 @@ func _check_roster_shakedown_room(gs: Node, gm: Node) -> void:
 	var beats: Array = room["beats"]
 	wander_sys._play_encounter(card, messy_key)
 	gm.dispatch("resolve_consequence_choice", {"choice_id": "stand"})
+	# BB-D4 (0.7.0): the door's own round ends in an interim result first;
+	# CONTINUE is what puts the first beat on the table.
+	_expect_str("a non-clean STAND ends the door's round in a result",
+		str(gs.active_consequence.get("stage", "")), "result")
+	_expect_true("...and it is an interim one",
+		bool(((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("result", {}) as Dictionary).get("interim", false)))
+	_continue_if_interim(gm)
 	var decision: Dictionary = gs.active_consequence.get("decision", {})
 	var loop: Dictionary = decision.get("loop", {})
 	_expect_true("a non-clean STAND opens the room", not loop.is_empty())
@@ -22371,6 +22414,7 @@ func _check_roster_shakedown_room(gs: Node, gm: Node) -> void:
 	wander_sys._play_encounter(events.card_by_id("wander_shakedown"),
 		"test:roster:shakedown:cap")
 	gm.dispatch("resolve_consequence_choice", {"choice_id": "stand"})
+	_continue_if_interim(gm)
 	var rigged_loop: Dictionary = (gs.active_consequence.get("decision", {}) as Dictionary) \
 		.get("loop", {})
 	if not rigged_loop.is_empty():
@@ -22642,7 +22686,10 @@ func _check_roster_every_road(gs: Node, gm: Node) -> void:
 
 			var decision: Dictionary = gs.active_consequence.get("decision", {})
 			var tier := str(decision.get("resolved_tier", ""))
-			var escalated: bool = str(gs.active_consequence.get("stage", "")) == "decision"
+			# BB-D4 (0.7.0): an escalating road ends its round in an INTERIM
+			# result rather than landing straight on the next decision.
+			var escalated: bool = str(gs.active_consequence.get("stage", "")) == "decision" \
+				or bool((decision.get("result", {}) as Dictionary).get("interim", false))
 			if escalated:
 				# The road opened a room instead of resolving. The room has its
 				# own arms; what this one asserts is that an escalating road

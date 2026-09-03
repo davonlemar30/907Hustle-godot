@@ -745,9 +745,21 @@ func choice_label(choice_id: String) -> String:
 ## ended in a stickup's words. The caught encounter keeps its own kind-specific
 ## arm in the sheet; nothing else shares that kind.
 func result_headline(_choice_id: String, _tier: String, effects: Dictionary) -> String:
+	if bool(effects.get("interim", false)):
+		return str(SCRIPTS.STICK_INTERIM_HEADLINES.get(str(effects.get("interim_kind", "")), ""))
 	return str(SCRIPTS.STICK_RESULT_HEADLINES.get(str(effects.get("resolution", "")), ""))
 
+## An interim's body is the round's own log line where one was authored (the
+## bank line names the stack and the sum); the watch and the slip carry their
+## own fixed lines.
 func result_body(_choice_id: String, _tier: String, effects: Dictionary) -> String:
+	if bool(effects.get("interim", false)):
+		var kind := str(effects.get("interim_kind", ""))
+		if kind == "banked":
+			var log: Array = effects.get("room_log", [])
+			if not log.is_empty():
+				return str(log[log.size() - 1])
+		return str(SCRIPTS.STICK_INTERIM_BODIES.get(kind, ""))
 	return str(SCRIPTS.STICK_RESULT_BODIES.get(str(effects.get("resolution", "")), ""))
 
 ## Unlike the label, TALK's copy genuinely differs by kind (ENC-D7: the caught
@@ -974,7 +986,9 @@ func _room_stage(chain: Dictionary, loop: Dictionary, t: Dictionary,
 	if choice_id == "watch":
 		loop["watched"] = true
 		LOOP.append_log(loop, "You let the stack sit and count the room instead.")
-		return _room_advance(chain, loop, t, script, stage + 1)
+		# BB-D4 (0.7.0): the round has a result before the next stage.
+		return LOOP.present_interim(_engine(), gs, chain, loop, choice_id,
+			"deterministic", "watched", {}, stage + 1)
 
 	# PRESS or TALK — the rolled verbs. One keyed roll per stage per verb.
 	var action_type: String = "negotiation" if choice_id == "talk" else "robbery"
@@ -1004,7 +1018,10 @@ func _room_stage(chain: Dictionary, loop: Dictionary, t: Dictionary,
 		if last:
 			return _room_exit(chain, loop, t, SCRIPTS.RESOLUTION_WON,
 				"clean" if bool(loop["all_clean"]) else "messy", {})
-		return _room_advance(chain, loop, t, script, stage + 1)
+		# BB-D4: the stack that just banked is a result the player reads
+		# before the next stage is on the table.
+		return LOOP.present_interim(_engine(), gs, chain, loop, choice_id, tier,
+			"banked", {}, stage + 1)
 
 	if tier == "catastrophic":
 		return _room_exit(chain, loop, t, SCRIPTS.RESOLUTION_BEATEN,
@@ -1014,14 +1031,38 @@ func _room_stage(chain: Dictionary, loop: Dictionary, t: Dictionary,
 	# the new round, with its own out. The room is no longer yours; the
 	# question is what happens to the jacket.
 	LOOP.burn(loop, choice_id)
-	loop["mode"] = "fork"
-	loop["beat"] = SCRIPTS.STICK_FORK_BEAT
 	loop["watched"] = false
 	LOOP.append_log(loop, "It slips.")
+	# BB-D4: the slip is a result the player reads; CONTINUE presents the fork.
+	return LOOP.present_interim(_engine(), gs, chain, loop, choice_id, tier,
+		"slipped", {}, "fork")
+
+## The fork, on the table. Split out of `_room_stage` so `present_next_round`
+## can reach it the same way the slip itself used to.
+func _present_fork(chain: Dictionary, loop: Dictionary, t: Dictionary,
+		script: Dictionary) -> Dictionary:
+	loop["mode"] = "fork"
+	loop["beat"] = SCRIPTS.STICK_FORK_BEAT
 	var allowed: Array = ["run_with_it", "drop_and_run"]
 	LOOP.present_round(chain, loop, allowed, ["drop_and_run"],
 		_room_shown(t, script, loop, allowed))
 	return {"ok": true, "forked": true}
+
+## BB-D4: the engine's `_continue` hands an interim chain back here. The
+## loop's own note says what comes next: a stage number, or the fork.
+func present_next_round(chain: Dictionary) -> Dictionary:
+	var loop: Dictionary = LOOP.loop_of(chain)
+	var pending: Variant = LOOP.take_pending(loop)
+	if loop.is_empty() or pending == null:
+		return {"ok": false, "reason": "Nothing to move on to."}
+	var source: Dictionary = chain.get("source", {})
+	var t: Dictionary = gs.stick_target_by_id(str(source.get("target_id", "")))
+	var script: Dictionary = _scripts().script_for(str(source.get("target_id", "")))
+	if t.is_empty() or script.is_empty():
+		return {"ok": false, "reason": "That room is gone."}
+	if str(pending) == "fork":
+		return _present_fork(chain, loop, t, script)
+	return _room_advance(chain, loop, t, script, int(pending))
 
 ## Advance the loop to the next stage: new beat, new action set, new odds, new
 ## round receipt.

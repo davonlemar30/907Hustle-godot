@@ -1180,6 +1180,13 @@ func _result_row(choice_id: String, tier: String) -> Array:
 	if chain.is_empty():
 		return []
 	var card_id := str((chain.get("source", {}) as Dictionary).get("card_id", ""))
+	# BB-D4: an interim result is the road's own "escalate" row. At the door
+	# the room's loop already exists but the road that escalated was the
+	# door's, so the door's table is the one to read.
+	if LOOP.is_interim(chain):
+		var at_door: bool = int(LOOP.loop_of(chain).get("beat_index", 0)) == 0 \
+			and int((chain.get("decision", {}) as Dictionary).get("round", 0)) == 0
+		return EVENTS.result_copy(card_id, choice_id, "escalate", not at_door)
 	return EVENTS.result_copy(card_id, choice_id, tier, LOOP.has_loop(chain))
 
 
@@ -1250,7 +1257,7 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	if effects.is_empty():
 		return _resolve_legacy(chain, choice_id, tier)
 	if bool(effects.get("escalate", false)):
-		return _open_shakedown_room(chain, choice_id)
+		return _open_shakedown_room(chain, choice_id, tier)
 
 	var applied: Dictionary = LOOP.apply_effects(gs, gm, effects, choice_id, "wander_encounter")
 	_feed_line_for(choice_id, tier)
@@ -1387,7 +1394,8 @@ func _beat_at(card_id: String, index: int) -> Dictionary:
 ## Open the room on its FIRST authored beat. Reached from a card-level road
 ## whose authored effects row says `escalate: true` -- the fight did not end
 ## where it started.
-func _open_shakedown_room(chain: Dictionary, choice_id: String) -> Dictionary:
+func _open_shakedown_room(chain: Dictionary, choice_id: String,
+		tier: String = "messy") -> Dictionary:
 	var source: Dictionary = chain.get("source", {})
 	var card_id := str(source.get("card_id", ""))
 	var room: Dictionary = _room_of(card_id)
@@ -1401,21 +1409,40 @@ func _open_shakedown_room(chain: Dictionary, choice_id: String) -> Dictionary:
 		"round": 1,
 		"beat_index": 0,
 		"log": [],
+		# BB-D3 (0.7.0): what has already LANDED, beat by beat -- a record,
+		# no longer a deferred bill. See `_room_round`.
 		"banked_health": 0,
 		"burned": [],
 		"crew_called": false,
-		# The shared stakes-strip chrome renders STAGE/#LEFT/BANKED for ANY
-		# non-empty loop. There is no cash riding on a fistfight, so BANKED
-		# stays honestly $0; #LEFT counts BODIES here (the beats author it),
-		# which is the chassis's own "they are people" promise.
+		# #LEFT counts BODIES here (the beats author it), which is the
+		# chassis's own "they are people" promise. No `take_total` and no
+		# banked cash, so the strip prints no BANKED at all (BB-D5).
 		"stage": 0,
 		"stage_count": int(room.get("cap", 3)),
 		"left_label": str(room.get("left_label", "IN YOUR WAY")),
-		"left": 0,
+		# The first beat's own count, so the door's interim result does not
+		# print IN YOUR WAY 0 over a corner with two people on it.
+		"left": int(_beat_at(card_id, 0).get("left", 0)),
 		"banked": 0,
 	}
 	gs.log_activity("They do not scatter. This is a fight now.", AMBER)
-	return _present_beat(chain, loop, 0)
+	# BB-D4: the door's own round ends in a result the player reads -- it did
+	# not go their way, and here is what that means -- before the first beat
+	# is on the table. `pending` is the beat CONTINUE presents.
+	var engine: Object = gm.system("consequence")
+	return LOOP.present_interim(engine, gs, chain, loop, choice_id, tier,
+		"escalate", {}, 0)
+
+## BB-D4: the engine's `_continue` hands an interim chain back here. The loop's
+## own note says which beat comes next; nothing else is re-derived.
+func present_next_round(chain: Dictionary) -> Dictionary:
+	var loop: Dictionary = LOOP.loop_of(chain)
+	if loop.is_empty():
+		return {"ok": false, "reason": "Nothing to move on to."}
+	var pending: Variant = LOOP.take_pending(loop)
+	if pending == null:
+		return {"ok": false, "reason": "Nothing to move on to."}
+	return _present_beat(chain, loop, int(pending))
 
 ## Put one authored beat on the table. The ONE place a beat becomes a round,
 ## so the situation copy, the offered roads, the shown odds and the #LEFT chip
@@ -1468,6 +1495,7 @@ func _present_beat(chain: Dictionary, loop: Dictionary, index: int) -> Dictionar
 
 ## One committed answer inside the room.
 func _room_round(chain: Dictionary, choice_id: String) -> Dictionary:
+	var engine: Object = gm.system("consequence")
 	var source: Dictionary = chain.get("source", {})
 	var card_id := str(source.get("card_id", ""))
 	var loop: Dictionary = LOOP.loop_of(chain)
@@ -1513,29 +1541,41 @@ func _room_round(chain: Dictionary, choice_id: String) -> Dictionary:
 			LOOP.burn(loop, choice_id)
 			LOOP.append_log(loop, "%s does not work twice." % str(
 				EVENTS.CHOICE_LABELS.get(choice_id, choice_id)).capitalize())
-		loop["banked_health"] = int(loop.get("banked_health", 0)) \
-			+ int(beat.get("banked", 0))
+		# BB-D3 (0.7.0): the hit lands NOW. The beat's `banked` used to be a
+		# deferred bill paid at the exit -- the bar sat still through three
+		# rounds and moved once, at the end. It is applied here, through the
+		# same owner every other health mutation uses, under a per-beat
+		# receipt so a reload at the interim result cannot land it twice. The
+		# exit tables no longer add it back: a path's total is what it was.
+		var landed: int = 0
+		var beat_damage: int = int(beat.get("banked", 0))
+		if beat_damage > 0 and engine.record_receipt(str(chain.get("cause_id", "")),
+				"room_beat:%d" % index):
+			var applied: Dictionary = LOOP.apply_effects(gs, gm,
+				{"health": beat_damage}, choice_id, "wander_encounter")
+			landed = int(applied["health"])
+		loop["banked_health"] = int(loop.get("banked_health", 0)) + landed
 		var next_index: int = index + 1
 		# The cap, and the end of the authored beats, are the same wall: a room
 		# that runs out of situations to author is a room that is over.
 		if next_index >= mini(cap, beats.size()):
 			return _room_exit(chain, loop, "messy", choice_id,
-				{"health": int(loop.get("banked_health", 0)) + 4,
-					"cash_fraction": 0.5, "goods_fraction": 0.5},
+				{"health": 4, "cash_fraction": 0.5, "goods_fraction": 0.5},
 				"Nobody wins outright. You both just stop.")
-		return _present_beat(chain, loop, next_index)
+		# BB-D4: the round has a result before the next beat is on the table.
+		return LOOP.present_interim(engine, gs, chain, loop, choice_id, tier,
+			"escalate", {"health": -landed}, next_index)
 
 	if effects.is_empty():
 		# An unauthored (choice, tier) pair. Ends the room rather than silently
 		# doing nothing, at the worst road's price, and the suite's own
 		# authored-table arm is what stops this ever being reached in shipped
 		# content.
-		effects = {"health": int(loop.get("banked_health", 0)) + 10,
-			"cash_fraction": 1.0, "goods_fraction": 1.0}
+		effects = {"health": 10, "cash_fraction": 1.0, "goods_fraction": 1.0}
 
-	var costed: Dictionary = effects.duplicate()
-	costed["health"] = int(costed.get("health", 0)) + int(loop.get("banked_health", 0))
-	return _room_exit(chain, loop, tier, choice_id, costed,
+	# BB-D3: nothing is added back at the exit. What the beats cost has
+	# already landed, beat by beat, and `banked_health` is its receipt.
+	return _room_exit(chain, loop, tier, choice_id, effects.duplicate(),
 		_room_exit_line(tier, choice_id))
 
 func _room_exit_line(tier: String, choice_id: String) -> String:

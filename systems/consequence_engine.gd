@@ -68,7 +68,11 @@ const STAGE_RELEASE := "release"
 ## the booking stage opens after the result is shown.
 const STAGE_TRANSITIONS := {
 	STAGE_DECISION: [STAGE_RESULT],
-	STAGE_RESULT: [STAGE_BOOKING],
+	# `result` -> `decision` is BB-D4's interim result (0.7.0): a round's own
+	# ending that hands the chain back for the next round rather than closing
+	# it. Reached ONLY through `_continue`'s interim branch, which is the one
+	# place that reads `result.interim`.
+	STAGE_RESULT: [STAGE_BOOKING, STAGE_DECISION],
 	STAGE_BOOKING: [STAGE_RELEASE],
 	STAGE_RELEASE: [],
 }
@@ -398,6 +402,14 @@ func advance_stage(to_stage: String) -> Dictionary:
 	if not to_stage in allowed:
 		return {"ok": false,
 			"reason": "Cannot go from %s to %s." % [from_stage, to_stage]}
+	# BB-D4: `result` -> `decision` exists for the interim result and nothing
+	# else. A final result that tried to reopen its decision would let a
+	# resolved round be answered twice, which is the regression the stage
+	# table exists to make impossible.
+	if from_stage == STAGE_RESULT and to_stage == STAGE_DECISION \
+			and not LOOP_RULES.is_interim(gs.active_consequence):
+		return {"ok": false,
+			"reason": "A finished round does not reopen."}
 	gs.active_consequence["stage"] = to_stage
 	return {"ok": true, "stage": to_stage}
 
@@ -754,6 +766,35 @@ func _continue(payload: Dictionary) -> Dictionary:
 			return moved
 		return {"ok": true, "stage": STAGE_BOOKING, "slots_settled": 0}
 
+	# BB-D4 (0.7.0): an interim result is a round's ending, not the chain's.
+	# Continue hands the chain back to the adapter that owns its rounds, and
+	# the next decision is presented from the loop's own note to itself.
+	# Receipted per round, so a reload between this tap and the autosave
+	# cannot present the same round twice; the stage moving to `decision` is
+	# what stops a second tap in the ordinary case.
+	if stage == STAGE_RESULT and LOOP_RULES.is_interim(gs.active_consequence):
+		var chain: Dictionary = gs.active_consequence
+		var decision: Dictionary = chain.get("decision", {})
+		var interim_key := "%s:interim_continue:round:%d" % [
+			str(chain.get("chain_kind", "")), int(decision.get("round", 0))]
+		if not record_receipt(active_cause_id(), interim_key):
+			return {"ok": false, "reason": "You already moved on."}
+		var adapter: Object = source_adapter(
+			str((chain.get("source", {}) as Dictionary).get("action_id", "")))
+		if adapter == null or not adapter.has_method("present_next_round"):
+			return {"ok": false, "reason": "Nothing to move on to."}
+		var presented: Dictionary = adapter.present_next_round(chain)
+		if not bool(presented.get("ok", false)):
+			return presented
+		decision = gs.active_consequence.get("decision", {})
+		decision["result"] = {}
+		decision["resolved_tier"] = ""
+		gs.active_consequence["decision"] = decision
+		var moved_on: Dictionary = advance_stage(STAGE_DECISION)
+		if not bool(moved_on.get("ok", false)):
+			return moved_on
+		return {"ok": true, "stage": STAGE_DECISION, "slots_settled": 0, "interim": true}
+
 	var owed: int = 0
 	if source_time_owed():
 		var time_block: Dictionary = gs.active_consequence.get("time", {})
@@ -1019,6 +1060,7 @@ func loop_summary() -> Dictionary:
 # never converts into Heat.
 
 const RULES := preload("res://data/consequence_rules.gd")
+const LOOP_RULES := preload("res://systems/confrontation_loop.gd")
 
 func _rules() -> RefCounted:
 	return RULES.new()

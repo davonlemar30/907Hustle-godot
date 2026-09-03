@@ -314,10 +314,23 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 		var beats: Array = script.get("beats", [])
 		if index + 1 < mini(beats.size(), int(script.get("cap", 1))):
 			LOOP.burn(loop, choice_id)
-			_present(chain, loop, script_id, index + 1)
-			gs.active_consequence = chain
-			return {"ok": true, "tier": "continued"}
+			# BB-D4 (0.7.0): the round ends in a result; CONTINUE presents
+			# the next beat through `present_next_round`.
+			return LOOP.present_interim(_engine(), gs, chain, loop, choice_id,
+				tier, "escalate", {}, index + 1)
 	return _exit(chain, loop, script_id, choice_id, tier)
+
+## BB-D4: the next authored beat, from the loop's own note.
+func present_next_round(chain: Dictionary) -> Dictionary:
+	var loop: Dictionary = LOOP.loop_of(chain)
+	var pending: Variant = LOOP.take_pending(loop)
+	if loop.is_empty() or pending == null:
+		return {"ok": false, "reason": "Nothing to move on to."}
+	var script_id := str(loop.get("script_id",
+		(chain.get("source", {}) as Dictionary).get("kind", "")))
+	_present(chain, loop, script_id, int(pending))
+	gs.active_consequence = chain
+	return {"ok": true, "tier": "continued"}
 
 func _resolve_crew_call(chain: Dictionary, loop: Dictionary, script_id: String,
 		call_id: String) -> Dictionary:
@@ -453,16 +466,19 @@ const RESULT_COPY := {
 			"surrendered": ["YOU EAT THE SHORT", "Thirty dollars to keep the corner quiet. Sometimes that is the play, and nobody but you will remember it."],
 		},
 		"count_again": {
+			"escalate": ["HE DOES NOT BUDGE", "Thirty short and still standing there. He has decided the conversation is over, and he has not left."],
 			"won": ["HE FINDS THE REST", "You count it back to him out loud. Numbers do not get embarrassed, and neither do you."],
 			"beaten": ["HE HAS HIS OWN NUMBER", "It is not yours. He leaves with the difference, and the corner watches him do it."],
 		},
 		"press_him": {
+			"escalate": ["HE DOES NOT FLINCH", "He heard you. He is looking at the street now, not at you, and he is still thirty short."],
 			"won": ["HE PAYS THE REST", "Full price. He will remember being made to, and so will the two people who watched."],
 			"beaten": ["OVER THIRTY DOLLARS", "It turns physical over a short count and it does not go your way. The corner takes note of both facts."],
 		},
 	},
 	"corner_push": {
 		"stand_on_it": {
+			"escalate": ["THEY ARE STILL HERE", "Doors are opening up and down the block. Whatever happens next happens in front of everybody."],
 			"won": ["STILL ON THE CORNER", "They leave it before you do. The block saw that, and by tonight so will Curtis."],
 			"beaten": ["THEY TAKE THE CORNER", "And they make sure it is remembered. Curtis will hear you stood, and he will hear how it ended."],
 		},
@@ -479,8 +495,10 @@ func result_copy(choice_id: String, effects: Dictionary) -> Array:
 	var loop: Dictionary = LOOP.loop_of(gs.active_consequence)
 	var script_id := str(loop.get("script_id",
 		(gs.active_consequence.get("source", {}) as Dictionary).get("kind", "")))
+	var key := "escalate" if bool(effects.get("interim", false)) \
+		else str(effects.get("resolution", ""))
 	return ((RESULT_COPY.get(script_id, {}) as Dictionary).get(choice_id, {}) as Dictionary) \
-		.get(str(effects.get("resolution", "")), [])
+		.get(key, [])
 
 func result_headline(choice_id: String, _tier: String, effects: Dictionary) -> String:
 	var row: Array = result_copy(choice_id, effects)

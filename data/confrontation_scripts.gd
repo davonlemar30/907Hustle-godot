@@ -263,6 +263,21 @@ const STICK_RESULT_BODIES := {
 	RESOLUTION_BEATEN: "The room closed before the door did. What was banked stayed behind, and so did some skin.",
 }
 
+## BB-D4 (0.7.0): the interim results a room shows between its stages. A
+## banked stage's body is its own `bank_log` line (the stack and the sum);
+## these two carry the other two kinds.
+const STICK_INTERIM_HEADLINES := {
+	"banked": "BANKED",
+	"watched": "YOU COUNT THE ROOM",
+	"slipped": "IT SLIPS",
+}
+
+const STICK_INTERIM_BODIES := {
+	"banked": "The stack is in your jacket. The room is still yours, for now.",
+	"watched": "The stack stays on the table. The next move comes cheaper, and hurts less if it goes wrong.",
+	"slipped": "A hand came up, or a door opened, or somebody counted to three. The room is not yours any more, and what is in your jacket is the question now.",
+}
+
 # --- lookups -----------------------------------------------------------------
 
 ## Does this target open the loop? Tier 1 never does — that absence is the

@@ -491,7 +491,7 @@ static func _choice_card(engine: Object, row: Dictionary, wire: Callable) -> Con
 	return v
 
 ## One road's button, the slab the player actually taps.
-const ROAD_BUTTON_HEIGHT := 42.0
+const ROAD_BUTTON_HEIGHT := 44.0
 
 # --- result -----------------------------------------------------------------
 

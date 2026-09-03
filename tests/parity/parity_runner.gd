@@ -13199,6 +13199,15 @@ func _free_screen(screen: Node) -> void:
 		remove_child(screen)
 	screen.free()
 
+## Every Button's text under `node`, for the arms that ask what a stage offers.
+func _button_texts(node: Node) -> Array:
+	var buttons: Array = []
+	_collect_buttons(node, buttons)
+	var out: Array = []
+	for entry in buttons:
+		out.append(str((entry as Button).text))
+	return out
+
 func _collect_buttons(node: Node, out: Array) -> void:
 	var pressable := node as Button
 	if pressable != null:
@@ -13231,8 +13240,11 @@ func _check_consequence_scene(gs: Node, gm: Node, engine: RefCounted) -> void:
 	_expect_true("the decision stage's kicker is the kind's phrase", "CAUGHT" in labels)
 	_expect_true("the decision stage headlines who is in front of you", "CLERK" in labels)
 	_expect_true("the engine's own name never reaches the player", not "CONSEQUENCE" in labels)
+	# BB-D6 (0.7.0): a road is its button now -- the label rides the Button's
+	# own text, not a Label above it.
+	var offered: Array = _button_texts(screen)
 	_expect_true("the decision stage offers the four responses",
-		"FIGHT" in labels and "RUN" in labels and "TALK" in labels and "YIELD" in labels)
+		"FIGHT" in offered and "RUN" in offered and "TALK" in offered and "YIELD" in offered)
 	# The audit. The percentage rule is FS-003.11's and is unchanged; what
 	# moved is everything underneath it.
 	_expect_true("no rendered label shows a raw percentage", not joined.contains("%"))
@@ -13371,9 +13383,11 @@ func _check_consequence_scene(gs: Node, gm: Node, engine: RefCounted) -> void:
 		joined = "\n".join(labels)
 		_expect_true("the retaliation names the situation",
 			joined.contains("THEY WERE WAITING"))
+		var retaliation_offered: Array = _button_texts(screen)
 		_expect_true("it offers fight, run and yield",
-			"FIGHT" in labels and "RUN" in labels and "YIELD" in labels)
-		_expect_true("and offers no talk lane", not ("TALK" in labels))
+			"FIGHT" in retaliation_offered and "RUN" in retaliation_offered
+				and "YIELD" in retaliation_offered)
+		_expect_true("and offers no talk lane", not ("TALK" in retaliation_offered))
 		_expect_true("the retaliation stage shows no percentage", not joined.contains("%"))
 		_free_screen(screen)
 		gs.active_consequence = {}

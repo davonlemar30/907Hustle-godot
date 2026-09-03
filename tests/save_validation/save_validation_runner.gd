@@ -32,6 +32,7 @@ func _ready() -> void:
 	_test_v22_growth_caps()
 	_test_v23_opportunities()
 	_test_v24_dre_pending_penance()
+	_test_v26_hustles_discovered()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
 	_test_load_pipeline()
@@ -954,6 +955,38 @@ func _test_v23_opportunities() -> void:
 	var v22 := _state("day", 9)
 	var migrated: Dictionary = save_system._migrate({"save_version": 22, "state": v22})
 	_check("a v22 save with no opportunity fields migrates", not migrated.is_empty())
+
+## v26 (WS-D1): the hustle latches. Same contract as boost discovery: real
+## ids survive, junk is dropped with a repair, duplicates collapse, a wrong
+## type defaults to nothing discovered, and the v25 -> v26 arm derives the
+## array from the gates a v25 save had already opened by rule.
+func _test_v26_hustles_discovered() -> void:
+	var valid := _state("hustles_discovered", ["market", "boost"])
+	var valid_fixed := _fixed(valid)
+	_check("valid v26 hustle latches survive",
+		valid_fixed["hustles_discovered"] == ["market", "boost"])
+	var wrong := _fixed(_state("hustles_discovered", "market"))
+	_check("wrong-type hustle latches default to nothing discovered",
+		wrong["hustles_discovered"] is Array
+		and (wrong["hustles_discovered"] as Array).is_empty())
+	var junk := _fixed(_state("hustles_discovered", ["market", "gambling", 7, "market", "list"]))
+	_check("unknown hustles and duplicates are dropped",
+		junk["hustles_discovered"] == ["market", "list"])
+	var absent := _fixed(_state("day", 3))
+	_check("an absent v26 field stays absent for the migration to fill",
+		not absent.has("hustles_discovered"))
+	# The migration: a v25 save that could already see every row keeps them.
+	var saves := get_node("/root/SaveSystem")
+	var migrated: Dictionary = saves._migrate({"save_version": 25, "state": {
+		"day": 4, "cash": 300, "street_name": "Legacy", "market_discovered": true,
+		"wander_count": 5}})
+	_check("a v25 save that saw every row keeps every row",
+		migrated.get("hustles_discovered", []) == ["market", "boost", "stickup", "list"])
+	var young: Dictionary = saves._migrate({"save_version": 25, "state": {
+		"day": 1, "cash": 100, "street_name": "Legacy", "market_discovered": false,
+		"wander_count": 0}})
+	_check("a v25 day-one save arrives knowing nothing",
+		young.get("hustles_discovered", ["x"]) == [])
 
 func _test_v24_dre_pending_penance() -> void:
 	# Same shape as _validate_dre_intro_offered -- manual wrong-type check,

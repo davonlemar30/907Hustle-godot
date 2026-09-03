@@ -661,6 +661,8 @@ func _test_decline_path_leaves_everything_else_reachable() -> void:
 	gs.day = 5
 	gs.wander_count = 3
 	gs.market_discovered = true
+	# WS-D1 (0.8.0): the hustle rows open on discovery now, not on the clock.
+	gs.hustles_discovered = ["market", "boost", "stickup", "list"]
 	gs.job_contacts = 1
 	# Deliberately never seek Dre out -- everything else on the ladder that
 	# does not read dre_access_tier still opens on its own facts.

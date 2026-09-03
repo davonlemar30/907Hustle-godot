@@ -273,6 +273,19 @@ func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dicti
 			var attempts: float = _num(facts.get("repeatable_attempts"))
 			return _result(req, attempts >= min_value, attempts, min_value)
 
+		"hustle_discovered", "hustle_undiscovered":
+			# WS-D1 (0.8.0): the hustle latches. Absent reads as nothing
+			# discovered -- closed for `hustle_discovered`, which is the
+			# direction a gate wants, and OPEN for `hustle_undiscovered`,
+			# which is the direction a meeting card wants: a run that knows
+			# nothing is exactly the run the meeting exists for.
+			var latched: Variant = facts.get("hustles_discovered")
+			var known: bool = latched is Array \
+				and str(req.get("hustle", "")) in (latched as Array)
+			var asks_known: bool = str(req.get("type", "")) == "hustle_discovered"
+			var wanted: bool = known if asks_known else not known
+			return _result(req, wanted, known, asks_known)
+
 		"boost_target_discovered":
 			# 0.4.0 PR A (SCR-D1): a Score naming a specific Boost target reads
 			# the same DISCOVERY latch the Boost screen itself reads (batch

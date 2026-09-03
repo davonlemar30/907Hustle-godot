@@ -446,7 +446,10 @@ func reset_to_new_game() -> void:
 	active_job_id = ""
 	job_records = {}
 	job_missed = {}
-	jobs_discovered = ["wash_go", "spenard_chevron", "rebel_convenience", "northern_value", "day_labor"]
+	# WS-D1 (0.8.0): one job, the one Yalonda mentions. Everything else is
+	# found by walking, one place at a time, across the first week.
+	jobs_discovered = ["wash_go"]
+	hustles_discovered = []
 	rent_due_day = 7
 	rent_missed = 0
 	household_warnings = 0
@@ -537,7 +540,24 @@ var job_records: Dictionary = {}
 var job_missed: Dictionary = {}
 ## Job ids the player knows about. Canon seeds this from a Week Zero shuffle over
 ## STARTER_JOB_IDS; here the four starters plus day labour are known from Day 1.
-var jobs_discovered: Array = ["wash_go", "spenard_chevron", "rebel_convenience", "northern_value", "day_labor"]
+var jobs_discovered: Array = ["wash_go"]
+
+## WS-D1 (0.8.0): the hustle paths the run has actually been shown. A one-way
+## latch like `jobs_discovered` and `boost_targets_discovered`: nothing
+## criminal is on the board on day one, and each path arrives through an
+## authored moment -- Goodie on the corner, the first loose rack, a desperate
+## afternoon or a kid at an ATM, somebody who trusts you mentioning the
+## board. Values: "market", "boost", "stickup", "list".
+var hustles_discovered: Array = []
+const HUSTLE_IDS: Array[String] = ["market", "boost", "stickup", "list"]
+
+## Latch a hustle. Returns true the first time, false when it was already
+## known, so a caller can announce it exactly once.
+func discover_hustle(hustle_id: String) -> bool:
+	if not hustle_id in HUSTLE_IDS or hustle_id in hustles_discovered:
+		return false
+	hustles_discovered.append(hustle_id)
+	return true
 
 func job_by_id(id: String) -> Dictionary:
 	for j in jobs:

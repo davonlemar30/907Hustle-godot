@@ -74,6 +74,8 @@ const MUTED := Color(0.6, 0.6, 0.6)
 
 ## How many card ids the "not that one again" window holds.
 const RECENT_WINDOW := 3
+## WS-D1: under this much cash, the street starts showing you the other way.
+const BROKE_LINE := 30
 
 var gs: Node
 var gm: Node
@@ -197,6 +199,9 @@ func facts() -> Dictionary:
 		# (PR 4) — a card about somebody asking product prices makes no
 		# sense before the player knows where the corner is.
 		"market_discovered": bool(gs.market_discovered),
+		# WS-D1 (0.8.0): the hustle latches and the desperate afternoon.
+		"hustles_discovered": gs.hustles_discovered,
+		"broke": int(gs.cash) < BROKE_LINE,
 		# --- 0.6.0 PR C, the roster's own three new gates -------------------
 		#
 		# All three read state the build ALREADY keeps. That is the whole bar
@@ -482,6 +487,22 @@ func _wander(intent: String) -> Dictionary:
 			time_system.handle("advance_time", {})
 			return {"ok": true, "kind": "surfaced", "card_id": ""}
 
+	# WS-D1 (0.8.0): the city reveals itself. An eligible MEETING is the walk,
+	# ahead of the gate and the draw -- the world shows you the thing on the
+	# day it is ready to, and it does not roll for the privilege.
+	var meeting: Dictionary = _eligible_meeting()
+	if not meeting.is_empty():
+		var meeting_id := str(meeting["id"])
+		gs.wander_seen[meeting_id] = int(gs.wander_seen.get(meeting_id, 0)) + 1
+		gs.wander_recent.append(meeting_id)
+		while gs.wander_recent.size() > RECENT_WINDOW:
+			gs.wander_recent.pop_front()
+		report = _play_encounter(meeting, key_for_meeting(meeting_id))
+		report["intent"] = intent
+		report["effort"] = spent
+		time_system.handle("advance_time", {})
+		return report
+
 	# STR-D1: the interruption gate, rolled before anything else gets a turn.
 	# If it opens, the walk IS the encounter — nothing below this fires, the
 	# same "the blocking encounter is the outcome" rule the retaliation check
@@ -546,19 +567,11 @@ func _wander(intent: String) -> Dictionary:
 		var picked_target: int = rng.seeded_int_range(gs.run_seed, key + ":deal_find",
 			0, open_targets.size() - 1)
 		report = _discover_boost_target(str(open_targets[picked_target]))
-	# Market discovery: fires on any intent, same ramp, its own key. Finding
-	# the corner is not something you go looking for specifically — it is
-	# something that happens while you are out for any reason at all, which
-	# is why this excludes NO intent, where WORK/DEAL (even after PR 5 added
-	# READ to both) still each exclude the other's named intent. Playtest
-	# finding: Market unlocked deterministically on the FIRST wander of every
-	# run, which read as scripted rather than found. Only rolls while
-	# unfound — a one-way latch, same as `boost_targets_discovered`.
-	elif not gs.market_discovered \
-			and rng.seeded_random(gs.run_seed, key + ":market") < discovery_chance() * spent:
-		report = _discover_market()
+	# WS-D1 (0.8.0): the market is no longer a coin the ramp flips. Finding
+	# the corner is meeting the man who runs it (`wander_meet_goodie`, a
+	# MEETING card, above), which is why nothing rolls for it here any more.
 	else:
-		if not open.is_empty() or not open_targets.is_empty() or not gs.market_discovered:
+		if not open.is_empty() or not open_targets.is_empty():
 			# Capped where the ramp itself stops mattering. Past the ceiling the
 			# extra misses buy nothing, and letting the counter run free put the
 			# live path and the load-time validator into disagreement — a save
@@ -620,18 +633,101 @@ func _discover_boost_target(target_id: String) -> Dictionary:
 	return {"ok": true, "kind": "discovery", "card_id": "",
 		"discovered_boost": target_id}
 
-## The player finds the corner. Same shape as `_discover` and
-## `_discover_boost_target` — the ramp resets because the drought is over,
-## whatever ended it, and the find goes on the map for good.
+## The player finds the corner. Kept as the one writer of the `market_
+## discovered` latch (v17); since WS-D1 it is called by the Goodie meeting
+## rather than by the ramp, and it latches the unified hustle array too.
 func _discover_market() -> Dictionary:
 	gs.market_discovered = true
+	gs.discover_hustle("market")
 	gs.wander_misses = 0
-	gs.log_activity("You see where the handoffs happen. Street Market is on the board.", GREEN)
+	gs.log_activity("You know where the corner is now, and who runs it.", GREEN)
+	return {"ok": true, "kind": "discovery", "card_id": "", "discovered_market": true}
+
+## WS-D1: one hustle onto the board, once. The market keeps its own latch
+## writer above; the others latch here. A meeting that names a target puts
+## that on the map too, so the Boost screen it just opened has a room in it.
+func _discover_hustle(hustle_id: String, target_id: String = "") -> void:
+	if hustle_id == "market":
+		if not gs.market_discovered:
+			_discover_market()
+		return
+	if gs.discover_hustle(hustle_id):
+		gs.wander_misses = 0
+		match hustle_id:
+			"boost":
+				gs.log_activity("You saw how loose a rack can be. That is a thing you know now.", GREEN)
+			"stickup":
+				gs.log_activity("You know how fast it happens now, and how nobody runs.", GREEN)
+			"list":
+				gs.log_activity("Somebody trusted you with the board.", GREEN)
+	if not target_id.is_empty() and not target_id in gs.boost_targets_discovered \
+			and not gs.boost_target_by_id(target_id).is_empty():
+		gs.boost_targets_discovered.append(target_id)
+
+## WS-D1: the meeting that is due, if any. Same shape as `eligible_encounters`
+## with the kind flipped; the first eligible one wins, in authored order.
+func _eligible_meeting() -> Dictionary:
+	var district := str(gs.current_district_id)
+	var slot: int = int(gs.time_slots_today)
+	var live: Dictionary = facts()
+	for card in EVENTS.CARDS:
+		if str(card["kind"]) != EVENTS.KIND_MEETING:
+			continue
+		var districts: Array = card["districts"]
+		if not districts.is_empty() and not district in districts:
+			continue
+		var slots: Array = card["slots"]
+		if not slots.is_empty() and not slot in slots:
+			continue
+		var card_id := str(card["id"])
+		if bool(card.get("once", false)) and int(gs.wander_seen.get(card_id, 0)) > 0:
+			continue
+		if not bool(requirements.evaluate_requirements(card["requirements"], live)["ok"]):
+			continue
+		return card
+	return {}
+
+## The seeded key a meeting resolves on: day and slot lead, the card trails.
+func key_for_meeting(card_id: String) -> String:
+	return "%d:%d:%d:meeting:%s" % [gs.day, gs.time_slots_today,
+		int(gs.wander_count), card_id]
+
+## WS-D1: the board that arrives by word of mouth. 907List is mentioned by
+## the first named NPC who is WARM or better toward the player -- it is not
+## a thing you find, it is a thing somebody tells you about once they
+## trust you enough to. Day-start, once, through the phone.
+func day_start_mentions(_today: int) -> void:
+	if "list" in gs.hustles_discovered:
+		return
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure == null:
+		return
+	var warm := ""
+	for npc_id in ["mina", "juan", "yalonda", "dre"]:
+		if str(exposure.band_of(npc_id)) in ["warm", "trusted", "bonded"]:
+			warm = npc_id
+			break
+	if warm.is_empty():
+		return
+	_discover_hustle("list")
 	var phone: Object = gm.system("phone") if gm != null else null
 	if phone != null:
-		phone.push_message("Around town",
-			"the corner off spenard road. everybody knows where it is once you know where it is.")
-	return {"ok": true, "kind": "discovery", "card_id": "", "discovered_market": true}
+		var from := ""
+		var text := ""
+		match warm:
+			"mina":
+				from = "Mina"
+				text = "you know people sell everything on 907list right. half of spenard shops there. worth a look if you got something to move"
+			"juan":
+				from = "Juan"
+				text = "907list. thats where I move anything I dont need. people pay stupid prices if you list it right"
+			"yalonda":
+				from = "Yalonda"
+				text = "if you're ever short, 907List. My cousin furnished his whole place off it. Buy low, sell to somebody lazier."
+			_:
+				from = "Dre"
+				text = "907list. clean money if you flip it right. you're the type that could."
+		phone.push_message(from, text)
 
 ## One card from the eligible pool, weighted, or a breadcrumb when the pool is
 ## empty. A wander is never nothing.
@@ -902,6 +998,10 @@ func _play_encounter(card: Dictionary, key: String) -> Dictionary:
 	var spec: Dictionary = card.get("encounter", {})
 	if engine == null or spec.is_empty():
 		return _play_ambient(card)
+	# WS-D1: a meeting discovers its hustle the moment it opens. You now know
+	# the thing exists; how you handle it is the road.
+	if card.has("discovers"):
+		_discover_hustle(str(card["discovers"]), str(card.get("discovers_target", "")))
 
 	var card_id := str(card["id"])
 	var encounter_shape := str(spec["shape"])
@@ -1292,6 +1392,10 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 		return _open_shakedown_room(chain, choice_id, tier)
 
 	var applied: Dictionary = LOOP.apply_effects(gs, gm, effects, choice_id, "wander_encounter")
+	# WS-D1: a meeting can HAND the player something -- two units from Goodie,
+	# a fold of cash off a lift or a mark. Read off the card's own `grants`
+	# table, receipted, through the wallet and the inventory's own owners.
+	var granted_cash: int = _apply_grants(chain, card_id, choice_id, tier)
 	_feed_line_for(choice_id, tier)
 	# SQ-D8. On RESOLUTION, which is here — an escalating road has not resolved
 	# anything yet and the room writes its own when it finally ends.
@@ -1302,7 +1406,7 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 		"tier": tier,
 		"arrested": false,
 		"banned": false,
-		"cash": -int(applied["cash"]),
+		"cash": granted_cash - int(applied["cash"]),
 		"goods": -int(applied["goods"]),
 		"health": -int(applied["health"]),
 		"heat": float(applied["heat"]),
@@ -1352,6 +1456,35 @@ func _resolve_pay(chain: Dictionary, choice_id: String) -> Dictionary:
 	chain["decision"] = decision
 	engine.advance_stage(engine.STAGE_RESULT)
 	return {"ok": true, "tier": "deterministic", "arrested": false}
+
+## WS-D1: what a road HANDS the player, from the card's `grants` table --
+## `{choice: {tier: {"cash": N, "<product_id>": units}}}`. Cash is credited
+## DIRTY (nothing a meeting hands over is documented money); product goes
+## into the inventory the same way a market buy does. Receipted once per
+## chain. Returns the cash credited, for the result's own row.
+func _apply_grants(chain: Dictionary, card_id: String, choice_id: String,
+		tier: String) -> int:
+	var card: Dictionary = EVENTS.card_by_id(card_id)
+	var grants: Dictionary = (card.get("encounter", {}) as Dictionary).get("grants", {})
+	var row: Dictionary = (grants.get(choice_id, {}) as Dictionary).get(tier, {})
+	if row.is_empty():
+		return 0
+	var engine: Object = gm.system("consequence")
+	if not engine.record_receipt(str(chain.get("cause_id", "")), "wander_encounter:grant"):
+		return 0
+	var credited: int = 0
+	for key in row.keys():
+		var amount: int = int(row[key])
+		if amount <= 0:
+			continue
+		if str(key) == "cash":
+			var wallet: Object = gm.system("wallet") if gm != null else null
+			if wallet != null:
+				wallet.credit(amount, wallet.DIRTY, {"source_id": "wander_encounter:%s" % choice_id})
+				credited += amount
+		else:
+			gs.inventory[str(key)] = int(gs.inventory.get(str(key), 0)) + amount
+	return credited
 
 ## STASH_IT's own roll: `SCRIPTS.STASH_IT["base"]` (0.55) adjusted by
 ## Intelligence the same shape-independent way `outcome_resolver` already

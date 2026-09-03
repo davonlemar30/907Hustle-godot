@@ -190,6 +190,10 @@ const DAY_START_ORDER: Array[String] = [
 	# resets settled, would be describing a board that had not finished
 	# becoming today's yet.
 	"tips",
+	# The World Speaks, PR 1 (WS-D1). After `tips`: a mention is somebody who
+	# trusts you telling you about the board, and it reads the ledger as the
+	# day left it.
+	"mentions",
 	# Dre Lending & Loan-Shark Progression, PR B (DRE-D1). After `tips` for
 	# the same reason `tips` is after everything else: Juan's mention reads
 	# `gs.cash`/`gs.rent_due_day` against the fully-settled day, not a
@@ -463,6 +467,11 @@ func _run_day_start_step(step: String, today: int) -> void:
 		var tips: Object = gm.system("tips") if gm != null else null
 		if tips != null:
 			tips.push_tip(today)
+		return
+	if step == "mentions":
+		var wander: Object = gm.system("wander") if gm != null else null
+		if wander != null:
+			wander.day_start_mentions(today)
 		return
 	if step == "dre_intro":
 		# Same reasoning as "tips" just above: Juan's mention needs no

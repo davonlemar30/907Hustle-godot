@@ -893,6 +893,8 @@ func _unlock_every_surface(gs: Node) -> void:
 	gs.list_flips = maxi(int(gs.list_flips), 1)
 	gs.wander_count = maxi(int(gs.wander_count), 3)
 	gs.market_discovered = true
+	# WS-D1 (0.8.0): the hustle rows open on their latches.
+	gs.hustles_discovered = ["market", "boost", "stickup", "list"]
 	gs.day = maxi(int(gs.day), 5)
 	# Dre Lending & Loan-Shark Progression, PR B: hustle.shark reads
 	# dre_access_tier now, not day. `gs.day` above stays -- other surfaces on
@@ -2050,7 +2052,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
 	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
 	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
-	_expect_int("save version is 25", saves.SAVE_VERSION, 25)
+	_expect_int("save version is 26", saves.SAVE_VERSION, 26)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -5430,7 +5432,7 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# Word of Mouth (0.1.2) appends `tips` and reorders nothing above it: a
 	# tip is a claim about today's board, so it goes last, after every other
 	# step that could still change what today's board is.
-	"DAY_START:tips",
+	"DAY_START:tips", "DAY_START:mentions",
 	# Dre Lending & Loan-Shark Progression PR B appends `dre_intro` after
 	# `tips` for the same reason: Juan's mention reads the fully-settled day.
 	"DAY_START:dre_intro",
@@ -13788,7 +13790,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v25", saves.SAVE_VERSION, 25)
+	_expect_int("the schema is v26", saves.SAVE_VERSION, 26)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -14654,7 +14656,9 @@ func _check_version_stamp(gs: Node) -> void:
 ## step past the threshold; `lower` puts it one step short.
 const GATE_CASES: Array[Dictionary] = [
 	{"id": "menu.crew", "mode": "locked", "fact": "crew"},
-	{"id": "menu.jobs", "mode": "locked", "fact": "job_contacts"},
+	# WS-D1 (0.8.0): `menu.jobs` left this table. Yalonda vouches for Wash &
+	# Go on day one, so a fresh run's Jobs door is OPEN -- the one surface a
+	# new player is handed. `_check_door_to_work` holds that claim.
 	{"id": "street.downtown", "mode": "locked", "fact": "downtown"},
 	{"id": "street.ship_creek", "mode": "locked", "fact": "ship_creek"},
 	{"id": "home.market_snapshot", "mode": "hidden", "fact": "list_flips"},
@@ -14673,9 +14677,12 @@ const GATE_CASES: Array[Dictionary] = [
 	# own dedicated test (`_check_market_discovery`) instead of a rung on the
 	# ladder.
 	{"id": "hustle.market", "mode": "hidden", "fact": "market_discovered"},
-	{"id": "hustle.boost", "mode": "hidden", "fact": "walks"},
-	{"id": "hustle.stickup", "mode": "hidden", "fact": "days"},
-	{"id": "hustle.list", "mode": "hidden", "fact": "days"},
+	# WS-D1 (0.8.0): discoveries, not clocks. Each row opens on its own latch
+	# in `hustles_discovered`, raised here directly the way `market_discovered`
+	# is; the moments that raise them for real are `_check_city_reveals`.
+	{"id": "hustle.boost", "mode": "hidden", "fact": "hustle:boost"},
+	{"id": "hustle.stickup", "mode": "hidden", "fact": "hustle:stickup"},
+	{"id": "hustle.list", "mode": "hidden", "fact": "hustle:list"},
 	# Dre Lending & Loan-Shark Progression, PR B: replaces the day-5 gate
 	# with an earned one (design doc: "time passing does not explain why
 	# Dre trusts the player with his network"). Its own fact, not shared —
@@ -14714,6 +14721,9 @@ func _raise_gate_fact(gs: Node, fact: String) -> void:
 			# The latch itself, not a walk count — raised directly, the same
 			# as `crew` or `phone` above.
 			gs.market_discovered = true
+		"hustle:boost", "hustle:stickup", "hustle:list":
+			# WS-D1: the discovery latch, raised directly.
+			gs.discover_hustle(fact.trim_prefix("hustle:"))
 		"days":
 			gs.day = 5
 		"dre_access_tier":
@@ -14840,7 +14850,12 @@ func _check_surface_visibility(gs: Node, gm: Node) -> void:
 	_fresh_gate_run(gs)
 	_expect_str("a locked route is refused", nav.resolved_route(nav.CREW), "")
 	_expect_true("a locked route reads locked", not access.route_allowed(nav.CREW))
+	# WS-D1 (0.8.0): a fresh run's Jobs door is open on Yalonda's word, so the
+	# locked case is a run that somehow knows no place that hires.
+	var known_jobs: Array = gs.jobs_discovered.duplicate()
+	gs.jobs_discovered = []
 	_expect_str("a locked jobs route is refused", nav.resolved_route(nav.JOBS), "")
+	gs.jobs_discovered = known_jobs
 	_expect_str("an ungated route is untouched",
 		nav.resolved_route(nav.STREET), nav.STREET)
 	_raise_gate_fact(gs, "crew")
@@ -16207,7 +16222,11 @@ const ECON_CORRIDORS: Dictionary = {
 	# BB-D9 (0.7.0): same cause as `worker_wanders` -- this profile walks to
 	# find its corners and the street answers more often now. Measured 284%
 	# (was 300-520); floor lowered, disclosed, not tuned back.
-	"settler": {"floor": 270, "ceiling": 520},
+	# WS-D1 (0.8.0): a GATED profile now starts knowing one job and finds the
+	# rest by walking, and `settler` is gated. Measured 213% on this build's
+	# own sweep (was 284 at 0.7.0); floor lowered to the measured number's own
+	# margin, disclosed, not tuned back -- the reveal is the point.
+	"settler": {"floor": 200, "ceiling": 520},
 	# PR E: measured at 91% of the day job (5 Dre loans taken, 21 Book loans
 	# funded, averaged over the 4 seeds) — leverage roughly breaks even
 	# against steady work once Dre's cut and the arc's own time cost are
@@ -16232,6 +16251,10 @@ const ECON_START_CASH := 400
 ## `hustler` go from 369% to 413%, which is the seeded market walk realigning,
 ## not the lever. Every reported number below is a mean over these.
 const ECON_SEEDS: Array[String] = ["-a", "-b", "-c", "-d"]
+
+## The starter board an ungated profile is handed (see `_econ_ready`).
+const ECON_STARTER_JOBS: Array[String] = ["wash_go", "spenard_chevron",
+	"rebel_convenience", "northern_value", "day_labor"]
 
 func _econ_ready(gs: Node, profile: Dictionary) -> void:
 	gs.street_name = "Econ"
@@ -16267,6 +16290,16 @@ func _econ_ready(gs: Node, profile: Dictionary) -> void:
 	if not bool(profile.get("find_targets", false)) \
 			and not bool(profile.get("gated", false)):
 		_clock_every_boost_target(gs)
+	# WS-D1 (0.8.0): an ungated profile bypasses the ladder, so it is handed
+	# every job and every hustle the way it is handed the city -- what it
+	# measures is the economy, not how long the reveal takes. A gated profile
+	# earns them: Goodie on day two, the loose rack on day three.
+	if not bool(profile.get("gated", false)):
+		# The five a run started knowing before WS-D1, exactly -- so every
+		# corridor measured against that board keeps measuring the same thing.
+		# The two freight jobs stay behind the ramp, as they always were.
+		gs.jobs_discovered = ECON_STARTER_JOBS.duplicate()
+		gs.hustles_discovered = ["market", "boost", "stickup", "list"]
 	# Market's discovery latch (PR 4). Only a GATED profile even asks —
 	# `can.call("hustle.market")` below reads `not gated or is_unlocked(...)`,
 	# so an ungated profile's trading is unconditional either way and setting
@@ -16280,6 +16313,7 @@ func _econ_ready(gs: Node, profile: Dictionary) -> void:
 	# in this table exists to answer the second question.
 	if bool(profile.get("gated", false)) and bool(profile.get("trade", false)):
 		gs.market_discovered = true
+		gs.discover_hustle("market")
 	# A profile may bring crew. Written onto the record rather than recruited,
 	# for the reason the batch-6b checks do it: what is being measured is what
 	# the crew member is WORTH, not the recruiting path, which has its own
@@ -18176,6 +18210,7 @@ func _check_batch14(gs: Node, gm: Node) -> void:
 	_check_hustle_screen(gs)
 	_check_boost_discovery(gs, gm)
 	_check_market_discovery(gs, gm)
+	_check_city_reveals(gs, gm)
 	_check_deal_discovery(gs, gm)
 	_check_discovery_persistence(gs, gm)
 	_check_wander_toast(gs, gm)
@@ -18222,6 +18257,26 @@ func _check_elapsed_requirements() -> void:
 		_expect_float("%s reports where the line is" % type_name,
 			float(blocked["required"]), 4.0)
 
+	# WS-D1 (0.8.0): the two latch types, held to the same contract.
+	_expect_true("hustle_discovered blocks on an unknown hustle",
+		not bool(requirements.evaluate_requirement(
+			{"type": "hustle_discovered", "hustle": "boost"}, {"hustles_discovered": ["market"]})["ok"]))
+	_expect_true("hustle_discovered passes on a known one",
+		bool(requirements.evaluate_requirement(
+			{"type": "hustle_discovered", "hustle": "boost"}, {"hustles_discovered": ["boost"]})["ok"]))
+	_expect_true("hustle_discovered with no fact at all blocks",
+		not bool(requirements.evaluate_requirement(
+			{"type": "hustle_discovered", "hustle": "boost"}, {})["ok"]))
+	_expect_true("hustle_undiscovered passes on an unknown hustle",
+		bool(requirements.evaluate_requirement(
+			{"type": "hustle_undiscovered", "hustle": "boost"}, {"hustles_discovered": ["market"]})["ok"]))
+	_expect_true("hustle_undiscovered blocks once it is known",
+		not bool(requirements.evaluate_requirement(
+			{"type": "hustle_undiscovered", "hustle": "boost"}, {"hustles_discovered": ["boost"]})["ok"]))
+	_expect_true("hustle_undiscovered with no fact at all passes -- nothing is known",
+		bool(requirements.evaluate_requirement(
+			{"type": "hustle_undiscovered", "hustle": "boost"}, {})["ok"]))
+
 # --- the Hustle ladder --------------------------------------------------------
 
 ## Every NUMERIC-threshold income row on the hub, and the exact rung it
@@ -18236,9 +18291,9 @@ func _check_elapsed_requirements() -> void:
 ## either side of the line — a gate that opens a day early and a gate that never
 ## opens are the same bug from the player's chair.
 const HUSTLE_RUNGS: Array[Dictionary] = [
-	{"id": "hustle.boost", "fact": "walks", "at": 3, "what": "Boost"},
-	{"id": "hustle.stickup", "fact": "days", "at": 2, "what": "Stickup"},
-	{"id": "hustle.list", "fact": "days", "at": 3, "what": "907List"},
+	# WS-D1 (0.8.0): Boost, Stickup and 907List left the ladder. They no
+	# longer arrive on a rung; each arrives on a discovery the run makes, and
+	# `_check_city_reveals` drives those moments for real.
 	# Dre Lending & Loan-Shark Progression, PR B: dre_access_tier 4 (Junior
 	# Lender), not day 5. See GATE_CASES's own comment for why.
 	{"id": "hustle.shark", "fact": "dre_access_tier", "at": 4, "what": "the shark"},
@@ -18271,8 +18326,11 @@ func _check_hustle_ladder(gs: Node) -> void:
 		_set_ladder_fact(gs, str(rung["fact"]), at + 4)
 		_expect_true("%s stays once earned" % what, access.is_unlocked(surface_id))
 	# Jobs keeps its LOCK while the other five hide, which is the whole authored
-	# asymmetry: Jobs is the on-ramp the player is meant to know about.
+	# asymmetry: Jobs is the on-ramp the player is meant to know about. Since
+	# WS-D1 a fresh run already knows Yalonda's Wash & Go, so the locked
+	# verdict is read off a run that knows no place at all.
 	_fresh_gate_run(gs)
+	gs.jobs_discovered = []
 	var jobs: Dictionary = access.verdict(access.MENU_JOBS)
 	_expect_str("Jobs is still the one row that locks rather than hides",
 		str(jobs["mode"]), access.MODE_LOCKED)
@@ -18320,9 +18378,10 @@ func _check_hustle_screen(gs: Node) -> void:
 		if str(row_name) == "Jobs":
 			_expect_true("a fresh Hustle screen shows only the Jobs row",
 				node.visible)
-			_expect_true("and shows it locked",
-				bool(node.get_meta("surface_locked", false)))
-			_expect_true("and dimmed", node.modulate.a < 1.0)
+			# WS-D1 (0.8.0): and it is OPEN -- Yalonda vouched for Wash & Go.
+			_expect_true("and shows it open, because the landlord vouched",
+				not bool(node.get_meta("surface_locked", false)))
+			_expect_true("and not dimmed", node.modulate.a >= 1.0)
 		else:
 			_expect_true("a fresh Hustle screen has no %s row" % str(ROWS[row_name]),
 				not node.visible)
@@ -18340,6 +18399,7 @@ func _check_hustle_screen(gs: Node) -> void:
 	gs.day = 5
 	gs.wander_count = 3
 	gs.market_discovered = true
+	gs.hustles_discovered = ["market", "boost", "stickup", "list"]
 	gs.job_contacts = 1
 	gs.dre_access_tier = 4
 	var earned: Node = _instantiate_screen("res://ui/screens/hustle.tscn")
@@ -18418,102 +18478,204 @@ func _check_boost_discovery(gs: Node, gm: Node) -> void:
 	gs.boost_store_bans = []
 	gs.reset_to_new_game()
 
-## The Market discovery roll (PR 4), on the same shape `_check_deal_discovery`
-## below already proves out for Boost: swept, because it is a probability —
-## what is asserted is that a walk CAN find the corner and CAN come back
-## without it, on the SAME ramp WORK and DEAL discovery share.
+## WS-D1 (0.8.0): the corner is a PERSON now, not a coin. `wander_meet_goodie`
+## is a MEETING card -- day two or later, Spenard, market still unknown --
+## and an eligible meeting is the walk, ahead of the gate and the draw. What
+## is asserted is the shape the ruling promises: nothing on day one, Goodie
+## on the first day-two walk whatever the intent, the market latched the
+## moment he is met, once and only once.
 ##
-## SABOTAGE: drop `gs.market_discovered = true` from `_discover_market()` ->
-##           "a walk can find the corner" never sets, and the sweep exhausts
-##           without a hit.
+## SABOTAGE: drop the `hustle_undiscovered` requirement from the card ->
+##           "Goodie does not come back" fails.
+## SABOTAGE: drop the meeting check from `_wander` -> "day two meets Goodie"
+##           fails (the walk rolls the gate and draws a card instead).
 func _check_market_discovery(gs: Node, gm: Node) -> void:
 	var sys: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
 	if sys == null:
 		_fail("PR4 market", "no wander system")
 		return
 
-	# The roll itself. Seeded misses in, for the same reason
-	# `_check_deal_discovery` seeds them: asserting "the ramp reset" on a run
-	# that started at zero is an assertion that cannot fail.
-	const SEEDED_MISSES := 2
-	var found_market := false
-	var missed_market := false
-	for day in range(1, 40):
-		_b10_ready(gs)
-		gs.day = day
-		gs.market_discovered = false
-		gs.activity_log = []
-		gs.wander_misses = SEEDED_MISSES
-		var jobs_before: int = gs.jobs_discovered.size()
-		var targets_before: int = gs.boost_targets_discovered.size()
-		if not gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ}):
-			continue
-		# BB-D9 (0.7.0): a walk the street interrupted is neither a find nor
-		# a miss -- the walk WAS the encounter. Answer it and try the next day.
-		if bool((gm.system("consequence") as Object).has_active()):
+	# DAY ONE: however many walks, the corner stays unknown. The city has not
+	# decided to show it yet.
+	_fresh_gate_run(gs)
+	gs.current_district_id = "north_star_lot"
+	for _walk in range(8):
+		gs.time_slots_today = 0
+		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ})
+		if bool(engine.has_active()):
 			_close_gate_encounter(gs, gm)
-			continue
-		if not bool(gs.market_discovered):
-			# A READ walk draws from every pool: one that found a job or a
-			# target reset the ramp on ITS find, and is not the miss this
-			# assertion is about. Which day is the first clean miss moved
-			# when the gate got louder; the assertion never depended on it.
-			if gs.jobs_discovered.size() != jobs_before \
-					or gs.boost_targets_discovered.size() != targets_before:
-				continue
-			if not missed_market:
-				missed_market = true
-				_expect_int("a missed market walk climbs the same drought",
-					int(gs.wander_misses), SEEDED_MISSES + 1)
-			continue
-		if found_market:
-			continue
-		found_market = true
-		_expect_int("finding the corner resets the drought", int(gs.wander_misses), 0)
-		var said := false
-		for row in gs.activity_log:
-			if str((row as Dictionary).get("text", "")).begins_with(
-					"You see where the handoffs happen"):
-				said = true
-		_expect_true("and the feed says so", said)
-	_expect_true("a walk can find the corner", found_market)
-	_expect_true("and a walk can come back without it", missed_market)
+		gs.day = 1
+	_expect_true("day one never finds the corner", not bool(gs.market_discovered))
+	_expect_true("...and the hustle stays off the board",
+		not ("market" in gs.hustles_discovered))
 
-	# Fires on ANY intent — WORK and DEAL both count, not just READ. The
-	# intent's own pool is starved first (every job and every boost target
-	# already known), so a hit on these sweeps can only be the market roll,
-	# never that intent's own discovery landing on the same walk and masking
-	# which roll actually fired.
-	for intent_id in [B10_EVENTS.INTENT_WORK, B10_EVENTS.INTENT_DEAL]:
-		var hit_on_intent := false
-		for day in range(1, 40):
-			_b10_ready(gs)
-			gs.day = day
-			gs.market_discovered = false
-			gs.jobs_discovered.append_array(B10_EVENTS.DISCOVERY_JOBS)
-			_clock_every_boost_target(gs)
-			if not gm.dispatch("wander", {"intent": intent_id}):
-				continue
-			if bool(gs.market_discovered):
-				hit_on_intent = true
-				break
-		_expect_true("the market can be found on a %s walk" % str(intent_id),
-			hit_on_intent)
+	# DAY TWO, SPENARD: the first walk is Goodie, on any intent.
+	for intent_id in [B10_EVENTS.INTENT_READ, B10_EVENTS.INTENT_WORK, B10_EVENTS.INTENT_DEAL]:
+		_fresh_gate_run(gs)
+		gs.day = 2
+		gs.current_district_id = "north_star_lot"
+		gs.activity_log = []
+		_expect_true("the day-two walk dispatches (%s)" % str(intent_id),
+			gm.dispatch("wander", {"intent": intent_id}))
+		_expect_true("day two meets Goodie (%s)" % str(intent_id), bool(engine.has_active()))
+		if bool(engine.has_active()):
+			_expect_str("...and it is Goodie in front of you",
+				str((engine.active_summary() as Dictionary).get("source_opponent", "")), "Goodie")
+			_expect_str("...on the meeting card",
+				str(((gs.active_consequence as Dictionary).get("source", {}) as Dictionary)
+					.get("card_id", "")), "wander_meet_goodie")
+		_expect_true("meeting him latches the market (%s)" % str(intent_id),
+			bool(gs.market_discovered) and "market" in gs.hustles_discovered)
+		_close_gate_encounter(gs, gm)
 
-	# A ONE-WAY LATCH: once found, a later walk does not roll for it again —
-	# the elif chain never reaches the check — and it does not un-announce or
-	# re-announce itself.
-	_b10_ready(gs)
-	gs.market_discovered = true
-	gs.activity_log = []
+	# ONCE. He is seen, the requirement is spent, and the next walk is a walk.
+	_fresh_gate_run(gs)
+	gs.day = 2
+	gs.current_district_id = "north_star_lot"
 	gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ})
+	_close_gate_encounter(gs, gm)
+	var met_once: int = int(gs.wander_seen.get("wander_meet_goodie", 0))
+	_expect_int("Goodie is marked seen", met_once, 1)
+	for _walk in range(6):
+		gs.time_slots_today = 0
+		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ})
+		if bool(engine.has_active()):
+			_expect_true("a later chain is not Goodie again",
+				str(((gs.active_consequence as Dictionary).get("source", {}) as Dictionary)
+					.get("card_id", "")) != "wander_meet_goodie")
+			_close_gate_encounter(gs, gm)
+	_expect_int("Goodie does not come back", int(gs.wander_seen.get("wander_meet_goodie", 0)), 1)
 	_expect_true("a found market stays found", bool(gs.market_discovered))
-	var re_announced := false
-	for row in gs.activity_log:
-		if str((row as Dictionary).get("text", "")).begins_with(
-				"You see where the handoffs happen"):
-			re_announced = true
-	_expect_true("and does not announce itself twice", not re_announced)
+
+	# NOT IN DOWNTOWN. The corner is Spenard's; a day-two walk elsewhere is a walk.
+	_fresh_gate_run(gs)
+	gs.day = 2
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	gs.current_district_id = "downtown"
+	gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ})
+	_expect_true("day two downtown does not meet Goodie", not bool(gs.market_discovered))
+	if bool(engine.has_active()):
+		_close_gate_encounter(gs, gm)
+	gs.reset_to_new_game()
+
+## WS-D1 (0.8.0): the city reveals itself. The other three hustles arrive
+## through their own moments; each is driven here for real, then the shape
+## of the ladder as a whole -- nothing criminal on day one -- is held.
+##
+## SABOTAGE: give `HUSTLE_BOOST` back its `wander_count_min` -> "a fresh run
+##           has nothing criminal on the board" fails after three walks.
+## SABOTAGE: drop `discovers_target` from the first lift -> "the first lift
+##           puts a room on the map" fails.
+func _check_city_reveals(gs: Node, gm: Node) -> void:
+	var access: Node = get_node_or_null("/root/SurfaceVisibility")
+	var engine: Object = gm.system("consequence")
+	var sys: Object = gm.system("wander")
+	if access == null or sys == null:
+		_fail("WS-D1", "no access layer or wander system")
+		return
+
+	# NOTHING CRIMINAL ON DAY ONE, however much you walk.
+	_fresh_gate_run(gs)
+	gs.current_district_id = "north_star_lot"
+	_expect_true("a fresh run knows one job", gs.jobs_discovered.size() == 1)
+	for _walk in range(6):
+		gs.time_slots_today = 0
+		gm.dispatch("wander", {})
+		if bool(engine.has_active()):
+			_close_gate_encounter(gs, gm)
+		gs.day = 1
+	for surface_id in ["hustle.market", "hustle.boost", "hustle.stickup", "hustle.list"]:
+		_expect_true("a fresh run has nothing criminal on the board (%s)" % surface_id,
+			not access.is_unlocked(surface_id))
+
+	# THE FIRST LIFT: day three, a morning walk, anywhere with a store.
+	_fresh_gate_run(gs)
+	gs.day = 3
+	gs.time_slots_today = 1
+	gs.time_slot = "AFTERNOON"
+	gs.current_district_id = "north_star_lot"
+	_reveal_everything(gs)
+	gs.hustles_discovered.erase("boost")
+	gm.dispatch("wander", {})
+	_expect_true("day three's walk is the first lift", bool(engine.has_active())
+		and str(((gs.active_consequence as Dictionary).get("source", {}) as Dictionary)
+			.get("card_id", "")) == "wander_first_lift")
+	_expect_true("the first lift opens the Boost row", access.is_unlocked("hustle.boost"))
+	_expect_true("the first lift puts a room on the map",
+		"northern_value" in gs.boost_targets_discovered)
+	# The two roads in the universal verbs, and the run road guaranteed.
+	var offered: Array = (gs.active_consequence.get("decision", {}) as Dictionary).get("allowed_choices", [])
+	_expect_true("the first lift offers BLUFF and RUN", "lift_take" in offered and "lift_leave" in offered)
+	_expect_true("...and leaving it is guaranteed",
+		"lift_leave" in ((gs.active_consequence.get("decision", {}) as Dictionary).get("deterministic_choices", []) as Array))
+	# Leaving it costs nothing and the room is still on the map.
+	var cash_before: int = int(gs.cash)
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "lift_leave"})
+	_expect_int("leaving the rack costs nothing", int(gs.cash), cash_before)
+	_close_gate_encounter(gs, gm)
+
+	# THE DESPERATE AFTERNOON: day five, under thirty dollars.
+	_fresh_gate_run(gs)
+	gs.day = 5
+	gs.time_slots_today = 1
+	gs.time_slot = "AFTERNOON"
+	gs.current_district_id = "north_star_lot"
+	_reveal_everything(gs)
+	gs.hustles_discovered.erase("stickup")
+	gs.cash = 20
+	gs.dirty_cash = 20
+	gs.clean_cash = 0
+	gm.dispatch("wander", {})
+	_expect_true("a broke day five meets the man with the fold", bool(engine.has_active())
+		and str(((gs.active_consequence as Dictionary).get("source", {}) as Dictionary)
+			.get("card_id", "")) == "wander_first_stickup_broke")
+	_expect_true("...and Stickup is on the board", access.is_unlocked("hustle.stickup"))
+	_close_gate_encounter(gs, gm)
+
+	# THE WITNESS: day five, an evening in Spenard, not broke.
+	_fresh_gate_run(gs)
+	gs.day = 5
+	gs.time_slots_today = 2
+	gs.time_slot = "EVENING"
+	gs.current_district_id = "north_star_lot"
+	_reveal_everything(gs)
+	gs.hustles_discovered.erase("stickup")
+	gs.cash = 400
+	gm.dispatch("wander", {})
+	_expect_true("a day-five evening sees the kid at the ATM", bool(engine.has_active())
+		and str(((gs.active_consequence as Dictionary).get("source", {}) as Dictionary)
+			.get("card_id", "")) == "wander_first_stickup_witness")
+	_expect_true("...and Stickup is on the board either way", access.is_unlocked("hustle.stickup"))
+	_close_gate_encounter(gs, gm)
+
+	# 907LIST: a mention, not a find. Nobody warm, nobody mentions it.
+	_fresh_gate_run(gs)
+	gs.npc_ledgers = {}
+	sys.day_start_mentions(int(gs.day))
+	_expect_true("with nobody warm the board stays unmentioned",
+		not access.is_unlocked("hustle.list"))
+	_expect_true("...and no text arrives about it", gs.phone_inbox.is_empty())
+	sys._discover_hustle("list")
+	_expect_true("the mention opens the 907List row", access.is_unlocked("hustle.list"))
+
+	# THE MEETINGS ARE ONCE EACH, and every one names a hustle the run can latch.
+	var events: RefCounted = preload("res://data/wander_events.gd").new()
+	var meetings := 0
+	for entry in events.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != events.KIND_MEETING:
+			continue
+		meetings += 1
+		_expect_true("%s is once" % str(card["id"]), bool(card.get("once", false)))
+		_expect_true("%s names a hustle" % str(card["id"]),
+			str(card.get("discovers", "")) in gs.HUSTLE_IDS)
+		var gated := false
+		for req in (card["requirements"] as Array):
+			if str((req as Dictionary).get("type", "")) == "hustle_undiscovered":
+				gated = true
+		_expect_true("%s is gated on its hustle being unknown" % str(card["id"]), gated)
+	_expect_int("four meetings reveal three hustles", meetings, 4)
 	gs.reset_to_new_game()
 
 ## The DEAL walk, and the pool it draws from.
@@ -19029,7 +19191,8 @@ const B15_ROUTE_CASES: Array[Dictionary] = [
 	{"id": "hustle.stickup", "scene": "res://ui/screens/stickup.tscn", "what": "stickup"},
 	{"id": "hustle.shark", "scene": "res://ui/screens/shark.tscn", "what": "the shark"},
 	{"id": "menu.crew", "scene": "res://ui/screens/crew.tscn", "what": "crew"},
-	{"id": "menu.jobs", "scene": "res://ui/screens/jobs.tscn", "what": "jobs"},
+	# `menu.jobs` is open on a fresh run since WS-D1 (0.8.0) -- see
+	# `_check_door_to_work` -- so it has no closed state to assert here.
 ]
 
 func _check_route_button_parity(gs: Node, gm: Node) -> void:
@@ -19136,7 +19299,9 @@ func _check_the_yalonda_intro(gs: Node) -> void:
 	_expect_true("and what the rent is", text.contains("$%d" % int(gs.WEEKLY_RENT)))
 	# The direction beat. After batch 14 the Chevron is very nearly the only
 	# legit door a Day 1 player is told about, so the sheet has to name it.
-	_expect_true("and the honest way in", text.to_lower().contains("chevron"))
+	# WS-D1 (0.8.0): the one job a fresh run knows is the Wash & Go, and it
+	# knows it because she named it.
+	_expect_true("and the honest way in", text.to_lower().contains("wash & go"))
 
 	var buttons: Array = []
 	_collect_buttons(content, buttons)
@@ -19229,20 +19394,16 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 	# walks at up to 70%/attempt makes a miss streak astronomically unlikely.
 	# The same confidence `_check_save_roundtrip`'s hiring retry already
 	# relies on for a different seeded gate.
+	# WS-D1 (0.8.0): the corner is found by meeting Goodie -- a MEETING card,
+	# day two in Spenard, which is the walk itself. One walk, no retry.
 	_fresh_gate_run(gs)
+	gs.day = 2
+	gs.current_district_id = "north_star_lot"
 	_expect_true("a fresh run has no market row",
 		not access.is_unlocked("hustle.market"))
-	var discovered_on_walk := false
-	for _attempt in 20:
-		gs.activity_log = []
-		gm.dispatch("wander", {"intent": "read"})
-		# BB-D9 (0.7.0): the gate can open on any walk now, and a blocking
-		# chain would jam the retry. Answer it and walk again.
-		if bool((gm.system("consequence") as Object).has_active()):
-			_close_gate_encounter(gs, gm)
-		if access.is_unlocked("hustle.market"):
-			discovered_on_walk = true
-			break
+	gs.activity_log = []
+	gm.dispatch("wander", {"intent": "read"})
+	var discovered_on_walk: bool = access.is_unlocked("hustle.market")
 	_expect_true("a walk opened the market row", discovered_on_walk)
 	var said: String = str(lines["hustle.market"])
 	var heard: int = 0
@@ -19255,7 +19416,9 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 	_expect_str("and it is the line the wander toast will carry",
 		str((gs.activity_log[0] as Dictionary).get("text", "")), said)
 
-	# 3. ONCE. A second walk does not repeat it.
+	# 3. ONCE. A second walk does not repeat it. (Goodie's chain is answered
+	#    first -- a walk while it is open is refused, not repeated.)
+	_close_gate_encounter(gs, gm)
 	gs.activity_log = []
 	gm.dispatch("wander", {"intent": "read"})
 	var again: int = 0
@@ -19264,18 +19427,26 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 			again += 1
 	_expect_int("and does not say it again on the next walk", again, 0)
 
-	# 4. A DAY GATE, through the clock rather than through a walk.
+	# 4. A LATCH GATE, raised by a discovery and announced on the dispatch
+	#    that carried it (WS-D1: no row opens on the clock any more).
 	_fresh_gate_run(gs)
+	gs.day = 5
+	gs.cash = 10
+	gs.dirty_cash = 10
+	gs.clean_cash = 0
+	gs.current_district_id = "north_star_lot"
+	gs.market_discovered = true
+	gs.hustles_discovered = ["market", "boost", "list"]
 	gs.activity_log = []
 	var stickup_line: String = str(lines["hustle.stickup"])
-	for _slot in range(4):
-		gm.dispatch("advance_time", {})
-	_expect_true("day 2 opens the stickup row", access.is_unlocked("hustle.stickup"))
+	gm.dispatch("wander", {})
+	_expect_true("the desperate afternoon opens the stickup row", access.is_unlocked("hustle.stickup"))
 	var stick_heard := false
 	for row in gs.activity_log:
 		if str((row as Dictionary).get("text", "")) == stickup_line:
 			stick_heard = true
-	_expect_true("and the day that opened it says so", stick_heard)
+	_expect_true("and the walk that opened it says so", stick_heard)
+	_close_gate_encounter(gs, gm)
 
 	# 5. A RELOAD ANNOUNCES NOTHING. This is the property the snapshot diff buys
 	#    and a persisted "already told them" flag would have to be taught: a run
@@ -19344,6 +19515,8 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 	gs.day = 9
 	gs.wander_count = 9
 	gs.market_discovered = true
+	# WS-D1 (0.8.0): the three discovery rows, latched together.
+	gs.hustles_discovered = ["market", "boost", "stickup", "list"]
 	# Dre Lending & Loan-Shark Progression, PR B: hustle.shark used to be one
 	# of the doors day=9 opened; it reads dre_access_tier now, so it needs its
 	# own bump to stay among the "several at once" this case is counting.
@@ -19422,17 +19595,24 @@ func _check_door_to_work(gs: Node, gm: Node) -> void:
 		_fail("batch16", "no SurfaceVisibility autoload")
 		return
 
-	# 1. A FRESH RUN knows five places that hire and cannot reach any of them.
-	#    That contradiction is the defect, stated as a check.
+	# 1. A FRESH RUN knows ONE place that hires -- the Wash & Go Yalonda
+	#    vouches for -- and the door is open on her word (WS-D1, 0.8.0). It
+	#    used to know five and reach none, which was the batch-16 defect; now
+	#    it knows one and reaches it, and finds the rest by walking.
 	_fresh_gate_run(gs)
-	_expect_true("a fresh run already knows about jobs", gs.jobs_discovered.size() >= 5)
-	_expect_true("the jobs everybody knows about do not open it",
-		not access.is_unlocked(access.MENU_JOBS))
-	_expect_str("and the route is refused with them", nav.resolved_route(nav.JOBS), "")
+	_expect_int("a fresh run knows exactly one job", gs.jobs_discovered.size(), 1)
+	_expect_true("...and it is the one the landlord mentioned", "wash_go" in gs.jobs_discovered)
+	_expect_true("the landlord's word opens the door",
+		access.is_unlocked(access.MENU_JOBS))
+	_expect_str("and the route resolves", nav.resolved_route(nav.JOBS), nav.JOBS)
 	# The hint has to name something the player can actually go and do. It used
 	# to read "Meet someone who hires", whose only enabler cost 100% of the
 	# starting cash.
+	# The hint only renders on a locked door, and the door is open now; read
+	# it off a run that knows no place at all.
+	gs.jobs_discovered = []
 	var hint: String = access.hint_for(access.MENU_JOBS)
+	gs.jobs_discovered = ["wash_go"]
 	_expect_true("the hint names the free path first",
 		hint.to_lower().contains("find work"))
 
@@ -19464,7 +19644,7 @@ func _check_door_to_work(gs: Node, gm: Node) -> void:
 			continue
 		if bool((gm.system("consequence") as Object).has_active()):
 			_close_gate_encounter(gs, gm)
-		if gs.jobs_discovered.size() > 5:
+		if gs.jobs_discovered.size() > 1:
 			found = true
 			break
 	_expect_true("a walk can turn up work", found)
@@ -19483,6 +19663,9 @@ func _check_door_to_work(gs: Node, gm: Node) -> void:
 	#    opens the door on a run that has never been out looking.
 	_fresh_gate_run(gs)
 	gs.cash = 500
+	# WS-D1: on a run that somehow knows no place at all, the contact path
+	# still opens the door on its own.
+	gs.jobs_discovered = []
 	_expect_true("a run that never walked has not found work",
 		not access.is_unlocked(access.MENU_JOBS))
 	_expect_true("recruiting the fixer goes through",
@@ -19984,7 +20167,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13346
+const MIN_CHECKS := 13376
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -20779,7 +20962,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v25", int(saves.SAVE_VERSION), 25)
+	_expect_int("the schema is v26", int(saves.SAVE_VERSION), 26)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -21225,7 +21408,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v25 for Heat's teeth", int(saves.SAVE_VERSION), 25)
+	_expect_int("the schema is v26 for Heat's teeth", int(saves.SAVE_VERSION), 26)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -21480,6 +21663,11 @@ func _b10_ready(gs: Node) -> void:
 	gs.time_slot = "MORNING"
 	gs.cash = 500
 	gs.current_district_id = "north_star_lot"
+	# WS-D1 (0.8.0): these arms measure the JOB ramp. A day-6 Spenard run
+	# that knew nothing would meet Goodie on its first walk instead, so the
+	# meetings are pre-empted here and driven for real in `_check_city_reveals`.
+	gs.market_discovered = true
+	gs.hustles_discovered = ["market", "boost", "stickup", "list"]
 
 # --- the ramp ----------------------------------------------------------------
 
@@ -21519,8 +21707,10 @@ func _check_wander_ramp(gs: Node, gm: Node) -> void:
 	# now nothing in the build could put either on the player's map.
 	_b10_ready(gs)
 	var open: Array = sys.undiscovered()
-	_expect_int("two jobs are still out there to find", open.size(), 2)
-	for job_id in ["juan_warehouse", "ship_creek"]:
+	# WS-D1 (0.8.0): every job but Yalonda's is out there to find.
+	_expect_int("every job but the landlord's is still out there to find",
+		open.size(), B10_EVENTS.DISCOVERY_JOBS.size())
+	for job_id in B10_EVENTS.DISCOVERY_JOBS:
 		_expect_true("%s is one of them" % str(job_id), str(job_id) in open)
 		var exists := false
 		for job in gs.jobs:
@@ -21536,11 +21726,14 @@ func _check_wander_ramp(gs: Node, gm: Node) -> void:
 	_expect_str("a discovery reports itself", str(found["kind"]), "discovery")
 	_expect_true("and the job is on the map", "ship_creek" in gs.jobs_discovered)
 	_expect_int("finding something ends the drought", int(gs.wander_misses), 0)
-	_expect_int("and there is one thing left to find", (sys.undiscovered() as Array).size(), 1)
+	_expect_int("and there is one fewer thing left to find", (sys.undiscovered() as Array).size(),
+		B10_EVENTS.DISCOVERY_JOBS.size() - 1)
 
 	# With nothing left, the roll is not taken at all — the ramp would otherwise
 	# climb forever against an empty pool.
-	sys._discover("juan_warehouse")
+	for job_id in B10_EVENTS.DISCOVERY_JOBS:
+		if not str(job_id) in gs.jobs_discovered:
+			sys._discover(str(job_id))
 	_expect_int("a full map has nothing left to find",
 		(sys.undiscovered() as Array).size(), 0)
 	gs.reset_to_new_game()
@@ -21596,7 +21789,7 @@ func _check_wander_draw(gs: Node, gm: Node) -> void:
 			not str(card["line"]).is_empty())
 		_expect_true("%s is one of the authored kinds" % str(card["id"]),
 			str(card["kind"]) in [B10_EVENTS.KIND_AMBIENT, B10_EVENTS.KIND_OPPORTUNITY,
-				B10_EVENTS.KIND_ENCOUNTER, B10_EVENTS.KIND_READ])
+				B10_EVENTS.KIND_ENCOUNTER, B10_EVENTS.KIND_READ, B10_EVENTS.KIND_MEETING])
 		# Every gate goes through the ONE evaluator. A card whose requirement
 		# type the evaluator does not know fails closed, which would hide the
 		# card forever — so an authored typo is caught here rather than in play.
@@ -21687,7 +21880,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v25 for Wander", int(saves.SAVE_VERSION), 25)
+	_expect_int("the schema is v26 for Wander", int(saves.SAVE_VERSION), 26)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered", "wander_quiet_streak"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
@@ -21800,12 +21993,15 @@ func _check_wander_ramp_agreement(gs: Node, gm: Node) -> void:
 		gs.day = 6
 		for walk in range(10):
 			gs.time_slots_today = 0
-			if (sys.undiscovered() as Array).size() < 2:
+			if (sys.undiscovered() as Array).size() < B10_EVENTS.DISCOVERY_JOBS.size():
 				break
 			# WORK, explicitly. Batch 13 made the intent a decision and only a
 			# walk that went looking for work finds any — a bare dispatch now
 			# defaults to READ and would sweep for nothing.
 			gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_WORK})
+			# BB-D9: answer the street when it shows up, and walk on.
+			if bool((gm.system("consequence") as Object).has_active()):
+				_close_gate_encounter(gs, gm)
 		# Whichever of the two is on the map first.
 		for job_id in B10_EVENTS.DISCOVERY_JOBS:
 			if str(job_id) in gs.jobs_discovered:
@@ -22053,6 +22249,13 @@ func _check_gate_arithmetic() -> void:
 func _close_gate_encounter(gs: Node, gm: Node) -> void:
 	_drain_chain(gs, gm)
 
+## WS-D1 (0.8.0): every hustle on the board, for arms that measure something
+## other than the reveal. A meeting is the walk, ahead of the gate; an arm
+## counting gate openings would count it otherwise.
+func _reveal_everything(gs: Node) -> void:
+	gs.market_discovered = true
+	gs.hustles_discovered = ["market", "boost", "stickup", "list"]
+
 ## BB-D4 (0.7.0): answer whatever chain is open until it is gone -- the
 ## guaranteed out where one is offered, so a room ends in one round rather
 ## than escalating, and CONTINUE past every result including an interim one.
@@ -22103,6 +22306,9 @@ func _check_gate_cold_profile(gs: Node, gm: Node) -> void:
 	gs.current_district_id = "north_star_lot"
 	gs.cash = 2000
 	gs.inventory = {"weed": 5}
+	# WS-D1: the gate is measured with the reveal already done, so a meeting
+	# (which is the walk, ahead of the gate) does not count as an opening.
+	_reveal_everything(gs)
 	var opens := 0
 	var max_streak_seen := 0
 	for _walk in range(30):
@@ -22128,6 +22334,7 @@ func _check_gate_cold_profile(gs: Node, gm: Node) -> void:
 		gs.current_district_id = "north_star_lot"
 		gs.cash = 2000
 		gs.inventory = {"weed": 5}
+		_reveal_everything(gs)
 		var seed_opens := 0
 		for _walk in range(30):
 			gm.dispatch("wander", {})
@@ -22147,6 +22354,7 @@ func _check_gate_cold_profile(gs: Node, gm: Node) -> void:
 		gs.run_seed = str(seed_name)
 		gs.current_district_id = "north_star_lot"
 		gs.cash = 500
+		_reveal_everything(gs)
 		var first_walk := -1
 		for walk in range(1, 5):
 			gm.dispatch("wander", {})
@@ -22180,6 +22388,7 @@ func _check_gate_hot_profile(gs: Node, gm: Node) -> void:
 	gs.current_district_id = "north_star_lot"
 	gs.cash = 2000
 	gs.inventory = {"weed": 5}
+	_reveal_everything(gs)
 	var engine: Object = gm.system("consequence")
 	_expect_int("the rigged state clears the tightest authored row",
 		B10_EVENTS.quiet_streak_cap(6), 2)
@@ -23519,8 +23728,9 @@ func _check_discovery_pays(gs: Node, gm: Node) -> void:
 	# better than Wash & Go's [40, 60], which is what `ECON_JOB` pins for every
 	# other profile. Worth naming: it means the upgrade leg is already working
 	# before a single discovery lands.
+	# WS-D1 (0.8.0): a fresh run knows one job, so blind, that is the best.
 	_expect_str("blind, you go for the best you already know",
-		_econ_job_for(gs, true), "spenard_chevron")
+		_econ_job_for(gs, true), "wash_go")
 	_expect_str("and a profile that does not upgrade keeps its authored job",
 		_econ_job_for(gs, false), ECON_JOB)
 	gs.jobs_discovered.append("ship_creek")
@@ -23668,7 +23878,7 @@ func _check_wander_intents(gs: Node, gm: Node) -> void:
 		# walking, the way a player does.
 		if bool((gm.system("consequence") as Object).has_active()):
 			_close_gate_encounter(gs, gm)
-		if (sys.undiscovered() as Array).size() < 2:
+		if (sys.undiscovered() as Array).size() < B10_EVENTS.DISCOVERY_JOBS.size():
 			found_reading = true
 	_expect_true("a walk that names no intent in particular can still find work",
 		found_reading)
@@ -23680,7 +23890,7 @@ func _check_wander_intents(gs: Node, gm: Node) -> void:
 		gs.time_slots_today = 0
 		gs.wanders_today = 0
 		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_DEAL})
-		if (sys.undiscovered() as Array).size() < 2:
+		if (sys.undiscovered() as Array).size() < B10_EVENTS.DISCOVERY_JOBS.size():
 			found_on_deal = true
 	_expect_true("but a walk that went looking for a deal still does not",
 		not found_on_deal)
@@ -23695,7 +23905,7 @@ func _check_wander_intents(gs: Node, gm: Node) -> void:
 		# BB-D9 (0.7.0): answer the street when it shows up, and walk on.
 		if bool((gm.system("consequence") as Object).has_active()):
 			_close_gate_encounter(gs, gm)
-		if (sys.undiscovered() as Array).size() < 2:
+		if (sys.undiscovered() as Array).size() < B10_EVENTS.DISCOVERY_JOBS.size():
 			found_working = true
 	_expect_true("and a walk that did find work, does", found_working)
 

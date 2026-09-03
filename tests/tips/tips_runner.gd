@@ -49,6 +49,9 @@ func _fresh() -> void:
 	gs.reset_to_new_game()
 	gs.day = 7
 	gs.cash = 5000
+	# WS-D1 (0.8.0): the hustle rows open on discovery, not on the clock. A
+	# tip about a stickup window presumes the player knows what a stickup is.
+	gs.hustles_discovered = ["market", "boost", "stickup", "list"]
 
 func _recruit(id: String, tier: int = 1) -> void:
 	gs.crew_records[id] = {
@@ -228,8 +231,9 @@ func _test_fat_night_gating_by_tier() -> void:
 
 	_fresh()
 	gs.stick_tier = 3
-	gs.day = 1
-	a.eq_bool("and nothing before Stickup itself has opened (day 1)",
+	# WS-D1 (0.8.0): the row opens on discovery, not on the clock.
+	gs.hustles_discovered.erase("stickup")
+	a.eq_bool("and nothing before Stickup itself has opened (undiscovered)",
 		_tips().fat_night_targets().is_empty(), true)
 
 # --- 5. the payload a driven room actually consumes ---------------------------

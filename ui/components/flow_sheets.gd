@@ -84,9 +84,10 @@ static func _intro_copy(gs: Node) -> String:
 		+ "Look. The room is yours. First week's free because I like her, " \
 		+ "not because I'm running a charity. After that it's $%d a week, " \
 		+ "%s, and I don't ask twice.\n\n" \
-		+ "There's a Chevron up the block that's usually short a pair of " \
-		+ "hands. That's the honest way, and I'd start there. Whatever " \
-		+ "other way this city shows you -- that's between you and it.\n\n" \
+		+ "The Wash & Go on the corner is short a pair of hands. Lani runs " \
+		+ "it. Tell her I sent you. That's the honest way, and I'd start " \
+		+ "there. Whatever other way this city shows you -- that's between " \
+		+ "you and it.\n\n" \
 		+ "Eat something. Lock up when you come in.") \
 		% [str(gs.street_name), int(gs.WEEKLY_RENT), due]
 

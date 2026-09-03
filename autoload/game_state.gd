@@ -450,6 +450,7 @@ func reset_to_new_game() -> void:
 	# found by walking, one place at a time, across the first week.
 	jobs_discovered = ["wash_go"]
 	hustles_discovered = []
+	phone_reply_history = {}
 	rent_due_day = 7
 	rent_missed = 0
 	household_warnings = 0
@@ -549,6 +550,19 @@ var jobs_discovered: Array = ["wash_go"]
 ## afternoon or a kid at an ATM, somebody who trusts you mentioning the
 ## board. Values: "market", "boost", "stickup", "list".
 var hustles_discovered: Array = []
+
+## WS-D3 (0.8.0, v27): how the player has answered each NPC. `npc_id ->
+## {answered, distanced, ghosted, last_day, owed_ghost}`. `owed_ghost` is
+## whether the NPC's next text opens on being left on read. Counts, not a
+## transcript: what a future text needs to know is whether you are somebody
+## who answers, not what you said.
+var phone_reply_history: Dictionary = {}
+
+func reply_history_for(npc_id: String) -> Dictionary:
+	var row: Variant = phone_reply_history.get(npc_id, null)
+	if row is Dictionary:
+		return row
+	return {"answered": 0, "distanced": 0, "ghosted": 0, "last_day": -1, "owed_ghost": false}
 const HUSTLE_IDS: Array[String] = ["market", "boost", "stickup", "list"]
 
 ## Latch a hustle. Returns true the first time, false when it was already

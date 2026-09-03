@@ -67,8 +67,10 @@ func setup(game_state: Node, rng_manager: Node) -> void:
 	gs = game_state
 	rng = rng_manager
 
+const REPLIES := preload("res://data/phone_replies.gd")
+
 func can_handle(action: String) -> bool:
-	return action in ["dismiss_phone_message", "clear_phone_inbox"]
+	return action in ["dismiss_phone_message", "clear_phone_inbox", "phone_reply"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
 	match action:
@@ -76,7 +78,130 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 			return _dismiss(str(payload.get("id", "")))
 		"clear_phone_inbox":
 			return _clear()
+		"phone_reply":
+			return _reply(str(payload.get("id", "")), str(payload.get("option", "")))
 	return {"ok": false, "reason": "Unknown phone action."}
+
+# --- WS-D3: the player speaks ------------------------------------------------
+#
+# A text from a named NPC carries two answers (`data/phone_replies.gd`). The
+# player picks one; the NPC hears it (an observation into their ledger, or a
+# point of loyalty for crew), answers back once in their own voice, and the
+# exchange is over. A text left on read for a full day is a ghost: it costs
+# the people who notice, and the next text from them opens on it.
+
+## Push a text from a named NPC, with the two replies its context or its
+## sender earns. Falls back to a plain push for a sender nobody authored
+## replies for ("Around town"), so every existing caller can move over one
+## site at a time without changing what lands.
+func push_text(from: String, text: String, context: String = "",
+		extra_action: Dictionary = {}) -> Dictionary:
+	var npc_id := REPLIES.npc_for(from)
+	var replies: Dictionary = REPLIES.replies_for(npc_id, context)
+	var opener := ""
+	if not npc_id.is_empty():
+		var history: Dictionary = gs.reply_history_for(npc_id)
+		if bool(history.get("owed_ghost", false)):
+			opener = str(REPLIES.GHOST_OPENERS.get(npc_id, ""))
+			history["owed_ghost"] = false
+			gs.phone_reply_history[npc_id] = history
+	var action: Dictionary = extra_action.duplicate(true)
+	if not replies.is_empty():
+		action["kind"] = str(action.get("kind", "reply"))
+		action["reply"] = {
+			"npc": npc_id,
+			"a": (replies["a"] as Dictionary).duplicate(),
+			"b": (replies["b"] as Dictionary).duplicate(),
+			"replied": "",
+		}
+	return push_message(from, opener + text, action)
+
+## The player answers. Validated against the live inbox -- a stale button
+## from before a reload must be refused, not honoured against whatever text
+## happens to carry that id now -- and answered exactly once.
+func _reply(id: String, option: String) -> Dictionary:
+	if not option in ["a", "b"]:
+		return {"ok": false, "reason": "Pick an answer."}
+	var message: Dictionary = {}
+	for m in gs.phone_inbox:
+		if str((m as Dictionary).get("id", "")) == id:
+			message = m
+	if message.is_empty():
+		return {"ok": false, "reason": "That text is gone."}
+	var action: Dictionary = message.get("action", {})
+	var reply: Dictionary = action.get("reply", {})
+	if reply.is_empty():
+		return {"ok": false, "reason": "There is nothing to say to that."}
+	if not str(reply.get("replied", "")).is_empty():
+		return {"ok": false, "reason": "You already answered."}
+	reply["replied"] = option
+	action["reply"] = reply
+	message["action"] = action
+	var npc_id := str(reply.get("npc", ""))
+	var chosen: Dictionary = reply[option]
+	_hear(npc_id, "answered" if option == "a" else "distanced")
+	# The NPC answers back once, in their own voice, and carries no reply of
+	# its own -- an exchange, not a tree.
+	var reaction := str(chosen.get("reaction", ""))
+	if not reaction.is_empty():
+		push_message(str(message.get("from", "")), reaction, {"kind": "reaction"})
+	return {"ok": true, "npc": npc_id, "option": option}
+
+## What an answer does to the person who heard it. Named NPCs with a lens
+## take an observation; crew take a point of loyalty either way; everybody
+## takes the count into the history a future text reads.
+func _hear(npc_id: String, how: String) -> void:
+	var history: Dictionary = gs.reply_history_for(npc_id)
+	history[how] = int(history.get(how, 0)) + 1
+	history["last_day"] = int(gs.day)
+	if how == "answered":
+		history["owed_ghost"] = false
+	gs.phone_reply_history[npc_id] = history
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure != null and exposure.NPC_LENSES.has(npc_id):
+		var event := "answered_text"
+		if how == "distanced":
+			event = "kept_distance"
+		elif how == "ghosted":
+			event = "ghosted_text"
+		if how != "ghosted" or REPLIES.cares_about_silence(npc_id):
+			exposure.record_observation(npc_id, {"type": "loyalty", "event": event,
+				"source": "direct", "location": str(gs.current_district_id)})
+	elif gs.is_recruited(npc_id):
+		var record: Dictionary = gs.crew_record(npc_id)
+		if how == "answered":
+			record["loyalty"] = int(record.get("loyalty", 0)) + 1
+		elif how == "ghosted":
+			record["loyalty"] = maxi(0, int(record.get("loyalty", 0)) - 1)
+		gs.crew_records[npc_id] = record
+
+## Day start: every text that carried a reply and sat a full day unanswered
+## is a ghost. Marked so it cannot ghost twice, counted, and -- for the
+## people who notice -- felt. Held texts (a dead line) are not ghosts: you
+## cannot leave somebody on read on a phone that is off.
+func settle_ghosts(today: int) -> void:
+	for m in gs.phone_inbox:
+		var message: Dictionary = m
+		var action: Dictionary = message.get("action", {})
+		var reply: Dictionary = action.get("reply", {})
+		if reply.is_empty() or not str(reply.get("replied", "")).is_empty():
+			continue
+		if today - int(message.get("day", today)) < 2:
+			continue
+		reply["replied"] = "ghost"
+		action["reply"] = reply
+		message["action"] = action
+		var npc_id := str(reply.get("npc", ""))
+		_hear(npc_id, "ghosted")
+		if REPLIES.cares_about_silence(npc_id):
+			var history: Dictionary = gs.reply_history_for(npc_id)
+			history["owed_ghost"] = true
+			gs.phone_reply_history[npc_id] = history
+
+## Whether a text is still waiting on the player.
+static func awaits_reply(message: Dictionary) -> bool:
+	var reply: Dictionary = (message.get("action", {}) as Dictionary).get("reply", {})
+	return not reply.is_empty() and str(reply.get("replied", "")).is_empty()
 
 # --- clock -----------------------------------------------------------------
 

@@ -219,8 +219,8 @@ func _generate_pherris(today: int) -> void:
 		int(route.get("cost", 0)),
 	]
 	var action := {"kind": "tip", "expires_day": today, "slots": []}
-	phone.push_message("Pherris", line, action)
-	phone.push_message("Pherris", "board walks tonight. move or don't", action)
+	phone.push_text("Pherris", line, "", action)
+	phone.push_text("Pherris", "board walks tonight. move or don't", "", action)
 
 ## Eli's corridor read: the unlocked district with the lowest carry-stop
 ## pressure right now. Informational only in this slice — see the header for
@@ -244,7 +244,7 @@ func _generate_eli(today: int) -> void:
 		return
 	var text: String = "%s is quiet right now. nobody's watching that road today. if you're carrying, that's the way through" \
 		% _district_name(best_id).to_lower()
-	phone.push_message("Eli", text, {"kind": "tip", "expires_day": today, "slots": []})
+	phone.push_text("Eli", text, "", {"kind": "tip", "expires_day": today, "slots": []})
 
 ## Tone's fat night: names a T2/T3 target, writes the payload the stickup
 ## room reads through `ConfrontationLoop.tip_modifiers_for()`, and texts it in
@@ -278,7 +278,7 @@ func _generate_fat_night(today: int) -> void:
 		"type": "fat_night", "target_id": target_id, "day": today,
 		"slots": slots.duplicate(), "multiplier": multiplier,
 	})
-	phone.push_message(sender, text, {"kind": "tip", "expires_day": today, "slots": slots})
+	phone.push_text(sender, text, "", {"kind": "tip", "expires_day": today, "slots": slots})
 
 func _district_name(district_id: String) -> String:
 	for entry in (gs.districts as Array):

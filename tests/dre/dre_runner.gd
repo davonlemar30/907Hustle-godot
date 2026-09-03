@@ -62,7 +62,7 @@ extends Node
 const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
 const SCRIPTS := preload("res://data/confrontation_scripts.gd")
 
-const MIN_CHECKS := 404
+const MIN_CHECKS := 427
 
 var a: RefCounted
 var gs: Node
@@ -74,6 +74,7 @@ func _ready() -> void:
 	gm = get_node("/root/GameManager")
 
 	_test_full_state_machine_walk()
+	_test_phone_replies()
 	_test_extension()
 	_test_repay_variants()
 	_test_idempotent_repay()
@@ -1744,4 +1745,96 @@ func _test_restitution_then_penance() -> void:
 	a.eq_bool("and clears the latch", gs.dre_pending_penance, false)
 	a.eq_str("dre_penance is recorded completed",
 		str((gs.opportunity_history["dre_penance"] as Dictionary)["outcome"]), "completed")
+	gs.reset_to_new_game()
+
+# --- WS-D3 (0.8.0 PR 3): the player speaks -----------------------------------
+#
+# Every text from a named NPC carries two answers; the NPC hears the one
+# you pick and answers back once; a text left on read for a day is a ghost.
+# Driven here because Dre's and Juan's texts are the richest the game
+# sends, and this suite already owns the day Juan mentions him.
+
+func _test_phone_replies() -> void:
+	var phone: Object = gm.system("phone")
+	var exposure: Node = get_node("/root/Exposure")
+	_fresh()
+	gs.phone_inbox = []
+	gs.npc_ledgers = {}
+	gs.phone_reply_history = {}
+
+	# A named NPC's text carries two answers; "Around town" carries none.
+	var text: Dictionary = phone.push_text("Juan", "you should talk to Dre.", "juan_dre_mention")
+	var reply: Dictionary = (text.get("action", {}) as Dictionary).get("reply", {})
+	a.check("Juan's text carries two answers", reply.has("a") and reply.has("b"))
+	a.eq_str("...and names who is listening", str(reply.get("npc", "")), "juan")
+	var rumor: Dictionary = phone.push_text("Around town", "somebody got into a shop clean.")
+	a.check("a rumor carries no answers", not (rumor.get("action", {}) as Dictionary).has("reply"))
+
+	# Answering warmly: Juan hears it, answers back once, and the history counts it.
+	var before: float = float(exposure.disposition("juan"))
+	var inbox_before: int = gs.phone_inbox.size()
+	a.check("the warm answer dispatches",
+		gm.dispatch("phone_reply", {"id": str(text["id"]), "option": "a"}))
+	a.check("Juan thinks a little more of you", float(exposure.disposition("juan")) > before)
+	a.eq_int("Juan answers back once", gs.phone_inbox.size(), inbox_before + 1)
+	a.eq_str("...in his own voice", str((gs.phone_inbox[0] as Dictionary).get("from", "")), "Juan")
+	a.check("...and his answer carries no answer of its own",
+		not ((gs.phone_inbox[0] as Dictionary).get("action", {}) as Dictionary).has("reply"))
+	a.eq_int("the history counts the answer",
+		int(gs.reply_history_for("juan").get("answered", 0)), 1)
+	a.eq_bool("a text cannot be answered twice",
+		gm.dispatch("phone_reply", {"id": str(text["id"]), "option": "b"}), false)
+	a.eq_bool("a stale id is refused",
+		gm.dispatch("phone_reply", {"id": "no-such-text", "option": "a"}), false)
+
+	# Keeping distance: neutral for Juan, counted as distance.
+	var second: Dictionary = phone.push_text("Juan", "you good?")
+	var mid: float = float(exposure.disposition("juan"))
+	gm.dispatch("phone_reply", {"id": str(second["id"]), "option": "b"})
+	a.check("keeping distance costs Juan nothing", is_equal_approx(float(exposure.disposition("juan")), mid))
+	a.eq_int("...and the history counts the distance",
+		int(gs.reply_history_for("juan").get("distanced", 0)), 1)
+
+	# Ghosting: a full day unanswered. Dre notices; Juan shrugs.
+	gs.phone_inbox = []
+	gs.npc_ledgers = {}
+	gs.phone_reply_history = {}
+	gs.day = 3
+	var dre_text: Dictionary = phone.push_text("Dre", "Due tomorrow.", "dre_due_tomorrow")
+	var juan_text: Dictionary = phone.push_text("Juan", "you around?")
+	var dre_before: float = float(exposure.disposition("dre"))
+	# Through the real day-start dispatch, because an observation refused
+	# outside a dispatch is exactly the seam Exposure guards.
+	while gs.day < 4:
+		gm.dispatch("advance_time", {})
+	a.check("one day is not yet a ghost", phone.awaits_reply(dre_text))
+	while gs.day < 5:
+		gm.dispatch("advance_time", {})
+	a.check("two days on read is a ghost", not phone.awaits_reply(dre_text))
+	a.check("Dre notices being left on read", float(exposure.disposition("dre")) < dre_before)
+	var juan_ghost_rows := 0
+	for row in (gs.npc_ledgers.get("juan", []) as Array):
+		if str((row as Dictionary).get("event", "")) == "ghosted_text":
+			juan_ghost_rows += 1
+	a.eq_int("Juan does not", juan_ghost_rows, 0)
+	a.eq_int("the history counts the ghost", int(gs.reply_history_for("dre").get("ghosted", 0)), 1)
+	a.check("...and Dre's next text opens on it",
+		str(phone.push_text("Dre", "Today's the day.", "dre_due_today").get("text", ""))
+			.begins_with("You went quiet on me."))
+	a.check("...once", not str(phone.push_text("Dre", "Again.").get("text", ""))
+		.begins_with("You went quiet on me."))
+	a.check("a ghost cannot be answered afterward",
+		not gm.dispatch("phone_reply", {"id": str(dre_text["id"]), "option": "a"}))
+	a.check("Juan's text can still be answered late", phone.awaits_reply(juan_text)
+		or gm.dispatch("phone_reply", {"id": str(juan_text["id"]), "option": "a"}) == false)
+
+	# Crew hear it as loyalty.
+	_fresh()
+	gs.phone_inbox = []
+	gs.crew_records["pherris"] = {"recruited": true, "status": "active", "loyalty": 4, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	var pherris_text: Dictionary = phone.push_text("Pherris", "board walks tonight.")
+	gm.dispatch("phone_reply", {"id": str(pherris_text["id"]), "option": "a"})
+	a.eq_int("answering Pherris warmly is a point of loyalty",
+		int((gs.crew_record("pherris") as Dictionary).get("loyalty", 0)), 5)
 	gs.reset_to_new_game()

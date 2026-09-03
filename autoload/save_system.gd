@@ -184,7 +184,11 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## exactly those rules: nothing a v25 player could already see closes on
 ## them. A fresh run starts empty, and `jobs_discovered` starts with Wash & Go
 ## alone -- no migration needed for that one, an old save keeps what it knew.
-const SAVE_VERSION := 26
+## v27: `phone_reply_history` (The World Speaks PR 3, WS-D3) -- how the
+## player has answered each NPC's texts. Purely additive: no v26 save ever
+## answered anybody, because nobody could be answered. Empty is that save's
+## honest history.
+const SAVE_VERSION := 27
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -262,6 +266,9 @@ const PERSIST_FIELDS: Array[String] = [
 	# The hustle latches (v26, WS-D1). One-way discovery, like the two axes
 	# above it; what the city has shown you cannot be reconstructed.
 	"hustles_discovered",
+	# The reply history (v27, WS-D3): counts per NPC of answered, distanced
+	# and ghosted texts. What a future text reads to know who you are.
+	"phone_reply_history",
 	# The interruption gate's quiet streak (v25, STR-D2). Same reasoning as
 	# wander_misses above: the run's own history of a mechanic that reads it.
 	"wander_quiet_streak",
@@ -910,6 +917,10 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				pass
 			24:
 				# v24 -> v25: wander_quiet_streak. Purely additive -- see this
+				# arm's own paragraph by SAVE_VERSION.
+				pass
+			26:
+				# v26 -> v27: phone_reply_history. Purely additive -- see this
 				# arm's own paragraph by SAVE_VERSION.
 				pass
 			25:

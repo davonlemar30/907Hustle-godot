@@ -398,9 +398,9 @@ func _resolve_ultimatum(chain: Dictionary, choice_id: String) -> Dictionary:
 		"Dre stops answering. Make this right before you ask him for anything else.", RED)
 	var phone: Object = gm.system("phone")
 	if phone != null:
-		phone.push_message("Dre",
+		phone.push_text("Dre",
 			"This is what happens now. Straighten this out and we can go back " \
-			+ "to how it was.", {"kind": "dre_debt"})
+			+ "to how it was.", "dre_suspended", {"kind": "dre_debt"})
 	if engine.record_receipt(cause_id, "dre_collection:walked_a_debt"):
 		var exposure: Node = _exposure()
 		if exposure != null:

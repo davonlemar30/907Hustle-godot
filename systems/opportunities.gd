@@ -786,6 +786,7 @@ func _apply_effect(effect: Dictionary) -> void:
 		"message":
 			var phone: Object = gm.system("phone")
 			if phone != null:
-				phone.push_message(str(effect.get("from", "")), str(effect.get("text", "")))
+				phone.push_text(str(effect.get("from", "")), str(effect.get("text", "")),
+					str(effect.get("context", "")))
 		"offer_followup":
 			_maybe_offer(str(effect.get("definition_id", "")))

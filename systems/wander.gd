@@ -727,7 +727,7 @@ func day_start_mentions(_today: int) -> void:
 			_:
 				from = "Dre"
 				text = "907list. clean money if you flip it right. you're the type that could."
-		phone.push_message(from, text)
+		phone.push_text(from, text, "%s_list" % warm)
 
 ## One card from the eligible pool, weighted, or a breadcrumb when the pool is
 ## empty. A wander is never nothing.

@@ -51,6 +51,7 @@ extends "res://ui/screens/surface_base.gd"
 ## branch is here and named rather than silently absent.
 
 const BLUE := Color(0.373, 0.663, 0.847)
+const CYAN := Color(0.475, 0.733, 0.757)
 
 ## Canon: `defaultExpanded: true` on Texts, nothing else.
 var _open: Dictionary = {
@@ -199,6 +200,27 @@ func _message_card(message: Dictionary) -> Control:
 	# live. Nothing pushes a job_offer in this build yet (jobs.gd hires direct),
 	# so this stays unreachable until the application pipeline lands.
 	var action: Dictionary = message.get("action", {})
+	# WS-D3: two answers, or the one you gave. The buttons are the tap
+	# targets; what they say is the player's own voice.
+	var reply: Dictionary = action.get("reply", {})
+	if not reply.is_empty():
+		var replied := str(reply.get("replied", ""))
+		if replied == "a" or replied == "b":
+			v.add_child(label("you: %s" % str((reply[replied] as Dictionary).get("text", "")),
+				"Muted", 12, CYAN, true))
+		elif replied == "ghost":
+			v.add_child(label("left on read", "Kicker", 10, MUTED))
+		else:
+			var id := str(message.get("id", ""))
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 8)
+			for option in ["a", "b"]:
+				var answer := button(str((reply[option] as Dictionary).get("text", "")), false,
+					_on_reply.bind(id, option), 44)
+				answer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				answer.add_theme_font_size_override("font_size", 12)
+				row.add_child(answer)
+			v.add_child(row)
 	if not action.is_empty() and str(action.get("kind", "")) == "job_offer":
 		v.add_child(label("OFFER ATTACHED", "Kicker", 10, AMBER))
 	elif not action.is_empty() and str(action.get("kind", "")) == "tip":
@@ -269,6 +291,9 @@ func _tip_stamp(action: Dictionary) -> String:
 
 func _on_dismiss(id: String) -> void:
 	_gm.dispatch("dismiss_phone_message", {"id": id})
+
+func _on_reply(id: String, option: String) -> void:
+	_gm.dispatch("phone_reply", {"id": id, "option": option})
 
 func _on_clear_inbox() -> void:
 	_gm.dispatch("clear_phone_inbox", {})

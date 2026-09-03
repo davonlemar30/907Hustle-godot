@@ -786,13 +786,16 @@ func _continue(payload: Dictionary) -> Dictionary:
 		var presented: Dictionary = adapter.present_next_round(chain)
 		if not bool(presented.get("ok", false)):
 			return presented
+		# Advance FIRST, while the result still says interim -- that flag is
+		# what `advance_stage` reads to allow `result` -> `decision` at all.
+		# Then clear the round's result so the new decision starts clean.
+		var moved_on: Dictionary = advance_stage(STAGE_DECISION)
+		if not bool(moved_on.get("ok", false)):
+			return moved_on
 		decision = gs.active_consequence.get("decision", {})
 		decision["result"] = {}
 		decision["resolved_tier"] = ""
 		gs.active_consequence["decision"] = decision
-		var moved_on: Dictionary = advance_stage(STAGE_DECISION)
-		if not bool(moved_on.get("ok", false)):
-			return moved_on
 		return {"ok": true, "stage": STAGE_DECISION, "slots_settled": 0, "interim": true}
 
 	var owed: int = 0

@@ -19928,7 +19928,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13282
+const MIN_CHECKS := 13286
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

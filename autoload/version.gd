@@ -53,7 +53,15 @@ extends Node
 ## triggers (SQ-D10). New player-facing surfaces and systems, squarely MINOR.
 ## No schema bump: everything this build needed was derivable from a field the
 ## game already kept.
-const VERSION := "0.6.0"
+##
+## 0.7.0 (Blow by Blow): every chain kind authors its own result copy and the
+## card's line is the situation (BB-D1/D2), every round of every room ends in a
+## result and beat damage lands at the beat (BB-D3/D4), the roads become one
+## button each with the street measured visible above them (BB-D6), the gate
+## floor rises with a cold cap and a first-walk guarantee, and PAY is a fourth
+## road on four cards (BB-D8/D9). New player-facing behaviour, squarely MINOR.
+## No schema bump: interim results ride the persisted chain's own blocks.
+const VERSION := "0.7.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

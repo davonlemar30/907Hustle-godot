@@ -28,6 +28,89 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 0.7.0 — Blow by Blow: five PRs (added 2026-09-03)
+
+Source: `BUILD_BLOW_BY_BLOW_PROMPT.md`, the owner's Full Game Vision document,
+ClickUp `86bbnk6en`. Rulings: `D-25` (BB-D1..D9, VOX-D1, MEAS-D1, VER-D1).
+Five PRs, `#127`, `#128`, `#129`, the street, the close-out.
+
+### What this build actually was
+
+The owner's directive was one sentence — "I want to see playable improvements
+in the next game" — and the build that answered it started from a live probe
+rather than a task list. A shakedown was forced open on the real build, STAND
+THERE committed, then SWING, and the result read. Six findings came out of
+that walk, each verified at a line, and a seventh out of the gate's numbers:
+
+1. Every street result fell through to the boost-caught copy. The sheet had
+   result arms for three chain kinds and fell through to shoplifting
+   vocabulary for everything else — which was every street encounter, every
+   checkpoint, every doorstep visit, Dre, the corner, the meetup.
+2. The card's opening line went to the activity feed, which the sheet covers.
+3. Beat damage was a deferred bill paid at the exit; the bar sat still.
+4. There was no result between rounds, only one log line under SO FAR.
+5. The strip printed BANKED $0 through a fight that banked health.
+6. The surrender road promised "everything you are carrying" and took $0 on a
+   clean-cash profile, because the seizure rule only reaches dirty cash.
+7. A clean player met the street 2.83 times in 30 walks, at a walk per slot.
+
+Every one of those is a number or a string, not a system, and that is what
+this build is: the chassis was done and the feel was not.
+
+### PR A — the words fit (`#127`, BB-D1, D2, D5, D7)
+
+One seam and two hundred lines of copy. `result_headline`/`result_body` on
+the engine's adapter-copy pattern, asked first; every adapter authors its own
+endings. The card's `line` rides the chain as `source.opener` and is the
+situation at round zero. The opponent is the title; "CONSEQUENCE" is gone.
+BANKED prints only when a loop banks cash (`banks_cash` derived in
+`loop_summary`). A guarantee line ends with the price computed from dirty
+cash and carried product.
+
+**The parity floor was a document.** `HANDOFF.md` said 13,281; the runner's
+constant said 12,836; a fresh run counted 13,281. Raised to the count.
+Confrontation 1,266 → 2,756: every road of every card and script rendered.
+
+### PR B — the hit lands (`#128`, BB-D3, D4)
+
+`ConfrontationLoop.present_interim` and `_continue`'s interim branch. Every
+room — wander, stickup, doorstep, corner, meetup — ends each round in a
+result the sheet renders like any other, and CONTINUE hands the chain back to
+the adapter's `present_next_round`. `STAGE_TRANSITIONS` gained `result ->
+decision`, refused for anything but an interim. Beat damage lands at the beat
+under `room_beat:<index>` receipts; exit tables no longer add it back.
+
+**The guard refused its own path.** The first `_continue` cleared the result
+before advancing; the guard reads the result. Parity's room drives caught it,
+the confrontation suite did not because it predated the guard. Advance first.
+
+Confrontation 2,756 → 2,845; parity 13,282 → 13,286. Live: 84 → 81 on the
+first beat with the delta row and the receipt.
+
+### PR C — the panel (`#129`, BB-D6)
+
+A road is a button and the line under it. The sheet is 58% of the viewport,
+no scrollbar track, no section label over the roads, the count leads the
+strip. The smoke suite lays out every authored card's decision and reads the
+card's resting top and every road's rect.
+
+**Headless said it fit; the phone said it did not.** The scrollbar track ate
+twelve pixels, a guarantee line wrapped onto a third row, and the fourth road
+went under the fold. A live rect read caught it. Smoke +88 panel checks.
+
+### PR D — the street shows up (BB-D8, D9)
+
+`GATE_BASE_CHANCE` 0.03 → 0.10, a cold streak-cap row of 8, the first
+encounter forced by the fourth walk. PAY on four cards, deterministic, blocked
+when unaffordable, dirty-first from either pocket, receipted, observed. Parity
+holds the cold band per seed across six seeds; confrontation 2,845 → 2,994.
+
+### PR E — close-out
+
+Version 0.7.0 (and `export_presets.cfg`, which 0.6.0 left at 0.5.0), the
+docs, D-25, and `docs/VISION_REVIEW.md` — the answer to the vision
+document's eight questions, with a recommended order for what follows.
+
 ## 0.6.0 — Squared Up: six PRs (added 2026-08-29)
 
 Source: `BUILD_SQUARED_UP_PROMPT.md`, ClickUp `86bbnk6en`. Rulings: `D-24`

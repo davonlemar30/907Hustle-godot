@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `0.6.0`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `0.7.0`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,80 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 0.7.0 — Blow by Blow: the hit lands, the words fit, the street shows up (2026-09-03)
+
+The owner's directive, in one line: *"I want to see playable improvements in
+the next game."* After 0.6.0 the confrontation chassis was complete and the
+popups still were not the fun part. A live walk through a shakedown found
+why, and every one of those findings is closed here.
+
+### The words fit
+
+Every street encounter, checkpoint, doorstep visit, Dre collection, corner
+script and 907List meetup used to end on the sheet's shoplifting copy. A
+three-round fistfight over nothing read "YOU DIDN'T GET FAR — The take is
+gone and the room remembers your face." Every road of every card and script
+now ends in its own words: twelve cards, road by road and tier by tier, the
+shakedown room's own roads, the crew calls, the checkpoint, the doorstep's
+three families, Dre, both corners, the meetup, and the stickup rooms. The
+card's own opening line is the situation on the sheet, where you can read it.
+The person in front of you is the headline. The word CONSEQUENCE, the
+engine's name for itself, no longer renders anywhere.
+
+A guaranteed road now states what it will actually take, computed from what
+is in your pockets and on your back: "Right now that is $160 in hand and 3
+units of product." When there is nothing to take, it says so, instead of
+promising a loss it cannot deliver.
+
+### The hit lands
+
+Every round of every room ends in a result before the next decision is on
+the table. In the shakedown room a beat's damage lands when the beat
+resolves, and the bar drains right there, with the exact number counting
+beside it. The totals did not move: every path costs exactly what it cost in
+0.6.0, it just costs it when it happens. The stickup rooms show the stack
+that just banked, the watch that bought the next move cheaper, and the slip
+that turned the room; the doorstep, the corner and the meetup show their own
+second rounds the same way.
+
+### The panel
+
+A road is one button with the line under it. Three roads used to stand 330
+pixels tall with the third under the fold; now four roads fit on the sheet
+with the street visible above it, and the test suite measures both facts on
+every card rather than trusting a screenshot.
+
+### The street shows up
+
+A clean player used to meet the street on fewer than three walks in thirty.
+The floor is a dime instead of three cents, a clean player can no longer walk
+more than eight quiet walks running, and a run's first encounter comes no
+later than its fourth walk. Measured across six seeds: four to nine
+encounters in thirty walks, with the hot profile's guarantees untouched.
+
+PAY is a fourth road on four cards, where money is the point: pay the two off
+the wall, slip the cop something, pay off the argument on the lot, settle the
+block's tax. A price is not a roll, and it is not the guaranteed out either —
+it is blocked when you cannot cover it, it comes out of either pocket, and
+the cop remembers who paid.
+
+#### Next up
+
+Replies on texts — the player has never said a word to anybody — is the
+smallest build with the biggest hole behind it; `docs/VISION_REVIEW.md`
+makes the case and orders what follows it: price causes and world prices,
+the ending (D-2, still the owner's ruling), Curtis's weekly pressure, then
+territory offense with a cheaper first block.
+
+### Under the hood
+
+No save-schema bump. Interim results ride the persisted chain's own result
+block and the loop's own note to itself; every new field is derived or
+transient. Parity 13,281 → 13,346. Confrontation 1,266 → 2,994.
+Smoke gained an 85-check panel arm that reads rects on every authored card.
+`export_presets.cfg`'s version, which 0.6.0 left at 0.5.0, moves with the
+build.
 
 ## 0.6.0 — Squared Up: it gets in your face, and it does not take the screen to do it (2026-08-29)
 

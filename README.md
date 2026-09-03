@@ -12,7 +12,7 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `0.6.0`** — shown bottom-right on the title screen, and stamped into
+**Current: `0.7.0`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
@@ -34,6 +34,42 @@ the first time somebody bumps one copy.
 
 *Full technical detail in [`CHANGELOG.md`](CHANGELOG.md) and
 [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
+
+### 0.7.0 — Blow by Blow: the hit lands, the words fit, the street shows up
+
+**Every encounter ends in its own words.** Every street encounter, checkpoint,
+doorstep visit, Dre collection, corner script and 907List meetup used to end on
+the sheet's shoplifting copy — a fistfight over nothing read "The take is gone
+and the room remembers your face." Every road of every card and script now
+says what it did, in the *Power* register: twelve street cards road by road,
+the shakedown room's own roads, the crew calls, the checkpoint, the doorstep's
+three families, Dre, both corners, the meetup, the stickup rooms. The card's
+opening line is the situation on the sheet, and the person in front of you is
+the headline.
+
+**The hit lands when it lands.** Every round of every room ends in a result
+before the next decision, and in the shakedown room a beat's damage lands when
+the beat resolves — the bar drains right there. The totals did not move; the
+timing did.
+
+**A road is a button.** Four roads fit on the sheet with the street visible
+above them, and the test suite measures both on every card.
+
+**The street shows up.** A clean player used to meet the street on fewer than
+three walks in thirty. The floor is a dime instead of three cents, a clean
+streak is capped at eight, and a run's first encounter comes no later than
+its fourth walk — four to nine encounters in thirty walks, measured across six
+seeds. PAY is a fourth road on four cards where money is the point: blocked
+when you cannot cover it, paid from either pocket, and the cop remembers.
+
+**A guaranteed road states its real price.** "Right now that is $160 in hand
+and 3 units of product" — computed from what the seizure rule can actually
+reach, so a road never promises a loss it cannot deliver.
+
+The vision document the owner shipped alongside this build is answered in
+[`docs/VISION_REVIEW.md`](docs/VISION_REVIEW.md): where the systems do not
+talk to each other, what a lose condition that feels earned looks like, and
+what should come next.
 
 ### 0.6.0 — Squared Up: it gets in your face, and it does not take the screen to do it
 
@@ -583,8 +619,9 @@ every screen's `ScrollContainer` subtree is walked for a Control stuck at
 `MOUSE_FILTER_STOP` or a button wired the wrong way, so the touch-scroll fix
 below can't regress silently.
 
-Current counts: parity 13,281 · save-validation 247 · territory 170 ·
-confrontation 1,266 · tips 93 · dre 404 · smoke 23/23 screens, 1,101 touch
+Current counts: parity 13,346 · save-validation 247 · territory 170 ·
+confrontation 2,994 · tips 93 · dre 404 · smoke 23/23 screens, 1,101 touch,
+54 component, 88 panel
 checks, 61 component checks.
 
 Smoke gained a second job in 0.6.0. Not everything renderable is a `.tscn` in
@@ -828,6 +865,7 @@ regardless of how small the source file is.
 | **0.3.0. Answer For It** | ✅ four PRs off `BUILD_ANSWER_FOR_IT_PROMPT.md`: a blown tier-1 stickup opens fight/run/talk/yield before booking instead of skipping straight to it (D-13); Heat gets an unconditional nightly floor alongside a bigger quiet-day discount, and Boost's tier-3 Run failure loses its unconditional arrest (D-14, closes escalation `86bbjk6kk`) — Boost's own share of the day job moves 13% → 24%; a second Spenard stickup target and a rep-scaled daily cap move stickup's measured share 2% → 6% solo, 8% combined with boost (D-15, closes `86bbjngyz`); plus phone/title UI fixes. Save schema unchanged at v24. Parity → **12,618 checks**, floor `MIN_CHECKS := 12618`. (A concurrent `#104` merged alongside this batch — a real Node-leak fix in save validation plus system-lookup hardening — and independently moved save-validation to 235 and smoke to 1,101 touch checks) |
 | **0.4.0. Repeat Business** | ✅ five PRs off `BUILD_REPEAT_BUSINESS_PROMPT.md`: a Score contract proves the Street Opportunity substrate generalizes past Dre's own content (SCR-D1..D3, D-16); a repeatable-contract generator rides the existing collection encounter with zero schema bump (REP-D1..D5, D-17); a four-template catalogue across three roles fills it out (CAT-D1..D4, D-18); Boost and Stick each get a per-family daily District Pressure cap on Market's own precedent, measured honestly as a partial result rather than a full close (PRESS-D1/D2, D-19, closes `86bbjk6jy`); a new `repeat_contractor` economy profile prices standing Dre income for the first time at 109% of the day job (closes `86bbp7cw2`). Save schema unchanged at v24. Parity → **12,637 checks**, floor `MIN_CHECKS := 12637`. Dre suite → **404 checks** (was 331) |
 | **0.5.0. The Street Answers Back** | ✅ five PRs off `BUILD_STREET_ANSWERS_PROMPT.md`: a seeded interruption gate reads Heat/Pressure/Curtis/debt before every wander, replacing two flat-weight encounter cards (STR-D1/D2, D-20); four new encounters including this build's first street multi-round room, and STASH_IT finally activated after sitting authored and unwired since Q4 (STR-D3/D5, D-21); the same gate on district travel, mutually exclusive with the older silent carry-stop tax (STR-D4, D-22); a doorstep forcing Dre/Book/rent debts onto the day's own agenda, worst-first, into a shared three-tenant enforcement room, with zero new persisted state (DOOR-D1/D2, D-23); version/docs close-out plus closing `86bbjnh0x` (pool staging, verified against current code rather than trusted stale) and commenting implementation-slice-one on `86bbnk6en`. Save schema v24 → **v25** (`wander_quiet_streak`, PR A only — the doorstep derives every threshold instead of persisting one). Parity → **12,763 checks**, floor `MIN_CHECKS := 12763` |
+| **0.7.0. Blow by Blow** | ✅ five PRs off `BUILD_BLOW_BY_BLOW_PROMPT.md`: a result-copy seam on the engine and endings authored for every road of every chain, with the card's line as the situation and the opponent as the title (BB-D1/D2/D5/D7, D-25); interim results on every room and beat damage landing at the beat under per-beat receipts, totals unchanged (BB-D3/D4); the roads rebuilt as one button each with the sheet measured on every card by the smoke suite (BB-D6); the gate floor raised, a cold streak cap, the first encounter forced by walk four, and PAY as a fourth road on four cards (BB-D8/D9); `docs/VISION_REVIEW.md` answering the owner's vision document. **Save schema unchanged at v25.** Parity → **13,346 checks**, confrontation → **2,994** |
 | **0.6.0. Squared Up** | ✅ six PRs off `BUILD_SQUARED_UP_PROMPT.md`: decision and result stages become a blocking `ModalSheet` over the street with a live animated health bar, extracted into one builder both presentations consume, reopened from the live chain after a reload with no persisted state (SQ-D1..D5, D-24); a structural Fight/Run/Surrender role per choice that closed the two guaranteed outs 0.5.0 shipped without, the shakedown room rewritten from a re-rolled verb into three authored beats, observations on every encounter, and `CREW_CALLS` consumed for the first time (SQ-D6..D9); eight new cards taking the wander pool from four to twelve, with the untouched interruption gate's rate proven unchanged both structurally and on the real build (POOL-D1); `MARKET_SCRIPTS` wired on the sell path and Post Up with Curtis's ledger reading both roads, plus the Lift audit and the stale "not yet wired" header corrected (SQ-D10); `MEETUP_SCRIPT` wired on the 907List's catastrophic meetup tier, the one room whose guaranteed out hands an asset BACK (SQ-D10); version/docs close-out reconciling `HANDOFF.md`'s state table, which had read parity 12,751 against a runner constant of 12,763 for a full release cycle. **Save schema unchanged at v25** — every field this build needed was derivable from one the game already kept. Parity → **13,276 checks**, confrontation → **1,248** |
 | 6. Cutover | — |
 

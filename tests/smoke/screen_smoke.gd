@@ -73,6 +73,7 @@ func _ready() -> void:
 	print("screen smoke: %d/%d instantiated" % [ok, names.size()])
 	print("screen smoke: touch checks %d/%d passed" % [touch_checks - touch_failed, touch_checks])
 	await _check_components(gs)
+	await _check_panel_fit(gs)
 	get_tree().quit.call_deferred(0)
 
 # --- runtime components (0.6.0 PR A) -----------------------------------------
@@ -226,3 +227,95 @@ func _declares_script(scene_name: String) -> bool:
 	var text := file.get_as_text()
 	file.close()
 	return text.contains("script = ExtResource")
+
+# --- the panel fits (0.7.0 PR C, BB-D6) --------------------------------------
+#
+# Two things a screenshot of the sheet kept looking fine about and were not:
+# the third road sat below the fold of a 375x812 phone, and "the street stays
+# visible behind it" was a hundred-pixel slice. Both are numbers, so both are
+# read here: the card's resting top against the viewport, and every road's
+# button rect against the sheet's own visible scroll rect. Every authored
+# street card is built against the REAL chain it opens -- the roads a card
+# offers depend on what the player is carrying and who is on the crew, and a
+# fixture would not know that.
+
+const WANDER_EVENTS := preload("res://data/wander_events.gd")
+## The fraction of the viewport, measured from the top, that must stay
+## uncovered above the sheet on a decision.
+const MIN_UNCOVERED := 0.35
+
+func _check_panel_fit(gs: Node) -> void:
+	var gm: Node = get_node("/root/GameManager")
+	var engine: Object = gm.system("consequence")
+	var wander: Object = gm.system("wander")
+	var checks := 0
+	var failed := 0
+	var viewport_h: float = get_viewport().get_visible_rect().size.y
+	for entry in WANDER_EVENTS.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != WANDER_EVENTS.KIND_ENCOUNTER:
+			continue
+		var card_id := str(card["id"])
+		gs.reset_to_new_game()
+		gs.inventory = {"weed": 3}
+		gs.active_consequence = {}
+		wander._play_encounter(card, "smoke:panel:%s" % card_id)
+		var content: Control = ENCOUNTER_SHEET.build_sheet(engine, gs, Callable())
+		checks += 1
+		if content == null:
+			printerr("PANEL FAILED: %s built no decision sheet" % card_id)
+			failed += 1
+			gs.active_consequence = {}
+			continue
+		var sheet := ModalSheet.new()
+		sheet.blocking = true
+		sheet.setup(content)
+		add_child(sheet)
+		# Three frames: one to enter the tree, one for the theme to resolve
+		# the labels' minimum sizes, one for the road buttons to grow to
+		# their overlays (`encounter_sheet.gd::_choice_card`).
+		for _frame in range(3):
+			await get_tree().process_frame
+
+		var card_rect: Rect2 = sheet._card.get_global_rect()
+		var uncovered: float = card_rect.position.y / maxf(1.0, viewport_h)
+		checks += 1
+		if uncovered < MIN_UNCOVERED:
+			printerr("PANEL FAILED: %s leaves %d%% of the street uncovered, need %d%%"
+				% [card_id, int(round(uncovered * 100.0)), int(round(MIN_UNCOVERED * 100.0))])
+			failed += 1
+
+		var scrolls: Array = content.find_children("*", "ScrollContainer", true, false)
+		checks += 1
+		if scrolls.is_empty():
+			printerr("PANEL FAILED: %s's sheet has no scroll container" % card_id)
+			failed += 1
+		else:
+			var visible: Rect2 = (scrolls[0] as Control).get_global_rect()
+			var roads := 0
+			for node in content.find_children("*", "Button", true, false):
+				var button: Button = node
+				if not button.has_meta(ENCOUNTER_SHEET.ACTION_META):
+					continue
+				if str(button.get_meta(ENCOUNTER_SHEET.ACTION_META)) != ENCOUNTER_SHEET.ACTION_COMMIT:
+					continue
+				roads += 1
+				var rect: Rect2 = button.get_global_rect()
+				checks += 1
+				if rect.position.y < visible.position.y - 0.5 \
+						or rect.end.y > visible.end.y + 0.5:
+					printerr("PANEL FAILED: %s's road '%s' is off the sheet without scrolling (%d-%d against %d-%d)"
+						% [card_id, str(button.get_meta(ENCOUNTER_SHEET.CHOICE_META)),
+							int(rect.position.y), int(rect.end.y),
+							int(visible.position.y), int(visible.end.y)])
+					failed += 1
+			checks += 1
+			if roads < 3:
+				printerr("PANEL FAILED: %s offers %d roads; the triad is three" % [card_id, roads])
+				failed += 1
+		sheet.queue_free()
+		await get_tree().process_frame
+	gs.active_consequence = {}
+	print("screen smoke: panel checks %d/%d passed" % [checks - failed, checks])
+	if failed > 0:
+		get_tree().quit.call_deferred(1)

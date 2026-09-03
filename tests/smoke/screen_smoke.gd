@@ -292,6 +292,13 @@ func _check_panel_fit(gs: Node) -> void:
 			failed += 1
 		else:
 			var visible: Rect2 = (scrolls[0] as Control).get_global_rect()
+			# What the card AUTHORS fits without scrolling. A road the
+			# situation adds on top -- STASH IT while carrying, a crew call
+			# while somebody is around -- is offered after the authored ones
+			# and may sit a drag away: five roads with a line under each do
+			# not fit above 35% of street, and the authored roads are the
+			# ones the player is owed at a glance.
+			var authored: Array = (card["encounter"] as Dictionary).get("choices", [])
 			var roads := 0
 			for node in content.find_children("*", "Button", true, false):
 				var button: Button = node
@@ -300,6 +307,8 @@ func _check_panel_fit(gs: Node) -> void:
 				if str(button.get_meta(ENCOUNTER_SHEET.ACTION_META)) != ENCOUNTER_SHEET.ACTION_COMMIT:
 					continue
 				roads += 1
+				if not str(button.get_meta(ENCOUNTER_SHEET.CHOICE_META)) in authored:
+					continue
 				var rect: Rect2 = button.get_global_rect()
 				checks += 1
 				if rect.position.y < visible.position.y - 0.5 \

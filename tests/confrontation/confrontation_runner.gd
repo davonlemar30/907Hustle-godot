@@ -77,7 +77,7 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## range, plus the two things that deliberately survive (the arrest warning and
 ## the guaranteed road's price) and the proof that the ENGINE still projects
 ## odds it no longer shows.
-const MIN_CHECKS := 2845
+const MIN_CHECKS := 2994
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -115,6 +115,7 @@ func _ready() -> void:
 	_check_no_odds_hints()
 	_check_result_voice()
 	_check_interim_results()
+	_check_pay_roads()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -2659,3 +2660,125 @@ func _check_interim_results() -> void:
 	a.eq_int("...on beat index one",
 		int(LOOP.loop_of(gs.active_consequence).get("beat_index", -1)), 1)
 	gs.active_consequence = {}
+
+# --- check block 21: BB-D8, the priced road (0.7.0 PR D) ---------------------
+#
+# PAY is optional per card, deterministic, never the guaranteed out, blocked
+# when the wallet cannot cover it, spent dirty-first from EITHER bucket, and
+# observed. Four cards carry it; the structural triad arm above is untouched
+# because the triad is still the rule and this is a road a card may add.
+
+const PAY_CARDS := {
+	"wander_shakedown": "pay_them",
+	"wander_stopped_on_foot": "slip_him_something",
+	"wander_lot_side": "pay_them_off",
+	"wander_territorial_beef": "settle_it_here",
+}
+
+func _check_pay_roads() -> void:
+	var wander: Object = gm.system("wander")
+	var engine: Object = _engine()
+	var wallet: Object = gm.system("wallet")
+	var exposure: Node = get_node_or_null("/root/Exposure")
+
+	# Structural: exactly the four, priced, deterministic, not the out.
+	var carriers: Array = []
+	for entry in EVENTS.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != EVENTS.KIND_ENCOUNTER:
+			continue
+		var pay_road := str(EVENTS.choice_for_role(card, EVENTS.ROLE_PAY))
+		if pay_road.is_empty():
+			continue
+		carriers.append(str(card["id"]))
+		var encounter: Dictionary = card["encounter"]
+		a.check("%s's pay road is one of its choices" % card["id"],
+			pay_road in (encounter["choices"] as Array))
+		a.check("%s's pay road is deterministic" % card["id"],
+			pay_road in (encounter.get("deterministic", []) as Array))
+		a.check("%s's pay road is not its surrender road" % card["id"],
+			pay_road != str(EVENTS.choice_for_role(card, EVENTS.ROLE_SURRENDER)))
+		a.check("%s's pay road has a price" % card["id"],
+			EVENTS.pay_price(card, pay_road) > 0)
+		a.check("%s's pay road has a label" % card["id"],
+			EVENTS.CHOICE_LABELS.has(pay_road))
+		a.check("%s's pay road states its price" % card["id"],
+			str(EVENTS.CHOICE_GUARANTEE.get(pay_road, "")).contains("$%d" % EVENTS.pay_price(card, pay_road)))
+	a.eq_int("four cards carry a priced road", carriers.size(), PAY_CARDS.size())
+	for card_id in PAY_CARDS.keys():
+		a.check("%s carries %s" % [card_id, PAY_CARDS[card_id]],
+			str(EVENTS.choice_for_role(EVENTS.card_by_id(str(card_id)), EVENTS.ROLE_PAY))
+				== str(PAY_CARDS[card_id]))
+
+	# Driven: blocked when broke, paid dirty-first from both pockets when not.
+	var card: Dictionary = EVENTS.card_by_id("wander_shakedown")
+	var price: int = EVENTS.pay_price(card, "pay_them")
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.inventory = {"weed": 2}
+	gs.cash = 20
+	gs.dirty_cash = 20
+	gs.clean_cash = 0
+	wander._play_encounter(card, "test:pay:broke")
+	a.check("a road you cannot afford says so",
+		str(engine.choice_blocked("pay_them")).contains("$%d" % price))
+	a.eq_bool("...and refuses the commit", _commit("pay_them"), false)
+	a.eq_str("...leaving the chain at decision", str(engine.active_stage()), "decision")
+	var rows: Array = engine.choice_summaries()
+	for row in rows:
+		if str((row as Dictionary)["choice_id"]) == "pay_them":
+			a.eq_bool("...and the sheet's row is disabled with the reason",
+				bool((row as Dictionary)["disabled"]), true)
+	gs.active_consequence = {}
+
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.npc_ledgers = {}
+	gs.inventory = {"weed": 2}
+	gs.cash = 140
+	gs.dirty_cash = 40
+	gs.clean_cash = 100
+	wander._play_encounter(card, "test:pay:paid")
+	var cause_id := str(gs.active_consequence.get("cause_id", ""))
+	a.check("a road you can afford is open", str(engine.choice_blocked("pay_them")).is_empty())
+	a.check("the priced road commits", _commit("pay_them"))
+	a.eq_str("...and resolves to result", str(engine.active_stage()), "result")
+	a.eq_int("the price leaves the wallet", int(gs.cash), 140 - price)
+	a.eq_int("...dirty first", int(wallet.dirty_balance()), 0)
+	a.eq_int("...then clean for the rest", int(wallet.clean_balance()), 100 - (price - 40))
+	a.eq_int("the goods are untouched", int(gs.inventory.get("weed", 0)), 2)
+	var result: Dictionary = (gs.active_consequence["decision"] as Dictionary)["result"]
+	a.eq_int("the result reports the price", int(result.get("cash", 0)), -price)
+	a.eq_str("the result reads as a transaction",
+		str(engine.result_headline("")), "YOU PAY THEM")
+	a.eq_bool("the payment is receipted",
+		engine.has_receipt(cause_id, "wander_encounter:paid"), true)
+	if exposure != null:
+		var ledger: Array = exposure.ledger_of(EVENTS.OBSERVATION_NPC)
+		a.eq_int("paying writes exactly one observation", ledger.size(), 1)
+		if not ledger.is_empty():
+			a.eq_str("...of the financial kind",
+				str((ledger[0] as Dictionary).get("type", "")), "financial")
+	# A replay cannot charge twice.
+	var after: int = int(gs.cash)
+	wander._resolve_pay(gs.active_consequence, "pay_them")
+	a.eq_int("a replayed payment charges nothing", int(gs.cash), after)
+	gm.dispatch("consequence_continue", {})
+	gs.active_consequence = {}
+
+	# The cop's price carries Heat, and only the cop's.
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.inventory = {"weed": 2}
+	gs.cash = 200
+	gs.dirty_cash = 200
+	gs.clean_cash = 0
+	gs.heat = 0.0
+	wander._play_encounter(EVENTS.card_by_id("wander_stopped_on_foot"), "test:pay:cop")
+	a.check("the cop's price commits", _commit("slip_him_something"))
+	a.check("paying a cop costs Heat", float(gs.heat) > 0.0)
+	a.eq_int("...and the price", int(gs.cash), 200 - EVENTS.pay_price(
+		EVENTS.card_by_id("wander_stopped_on_foot"), "slip_him_something"))
+	gm.dispatch("consequence_continue", {})
+	gs.active_consequence = {}
+	gs.npc_ledgers = {}

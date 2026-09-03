@@ -123,7 +123,7 @@ static func build_sheet(engine: Object, gs: Node, wire: Callable) -> Control:
 		return null
 
 	var inner := VBoxContainer.new()
-	inner.add_theme_constant_override("separation", 10)
+	inner.add_theme_constant_override("separation", 8)
 	for control in build_situation(engine, gs, summary):
 		inner.add_child(control)
 	match stage:
@@ -136,11 +136,17 @@ static func build_sheet(engine: Object, gs: Node, wire: Callable) -> Control:
 
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# BB-D6: no scrollbar track. On a phone the sheet scrolls by drag, and a
+	# visible bar eats twelve pixels of width, which wraps a guarantee line
+	# onto a third row, which is what pushed the fourth road under the fold
+	# on the live build while the headless measurement said it fit.
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# 62% of the viewport: tall enough that a three-lane decision reads without
-	# scrolling at all on most cards, short enough that the street behind the
-	# sheet is never fully covered — SQ-D1's whole point is that it stays
-	# visible.
+	# BB-D6 (0.7.0): 58% of the viewport, down from 62%. With the roads as
+	# compact buttons (below) a three-road decision fits inside it without
+	# scrolling, and at least 35% of the screen above the sheet stays
+	# uncovered -- measured as the card's resting top in the smoke suite,
+	# not eyeballed. SQ-D1's whole point is that the street stays visible.
 	scroll.custom_minimum_size = Vector2(0, mini(SHEET_MAX_HEIGHT,
 		int(_viewport_height(gs) * SHEET_HEIGHT_FRACTION)))
 	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -154,8 +160,8 @@ static func build_sheet(engine: Object, gs: Node, wire: Callable) -> Control:
 	pad.add_child(scroll)
 	return pad
 
-const SHEET_HEIGHT_FRACTION := 0.62
-const SHEET_MAX_HEIGHT := 560
+const SHEET_HEIGHT_FRACTION := 0.58
+const SHEET_MAX_HEIGHT := 480
 
 ## The viewport's height, or the design height when there is no tree to ask
 ## (every headless suite). 812 is the design target this whole build is drawn
@@ -180,7 +186,7 @@ static func build_situation(engine: Object, gs: Node, summary: Dictionary) -> Ar
 	var out: Array = []
 	var c := _card()
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 6)
+	v.add_theme_constant_override("separation", 5)
 	# BB-D2 (0.7.0): the WHO is the headline. The kind's own phrase (SOMEBODY
 	# STOPS YOU, CAUGHT, CHECKPOINT) moves up into the kicker, where the word
 	# CONSEQUENCE used to sit -- the engine's name for itself, which the player
@@ -207,10 +213,12 @@ static func build_situation(engine: Object, gs: Node, summary: Dictionary) -> Ar
 	var loop: Dictionary = engine.loop_summary()
 	var contested: int = int(summary.get("contested_take", 0))
 	if not loop.is_empty():
-		stakes.append("STAGE %d/%d" % [int(loop.get("stage", 0)) + 1,
-			maxi(1, int(loop.get("stage_count", 1)))])
+		# BB-D6: the count leads -- "they are people" is the first thing the
+		# strip says, right under the bar it sits against.
 		stakes.append("%s %d" % [str(loop.get("left_label", "LEFT")),
 			int(loop.get("left", 0))])
+		stakes.append("STAGE %d/%d" % [int(loop.get("stage", 0)) + 1,
+			maxi(1, int(loop.get("stage_count", 1)))])
 		# BB-D5 (0.7.0): money only when it is money. A street fight banks
 		# health, not dollars, and printed BANKED $0 through three rounds of it.
 		if bool(loop.get("banks_cash", false)):
@@ -409,71 +417,81 @@ static func build_decision(engine: Object, _summary: Dictionary, wire: Callable)
 	if rows.is_empty():
 		out.append(_label("No way out of this one.", "Muted", 13, MUTED, true))
 		return out
-	out.append(_section("HOW DO YOU PLAY IT"))
+	# BB-D6: no section label over the roads. The header already says who is
+	# in front of you; the roads are the roads, and the eighteen pixels the
+	# label cost were the difference between a fourth road on the sheet and a
+	# fourth road under the fold.
 	for entry in rows:
 		out.append(_choice_card(engine, entry, wire))
 	return out
 
+## BB-D6 (0.7.0): a road is a button and the line under it, nothing more. It
+## used to be a card holding a title, a line of copy and a full-width button
+## that repeated the title -- three roads stood 330px tall and the third was
+## off the bottom of the sheet on a 375x812 phone. The title card is gone: the
+## button carries the label, the copy sits under it, and the guaranteed price
+## or the arrest warning sits under that where one applies. TOUCH-D3a's
+## `tap_connect` wiring is unchanged -- the caller still receives a Button.
+##
+## The inert states keep their meaning (PX-003 §15/§16): LOCKED IN on the
+## committed road, a dash on the others, the blocked reason on a road blocked
+## on its own terms.
 static func _choice_card(engine: Object, row: Dictionary, wire: Callable) -> Control:
-	var c := _card()
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 5)
 	var choice_id := str(row["choice_id"])
 	var committed: bool = bool(row["committed"])
+	var disabled: bool = bool(row["disabled"])
+	var deterministic: bool = bool(row.get("deterministic", false))
+
+	var v := VBoxContainer.new()
+	v.mouse_filter = Control.MOUSE_FILTER_PASS
+	v.add_theme_constant_override("separation", 3)
+
+	if disabled:
+		var inert := Button.new()
+		inert.theme_type_variation = &"BtnSecondary"
+		var blocked_reason := str(row.get("blocked_reason", ""))
+		if committed:
+			inert.text = "%s  ·  LOCKED IN" % str(row["label"]).to_upper()
+		elif not blocked_reason.is_empty():
+			inert.text = "%s  ·  %s" % [str(row["label"]).to_upper(), blocked_reason]
+		else:
+			inert.text = str(row["label"]).to_upper()
+		inert.disabled = true
+		inert.focus_mode = Control.FOCUS_NONE
+		inert.custom_minimum_size = Vector2(0, ROAD_BUTTON_HEIGHT)
+		inert.add_theme_font_size_override("font_size", 13)
+		inert.modulate = Color(1, 1, 1, 0.85 if committed else 0.45)
+		v.add_child(inert)
+		return v
+
+	# The guaranteed road reads as the quieter slab: it is the out, not the
+	# play. Every rolled road is the primary tone.
+	var b := _action_button(str(row["label"]).to_upper(), ACTION_COMMIT, choice_id, wire)
+	if deterministic:
+		b.theme_type_variation = &"BtnSecondary"
+	b.custom_minimum_size = Vector2(0, ROAD_BUTTON_HEIGHT)
+	v.add_child(b)
 
 	# SQ-D12: no odds chip. The lane is its name and what it is for, and the
-	# player finds out the rest by doing it.
-	v.add_child(_label(str(row["label"]).to_upper(), "CardTitle", 14,
-		CREAM if not bool(row["disabled"]) or committed else MUTED))
-
-	# Through the engine's adapter seam, so a chain kind with its own vocabulary
-	# says its own words. `CHOICE_COPY` above is the default and still covers
-	# the three original kinds.
+	# player finds out the rest by doing it. Through the engine's adapter seam,
+	# so a chain kind with its own vocabulary says its own words.
 	v.add_child(_label(engine.choice_description(choice_id,
 		str(CHOICE_COPY.get(choice_id, ""))), "Muted", 11, MUTED, true))
 
 	# The one thing that survives SQ-D12, and the reason it survives: a
 	# guaranteed road is not a probability the player is being denied, it is a
-	# PRICE, and a price is knowable before you pay it. PX-003 §4 already said
-	# "Yield has no probability treatment" — that was true when there were odds
-	# to withhold and it is still true now that there are none.
-	if bool(row.get("deterministic", false)):
+	# PRICE, and a price is knowable before you pay it.
+	if deterministic:
 		v.add_child(_label(engine.choice_guarantee(choice_id,
 			"Guaranteed: no injury, no Heat, no arrest."), "Muted", 11, CYAN, true))
 
 	var warning := str(ARREST_WARNINGS.get(str(row.get("arrest_risk", "")), ""))
 	if not warning.is_empty():
 		v.add_child(_label(warning, "Mono", 11, ORANGE, true))
+	return v
 
-	# PX-003 §15 and §16: the committed choice stays visibly selected and every
-	# lane goes inert. The lock is a LABEL as well as a state, because a dimmed
-	# button and a disabled button look the same and mean different things.
-	if committed:
-		v.add_child(_label("LOCKED IN", "Mono", 11, CYAN))
-	if bool(row["disabled"]):
-		var inert := Button.new()
-		inert.theme_type_variation = &"BtnSecondary"
-		# Three reasons a lane can be inert, and only one is silent: locked in
-		# is its own label above, some OTHER lane being committed says nothing
-		# about THIS one so a dash is honest, and a choice blocked on its own
-		# terms (a bribe short of its price) says so rather than pretending to
-		# be the same case as a plain "not what you picked".
-		var blocked_reason := str(row.get("blocked_reason", ""))
-		if committed:
-			inert.text = "COMMITTED"
-		elif not blocked_reason.is_empty():
-			inert.text = blocked_reason
-		else:
-			inert.text = "—"
-		inert.disabled = true
-		inert.custom_minimum_size = Vector2(0, 46)
-		inert.modulate = Color(1, 1, 1, 0.85 if committed else 0.45)
-		v.add_child(inert)
-	else:
-		v.add_child(_action_button(str(row["label"]).to_upper(),
-			ACTION_COMMIT, choice_id, wire))
-	c.add_child(v)
-	return c
+## One road's button, the slab the player actually taps.
+const ROAD_BUTTON_HEIGHT := 42.0
 
 # --- result -----------------------------------------------------------------
 

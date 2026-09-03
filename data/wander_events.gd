@@ -99,6 +99,15 @@ const ROLE_RUN := "run"
 const ROLE_SURRENDER := "surrender"
 const ROLES: Array[String] = [ROLE_FIGHT, ROLE_RUN, ROLE_SURRENDER]
 
+## BB-D8 (0.7.0): the fourth road, where money is the point. Optional per
+## card -- the triad above is the rule, this is a road a card MAY add -- and
+## never the guaranteed out: it is deterministic (a price is not a roll) but
+## it is blocked when the wallet cannot cover it, which a guaranteed out never
+## is. Drug Lord 2 makes bribe a standing verb; here it is a verb the
+## situation earns, on four cards, at a stated price.
+const ROLE_PAY := "pay"
+const OPTIONAL_ROLES: Array[String] = [ROLE_PAY]
+
 ## ## Observations (SQ-D8, 0.6.0)
 ##
 ## Every encounter writes one, on RESOLUTION, keyed by the road taken and the
@@ -136,6 +145,9 @@ const OBSERVATION_FALLBACK := {
 		"messy": {"type": "submission", "event": "gave_it_up"},
 		"failure": {"type": "submission", "event": "gave_it_up"},
 		"catastrophic": {"type": "submission", "event": "gave_it_up"},
+	},
+	ROLE_PAY: {
+		"deterministic": {"type": "financial", "event": "paid_to_be_left_alone"},
 	},
 }
 
@@ -355,7 +367,12 @@ const BREADCRUMBS: Array[String] = [
 # BURNING/HOT/approaching player also carrying overdue debt, 3+3+3+3 = 12
 # steps) to approach the ceiling without guaranteeing an encounter on every
 # single walk; the guarantee is the streak cap below, not this roll.
-const GATE_BASE_CHANCE := 0.03
+## BB-D9 (0.7.0): 0.03 -> 0.10. At three percent a clean day-one player met
+## the street on 2.83 of 30 walks (0.6.0's own measurement), and a walk costs
+## one of four daily slots -- a player who walked twice a day saw the best
+## system in the game once every five days. The hot profile's guarantees
+## (`QUIET_STREAK_CAPS` below) are untouched.
+const GATE_BASE_CHANCE := 0.10
 const GATE_PER_STEP_CHANCE := 0.05
 const GATE_CAP := 0.60
 ## Flat step bonus for "any overdue debt" — sized to match the top of any one
@@ -380,15 +397,34 @@ const QUIET_STREAK_CAPS: Array[Dictionary] = [
 	{"min_steps": 6, "cap": 2},
 	{"min_steps": 3, "cap": 3},
 	{"min_steps": 1, "cap": 5},
+	# BB-D9: the cold row. A clean player used to have NO cap at all -- the
+	# streak could climb forever -- and now cannot walk more than eight quiet
+	# walks running. Last, because rows are matched top-down and this one
+	# matches everybody.
+	{"min_steps": 0, "cap": 8},
 ]
+
+## BB-D9: a run's first encounter is forced open no later than this walk,
+## when the pool has anything in it. The first day should show the player
+## what a walk can cost; four walks is one day.
+const FIRST_ENCOUNTER_BY_WALK := 4
 
 ## The chance this walk's gate opens, given the total attention steps
 ## `wander.gd` has already counted. Clamped at the authored floor and
 ## ceiling — never truly zero (every walk rolls, per STR-D1), never a
 ## guarantee (the streak cap is what guarantees, not this number).
 static func gate_chance(total_steps: int) -> float:
-	return clampf(GATE_BASE_CHANCE + GATE_PER_STEP_CHANCE * float(maxi(0, total_steps)),
-		GATE_BASE_CHANCE, GATE_CAP)
+	return gate_chance_from(GATE_BASE_CHANCE, total_steps)
+
+## The same curve from a caller's own floor. BB-D9 raised the WANDER floor;
+## the checkpoint (`data/travel_events.gd`) keeps the old one, because a
+## district crossing is not a walk -- arbitrage is built entirely out of
+## crossings and a tripled checkpoint rate cut it from 158% of the day job
+## to 47% on parity's own sweep. The per-step climb and the ceiling are
+## shared; only the floor is the caller's.
+static func gate_chance_from(base: float, total_steps: int) -> float:
+	return clampf(base + GATE_PER_STEP_CHANCE * float(maxi(0, total_steps)),
+		base, GATE_CAP)
 
 ## The streak cap for this many steps, or -1 for "no cap" (steps at or below
 ## every authored row's floor). -1 rather than 0 so a caller can never
@@ -587,17 +623,22 @@ const CARDS: Array[Dictionary] = [
 			"definition_id": "wander_shakedown",
 			"opponent": "Two off the wall",
 			"shape": "confrontation",
-			"choices": ["stand", "walk", "hand_over"],
+			"choices": ["stand", "walk", "pay_them", "hand_over"],
 			# SQ-D6. This card already offered all three positions; the roles
-			# make that structural instead of coincidental.
+			# make that structural instead of coincidental. BB-D8 adds the
+			# fourth at the door only -- once the room opens there is no
+			# price on it.
 			"roles": {"stand": ROLE_FIGHT, "walk": ROLE_RUN,
-				"hand_over": ROLE_SURRENDER},
+				"pay_them": ROLE_PAY, "hand_over": ROLE_SURRENDER},
 			# SQ-D9: two of them on a corner is exactly the situation Tone's
 			# own terms describe -- he is told when something has already
 			# started, not aimed at something you are starting.
 			"admits_crew": true,
-			"deterministic": ["hand_over"],
+			"deterministic": ["pay_them", "hand_over"],
 			"base": {"stand": 0.45, "walk": 0.60},
+			"observations": {
+				"pay_them": {"type": "financial", "event": "paid_to_be_left_alone"},
+			},
 			# STAND is the fight verb (STR-D5): clean settles it on the spot —
 			# they decide you are not worth it — anything else is the fight not
 			# ending here, so it escalates into the room instead of resolving.
@@ -622,6 +663,10 @@ const CARDS: Array[Dictionary] = [
 				},
 				"hand_over": {
 					"deterministic": {"health": 0, "cash_fraction": 1.0, "goods_fraction": 1.0},
+				},
+				# BB-D8: a flat price, from either bucket, and nothing else.
+				"pay_them": {
+					"deterministic": {"health": 0, "cash_flat": 60, "goods_fraction": 0.0},
 				},
 			},
 			# --- SQ-D7: the room, as three authored beats ---------------------
@@ -770,11 +815,14 @@ const CARDS: Array[Dictionary] = [
 			#
 			# No crew call here (SQ-D9): Tone standing next to you does not end
 			# a police stop, it adds a second person in cuffs.
-			"choices": ["talk", "keep_walking", "hands_out"],
+			# BB-D8: the one police card that takes money, because this is the
+			# one cop who is alone with you. It costs Heat as well as cash -- a
+			# cop who takes money remembers who paid.
+			"choices": ["talk", "keep_walking", "slip_him_something", "hands_out"],
 			"roles": {"talk": ROLE_FIGHT, "keep_walking": ROLE_RUN,
-				"hands_out": ROLE_SURRENDER},
+				"slip_him_something": ROLE_PAY, "hands_out": ROLE_SURRENDER},
 			"admits_crew": false,
-			"deterministic": ["hands_out"],
+			"deterministic": ["slip_him_something", "hands_out"],
 			"base": {"talk": 0.62, "keep_walking": 0.48},
 			# A police stop is not a corner beef, and the roles' generic
 			# fallback would write `violence` for a road that is entirely
@@ -788,6 +836,7 @@ const CARDS: Array[Dictionary] = [
 					"catastrophic": {"type": "heat_exposure", "event": "searched_on_the_street"},
 				},
 				"hands_out": {"type": "submission", "event": "searched_on_the_street"},
+				"slip_him_something": {"type": "heat_exposure", "event": "bribed_a_cop"},
 				"stash_it": {
 					"clean": {"type": "discretion", "event": "carried_clean_through"},
 					"failure": {"type": "heat_exposure", "event": "searched_on_the_street"},
@@ -800,6 +849,10 @@ const CARDS: Array[Dictionary] = [
 				"hands_out": {
 					"deterministic": {"health": 0, "cash_fraction": 0.0,
 						"goods_fraction": 1.0, "heat": 0.5},
+				},
+				"slip_him_something": {
+					"deterministic": {"health": 0, "cash_flat": 80, "goods_fraction": 0.0,
+						"heat": 1.0},
 				},
 				"talk": {
 					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
@@ -1224,11 +1277,11 @@ const CARDS: Array[Dictionary] = [
 			# thing in this file. The trade is legible before the player
 			# commits, because the odds band says STRONG and nothing hides
 			# that heat is what it costs.
-			"choices": ["put_them_down", "go_around", "hands_up"],
+			"choices": ["put_them_down", "go_around", "pay_them_off", "hands_up"],
 			"roles": {"put_them_down": ROLE_FIGHT, "go_around": ROLE_RUN,
-				"hands_up": ROLE_SURRENDER},
+				"pay_them_off": ROLE_PAY, "hands_up": ROLE_SURRENDER},
 			"admits_crew": true,
-			"deterministic": ["hands_up"],
+			"deterministic": ["pay_them_off", "hands_up"],
 			"base": {"put_them_down": 0.78, "go_around": 0.60},
 			"observations": {
 				"put_them_down": {"type": "violence", "event": "beat_somebody_in_public"},
@@ -1239,8 +1292,14 @@ const CARDS: Array[Dictionary] = [
 					"catastrophic": {"type": "violence", "event": "caught_from_behind"},
 				},
 				"hands_up": {"type": "submission", "event": "gave_it_up"},
+				"pay_them_off": {"type": "financial", "event": "paid_to_be_left_alone"},
 			},
 			"effects": {
+				# BB-D8: the cheapest price in the roster, because what they
+				# want is to be paid for not caring about you.
+				"pay_them_off": {
+					"deterministic": {"health": 0, "cash_flat": 30, "goods_fraction": 0.0},
+				},
 				# Every tier of the fight road carries Heat, including the
 				# clean one. That is the point: you did not lose, you were
 				# seen.
@@ -1387,11 +1446,11 @@ const CARDS: Array[Dictionary] = [
 			"definition_id": "wander_territorial_beef",
 			"opponent": "The ones who work this block",
 			"shape": "confrontation",
-			"choices": ["it_is_my_block", "not_today", "off_the_block"],
+			"choices": ["it_is_my_block", "not_today", "settle_it_here", "off_the_block"],
 			"roles": {"it_is_my_block": ROLE_FIGHT, "not_today": ROLE_RUN,
-				"off_the_block": ROLE_SURRENDER},
+				"settle_it_here": ROLE_PAY, "off_the_block": ROLE_SURRENDER},
 			"admits_crew": true,
-			"deterministic": ["off_the_block"],
+			"deterministic": ["settle_it_here", "off_the_block"],
 			"base": {"it_is_my_block": 0.46, "not_today": 0.54},
 			"observations": {
 				"it_is_my_block": {
@@ -1407,8 +1466,16 @@ const CARDS: Array[Dictionary] = [
 					"catastrophic": {"type": "territory", "event": "run_off_the_block"},
 				},
 				"off_the_block": {"type": "submission", "event": "ceded_the_corner"},
+				# A tax paid is a tax Curtis's ledger reads the same way it
+				# reads his own man being paid: the block is theirs, you
+				# agreed, and you kept working.
+				"settle_it_here": {"type": "submission", "event": "paid_the_tax"},
 			},
 			"effects": {
+				# BB-D8: a cut for the block, and you keep what you brought.
+				"settle_it_here": {
+					"deterministic": {"health": 0, "cash_flat": 50, "goods_fraction": 0.0},
+				},
 				"it_is_my_block": {
 					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0,
 						"heat": 1.0},
@@ -1558,6 +1625,11 @@ const CHOICE_LABELS := {
 	"step_in": "STEP IN",
 	"cross_over": "CROSS OVER",
 	"look_away": "LOOK AWAY",
+	# BB-D8: the four priced roads.
+	"pay_them": "PAY THEM",
+	"slip_him_something": "SLIP HIM SOMETHING",
+	"pay_them_off": "PAY THEM OFF",
+	"settle_it_here": "SETTLE IT HERE",
 }
 
 const CHOICE_COPY := {
@@ -1606,6 +1678,11 @@ const CHOICE_COPY := {
 	"step_in": "It is not your problem until you make it yours.",
 	"cross_over": "Other side of the street, same pace, eyes forward.",
 	"look_away": "Somebody is going to remember that you saw.",
+	# BB-D8. A price is a price; the copy says what it buys.
+	"pay_them": "Sixty dollars buys the corner's patience. Cheaper than the bag, if you have it.",
+	"slip_him_something": "Eighty dollars folded small. He takes it or he takes you in, and you find out which.",
+	"pay_them_off": "Thirty dollars and the argument goes back to being theirs.",
+	"settle_it_here": "A cut for the block, and you keep working it. Curtis's people will hear you paid.",
 }
 
 ## The line under a DETERMINISTIC road, stating its guaranteed price.
@@ -1641,6 +1718,11 @@ const CHOICE_GUARANTEE := {
 	"look_away": "Guaranteed: nothing happens to you at all. Somebody will remember that you saw.",
 	"call_tone": "Guaranteed: it ends. It costs a favor you will want back later.",
 	"let_deshawn_talk": "Guaranteed: everybody walks, and you keep what you were carrying.",
+	# BB-D8: a flat price from either pocket, stated whole.
+	"pay_them": "Guaranteed: $60, and they let you keep walking with the rest.",
+	"slip_him_something": "Guaranteed: $80, no search, and a cop who knows your face and your price.",
+	"pay_them_off": "Guaranteed: $30. Nobody swings, and you keep what is on you.",
+	"settle_it_here": "Guaranteed: $50, and you keep what you brought.",
 }
 
 ## What happened, in the card's own voice -- BB-D1 (0.7.0).
@@ -1677,6 +1759,9 @@ const RESULT_COPY := {
 		},
 		"hand_over": {
 			"deterministic": ["YOU HAND IT OVER", "Nobody has to touch you. Whatever was in your pockets and on your back goes with them, and the corner goes back to being a corner."],
+		},
+		"pay_them": {
+			"deterministic": ["YOU PAY THEM", "Sixty dollars changes hands and the corner loses interest. They did not want a fight. They wanted to be paid for not having one."],
 		},
 		"room": {
 			"swing": {
@@ -1715,6 +1800,9 @@ const RESULT_COPY := {
 		},
 		"hands_out": {
 			"deterministic": ["THE SEARCH FINDS WHAT IS THERE", "You keep your hands where he can see them and let him find what he finds. It ends on his terms, and it ends."],
+		},
+		"slip_him_something": {
+			"deterministic": ["HE TAKES IT", "It goes into his pocket without a look. The search does not happen. He will remember exactly who paid, and what for."],
 		},
 		"stash_it": {
 			"clean": ["NOTHING ON YOU", "By the time his hand reaches your pocket there is nothing in it. He knows there was. He cannot prove it."],
@@ -1822,6 +1910,9 @@ const RESULT_COPY := {
 		"hands_up": {
 			"deterministic": ["HANDS UP", "Nobody swings. Half of what is on you leaves with the two of them, and the argument resumes without you."],
 		},
+		"pay_them_off": {
+			"deterministic": ["YOU PAY THEM OFF", "Thirty dollars, split however they split it. They go back to arguing and you go around."],
+		},
 	},
 	"wander_wrong_place": {
 		"say_your_piece": {
@@ -1873,6 +1964,9 @@ const RESULT_COPY := {
 		"off_the_block": {
 			"deterministic": ["OFF THE BLOCK", "You agree not to work here and leave half of what you brought as the agreement. The block saw who moved."],
 		},
+		"settle_it_here": {
+			"deterministic": ["YOU SETTLE IT", "Fifty dollars and the block lets you work. It is a tax now, and they will remember that you paid it."],
+		},
 	},
 	"wander_somebody_elses_problem": {
 		"step_in": {
@@ -1913,6 +2007,15 @@ static func result_copy(card_id: String, choice_id: String, tier: String,
 	if road.has("*"):
 		return road["*"]
 	return []
+
+## BB-D8: the price of a card's PAY road at the door, or 0 for a card without
+## one. Read off the authored `cash_flat`, so the table is the one owner.
+static func pay_price(card: Dictionary, choice_id: String) -> int:
+	if role_of(card, choice_id) != ROLE_PAY:
+		return 0
+	var effects: Dictionary = (card.get("encounter", {}) as Dictionary).get("effects", {})
+	return int(((effects.get(choice_id, {}) as Dictionary).get("deterministic", {}) as Dictionary)
+		.get("cash_flat", 0))
 
 static func card_by_id(card_id: String) -> Dictionary:
 	for card in CARDS:

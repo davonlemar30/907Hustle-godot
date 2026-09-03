@@ -20,6 +20,12 @@ extends RefCounted
 ## actually illegal to be holding. No line here is lifted or paraphrased
 ## from any outside source; the register is emulated, not quoted.
 
+## The checkpoint's own gate floor -- the number the wander gate ALSO used
+## until 0.7.0 raised its floor (BB-D9). A crossing keeps the quieter floor:
+## the per-step climb with Heat, Pressure, Curtis and debt is shared with the
+## walk, the floor is not. See `wander_events.gd::gate_chance_from`.
+const CHECKPOINT_BASE_CHANCE := 0.03
+
 const CHECKPOINT := {
 	"definition_id": "travel_patrol_stop",
 	"opponent": "The patrol car",

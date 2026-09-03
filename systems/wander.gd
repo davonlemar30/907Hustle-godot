@@ -384,6 +384,12 @@ func _roll_gate() -> Dictionary:
 	var steps: int = attention_steps()
 	var cap: int = EVENTS.quiet_streak_cap(steps)
 	var forced: bool = cap >= 0 and int(gs.wander_quiet_streak) >= cap
+	# BB-D9 (0.7.0): a run's first encounter comes no later than its fourth
+	# walk. `wander_count` already counts this walk; a streak equal to every
+	# walk before it means nothing has ever opened.
+	if not forced and int(gs.wander_count) >= EVENTS.FIRST_ENCOUNTER_BY_WALK \
+			and int(gs.wander_quiet_streak) >= int(gs.wander_count) - 1:
+		forced = true
 	var pool: Array = eligible_encounters()
 	if pool.is_empty():
 		gs.wander_quiet_streak = int(gs.wander_quiet_streak) + 1
@@ -1099,6 +1105,25 @@ func choice_label(choice_id: String) -> String:
 func choice_copy(choice_id: String) -> String:
 	return str(EVENTS.CHOICE_COPY.get(choice_id, ""))
 
+## BB-D8: a priced road is blocked when the wallet cannot cover it, in either
+## bucket -- a bribe is money, not street-visible money, so clean counts. The
+## engine asks BEFORE the commit receipt is claimed (`choice_blocked`'s own
+## seam), so a blocked tap costs nothing.
+func choice_blocked(choice_id: String) -> String:
+	var chain: Dictionary = gs.active_consequence
+	if chain.is_empty():
+		return ""
+	var card: Dictionary = EVENTS.card_by_id(
+		str((chain.get("source", {}) as Dictionary).get("card_id", "")))
+	var price: int = EVENTS.pay_price(card, choice_id)
+	if price <= 0:
+		return ""
+	var wallet: Object = gm.system("wallet") if gm != null else null
+	var held: int = int(wallet.balance()) if wallet != null else int(gs.cash)
+	if held < price:
+		return "You don't have $%d." % price
+	return ""
+
 ## The certainty line under a deterministic road (ENC-D6's seam). Empty falls
 ## back to the screen's own "no injury, no Heat, no arrest" — which is true for
 ## none of this file's surrender roads, so every one of them authors its own.
@@ -1216,6 +1241,13 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	if SCRIPTS.CREW_CALLS.has(choice_id):
 		return _resolve_crew_call(chain, choice_id)
 
+	# BB-D8: a priced road is a transaction, not a roll, and it reaches BOTH
+	# pockets -- which is why it does not go through `apply_effects`' luggage
+	# rule (dirty in hand only). Door only; a room's beats author no price.
+	if not LOOP.has_loop(chain) \
+			and EVENTS.role_of(EVENTS.card_by_id(card_id), choice_id) == EVENTS.ROLE_PAY:
+		return _resolve_pay(chain, choice_id)
+
 	# The room (STR-D5, rewritten to authored beats by SQ-D7): once
 	# `decision.loop` exists, every further commit on this chain is a round of
 	# it, never a fresh resolution — the same branch stickup.gd's own
@@ -1282,6 +1314,44 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	chain["decision"] = decision
 	engine.advance_stage(engine.STAGE_RESULT)
 	return {"ok": true, "tier": tier, "arrested": false}
+
+## BB-D8: the priced road. The price leaves the wallet dirty-first (the
+## routine policy every ordinary spend uses), Heat lands where the card
+## authors it (the cop), the observation is the card's own, and the result
+## reads as a transaction because it was one.
+func _resolve_pay(chain: Dictionary, choice_id: String) -> Dictionary:
+	var engine: Object = gm.system("consequence")
+	var decision: Dictionary = chain.get("decision", {})
+	var source: Dictionary = chain.get("source", {})
+	var card: Dictionary = EVENTS.card_by_id(str(source.get("card_id", "")))
+	var row: Dictionary = (((card.get("encounter", {}) as Dictionary).get("effects", {})
+		as Dictionary).get(choice_id, {}) as Dictionary).get("deterministic", {})
+	var price: int = int(row.get("cash_flat", 0))
+	var cause_id := str(chain.get("cause_id", ""))
+	var paid: int = 0
+	var wallet: Object = gm.system("wallet") if gm != null else null
+	if price > 0 and wallet != null \
+			and engine.record_receipt(cause_id, "wander_encounter:paid"):
+		paid = mini(price, int(wallet.balance()))
+		if paid > 0:
+			wallet.spend(paid, wallet.ROUTINE_DIRTY_FIRST,
+				{"source_id": "wander_encounter:%s" % choice_id})
+	var heat_gain: float = 0.0
+	if float(row.get("heat", 0.0)) > 0.0 \
+			and engine.record_receipt(cause_id, "wander_encounter:paid_heat"):
+		heat_gain = LOOP.apply_heat(gs, gm, float(row["heat"]), "wander_encounter")
+	gs.log_activity("You pay, and it stops being a conversation.", AMBER)
+	_record_encounter_observation(chain, choice_id, "deterministic")
+	var result := {
+		"choice_id": choice_id, "tier": "deterministic", "arrested": false, "banned": false,
+		"cash": -paid, "goods": 0, "health": 0, "heat": heat_gain, "pressure": 0,
+		"take_disposition": "keep",
+	}
+	decision["resolved_tier"] = "deterministic"
+	decision["result"] = result
+	chain["decision"] = decision
+	engine.advance_stage(engine.STAGE_RESULT)
+	return {"ok": true, "tier": "deterministic", "arrested": false}
 
 ## STASH_IT's own roll: `SCRIPTS.STASH_IT["base"]` (0.55) adjusted by
 ## Intelligence the same shape-independent way `outcome_resolver` already

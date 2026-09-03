@@ -737,6 +737,19 @@ func _engine() -> Object:
 func choice_label(choice_id: String) -> String:
 	return _scripts().choice_label(choice_id)
 
+## BB-D1 (0.7.0): the room's own result copy reaches the sheet through the
+## adapter seam now, the same way its labels always have. The tables are
+## unchanged (`STICK_RESULT_HEADLINES` / `STICK_RESULT_BODIES`); what moved is
+## WHO reads them -- the sheet used to key on `KIND_CONFRONTATION`, which is
+## every room in the game, and so the doorstep and the corner and Dre all
+## ended in a stickup's words. The caught encounter keeps its own kind-specific
+## arm in the sheet; nothing else shares that kind.
+func result_headline(_choice_id: String, _tier: String, effects: Dictionary) -> String:
+	return str(SCRIPTS.STICK_RESULT_HEADLINES.get(str(effects.get("resolution", "")), ""))
+
+func result_body(_choice_id: String, _tier: String, effects: Dictionary) -> String:
+	return str(SCRIPTS.STICK_RESULT_BODIES.get(str(effects.get("resolution", "")), ""))
+
 ## Unlike the label, TALK's copy genuinely differs by kind (ENC-D7: the caught
 ## encounter's TALK is to the responding officer, not the mark), so this one
 ## does branch — on the ACTIVE chain, the same fact `_is_caught_active` reads

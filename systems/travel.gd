@@ -188,6 +188,7 @@ func _open_checkpoint(target: String, key: String) -> void:
 			"family": "travel", "action_id": "travel",
 			"definition_id": str(script["definition_id"]),
 			"opponent": str(script.get("opponent", "")),
+			"opener": "A cruiser lights up behind you before you clear the line.",
 			"target_name": str(district.get("name", "")),
 			"source_rng_key": key,
 		},
@@ -255,3 +256,14 @@ func choice_label(choice_id: String) -> String:
 
 func choice_copy(choice_id: String) -> String:
 	return str((TRAVEL_EVENTS.CHOICE_COPY as Dictionary).get(choice_id, ""))
+
+## BB-D1 (0.7.0): the checkpoint's own result, through the engine's seam.
+## Before this the result stage fell through to the sheet's boost copy and a
+## searched trunk read "The take is gone and the room remembers your face."
+func result_headline(choice_id: String, tier: String, _effects: Dictionary) -> String:
+	var row: Array = TRAVEL_EVENTS.result_copy(choice_id, tier)
+	return str(row[0]) if row.size() == 2 else ""
+
+func result_body(choice_id: String, tier: String, _effects: Dictionary) -> String:
+	var row: Array = TRAVEL_EVENTS.result_copy(choice_id, tier)
+	return str(row[1]) if row.size() == 2 else ""

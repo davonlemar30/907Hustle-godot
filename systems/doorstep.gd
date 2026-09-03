@@ -610,6 +610,79 @@ func _resolve_rent_collection(chain: Dictionary, choice_id: String) -> Dictionar
 	engine.advance_stage(engine.STAGE_RESULT)
 	return {"ok": true, "tier": choice_id}
 
+## What the visit came to, in its own words -- BB-D1 (0.7.0). Every doorstep
+## chain rides `KIND_CONFRONTATION`, which until this seam meant every one of
+## them ended on the STICKUP room's result copy: Dre's people leaving your
+## door read "The room closed before the door did. What was banked stayed
+## behind." Keyed by the chain's own `kind` for the two forced decisions and
+## by family + road for the enforcement room, which is exactly how
+## `_room_exit` already names its outcomes.
+const RESULT_COPY := {
+	"book_collection": {
+		"enforce": ["YOU COLLECT", "The note closes the hard way. Word travels about how."],
+		"extend": ["TWO MORE DAYS", "The note stays open. So does the question of whether he was ever going to pay."],
+		"forgive": ["YOU LET IT GO", "Somebody owed you and now nobody does. The book remembers who forgave what."],
+	},
+	"rent_collection": {
+		"pay": ["BACK RENT, PAID", "Every week you owed, in her hand. Yalonda says nothing, which is something."],
+		"ignore": ["NOT TODAY", "You let it sit. It will not sit much longer, and next time it does not knock."],
+	},
+	"dre": {
+		"yield": ["YOU PAY WHAT YOU HAVE", "Everything on you goes into a hand that does not count it. That settles it for now, and for now is the word Dre uses."],
+		"fight_clean": ["THEY LEAVE EMPTY-HANDED", "You make it not worth their time. Dre will hear that too, and he will hear it as a number."],
+		"talk_clean": ["A NUMBER YOU CAN COVER", "You talk it down to something real and pay it. Dre gets less than he asked for and more than he expected."],
+		"fight_messy": ["IT ENDS, EVENTUALLY", "Longer than it should have taken, and it cost some skin. The account closes anyway."],
+		"talk_messy": ["IT ENDS, EVENTUALLY", "Longer than it should have taken, and it cost some skin. The account closes anyway."],
+		"fight_failure": ["IT DOES NOT GO YOUR WAY", "They leave anyway. There is nothing left on you to take, and Dre knows exactly how much that is."],
+		"talk_failure": ["IT DOES NOT GO YOUR WAY", "They leave anyway. There is nothing left on you to take, and Dre knows exactly how much that is."],
+		"fight_catastrophic": ["DRE'S PEOPLE MAKE THEIR POINT", "They did not come to collect. They came so that next time you would pay before they had to."],
+		"talk_catastrophic": ["DRE'S PEOPLE MAKE THEIR POINT", "They did not come to collect. They came so that next time you would pay before they had to."],
+	},
+	"book": {
+		"yield": ["YOU LET THE NOTE GO", "It is not worth what collecting it costs. Everybody on the book heard you say that."],
+		"fight_clean": ["YOU COLLECT", "He pays because the alternative was standing in front of you longer."],
+		"talk_clean": ["HE FINDS THE MONEY", "It turns out he had it. They usually do."],
+		"fight_messy": ["IT ENDS, EVENTUALLY", "It took longer and cost more than a note this size should. The book closes it either way."],
+		"talk_messy": ["IT ENDS, EVENTUALLY", "It took longer and cost more than a note this size should. The book closes it either way."],
+		"fight_failure": ["HE HAS NOTHING", "You leave with a bruise and the note. The note is worth less than it was."],
+		"talk_failure": ["HE HAS NOTHING", "You leave with a bruise and the note. The note is worth less than it was."],
+		"fight_catastrophic": ["IT COMES APART", "Collecting a debt became a fight, and the fight became a story. You lost both."],
+		"talk_catastrophic": ["IT COMES APART", "Collecting a debt became a fight, and the fight became a story. You lost both."],
+	},
+	"rent": {
+		"yield": ["YOU PAY WHAT YOU HAVE", "Everything on you goes toward the back rent. Yalonda's cousin counts it on the porch and does not say whether it is enough."],
+		"fight_clean": ["HE GOES BACK DOWN THE STAIRS", "You make it not worth his time. Yalonda will not send him twice, and she will not forget she had to send him once."],
+		"talk_clean": ["A NUMBER YALONDA CAN LIVE WITH", "You talk him down to what you can actually cover and hand it over. The porch goes quiet."],
+		"fight_messy": ["IT ENDS ON THE PORCH", "Louder than the street needed, and it cost some skin. The rent gets settled anyway."],
+		"talk_messy": ["IT ENDS ON THE PORCH", "Louder than the street needed, and it cost some skin. The rent gets settled anyway."],
+		"fight_failure": ["HE LEAVES ANYWAY", "There was nothing left to take. He tells Yalonda that, and she believes it less than he does."],
+		"talk_failure": ["HE LEAVES ANYWAY", "There was nothing left to take. He tells Yalonda that, and she believes it less than he does."],
+		"fight_catastrophic": ["THE LAST WARNING, DELIVERED", "He did not come to talk about the rent. He came so you would understand what the next visit is."],
+		"talk_catastrophic": ["THE LAST WARNING, DELIVERED", "He did not come to talk about the rent. He came so you would understand what the next visit is."],
+	},
+}
+
+## The table's key for the active chain: the forced decisions by their own
+## `kind`, the enforcement room by the family that sent it.
+func result_copy(choice_id: String, effects: Dictionary) -> Array:
+	var source: Dictionary = gs.active_consequence.get("source", {})
+	var kind := str(source.get("kind", ""))
+	var road := str(effects.get("resolution", choice_id))
+	var table: Dictionary = {}
+	if RESULT_COPY.has(kind):
+		table = RESULT_COPY[kind]
+	else:
+		table = RESULT_COPY.get(str(effects.get("family", source.get("family", ""))), {})
+	return table.get(road, [])
+
+func result_headline(choice_id: String, _tier: String, effects: Dictionary) -> String:
+	var row: Array = result_copy(choice_id, effects)
+	return str(row[0]) if row.size() == 2 else ""
+
+func result_body(choice_id: String, _tier: String, effects: Dictionary) -> String:
+	var row: Array = result_copy(choice_id, effects)
+	return str(row[1]) if row.size() == 2 else ""
+
 func choice_label(choice_id: String) -> String:
 	match choice_id:
 		"fight": return "FIGHT"

@@ -77,7 +77,7 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## range, plus the two things that deliberately survive (the arrest warning and
 ## the guaranteed road's price) and the proof that the ENGINE still projects
 ## odds it no longer shows.
-const MIN_CHECKS := 1266
+const MIN_CHECKS := 2756
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -113,6 +113,7 @@ func _ready() -> void:
 	_check_corner()
 	_check_meetup()
 	_check_no_odds_hints()
+	_check_result_voice()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -1587,13 +1588,14 @@ func _check_beat_is_the_situation() -> void:
 			ENCOUNTER_SHEET.situation_body(engine, summary),
 			str((beats[index] as Dictionary)["beat"]))
 
-	# ...and with no room live, the kind's own standing line is still what
-	# shows. The fix is a precedence, not a replacement.
+	# ...and with no room live, the CARD's own line is what shows (BB-D2,
+	# 0.7.0 -- it used to be one standing sentence for all twelve cards). The
+	# fix is a precedence, not a replacement.
 	gs.active_consequence = {}
 	wander._play_encounter(card, "test:beat:no_room")
-	a.eq_str("with no beat live, the kind's own line still shows",
+	a.eq_str("with no beat live, the card's own opener is the situation",
 		ENCOUNTER_SHEET.situation_body(engine, engine.active_summary()),
-		"You went out to see what was around. This is what was around.")
+		str(card["line"]))
 	gs.active_consequence = {}
 
 ## ENC-D6's seam, applied to the roster: every deterministic road states its
@@ -2210,3 +2212,228 @@ func _has_digit(text: String) -> bool:
 		if text[i] >= "0" and text[i] <= "9":
 			return true
 	return false
+
+# --- check block 19: BB-D1/D2/D5/D7, the words fit (0.7.0 PR A) --------------
+#
+# The live probe that started 0.7.0 walked a shakedown to its end and read
+# "YOU DIDN'T GET FAR -- The take is gone and the room remembers your face."
+# on a fistfight with no take. Every non-boost chain was falling through to
+# the sheet's boost-caught copy, because that was the only result copy the
+# sheet had. These arms render every authored road and refuse the fallback on
+# any of them, so the next card an author adds without an ending is caught the
+# day it is added.
+
+## The sheet's own fallback strings -- the ones only a boost chain may land on.
+const BOOST_FALLBACK_STRINGS: Array[String] = [
+	"YOU DIDN'T GET FAR",
+	"YOU KEPT THE TAKE",
+	"YOU TALKED IT DOWN",
+	"YOU KEPT IT. YOU PAID FOR IT.",
+	"YOU GAVE IT BACK",
+	"The take is gone and the room remembers your face.",
+	"You get through them and make the exit.",
+	"You lose the take and stop the situation from climbing any higher.",
+]
+
+func _assert_voiced(label: String, headline: String, body: String) -> void:
+	a.check("%s has a headline" % label, not headline.is_empty())
+	a.check("%s has a body" % label, not body.is_empty())
+	a.check("%s does not fall through to the boost copy" % label,
+		not headline in BOOST_FALLBACK_STRINGS and not body in BOOST_FALLBACK_STRINGS)
+	# SQ-D12 still holds on the result: no percentage, and no resolver
+	# vocabulary. "clean" and "failure" are ordinary words a line may need
+	# ("the name comes back clean"); "messy" and "catastrophic" only ever mean
+	# the tier, and a line that prints them is printing the engine.
+	a.check("%s prints no percentage" % label,
+		not headline.contains("%") and not body.contains("%"))
+	for tier in ["messy", "catastrophic"]:
+		a.check("%s never prints the tier name '%s'" % [label, tier],
+			not headline.to_lower().contains(tier) and not body.to_lower().contains(tier))
+
+func _check_result_voice() -> void:
+	var wander: Object = gm.system("wander")
+	var engine: Object = _engine()
+
+	# --- every wander card, every road, every resolving tier ----------------
+	for entry in EVENTS.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != EVENTS.KIND_ENCOUNTER:
+			continue
+		var card_id := str(card["id"])
+		var spec: Dictionary = card["encounter"]
+		_reset_probe()
+		gs.inventory = {"weed": 6}
+		gs.active_consequence = {}
+		wander._play_encounter(card, "test:voice:%s" % card_id)
+		# BB-D2: the chain carries the opener, and the sheet opens on it.
+		a.eq_str("%s rides its opener on the chain" % card_id,
+			str(engine.active_summary().get("source_opener", "")), str(card["line"]))
+		a.eq_str("%s's sheet opens on its own line" % card_id,
+			ENCOUNTER_SHEET.situation_body(engine, engine.active_summary()),
+			str(card["line"]))
+		a.eq_str("%s's headline is who is in front of you" % card_id,
+			ENCOUNTER_SHEET.headline_for(engine, engine.active_summary()),
+			str(spec.get("opponent", "")).to_upper())
+		a.eq_str("%s's kicker is the kind's phrase, not the engine's name" % card_id,
+			ENCOUNTER_SHEET.kicker_for(engine, engine.active_summary()), "SOMEBODY STOPS YOU")
+		var effects: Dictionary = spec.get("effects", {})
+		for choice_id in effects.keys():
+			for tier in (effects[choice_id] as Dictionary).keys():
+				var row: Dictionary = (effects[choice_id] as Dictionary)[tier]
+				if bool(row.get("escalate", false)):
+					continue
+				_assert_voiced("%s/%s/%s" % [card_id, choice_id, tier],
+					str(wander.result_headline(str(choice_id), str(tier), {})),
+					str(wander.result_body(str(choice_id), str(tier), {})))
+		for call_id in SCRIPTS.CREW_CALLS.keys():
+			_assert_voiced("%s/%s" % [card_id, call_id],
+				str(wander.result_headline(str(call_id), "deterministic", {})),
+				str(wander.result_body(str(call_id), "deterministic", {})))
+		# --- the room, if the card has one: its own roads, its own endings ---
+		var room: Dictionary = spec.get("room", {})
+		if not room.is_empty():
+			wander._open_shakedown_room(gs.active_consequence, "stand")
+			for beat in (room.get("beats", []) as Array):
+				var beat_effects: Dictionary = (beat as Dictionary).get("effects", {})
+				for choice_id in beat_effects.keys():
+					for tier in (beat_effects[choice_id] as Dictionary).keys():
+						var row: Dictionary = (beat_effects[choice_id] as Dictionary)[tier]
+						if bool(row.get("escalate", false)):
+							continue
+						_assert_voiced("%s room/%s/%s" % [card_id, choice_id, tier],
+							str(wander.result_headline(str(choice_id), str(tier), {})),
+							str(wander.result_body(str(choice_id), str(tier), {})))
+			# The cap exit and the unauthored-pair exit both land on a road's
+			# default, so a road with no "*" is a road with a silent ending.
+			for choice_id in ["swing", "break_for_it"]:
+				_assert_voiced("%s room/%s/cap-exit" % [card_id, choice_id],
+					str(wander.result_headline(str(choice_id), "messy", {})),
+					str(wander.result_body(str(choice_id), "messy", {})))
+		gs.active_consequence = {}
+
+	# --- BB-D7: the guaranteed road prices itself against what is in hand --
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.inventory = {"weed": 3}
+	gs.cash = 0
+	gs.dirty_cash = 0
+	gs.clean_cash = 0
+	wander._play_encounter(EVENTS.card_by_id("wander_shakedown"), "test:voice:price")
+	var said := str(wander.choice_guarantee("hand_over"))
+	a.check("a clean-cash profile is told the road takes product but no cash",
+		said.contains("3 units of product") and not said.contains("$"))
+	gs.dirty_cash = 120
+	gs.cash = 120
+	said = str(wander.choice_guarantee("hand_over"))
+	a.check("dirty cash in hand is named as the price", said.contains("$120 in hand"))
+	gs.inventory = {}
+	gs.dirty_cash = 0
+	gs.cash = 0
+	said = str(wander.choice_guarantee("hand_over"))
+	a.check("nothing in hand says so rather than promising a loss",
+		said.contains("nothing"))
+	gs.active_consequence = {}
+	a.check("with no chain live the guarantee is the authored line alone",
+		str(wander.choice_guarantee("hand_over"))
+			== str(EVENTS.CHOICE_GUARANTEE["hand_over"]))
+
+	# --- the sheet end to end: every card's surrender road to its result ---
+	for entry in EVENTS.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != EVENTS.KIND_ENCOUNTER:
+			continue
+		var card_id := str(card["id"])
+		_reset_probe()
+		gs.inventory = {"weed": 6}
+		gs.cash = 200
+		gs.dirty_cash = 200
+		gs.clean_cash = 0
+		gs.active_consequence = {}
+		wander._play_encounter(card, "test:voice:sheet:%s" % card_id)
+		var road := str(EVENTS.choice_for_role(card, EVENTS.ROLE_SURRENDER))
+		a.check("%s's surrender road commits" % card_id, _commit(road))
+		a.eq_str("%s is at result" % card_id, str(engine.active_stage()), "result")
+		var built: Control = ENCOUNTER_SHEET.build_sheet(engine, gs, Callable())
+		a.check("%s's result sheet builds" % card_id, built != null)
+		if built != null:
+			var text: Array = _sheet_text(built)
+			var expected: Array = EVENTS.result_copy(card_id, road, "deterministic", false)
+			a.check("%s's result sheet carries its authored headline" % card_id,
+				expected.size() == 2 and str(expected[0]) in text)
+			for fallback in BOOST_FALLBACK_STRINGS:
+				a.check("%s's result sheet never shows '%s'" % [card_id, fallback],
+					not fallback in text)
+			# BB-D5: a street chain's strip never prints BANKED.
+			for line in text:
+				a.check("%s's strip prints no BANKED" % card_id,
+					not str(line).contains("BANKED"))
+			built.free()
+		gs.active_consequence = {}
+
+	# --- the checkpoint, the doorstep, Dre, the corner, the meetup ----------
+	var travel: Object = gm.system("travel")
+	for choice_id in TRAVEL_EVENTS_CONST.RESULT_COPY.keys():
+		for tier in (TRAVEL_EVENTS_CONST.CHECKPOINT["effects"][choice_id] as Dictionary).keys():
+			_assert_voiced("checkpoint/%s/%s" % [choice_id, tier],
+				str(travel.result_headline(str(choice_id), str(tier), {})),
+				str(travel.result_body(str(choice_id), str(tier), {})))
+	var doorstep: Object = gm.system("doorstep")
+	for family in ["dre", "book", "rent"]:
+		for road in ["yield", "fight_clean", "talk_clean", "fight_messy", "talk_messy",
+				"fight_failure", "talk_failure", "fight_catastrophic", "talk_catastrophic"]:
+			var row: Array = (doorstep.RESULT_COPY[family] as Dictionary).get(road, [])
+			a.check("doorstep %s/%s is authored" % [family, road], row.size() == 2)
+	for kind in ["book_collection", "rent_collection"]:
+		a.check("doorstep %s is authored" % kind,
+			(doorstep.RESULT_COPY[kind] as Dictionary).size() >= 2)
+	# Live: the rent decision, rendered.
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.rent_missed = 2
+	gs.cash = 0
+	gs.dirty_cash = 0
+	gs.clean_cash = 0
+	doorstep._open_rent_collection({"family": "rent", "stage": 1})
+	a.eq_str("the rent visit headlines Yalonda",
+		ENCOUNTER_SHEET.headline_for(engine, engine.active_summary()), "YALONDA")
+	a.check("the rent visit's NOT TODAY commits", _commit("ignore"))
+	var rent_sheet: Control = ENCOUNTER_SHEET.build_sheet(engine, gs, Callable())
+	if rent_sheet != null:
+		var text: Array = _sheet_text(rent_sheet)
+		a.check("the rent visit's result is its own", "NOT TODAY" in text)
+		for fallback in BOOST_FALLBACK_STRINGS:
+			a.check("the rent visit never shows '%s'" % fallback, not fallback in text)
+		rent_sheet.free()
+	gs.active_consequence = {}
+	var dre: Object = gm.system("dre_collector")
+	for resolution in ["clean", "messy", "failure", "catastrophic", "walked", "paid", "suspended"]:
+		gs.active_consequence = {"source": {"target_name": "Dontae Wells"}}
+		_assert_voiced("dre/%s" % resolution,
+			str(dre.result_headline("press", resolution, {"resolution": resolution})),
+			str(dre.result_body("press", resolution, {"resolution": resolution})))
+	a.check("Dre's clean collection names the borrower",
+		str(dre.result_headline("press", "clean", {"resolution": "clean"})).contains("DONTAE"))
+	gs.active_consequence = {}
+	var corner: Object = gm.system("corner")
+	for script_id in corner.RESULT_COPY.keys():
+		gs.active_consequence = {"source": {"kind": script_id}, "decision": {}}
+		for choice_id in (corner.RESULT_COPY[script_id] as Dictionary).keys():
+			for resolution in ((corner.RESULT_COPY[script_id] as Dictionary)[choice_id] as Dictionary).keys():
+				_assert_voiced("corner %s/%s/%s" % [script_id, choice_id, resolution],
+					str(corner.result_headline(str(choice_id), "clean", {"resolution": resolution})),
+					str(corner.result_body(str(choice_id), "clean", {"resolution": resolution})))
+	gs.active_consequence = {}
+	var listing: Object = gm.system("list")
+	for choice_id in listing.MEETUP_RESULT_COPY.keys():
+		for resolution in (listing.MEETUP_RESULT_COPY[choice_id] as Dictionary).keys():
+			_assert_voiced("meetup %s/%s" % [choice_id, resolution],
+				str(listing.result_headline(str(choice_id), "clean", {"resolution": resolution})),
+				str(listing.result_body(str(choice_id), "clean", {"resolution": resolution})))
+	# The stickup room's own words still reach the sheet, now through the seam.
+	var stick: Object = gm.system("stickup")
+	for resolution in SCRIPTS.STICK_RESULT_HEADLINES.keys():
+		a.eq_str("the stickup room's %s headline comes through the seam" % resolution,
+			str(stick.result_headline("press", "clean", {"resolution": resolution})),
+			str(SCRIPTS.STICK_RESULT_HEADLINES[resolution]))
+
+const TRAVEL_EVENTS_CONST := preload("res://data/travel_events.gd")

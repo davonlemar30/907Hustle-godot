@@ -13195,8 +13195,11 @@ func _check_consequence_scene(gs: Node, gm: Node, engine: RefCounted) -> void:
 	_collect_labels(screen, labels)
 	var joined: String = "\n".join(labels)
 	_expect_true("the decision stage renders something", labels.size() > 6)
-	_expect_true("the decision stage shows the consequence kicker", "CONSEQUENCE" in labels)
-	_expect_true("the decision stage names the situation", "CAUGHT" in labels)
+	# BB-D2 (0.7.0): the kind's phrase is the kicker and the opponent is the
+	# title. "CONSEQUENCE" -- the engine's name for itself -- no longer renders.
+	_expect_true("the decision stage's kicker is the kind's phrase", "CAUGHT" in labels)
+	_expect_true("the decision stage headlines who is in front of you", "CLERK" in labels)
+	_expect_true("the engine's own name never reaches the player", not "CONSEQUENCE" in labels)
 	_expect_true("the decision stage offers the four responses",
 		"FIGHT" in labels and "RUN" in labels and "TALK" in labels and "YIELD" in labels)
 	# The audit. The percentage rule is FS-003.11's and is unchanged; what
@@ -19894,7 +19897,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 12836
+const MIN_CHECKS := 13282
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

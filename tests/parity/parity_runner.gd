@@ -16136,7 +16136,11 @@ const ECON_PROFILES: Array[Dictionary] = [
 ## standing RELATIVE to the day job, not chase the baseline's own noise.
 const ECON_CORRIDORS: Dictionary = {
 	"legal_worker": {"floor": 100, "ceiling": 100},
-	"best_job_worker": {"floor": 95, "ceiling": 130},
+	# WS-D4 (0.8.0) lifted the ceiling from 130: the floor pays a little on
+	# top now -- a night differential at the Chevron, a tip jar, a twenty out
+	# of a jacket pocket every three or four shifts -- and the best-job
+	# profile measured 134% on the day the managers arrived.
+	"best_job_worker": {"floor": 95, "ceiling": 140},
 	# HEAT-D1 (0.3.0) widened both trading corridors, and the causal chain is
 	# real rather than noise: `CARRY_STOP_PER_HEAT` prices a carry trip's risk
 	# off the SAME shared Heat meter stickup and boost were measured against,
@@ -19581,6 +19585,7 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 
 func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_door_to_work(gs, gm)
+	_check_managers(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -19590,6 +19595,112 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 ## knowing about must NOT open the gate. Counting them would open it at reset
 ## and make it no gate at all — which is the failure mode opposite to the one
 ## this batch fixed, and just as wrong.
+## WS-D4 (0.8.0 PR 4): every job is a person. The hire is a sheet, the
+## floor has a micro-event every three or four shifts, the Chevron pays
+## nights extra, the Night Owl pays its regular, a missed shift is a text
+## from whoever runs the place, and being let go is a sheet and a last text.
+func _check_managers(gs: Node, gm: Node) -> void:
+	var jobs_system: Object = gm.system("jobs")
+	var nav: Node = get_node("/root/ScreenManager")
+	var managers := preload("res://data/job_managers.gd")
+	for job in (gs.jobs as Array):
+		var id := str((job as Dictionary)["id"])
+		var manager: Dictionary = managers.manager_for(id)
+		_expect_true("%s has somebody who says the hire" % id,
+			(manager.get("hire", []) as Array).size() >= 2)
+		if managers.has_manager(id):
+			for key in ["missed_first", "missed_final", "fired", "fired_text"]:
+				_expect_true("%s's %s speaks %s" % [id, str(manager.get("name", "")), key],
+					not str(manager.get(key, "")).is_empty())
+			_expect_true("%s's floor has events" % id, (manager.get("micro", []) as Array).size() >= 3)
+
+	# The hire is a moment: a sheet queued with the job on it.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	while not nav.take_next_flow_sheet().is_empty():
+		pass
+	var hired := false
+	for _attempt in 10:
+		gm.dispatch("apply_job", {"job_id": "wash_go"})
+		if gs.active_job_id == "wash_go":
+			hired = true
+			break
+		gm.dispatch("advance_time", {})
+	_expect_true("the Wash & Go hires within ten tries", hired)
+	var sheet: Dictionary = {}
+	for _drain in 6:
+		var spec: Dictionary = nav.take_next_flow_sheet()
+		if spec.is_empty():
+			break
+		if str(spec.get("kind", "")) == "hire":
+			sheet = spec
+	_expect_str("the hire queued Lani's sheet", str(sheet.get("job_id", "")), "wash_go")
+
+	# The floor: four shifts, and by the fourth something has happened.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.active_job_id = "wash_go"
+	gs.job_records["wash_go"] = {"xp": 0.0, "rank": 0, "last_worked_day": -1, "hired_day": 1}
+	var events := 0
+	for shift in 4:
+		gs.day = 2 + shift
+		gs.time_slots_today = 0
+		gs.time_slot = "MORNING"
+		var result: Dictionary = jobs_system.handle("work_shift", {"approach": "take_it_easy"})
+		if not str(result.get("micro_event", "")).is_empty():
+			events += 1
+	_expect_int("four shifts at the Wash & Go carry one floor event", events, 1)
+	_expect_int("the record counts the shifts",
+		int((gs.job_records["wash_go"] as Dictionary).get("shifts", 0)), 4)
+
+	# The Chevron pays nights extra: same seed, night beats the band's max.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.active_job_id = "spenard_chevron"
+	gs.job_records["spenard_chevron"] = {"xp": 0.0, "rank": 0, "last_worked_day": -1, "hired_day": 1}
+	gs.day = 2
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	var night: Dictionary = jobs_system.handle("work_shift", {"approach": "take_it_easy"})
+	var band: Dictionary = gs.job_pay_range("spenard_chevron")
+	_expect_true("a Chevron night pays the differential",
+		int(night.get("payout", 0)) >= int(band["min"]) + int(managers.manager_for("spenard_chevron").get("night_bonus", 0)))
+
+	# A missed shift is a text from whoever runs the place; three is the door.
+	_lifecycle_ready(gs)
+	gs.phone_inbox = []
+	gs.active_job_id = "spenard_chevron"
+	gs.job_records["spenard_chevron"] = {"xp": 0.0, "rank": 0, "last_worked_day": 3, "hired_day": 1}
+	gs.job_missed["spenard_chevron"] = 0
+	while not nav.take_next_flow_sheet().is_empty():
+		pass
+	gm.dispatch("advance_time", {})
+	var from_marcus := 0
+	for m in gs.phone_inbox:
+		if str((m as Dictionary).get("from", "")) == "Marcus":
+			from_marcus += 1
+	_expect_int("the first miss is a text from Marcus", from_marcus, 1)
+	_expect_true("...and it can be answered",
+		((gs.phone_inbox[0] as Dictionary).get("action", {}) as Dictionary).has("reply"))
+	# `_lifecycle_ready` resets the ladder, so each night is re-staged one
+	# rung higher: the count the manager is keeping, not the suite's.
+	for rung in 2:
+		_lifecycle_ready(gs)
+		gs.active_job_id = "spenard_chevron"
+		gs.job_records["spenard_chevron"] = {"xp": 0.0, "rank": 0, "last_worked_day": 3, "hired_day": 1}
+		gs.job_missed["spenard_chevron"] = 1 + rung
+		gm.dispatch("advance_time", {})
+	_expect_str("three misses is the door", gs.active_job_id, "")
+	var fired: Dictionary = {}
+	for _drain in 8:
+		var spec: Dictionary = nav.take_next_flow_sheet()
+		if spec.is_empty():
+			break
+		if str(spec.get("kind", "")) == "fired":
+			fired = spec
+	_expect_str("...and being let go is a sheet", str(fired.get("job_id", "")), "spenard_chevron")
+	gs.reset_to_new_game()
+
 func _check_door_to_work(gs: Node, gm: Node) -> void:
 	var access: Node = get_node_or_null("/root/SurfaceVisibility")
 	var nav: Node = get_node("/root/ScreenManager")
@@ -20169,7 +20280,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13498
+const MIN_CHECKS := 13550
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

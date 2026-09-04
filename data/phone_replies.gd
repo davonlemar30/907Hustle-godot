@@ -23,11 +23,13 @@ const NPC_FOR_SENDER := {
 	"Mina": "mina", "Dre": "dre", "Juan": "juan", "Yalonda": "yalonda",
 	"Pherris": "pherris", "Eli": "eli", "Tone": "tone", "Deshawn": "deshawn",
 	"Goodie": "goodie", "Lani": "lani", "Marcus": "marcus",
+	"Sonny": "sonny", "Denise": "denise", "Ray": "ray", "Big Mike": "big_mike",
 }
 
 ## Who cares about being left on read. A ghosted text costs these people;
 ## the rest shrug.
-const CARES_ABOUT_SILENCE := ["mina", "dre", "yalonda", "lani", "marcus"]
+const CARES_ABOUT_SILENCE := ["mina", "dre", "yalonda", "lani", "marcus", "sonny",
+	"denise", "ray", "big_mike"]
 
 const CONTEXTS := {
 	# Juan, the day he mentions Dre (dre_lender.gd).
@@ -86,6 +88,10 @@ const CONTEXTS := {
 		"a": {"text": "im sorry. wont happen again", "reaction": "It happened twice. That's the count."},
 		"b": {"text": "ok", "reaction": "Ok."},
 	},
+	"manager_fired": {
+		"a": {"text": "i understand. thank you for the chance", "reaction": "Take care of yourself."},
+		"b": {"text": "whatever", "reaction": ""},
+	},
 }
 
 const DEFAULTS := {
@@ -133,6 +139,22 @@ const DEFAULTS := {
 		"a": {"text": "got it. ill be there", "reaction": "Good."},
 		"b": {"text": "yeah", "reaction": ""},
 	},
+	"sonny": {
+		"a": {"text": "my bad. ill be in", "reaction": "ok ok. dont be late"},
+		"b": {"text": "k", "reaction": ""},
+	},
+	"denise": {
+		"a": {"text": "sorry denise. ill be in tomorrow", "reaction": "Tomorrow then. On time."},
+		"b": {"text": "ok", "reaction": ""},
+	},
+	"ray": {
+		"a": {"text": "my fault ray. wont happen again", "reaction": "See that it doesn't. Six a.m."},
+		"b": {"text": "yeah", "reaction": ""},
+	},
+	"big_mike": {
+		"a": {"text": "understood. ill be on time", "reaction": "Truck leaves at five."},
+		"b": {"text": "ok", "reaction": ""},
+	},
 }
 
 ## What an NPC says first, the next time they text somebody who left their
@@ -143,7 +165,7 @@ const GHOST_OPENERS := {
 	"yalonda": "You could answer a text. ",
 	"juan": "",
 	"lani": "Baby you don't answer your phone. ",
-	"marcus": "",
+	"marcus": "", "sonny": "", "denise": "You could answer a text. ", "ray": "", "big_mike": "",
 	"pherris": "", "eli": "", "tone": "", "deshawn": "", "goodie": "",
 }
 

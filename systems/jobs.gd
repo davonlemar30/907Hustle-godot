@@ -43,6 +43,8 @@ const MISSED_FIRST_WARNING := 1
 const MISSED_FINAL_WARNING := 2
 const MISSED_FIRING := 3
 
+const MANAGERS := preload("res://data/job_managers.gd")
+
 const GREEN := Color(0.451, 0.722, 0.404)
 const RED := Color(0.827, 0.161, 0.125)
 const AMBER := Color(0.882, 0.651, 0.227)
@@ -132,7 +134,22 @@ func _apply(job_id: String) -> Dictionary:
 		gs.log_activity("Hired on at %s. They liked you." % job["name"], GREEN)
 	else:
 		gs.log_activity("Hired on at %s. It was not pretty, but it is a job." % job["name"], GREEN)
+	# WS-D4: the hire is a moment -- whoever runs the place says their two
+	# or three lines on a sheet before the board comes back.
+	var nav: Node = _screen_manager()
+	if nav != null:
+		nav.enqueue_flow_sheet({"kind": "hire", "job_id": job_id, "tier": tier})
 	return {"ok": true, "hired": job["name"], "tier": tier}
+
+func _screen_manager() -> Node:
+	var loop: MainLoop = Engine.get_main_loop()
+	if loop == null or not loop is SceneTree:
+		return null
+	return (loop as SceneTree).root.get_node_or_null("/root/ScreenManager")
+
+## The person who runs this job, or {} for day labor.
+func manager_for(job_id: String) -> Dictionary:
+	return MANAGERS.manager_for(job_id)
 
 func _quit() -> Dictionary:
 	if gs.active_job_id.is_empty():
@@ -177,6 +194,15 @@ func _work(approach_id: String) -> Dictionary:
 	var key := "job_shift_day%d_slot%d_%s" % [gs.day, gs.time_slots_today, job_id]
 	var payout: int = rng.seeded_int_range(gs.run_seed, key, int(band["min"]), int(band["max"]))
 	payout = int(round(float(payout) * float(approach["pay_mult"])))
+	# WS-D4: what makes this job this job. The Chevron pays nights extra;
+	# the Night Owl pays its regular a little more once you are one.
+	var manager: Dictionary = MANAGERS.manager_for(job_id)
+	var rec_before: Dictionary = gs.job_records.get(job_id, {})
+	if gs.time_slots_today == 3:
+		payout += int(manager.get("night_bonus", 0))
+	if manager.has("regular_after") \
+			and int(rec_before.get("shifts", 0)) >= int(manager.get("regular_after", 0)):
+		payout += int(manager.get("regular_bonus", 0))
 
 	# TI-003 §6 Clean: "legal job wages". Canon agrees — WORK_JOB is one of the
 	# only two `addCleanCash` call sites in the whole build (game-core.js:7311).
@@ -190,10 +216,39 @@ func _work(approach_id: String) -> Dictionary:
 	var old_rank: int = int(rec.get("rank", 0))
 	rec["rank"] = gs.job_rank_for_xp(float(rec["xp"]))
 	rec["last_worked_day"] = gs.day
+	rec["shifts"] = int(rec.get("shifts", 0)) + 1
 	# Working resets the attendance ladder, whatever rung it was on.
 	gs.job_missed[job_id] = 0
 
 	gs.log_activity("%s shift: +$%d." % [job["name"], payout], GREEN)
+	# WS-D4: every three or four shifts something small happens on the
+	# floor. A line, sometimes a few dollars or a little health; never a
+	# decision. Seeded on the shift count, so a run replays its own floor.
+	var micro := ""
+	if MANAGERS.micro_event_due(int(rec["shifts"]), int(rec.get("last_event_shift", 0))):
+		var event: Dictionary = MANAGERS.micro_event(job_id, int(rec["shifts"]))
+		if not event.is_empty():
+			rec["last_event_shift"] = int(rec["shifts"])
+			micro = str(event.get("text", ""))
+			var tip: int = int(event.get("cash", 0))
+			if tip > 0:
+				gm.system("wallet").credit(tip, gm.system("wallet").CLEAN,
+					{"source_id": "job_%s" % job_id})
+				gs.record_earning("jobs", tip)
+			elif tip < 0:
+				gm.system("wallet").spend(-tip, gm.system("wallet").ROUTINE_DIRTY_FIRST,
+					{"source_id": "job_%s" % job_id})
+			if int(event.get("health", 0)) != 0:
+				gs.health = clampi(gs.health + int(event.get("health", 0)), 1, gs.health_max)
+			gs.log_activity(micro, AMBER if tip < 0 else GREEN)
+	# The Night Owl is Mina's counter; a night beside her is a night she
+	# noticed. Small, direct, and only there.
+	if job_id == "night_owl":
+		var mina_ledger: Node = _exposure()
+		if mina_ledger != null:
+			mina_ledger.record_observation("mina", {"type": "presence",
+				"event": "worked_beside", "source": "direct",
+				"location": gs.current_district_id})
 	# Canon tags WORK_SHIFT as presence/steady_work on the neighbourhood channel.
 	var exposure: Node = _exposure()
 	if exposure != null:
@@ -207,7 +262,7 @@ func _work(approach_id: String) -> Dictionary:
 
 	# A shift is a slot, the same as any other district action.
 	time_system.handle("advance_time", {})
-	return {"ok": true, "payout": payout, "ranked_up": ranked_up}
+	return {"ok": true, "payout": payout, "ranked_up": ranked_up, "micro_event": micro}
 
 ## Attendance settles when a day ends. Canon runs this inside the day-end
 ## settlement, counting the day that just finished.
@@ -236,7 +291,16 @@ func settle_night(ended_day: int) -> void:
 	var missed: int = int(gs.job_missed.get(job_id, 0)) + 1
 	gs.job_missed[job_id] = missed
 
+	var manager: Dictionary = MANAGERS.manager_for(job_id)
+	var phone: Object = gm.system("phone") if gm != null else null
 	if missed >= MISSED_FIRING:
+		# WS-D4: being let go is a moment, not a log line -- the manager's
+		# last text, and a sheet with what they did.
+		if phone != null and manager.has("fired_text"):
+			phone.push_text(str(manager["name"]), str(manager["fired_text"]), "manager_fired")
+		var nav: Node = _screen_manager()
+		if nav != null and manager.has("fired"):
+			nav.enqueue_flow_sheet({"kind": "fired", "job_id": job_id})
 		# Canon carves the Night Owl out: Mina stops scheduling you rather than
 		# firing you, because that relationship was never employment.
 		if job_id == "night_owl":
@@ -261,5 +325,9 @@ func settle_night(ended_day: int) -> void:
 					})
 	elif missed == MISSED_FINAL_WARNING:
 		gs.log_activity("%s: last warning about attendance." % job["name"], RED)
+		if phone != null and manager.has("missed_final"):
+			phone.push_text(str(manager["name"]), str(manager["missed_final"]), "manager_missed_final")
 	elif missed == MISSED_FIRST_WARNING:
 		gs.log_activity("%s noticed you weren't in." % job["name"], AMBER)
+		if phone != null and manager.has("missed_first"):
+			phone.push_text(str(manager["name"]), str(manager["missed_first"]), "manager_missed_first")

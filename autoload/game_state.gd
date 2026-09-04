@@ -513,10 +513,14 @@ func reset_to_new_game() -> void:
 # scales by rank (1 + rank*0.10) and by the approach the player picks.
 # slots are indices into TimeSystem.SLOTS: 0 MORNING · 1 AFTERNOON · 2 EVENING · 3 NIGHT.
 var jobs: Array = [
-	{"id": "wash_go", "name": "Wash & Go Attendant", "pay": [40, 60], "slots": [0, 1, 2, 3], "starter": true, "day_labor": false},
-	{"id": "spenard_chevron", "name": "Spenard Chevron Clerk", "pay": [48, 60], "slots": [0, 1, 2, 3], "starter": true, "day_labor": false},
-	{"id": "rebel_convenience", "name": "Rebel Convenience Clerk", "pay": [48, 60], "slots": [0, 1, 2, 3], "starter": true, "day_labor": false},
-	{"id": "northern_value", "name": "Northern Value Floor Staff", "pay": [48, 60], "slots": [0, 1, 2], "starter": true, "day_labor": false},
+	# WS-D4 (0.8.0): the bands were re-cut so the jobs actually differ. The
+	# Wash & Go is the floor and pays daily; the Chevron adds a night
+	# differential (`data/job_managers.gd`); the Rebel is the easy any-shift
+	# check; Northern Value is days only and the steadiest of the four.
+	{"id": "wash_go", "name": "Wash & Go Attendant", "pay": [38, 54], "slots": [0, 1, 2, 3], "starter": true, "day_labor": false},
+	{"id": "spenard_chevron", "name": "Spenard Chevron Clerk", "pay": [46, 60], "slots": [0, 1, 2, 3], "starter": true, "day_labor": false},
+	{"id": "rebel_convenience", "name": "Rebel Convenience Clerk", "pay": [44, 58], "slots": [0, 1, 2, 3], "starter": true, "day_labor": false},
+	{"id": "northern_value", "name": "Northern Value Floor Staff", "pay": [52, 66], "slots": [0, 1, 2], "starter": true, "day_labor": false},
 	{"id": "night_owl", "name": "Night Owl counter shift", "pay": [55, 75], "slots": [2], "starter": false, "day_labor": false},
 	{"id": "juan_warehouse", "name": "Spenard Warehouse Dock", "pay": [70, 95], "slots": [0, 1], "starter": false, "day_labor": false},
 	{"id": "ship_creek", "name": "Ship Creek Freight", "pay": [110, 140], "slots": [0], "starter": false, "day_labor": false},

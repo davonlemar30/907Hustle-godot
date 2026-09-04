@@ -114,6 +114,34 @@ static func build_discovery(card: Dictionary) -> VBoxContainer:
 	content.add_child(_dismiss_button("LET'S GO"))
 	return content
 
+## WS-D4: the hire moment. Whoever runs the place says their two or three
+## lines; the pay note under it is the one thing the board would have said.
+static func build_hire(job: Dictionary, manager: Dictionary) -> VBoxContainer:
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	content.add_child(_label("HIRED", "Kicker", 10, MUTED))
+	content.add_child(_label(str(job.get("name", "")), "CardTitle", 18, CREAM, true))
+	for line in (manager.get("hire", []) as Array):
+		content.add_child(_label(str(line), "Muted", 14, CREAM, true, HORIZONTAL_ALIGNMENT_LEFT))
+	var perk := str(manager.get("perk", ""))
+	if not perk.is_empty():
+		content.add_child(_spacer(2))
+		content.add_child(_label(perk, "Kicker", 11, MUTED, true))
+	content.add_child(_spacer(4))
+	content.add_child(_dismiss_button("FIRST SHIFT" if manager.has("name") and not str(manager.get("name", "")).is_empty() else "GET IN"))
+	return content
+
+## WS-D4: being let go. One line, what they did, and the door.
+static func build_fired(job: Dictionary, manager: Dictionary) -> VBoxContainer:
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	content.add_child(_label("LET GO", "Kicker", 10, MUTED))
+	content.add_child(_label(str(job.get("name", "")), "CardTitle", 18, CREAM, true))
+	content.add_child(_label(str(manager.get("fired", "")), "Muted", 14, CREAM, true, HORIZONTAL_ALIGNMENT_LEFT))
+	content.add_child(_spacer(4))
+	content.add_child(_dismiss_button("OK"))
+	return content
+
 static func _label(text: String, variation: String, size: int, col: Color,
 		should_wrap: bool = false,
 		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_CENTER) -> Label:

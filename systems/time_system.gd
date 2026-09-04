@@ -82,11 +82,20 @@ func setup(game_state: Node, economy_system: RefCounted, phone_system: RefCounte
 
 ## BR-D2: applications resolve on the clock, so the clock knows the jobs
 ## system. Attached after both exist (`GameManager._ready`), optional so a
-## suite that builds a bare clock still runs.
-var jobs: RefCounted = null
+## suite that builds a bare clock still runs. A WEAK reference: jobs holds
+## the clock, and a strong reference back would be a RefCounted cycle that
+## leaks both at exit -- CI's harness grep caught exactly that ("13 ObjectDB
+## instances were leaked", "6 resources still in use") on the first push.
+var _jobs_ref: WeakRef = null
 
 func attach_jobs(jobs_system: RefCounted) -> void:
-	jobs = jobs_system
+	_jobs_ref = weakref(jobs_system)
+
+func _jobs() -> RefCounted:
+	if _jobs_ref == null:
+		return null
+	var jobs_system: Variant = _jobs_ref.get_ref()
+	return jobs_system if jobs_system is RefCounted else null
 
 func can_handle(action: String) -> bool:
 	return action == "advance_time"
@@ -112,6 +121,7 @@ func handle(action: String, _payload: Dictionary) -> Dictionary:
 	phone.restore_if_ready(previous_absolute)
 	# BR-D2: the clock moved; an application that has waited its slots is
 	# answered, by text, from whoever runs the place.
-	if jobs != null:
-		jobs.resolve_applications()
+	var jobs_system: RefCounted = _jobs()
+	if jobs_system != null:
+		jobs_system.resolve_applications()
 	return {"ok": true}

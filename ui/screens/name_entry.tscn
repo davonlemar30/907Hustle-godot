@@ -239,7 +239,7 @@ theme_type_variation = &"Muted"
 theme_override_font_sizes/font_size = 11
 horizontal_alignment = 1
 vertical_alignment = 1
-text = "NO JOB · NO CONTACTS · NO REPUTATION"
+text = "NO JOB · NOBODY'S NUMBER · A ROOM FOR A WEEK"
 
 [node name="Rule" type="HBoxContainer" parent="Pad/V/Info/IV"]
 custom_minimum_size = Vector2(0, 16)
@@ -280,7 +280,7 @@ theme_override_font_sizes/font_size = 12
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
-text = "You've got a room for now. The rest is on you."
+text = "Your sister knows the landlord. That is the whole head start."
 
 [node name="Gap" type="Control" parent="Pad/V"]
 layout_mode = 2

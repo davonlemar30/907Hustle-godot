@@ -90,6 +90,43 @@ static func _intro_copy(gs: Node) -> String:
 		+ "Eat something. Lock up when you come in.") \
 		% [str(gs.street_name), int(gs.WEEKLY_RENT), due]
 
+## 1.1.0 (SA-D1): the second sheet of a run, the morning after Yalonda's.
+## Juan, saying how a day goes -- four parts, one thing each, the phone, the
+## rent, the block. He has never explained this to anybody and is not sure he
+## is saying it right, which is why it is short. Like the intro it CHANGES
+## NOTHING; it reads the run's real numbers so it cannot promise a rent the
+## house will not charge.
+static func build_first_morning(gs: Node) -> VBoxContainer:
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 14)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	content.add_child(row)
+	var face := PORTRAITS.portrait_rect("juan", 96)
+	if face != null:
+		face.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		row.add_child(face)
+
+	var dialogue := _label(_first_morning_copy(gs), "Muted", 14, CREAM, true, HORIZONTAL_ALIGNMENT_LEFT)
+	dialogue.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(dialogue)
+
+	content.add_child(_spacer(4))
+	content.add_child(_dismiss_button("BET"))
+	return content
+
+static func _first_morning_copy(gs: Node) -> String:
+	return ("Juan. She said you got in late.\n\n" \
+		+ "Day's four parts out here. Morning, afternoon, evening, night. " \
+		+ "Everything you do takes one, then it's the next one. Four things " \
+		+ "a day, that's it, so pick.\n\n" \
+		+ "Phone buzzes when somebody wants something. Answer it or don't. " \
+		+ "People notice either way. Rent's $%d on day %d. She meant that.\n\n" \
+		+ "Wash & Go is on the corner if you want a check. Everything else " \
+		+ "you find by walking. Walk the block.") \
+		% [int(gs.WEEKLY_RENT), int(gs.rent_due_day)]
+
 ## One surface's unlock, celebrated. `card` is `SurfaceVisibility.card_for()`'s
 ## shape: `{title, line, icon}`, `icon` possibly "" — not every surface has one
 ## worth showing, and a card with nothing to illustrate just runs title-first.

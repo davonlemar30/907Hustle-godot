@@ -82,6 +82,8 @@ func _on_begin() -> void:
 	# happens once, and CONTINUE RUN on the title screen calls go_to_game()
 	# directly and never enqueues it.
 	nav.enqueue_flow_sheet({"kind": "intro"})
+	# SA-D1 (1.1.0): the morning after. Juan says how a day goes.
+	nav.enqueue_flow_sheet({"kind": "first_morning"})
 	# WS-D5: the terms, in writing, on the phone -- the first text of the
 	# run, and the first thing on it you can answer.
 	var phone: Object = _gm.system("phone")

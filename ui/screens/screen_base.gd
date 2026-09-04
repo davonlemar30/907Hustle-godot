@@ -329,6 +329,8 @@ func _build_flow_sheet_content(spec: Dictionary) -> Control:
 			return null if card.is_empty() else FlowSheets.build_discovery(card)
 		"intro":
 			return FlowSheets.build_intro(gs)
+		"first_morning":
+			return FlowSheets.build_first_morning(gs)
 		"arrival":
 			return FlowSheets.build_discovery({"title": str(spec.get("title", "")),
 				"line": str(spec.get("line", "")), "icon": ""})

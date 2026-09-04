@@ -47,14 +47,17 @@ func _fill() -> void:
 		["DAYS", str(r.get("days", gs.day))],
 		["EARNED", "$%s" % _commas(int(r.get("earned", 0)))],
 		["CLEAN AT THE END", "$%s" % _commas(int(r.get("clean", gs.clean_cash)))],
-		["THE NAME", str(r.get("rank", ""))],
+		["THE NAME", "%s  ·  %d of %d" % [str(r.get("rank", "")),
+			int(r.get("rank_index", 0)) + 1, int(r.get("rank_count", 6))]],
+		["THE CITY", "%d of %d districts" % [int(r.get("districts_known", 1)),
+			int(r.get("district_count", 4))]],
 	]
 	if not gs.street_name.is_empty():
 		rows.push_front(["NAME", gs.street_name])
 	for row in rows:
 		box.add_child(_stat_row(str(row[0]), str(row[1])))
 	var corners: Array = r.get("corners", [])
-	box.add_child(_stat_row("CORNERS", "%d held" % corners.size() if not corners.is_empty() else "none"))
+	box.add_child(_stat_row("CORNERS", "%d of %d" % [corners.size(), int(r.get("corner_count", 0))]))
 	if not corners.is_empty():
 		box.add_child(_line(", ".join(corners), MUTED))
 	box.add_child(_spacer(6))

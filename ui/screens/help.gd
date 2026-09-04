@@ -17,27 +17,27 @@ extends "res://ui/screens/surface_base.gd"
 ##   - "Week Zero establishes your life in Spenard" — no Week Zero script.
 ##   - "when you decide to call the final score" — no voluntary-exit action;
 ##     this build's run ends on eviction only.
-## Both are true of 907Hustle and will be true of this build. Rewriting them to
-## match today's feature set would make the screen wrong twice: wrong now about
-## the game, and wrong later about itself.
+## SA-D1 (1.1.0): rewritten to the game that exists. The canon cards described
+## Week Zero and locked market prices, neither of which this build has, and a
+## help screen that is wrong about the game is worse than none.
 
 ## Canon's four cards, in canon's order, with canon's headings.
 const CARDS := [
 	{
-		"heading": "YOUR RUN",
-		"body": "Each day contains Morning, Afternoon, Evening, and Night. Week Zero establishes your life in Spenard. After that the run is open: it ends when you cannot pay what you owe, when your health or Heat runs out, or when you decide to call the final score.",
+		"heading": "THE DAY",
+		"body": "Four parts: morning, afternoon, evening, night. Everything you do takes one. Looking at a screen costs nothing. Walking the block, working a shift, riding to another district, sitting with somebody -- each one is a part of the day gone.",
 	},
 	{
-		"heading": "MARKET VISITS",
-		"body": "Buy and sell several times at locked prices. Walking away after a trade uses one part of day. Looking costs nothing.",
+		"heading": "THE HOUSE",
+		"body": "Rent is weekly and Yalonda does not do reminders past the first. Three days late is a warning; the third warning is the door. The phone bill goes quiet before it cuts you off. Both are on the Phone under Bills.",
 	},
 	{
-		"heading": "MAJOR ACTIONS",
-		"body": "Travel, recovery, meetings, debt payments, and operations advance to the next part of day. Resolve an event choice without paying a second time cost.",
+		"heading": "THE NAME",
+		"body": "Nobody, New Face, Known, Player, Connected, Boss. It is not a number you fill. It is what the people you have met have written down about you, added up. Crew needs Known. A corner needs Player. The way out needs Boss.",
 	},
 	{
-		"heading": "THE PRESSURE PHASE",
-		"body": "Protect working capital, manage Heat and Health, build relationships, and decide whether territory or a clean exit is worth the risk.",
+		"heading": "HOW IT ENDS",
+		"body": "The way out: clean money, priced by what you built, once you are Boss. The three ways it ends on you: the third house warning, the third serious booking, or Curtis at the door three mornings after his people first parked outside. Every one of them says so before it happens.",
 	},
 ]
 

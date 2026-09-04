@@ -77,7 +77,11 @@ func label(text: String, variation: String, size: int, col: Color, wrap: bool = 
 
 func note(text: String) -> Control:
 	var c := card()
-	c.add_child(label(text, "Muted", 12, MUTED))
+	# BR-D1: a note is a paragraph. Unwrapped, a long one (Boost's "nothing
+	# clocked here", the Gym's "first few sessions") set the shell's minimum
+	# width past the phone and the whole screen shifted -- the width sweep
+	# at 375 caught both.
+	c.add_child(label(text, "Muted", 12, MUTED, true))
 	return c
 
 ## Buttons on these screens are full-width and sit inside the ScrollContainer,

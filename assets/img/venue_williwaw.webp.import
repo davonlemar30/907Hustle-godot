@@ -2,22 +2,22 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bus8dm21pyc3g"
-path="res://.godot/imported/Deshawn.webp-67ff711f8474bfc848dfb8c241b56d78.ctex"
+uid="uid://xx3l5k5wwjah"
+path="res://.godot/imported/venue_williwaw.webp-a5fe368a62eb8a9e9ef0623627965f27.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/img/Deshawn.webp"
-dest_files=["res://.godot/imported/Deshawn.webp-67ff711f8474bfc848dfb8c241b56d78.ctex"]
+source_file="res://assets/img/venue_williwaw.webp"
+dest_files=["res://.godot/imported/venue_williwaw.webp-a5fe368a62eb8a9e9ef0623627965f27.ctex"]
 
 [params]
 
-compress/mode=1
+compress/mode=0
 compress/high_quality=false
-compress/lossy_quality=0.9
+compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
@@ -37,4 +37,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1

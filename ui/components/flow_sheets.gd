@@ -19,7 +19,7 @@ const MUTED := Color(0.608, 0.608, 0.608)
 const CREAM := Color(0.949, 0.941, 0.922)
 ## Home's People card uses this same portrait already (`home.tscn`'s "yalonda"
 ## ExtResource) -- one texture, preloaded here the way LOCK_ICON is.
-const YALONDA_PORTRAIT := preload("res://assets/img/Yalonda1.webp")
+const YALONDA_PORTRAIT := preload("res://assets/img/yalonda.webp")
 
 ## Yalonda's welcome, replacing the old Opening screen. Reads `gs` for the
 ## player's name and the real rent numbers; writes nothing -- the Opening

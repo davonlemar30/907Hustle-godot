@@ -667,12 +667,15 @@ const DRE_COLLECTION_PRESS_EFFECTS := {
 const DRE_COLLECTION_PRESS_FEE := {"clean": 80, "messy": 50}
 const DRE_COLLECTION_NEGOTIATE_FEE := {"clean": 60, "messy": 40}
 
+## WS-D2 verbs; the situation under them is PR #107's, folded in with 0.8.0.
+## Dre never has to raise his voice: money is the visible part of a deal and
+## reputation is the part that actually comes due.
 const DRE_COLLECTION_CHOICE_LABELS := {
-	"press": "PRESS HIM", "walk": "WALK AWAY",
+	"press": "TALK", "walk": "RUN",
 }
 const DRE_COLLECTION_CHOICE_COPY := {
-	"press": "Make it clear you're not leaving without it.",
-	"walk": "Not worth it today.",
+	"press": "Put Dre's name on the table. Make Dontae decide what refusing it costs.",
+	"walk": "Leave the debt where it is. Dre will price that choice into your name.",
 }
 
 ## The player-default ultimatum: Dre's own response once an account has sat
@@ -680,9 +683,9 @@ const DRE_COLLECTION_CHOICE_COPY := {
 ## just paying and stalling is just stalling, neither needs a roll, which is
 ## why this is the lighter of the two tables above.
 const DRE_ULTIMATUM_CHOICE_LABELS := {
-	"pay_now": "PAY NOW", "stall": "I CAN'T RIGHT NOW",
+	"pay_now": "PAY", "stall": "TALK",
 }
 const DRE_ULTIMATUM_CHOICE_COPY := {
-	"pay_now": "Clear it in full, right now.",
-	"stall": "You don't have it. He's not going to like that.",
+	"pay_now": "Pay the balance. The account closes; Dre still remembers when it got closed.",
+	"stall": "Tell Dre you still don't have it. From here, the debt is about more than money.",
 }

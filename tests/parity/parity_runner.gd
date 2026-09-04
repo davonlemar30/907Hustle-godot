@@ -14601,7 +14601,7 @@ func _check_version_stamp(gs: Node) -> void:
 	if version == null:
 		_fail("version", "no Version autoload registered")
 		return
-	_expect_str("the build is stamped 0.7.0", str(version.VERSION), "0.7.0")
+	_expect_str("the build is stamped 0.8.0", str(version.VERSION), "0.8.0")
 
 	# Shape, not value: this half survives every future bump, so the convention
 	# README documents stays enforced rather than merely written down.
@@ -14610,9 +14610,9 @@ func _check_version_stamp(gs: Node) -> void:
 	for part in parts:
 		_expect_true("version part '%s' is numeric" % part, str(part).is_valid_int())
 	_expect_int("MAJOR reads back", version.major(), 0)
-	_expect_int("MINOR reads back", version.minor(), 7)
+	_expect_int("MINOR reads back", version.minor(), 8)
 	_expect_int("PATCH reads back", version.patch(), 0)
-	_expect_str("the display form prefixes a v", version.display(), "v0.7.0")
+	_expect_str("the display form prefixes a v", version.display(), "v0.8.0")
 
 	# The title screen renders it, from the singleton rather than from the
 	# scene's editor-time preview.
@@ -18753,7 +18753,8 @@ func _check_deal_discovery(gs: Node, gm: Node) -> void:
 		_expect_int("finding something resets the drought", int(gs.wander_misses), 0)
 		var said := false
 		for row in gs.activity_log:
-			if str((row as Dictionary).get("text", "")).begins_with("You clock a spot"):
+			# WS-D5 (0.8.0): the line opens on the place and ends on the cameras.
+			if str((row as Dictionary).get("text", "")).contains("counting cameras"):
 				said = true
 		_expect_true("and the feed says so", said)
 	_expect_true("a deal walk can clock a spot", clocked_on_deal)
@@ -19586,6 +19587,7 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_door_to_work(gs, gm)
 	_check_managers(gs, gm)
+	_check_market_causes(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -19699,6 +19701,42 @@ func _check_managers(gs: Node, gm: Node) -> void:
 		if str(spec.get("kind", "")) == "fired":
 			fired = spec
 	_expect_str("...and being let go is a sheet", str(fired.get("job_id", "")), "spenard_chevron")
+	gs.reset_to_new_game()
+
+## WS-D5 (0.8.0 PR 5): the board explains itself. At least fifteen cause
+## lines exist; when the current district's biggest mover crosses the
+## threshold the feed carries one line, once a day, and never a price move.
+func _check_market_causes(gs: Node, gm: Node) -> void:
+	var causes := preload("res://data/market_causes.gd")
+	var total := 0
+	for table in [causes.UP, causes.DOWN]:
+		for key in (table as Dictionary).keys():
+			total += ((table as Dictionary)[key] as Array).size()
+	_expect_true("the board has fifteen to twenty-odd reasons to move (%d)" % total, total >= 15)
+	var economy: Object = gm.system("economy")
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.day = 4
+	economy._last_cause_day = -1
+	var market: Dictionary = gs.markets["north_star_lot"]
+	var prices_before: Dictionary = (market["prices"] as Dictionary).duplicate()
+	# Stage a hard move on weed and nothing else.
+	for pid in (market["history"] as Dictionary).keys():
+		market["history"][pid] = [100, 100]
+	market["history"]["weed"] = [100, 130]
+	var feed_before: int = (gs.activity_log as Array).size()
+	economy.explain_moves()
+	_expect_int("a thirty percent move earns one line", (gs.activity_log as Array).size(), feed_before + 1)
+	var line := str(((gs.activity_log as Array)[0] as Dictionary).get("text", "")) \
+		if (gs.activity_log as Array).size() > 0 and (gs.activity_log as Array)[0] is Dictionary else ""
+	_expect_true("...about weed, going up", line.begins_with("Weed is up") or line.begins_with("Prices are up"))
+	_expect_true("...and no price moved", (market["prices"] as Dictionary) == prices_before)
+	economy.explain_moves()
+	_expect_int("once a day", (gs.activity_log as Array).size(), feed_before + 1)
+	gs.day = 5
+	market["history"]["weed"] = [100, 105]
+	economy.explain_moves()
+	_expect_int("a five percent move is not worth a rumor", (gs.activity_log as Array).size(), feed_before + 1)
 	gs.reset_to_new_game()
 
 func _check_door_to_work(gs: Node, gm: Node) -> void:
@@ -20280,7 +20318,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13550
+const MIN_CHECKS := 13556
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

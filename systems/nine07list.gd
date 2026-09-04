@@ -210,7 +210,7 @@ func _buy(item_id: String) -> Dictionary:
 		"item_id": item_id, "bought_day": gs.day, "source": SOURCE_PLAYER})
 	# The opportunity is spent whether or not the flip ever pays off.
 	_mark_taken(item_id)
-	gs.log_activity("Picked up %s for $%d." % [str(item["name"]), int(item["buy"])], AMBER)
+	gs.log_activity("%s, $%d, in a parking lot with the engine running." % [str(item["name"]), int(item["buy"])], AMBER)
 	return {"ok": true}
 
 ## What a held item will actually fetch. Seeded on the holding so the number is
@@ -367,13 +367,13 @@ func settle_holding(index: int, execution_mode: String) -> Dictionary:
 		else:
 			gs.log_activity("Pherris moved %s for $%d. Down $%d." % [str(item["name"]), got, -delta], RED)
 	elif delta >= 0:
-		gs.log_activity("Flipped %s for $%d (+$%d)." % [str(item["name"]), got, delta], GREEN)
+		gs.log_activity("%s gone for $%d. Up $%d. Easy money never is, but this was close." % [str(item["name"]), got, delta], GREEN)
 	else:
-		gs.log_activity("%s moved for $%d. Down $%d." % [str(item["name"]), got, -delta], RED)
+		gs.log_activity("%s gone for $%d. Down $%d. You overpaid and you knew it when you did." % [str(item["name"]), got, -delta], RED)
 	# The only tier the player is ever told about: somebody clocked the handoff.
 	# The rest of the spread is silent by design — see the header.
 	if tier == "messy":
-		gs.log_activity("Somebody was paying attention to that meet.", AMBER)
+		gs.log_activity("A car sat across the lot the whole meet with nobody getting out.", AMBER)
 
 	if not delegated:
 		# A meet is a slot — for whoever went to it. Pherris going costs her day,
@@ -433,7 +433,7 @@ func _try_open_meetup_scene(held: Dictionary, item: Dictionary, tier: String,
 		return false
 	var mods: Dictionary = LOOP.tip_modifiers_for(gs, str(held["item_id"]), 1)
 	if bool(mods.get("suppress_meetup_scene", false)):
-		gs.log_activity("Pherris vouched for this one. It goes the way it was supposed to.", GREEN)
+		gs.log_activity("Pherris vouched. The buyer shows on time with exact change. That's what a name is for.", GREEN)
 		return false
 	var engine: Object = gm.system("consequence") if gm != null else null
 	if engine == null or engine.has_active():
@@ -471,7 +471,7 @@ func _try_open_meetup_scene(held: Dictionary, item: Dictionary, tier: String,
 		},
 		"decision": stub["decision"],
 	})
-	gs.log_activity("The buyer brought somebody. Nobody brings somebody to buy a camera.", AMBER)
+	gs.log_activity("The buyer brought a friend. Nobody brings a friend to buy a camera.", AMBER)
 	return true
 
 ## One authored beat onto the table. The script authors two; the second is
@@ -689,4 +689,4 @@ func _update_tier() -> void:
 	elif gs.list_flips >= gs.FLIPPER_FLIP_REQUIREMENT:
 		gs.list_tier = maxi(gs.list_tier, 2)
 	if gs.list_tier > was:
-		gs.log_activity("The board opens up. You're a %s now." % str(gs.market_tier()["name"]).capitalize(), GREEN)
+		gs.log_activity("The board opens up. People answer your listings now. You're a %s." % str(gs.market_tier()["name"]).capitalize(), GREEN)

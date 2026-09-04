@@ -112,7 +112,7 @@ func _recruit(id: String) -> Dictionary:
 		"proofs": {},
 	}
 	_recompute_power()
-	gs.log_activity("%s is on the crew." % str(person["name"]).split(" ")[0], GREEN)
+	gs.log_activity("%s is in. Handshake, no paperwork, all the paperwork that matters." % str(person["name"]).split(" ")[0], GREEN)
 	# Canon: crew_recruited is `growth` on the neighbourhood channel. Curtis
 	# weights growth at -3.0, so building an operation is exactly the thing that
 	# makes a rival colder — which is the point.
@@ -131,7 +131,7 @@ func _dismiss(id: String) -> Dictionary:
 	rec["status"] = "departed"
 	rec["recruited"] = false
 	_recompute_power()
-	gs.log_activity("%s is off the crew." % str(gs.crew_member_by_id(id)["name"]).split(" ")[0], AMBER)
+	gs.log_activity("%s is out. No speech. Just gone from the group text." % str(gs.crew_member_by_id(id)["name"]).split(" ")[0], AMBER)
 	return {"ok": true}
 
 # --- wages -----------------------------------------------------------------
@@ -346,7 +346,7 @@ func settle_night(ended_day: int) -> void:
 			rec["loyalty"] = clampi(int(rec["loyalty"]) - 1, gs.CREW_LOYALTY_MIN, gs.CREW_LOYALTY_MAX)
 			gs.log_activity("%s didn't say anything about the money again. That's worse." % first_name, RED)
 		else:
-			gs.log_activity("No cash for %s's wage tonight. It goes on the ledger." % first_name, AMBER)
+			gs.log_activity("No cash for %s tonight. It goes on a ledger only one of you is keeping." % first_name, AMBER)
 
 		if int(rec["loyalty"]) <= gs.CREW_LOYALTY_MIN:
 			rec["status"] = "departed"

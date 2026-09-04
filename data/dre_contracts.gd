@@ -106,7 +106,8 @@ const DEFINITIONS := {
 		],
 		"presentation": {
 			"title": "First Money",
-			"offered_body": "Dre's first offer. The flat rate — no discount for being new, no penalty either.",
+			"offered_body": "Dre's first offer. Same terms as everybody else. " \
+				+ "The money tests your need; the repayment tests your word.",
 		},
 	},
 	"dre_a_reminder": {
@@ -136,7 +137,8 @@ const DEFINITIONS := {
 		],
 		"presentation": {
 			"title": "A Reminder",
-			"offered_body": "Dontae Wells owes Dre. Dre would like it handled — talked loose, or taken.",
+			"offered_body": "Dontae Wells has Dre's money. Bring it home. " \
+				+ "How you move him is the part Dre is measuring.",
 		},
 	},
 	"dre_penance": {
@@ -161,7 +163,8 @@ const DEFINITIONS := {
 		],
 		"presentation": {
 			"title": "Making It Right",
-			"offered_body": "The money's square. Dre still wants to hear it from you.",
+			"offered_body": "The debt is paid. The disrespect isn't. " \
+				+ "Dre wants one last conversation.",
 		},
 	},
 	"dre_book_sponsorship": {
@@ -198,8 +201,8 @@ const DEFINITIONS := {
 		],
 		"presentation": {
 			"title": "Your First Name in the Book",
-			"offered_body": "Dre's putting a name forward: Priya Osei. Fund her, " \
-				+ "see it through, and the Book is yours.",
+			"offered_body": "Dre is putting his name behind Priya Osei — and yours " \
+				+ "beside it. Fund her, see the note through, and earn your place in the Book.",
 		},
 	},
 }

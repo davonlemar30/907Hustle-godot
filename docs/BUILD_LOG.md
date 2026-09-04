@@ -28,6 +28,43 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 0.8.0 — The World Speaks: five PRs (added 2026-09-03)
+
+Source: `907Hustle_Build_Prompt_v2.md`; PR `#107` folded in. Rulings: `D-26`
+(WS-D1..D5). Five PRs, `#134`, `#135`, `#136`, `#137`, the close-out.
+
+### What this build actually was
+
+The owner's prompt came out of a playtest and said the encounters worked and
+the world around them did not. The build answered the five asks in order
+and stacked them: a discovery latch so nothing criminal is on the board on
+day one and each path arrives through an authored moment; seven verbs on
+every road with the situation under the button and a roster keyed to the
+run's phase; two answers on every NPC text with a ghost that costs; a
+person running every job; and a writing pass that turned system messages
+into fragments of experience and gave the board eighteen reasons to move.
+
+### What it cost, and what was measured
+
+Two schema bumps (v26 `hustles_discovered`, v27 `phone_reply_history`),
+both additive, both required by a persisted array as the prompt allowed.
+Parity 13,346 → 13,556; confrontation 2,994 → 3,445; dre 404 → 427;
+save-validation 247 → 257; smoke panel 88 → 96. One corridor ceiling moved
+(best-job 130 → 140, measured 134%). The parity floor had been left at
+12,836 at 0.6.0's close-out; it was set from fresh runs at every PR here.
+
+### Gotchas worth the next reader's time
+
+- An observation recorded outside `GameManager.dispatch()` is refused with
+  a warning, not an error. The ghost test drove day-start through
+  `advance_time` for exactly this reason.
+- `_lifecycle_ready()` resets `job_missed`; an arm that walks the firing
+  ladder has to re-stage the rung each night.
+- The stray untracked `ui/screens/opening.tscn` keeps reappearing because
+  the editor has it open; move it aside before any smoke run.
+- GDScript has no `?:`; a shadowed loop variable is a parse error that
+  hangs the parity runner silently. Check the log's first lines.
+
 ## 0.7.0 — Blow by Blow: five PRs (added 2026-09-03)
 
 Source: `BUILD_BLOW_BY_BLOW_PROMPT.md`, the owner's Full Game Vision document,

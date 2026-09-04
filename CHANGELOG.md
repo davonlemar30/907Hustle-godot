@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `0.7.0`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `0.8.0`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,98 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 0.8.0 — The World Speaks: the city reveals itself, and everybody in it has a voice (2026-09-03)
+
+The owner's directive, from `907Hustle_Build_Prompt_v2.md`: *"the world
+should speak to the player — nothing criminal on day one, every card
+earning its slot, texts you can answer, jobs with people in them, and a
+writing pass over every line the game says."* Five PRs, each green before
+the next started, stacked in order. Rulings are D-26 (WS-D1..D5).
+
+### PR 1 — The city reveals itself (`#134`)
+
+- **Nothing criminal is on the board on day one.** The Market arrives
+  through Goodie on the corner from day two (Spenard); the Lift through
+  the first loose rack from day three; the stickup through a broke
+  afternoon (under $30) or witnessing one in Spenard after dark from day
+  five; the 907List through the first of Mina, Juan, Yalonda or Dre at
+  Warm mentioning it at day start. `hustles_discovered` is the latch,
+  **save v26**, derived for v25 saves from the gates they had open.
+- **The run starts knowing one job** — the Wash & Go, because Yalonda's
+  welcome names it and Lani. The other six are found by walking.
+- **Four meeting cards** (`KIND_MEETING`) play before the gate roll on
+  their day and never write to Curtis. Goodie's road hands two weed;
+  the rack hands cash; the broke afternoon hands cash. Cash lands dirty.
+- Every gate in `SurfaceVisibility` reads the new `hustle_discovered`
+  requirement; the Jobs menu reads `jobs_known`.
+
+### PR 2 — Every card earns its slot (`#135`)
+
+- **Seven verbs** on every road of every confrontation: FIGHT, RUN, TALK,
+  PAY, SURRENDER, BLUFF, COMPLY (plus the crew calls by name). The
+  situation lives in the line under the verb; the story in the result.
+  The Lift, the caught encounter, both corners, the meetup, the
+  checkpoint, the doorstep, retaliation and Dre's collection all speak
+  the same set. The stickup room keeps its own actions.
+- **A roster keyed to when.** `day_max` joins the requirement language.
+  Week Zero (days 1–4), Getting Known (4–10), Reputation (10–20), Weight
+  (20+). The mistaken-identity slot-filler is cut; the three on the wall,
+  the lot and the wrong place are rewritten to answer who and why; nine
+  new cards arrive on their days.
+
+### PR 3 — The player speaks (`#136`)
+
+- **Two answers on every text from a named NPC**, under fifteen words,
+  thumb-typed. A leans toward the person (an observation, or a point of
+  loyalty for crew); B keeps distance (neutral). The NPC answers back
+  once, in their own voice. `Phone.push_text(from, text, context, extra)`
+  is the seam; every named push site moved over.
+- **Silence costs.** A text on read for a full day is a ghost. Mina,
+  Dre, Yalonda and the managers notice: it costs them, and their next
+  text opens on it. Juan and the crew shrug.
+- **`phone_reply_history`** (save v27, additive) keeps per-NPC counts.
+
+### PR 4 — The managers have names (`#137`)
+
+- **Every job is a person** (`data/job_managers.gd`): Lani, Marcus,
+  Mina, Sonny, Denise, Ray, Big Mike. The hire is a flow sheet in their
+  voice. Every three or four shifts something small happens on the
+  floor. The Chevron pays a night differential; the Night Owl pays its
+  regular and every night beside Mina is an observation on her ledger.
+  A missed shift is an answerable text; three is the door, with a last
+  text and a sheet.
+- **Pay differs.** The four starter bands re-cut; the best-job corridor's
+  ceiling lifted 130 → 140 (measured 134%).
+
+### PR 5 — The writing pass, and the close-out
+
+- **Feed lines are fragments of experience.** Fifty-odd system messages
+  across wander, stickup, 907List, territory, obligations, crew, boost,
+  the shark and jobs rewritten in the *Power* register. Lines whose
+  number *is* the experience (the stickup room's take and heat) kept.
+- **The board explains itself.** Eighteen Anchorage cause lines
+  (`data/market_causes.gd`); when the current district's biggest mover
+  crosses 15%, one line a day, never a price move.
+- **The opening moment.** Yalonda's welcome is four lines; her terms are
+  the first text on the phone, and the first thing on it you can answer.
+- **Home's route line is live.** The mockup's `route` string ("+$127
+  Downtown") is no longer shown; Home reads `best_route()` like Market.
+- **PR #107 folded in** under the universal verbs: Dre's collection and
+  ultimatum copy, contract bodies, lender and collector lines, People.
+- **Version 0.8.0**; `docs/WORLD_SPEAKS_REVIEW.md` answers the prompt's
+  six questions.
+
+### Measured
+
+| Suite | 0.7.0 | 0.8.0 |
+|---|---|---|
+| parity | 13,346 | 13,556 |
+| confrontation | 2,994 | 3,445 |
+| dre | 404 | 427 |
+| save-validation | 247 | 257 |
+| smoke panel | 88 | 96 |
+| territory / tips | 170 / 93 | unchanged |
 
 ## 0.7.0 — Blow by Blow: the hit lands, the words fit, the street shows up (2026-09-03)
 

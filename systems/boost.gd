@@ -215,10 +215,10 @@ func _run(target_id: String) -> Dictionary:
 		if tier == 3:
 			# Tier 3 comes out as merchandise, not cash. Slide fences it.
 			gs.boost_merchandise += take
-			gs.log_activity("%s lands. $%d in merchandise waiting for the fence." % [str(t["name"]), take], GREEN)
+			gs.log_activity("Out the door at %s with $%d of somebody else's inventory and your heart in your throat." % [str(t["name"]), take], GREEN)
 		else:
 			_wallet().credit(take, _wallet().DIRTY, {"source_id": "boost_take"})
-			gs.log_activity("Left %s with goods worth $%d." % [str(t["name"]), take], GREEN)
+			gs.log_activity("You walk out of %s $%d heavier and nobody looks up." % [str(t["name"]), take], GREEN)
 		result = {"ok": true, "success": true, "take": take, "tier": tier}
 	else:
 		# TI-003 §11: "The failed branch removes its current immediate terminal
@@ -699,7 +699,7 @@ func _resolve_hand_it_back(chain: Dictionary, source: Dictionary,
 	chain["decision"] = decision
 
 	engine.advance_stage(engine.STAGE_RESULT)
-	gs.log_activity("Handed the bag back and walked out, after all that.",
+	gs.log_activity("You hand the bag back. The clerk doesn't even look at you. After all that.",
 		AMBER)
 	return {"ok": true, "tier": "handed_back", "arrested": false}
 
@@ -795,7 +795,7 @@ func _fence() -> Dictionary:
 	gs.boost_fence_standing = clampi(gs.boost_fence_standing + 1, 0, 5)
 	_wallet().credit(payout, _wallet().DIRTY, {"source_id": "boost_fence"})
 	gs.record_earning("boost", payout)
-	gs.log_activity("Slide takes the lot for $%d." % payout, GREEN)
+	gs.log_activity("Slide takes the lot for $%d and doesn't ask where it came from. He never does." % payout, GREEN)
 	# Canon is specific here: Slide is discreet, so the sale reaches the
 	# household channel and nothing wider. Yalonda and Juan notice money that
 	# has no explanation; the street does not hear about it at all.
@@ -818,7 +818,7 @@ func _update_tier() -> void:
 	if gs.boost_technique >= gs.BOOST_TIER3_TECHNIQUE and crew != null and crew.has_field_crew():
 		gs.boost_tier = maxi(gs.boost_tier, 3)
 	if gs.boost_tier > was:
-		gs.log_activity("You're getting smooth. Bigger rooms are open now.", GREEN)
+		gs.log_activity("You're getting smooth. Your hands don't shake anymore, and bigger rooms noticed.", GREEN)
 
 ## Damage after Tone. Forwarded rather than reached for inline so both of this
 ## build's damage sites read identically and neither can drift.

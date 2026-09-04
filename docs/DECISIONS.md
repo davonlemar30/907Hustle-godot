@@ -2052,6 +2052,94 @@ with shipped code).
 
 ---
 
+## D-26 — The World Speaks: the city reveals itself, and everybody in it has a voice
+
+**Decided** 2026-09-03 · **Ships in** 0.8.0, five PRs (`#134` the city
+reveals itself, `#135` every card earns its slot, `#136` the player
+speaks, `#137` the managers have names, the writing pass and close-out) ·
+**Source:** `907Hustle_Build_Prompt_v2.md`; PR `#107` folded in
+
+### The question
+
+After 0.7.0 the encounters worked and the owner's playtest said the world
+around them did not: everything criminal was on the menu from day one,
+the road labels were sentences the player had to decode, texts were
+things that happened to you, and a job was a pay band. The prompt asked
+for five things and drew three lines: no schema bump unless a persisted
+array needs one, the parity floor holds or rises, and no mechanical
+rewrite — content and presentation only.
+
+### The rulings
+
+**WS-D1 — discovery is a latch, and each path arrives through a moment.**
+`hustles_discovered` (v26) latches `market`, `boost`, `stickup`, `list`
+once each. Every gate that used to read `market_discovered` or a day
+count reads the latch now, through a `hustle_discovered` requirement, so
+a path is invisible until the run has been shown it. The moments are
+meeting cards (`KIND_MEETING`): they play before the gate roll on their
+day, mark themselves seen, and are authored with an empty observation
+block so nothing about meeting Goodie reaches Curtis. Grants (Goodie's
+two weed, the rack's cash) land dirty through the wallet under a
+`wander_encounter:grant` receipt. Jobs are the same shape they already
+were: the run knows one (`wash_go`) and walks for the rest. Rejected: a
+day counter alone (a player who never walks would have the Market appear
+on a timer with nobody handing it over).
+
+**WS-D2 — seven verbs, and the situation under them.** Every road on
+every confrontation is labelled FIGHT, RUN, TALK, PAY, SURRENDER, BLUFF
+or COMPLY, or a crew call's name. The roles the chassis reads are
+untouched; only `choice_label` changed. What a verb means *here* is the
+line under it (`choice_copy`), and what it did is the result (0.7.0's
+seam). The stickup room keeps PRESS / WATCH THE ROOM / TAKE AND GO
+because those are the robbery's actions, not a confrontation's roads
+(see `docs/WORLD_SPEAKS_REVIEW.md` question 2). `day_max` joins
+`requirements.gd`; absent passes. The roster's phases are days 1–4,
+4–10, 10–20, 20+, and the confrontation suite sweeps every road for a
+verb and a non-empty line.
+
+**WS-D3 — an exchange, not a tree.** A text from a named NPC carries two
+answers; the player picks one; the NPC hears it and answers back exactly
+once, with no reply of its own. A = `answered_text` (+1.0 shared weight,
+or +1 loyalty for crew); B = `kept_distance` (0.0). A text unanswered for
+two day-starts is a ghost (`ghosted_text`, −1.0) written only for the
+NPCs in `CARES_ABOUT_SILENCE`; those NPCs' next text opens on it, once.
+Held texts on a dead line are not ghosts. `phone_reply_history` (v27) is
+counts, not a transcript. `Phone.push_text` is the seam and falls back to
+a plain push for a sender nobody authored replies for, so "Around town"
+never grew buttons. Rejected: reply-history-driven branching (a tree is
+the thing the prompt said not to build).
+
+**WS-D4 — every job is a person; the ladder is untouched.** The
+attendance ladder, rank scaling, band roll and approach multiplier are
+canon and unchanged. On top: a hire sheet, a floor event every three or
+four shifts (seeded on the shift count; a line, sometimes a few dollars
+or health, never a decision), a night differential at the Chevron, a
+regular's bonus at the Night Owl plus a direct `worked_beside` (+0.5) on
+Mina's ledger, manager texts at misses one and two, and a `fired` sheet
+plus last text at three. The starter bands were re-cut so the four
+differ. The best-job corridor's ceiling moved 130 → 140 with the
+measurement (134%) recorded at the constant.
+
+**WS-D5 — the board explains itself; the feed is experience.** The
+overnight walk stays a random walk. `Economy.explain_moves()` runs after
+it and, for the current district's biggest mover past 15%, logs one of
+eighteen cause lines, once a day, seeded on day and product. It never
+moves a price and the parity arm asserts so. Feed lines were rewritten
+as fragments of experience except where the number is the experience.
+Yalonda's welcome is four lines and her terms are the run's first text.
+Home stops reading the product table's authored `route` string (a
+mockup claim the economy never honoured) and reads `best_route()`.
+PR `#107`'s Dre copy is folded in with its road sentences moved under
+the verbs.
+
+### Recommended next, from the review
+
+`docs/WORLD_SPEAKS_REVIEW.md`: widen the stickup's door (under $60, any
+evening slot); author replies per crew-operation text or leave them
+without; do not deepen jobs; the crew initiating things is the biggest
+gap against the vision; cut the product table's `route`/`hint`/`trend`
+fields with the next schema touch.
+
 ## D-25 — Blow by Blow: the hit lands, the words fit, the street shows up
 
 **Decided** 2026-09-03 · **Ships in** 0.7.0, five PRs (`#127` the words fit,

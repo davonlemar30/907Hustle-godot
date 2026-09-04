@@ -215,7 +215,7 @@ func _fund(borrower_id: String, amount: int, term: int) -> Dictionary:
 	}
 	gs.shark_next_loan_id += 1
 	gs.shark_loans.append(loan)
-	gs.log_activity("%s takes $%d for %d days." % [str(b["name"]), amount, term], AMBER)
+	gs.log_activity("%s takes the $%d without counting it. %d days. He knows what you are now." % [str(b["name"]), amount, term], AMBER)
 	_accept_sponsorship(b)
 	return {"ok": true, "loan_id": int(loan["id"])}
 
@@ -267,7 +267,7 @@ func _resolve_defaulted(loan_id: int, how: String) -> Dictionary:
 				exposure.record_observation("dre", {
 					"type": "financial", "event": "let_them_down", "source": "network",
 				})
-			gs.log_activity("You let %s off the note. Word travels." % str(b["name"]), AMBER)
+			gs.log_activity("You let %s off the note. Everybody who owes you hears about it by dinner." % str(b["name"]), AMBER)
 			_resolve_sponsorship(b, "forgiven")
 		"enforce":
 			# The principal comes back; the interest does not.
@@ -349,7 +349,7 @@ func settle_night(ended_day: int) -> void:
 		var roll: float = rng.seeded_unit_10k(gs.run_seed, key)
 		if roll < default_probability(loan):
 			loan["status"] = "defaulted"
-			gs.log_activity("%s misses the deadline. The note needs a decision." % str(b["name"]), RED)
+			gs.log_activity("%s doesn't show. The note is a decision now, and it's yours." % str(b["name"]), RED)
 		else:
 			var interest: int = interest_for(loan)
 			var dre_cut: int = int(round(float(interest) * gs.SHARK_DRE_CUT))

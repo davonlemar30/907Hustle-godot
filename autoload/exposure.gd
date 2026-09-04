@@ -88,6 +88,9 @@ const SHARED_EVENT_WEIGHTS := {
 	# people who notice (`data/phone_replies.gd::CARES_ABOUT_SILENCE`) and
 	# is written only for them, so the shared weight here is the caring one.
 	"answered_text": 1.0,
+	# WS-D4: a Night Owl shift is a night Mina noticed you. Small, and only
+	# the Night Owl writes it.
+	"worked_beside": 0.5,
 	"kept_distance": 0.0,
 	"ghosted_text": -1.0,
 	"missed_obligation": -2.5,

@@ -55,6 +55,16 @@ func _build_current() -> void:
 	if rank > 0:
 		meta += "  ·  RANK %d" % rank
 	v.add_child(_label(meta, "Muted", 11, MUTED))
+	# WS-D4: who runs it, and what that gets you.
+	var manager: Dictionary = _manager_for(gs.active_job_id)
+	if not manager.is_empty():
+		var who := str(manager.get("name", ""))
+		var line := ("%s, %s. " % [who, str(manager.get("title", ""))]) if not who.is_empty() else ""
+		line += str(manager.get("perk", ""))
+		var shifts: int = int(rec.get("shifts", 0))
+		if shifts > 0:
+			line += "  ·  %d shift%s" % [shifts, "" if shifts == 1 else "s"]
+		v.add_child(_label(line.strip_edges(), "Muted", 11, MUTED, true))
 
 	# Attendance is only worth showing once it is a problem.
 	var missed: int = int(gs.job_missed.get(gs.active_job_id, 0))
@@ -152,6 +162,10 @@ func _board_row(job: Dictionary) -> Control:
 	if bool(job.get("day_labor", false)):
 		meta += "  ·  NO SCHEDULE"
 	left.add_child(_label(meta, "Muted", 11, MUTED))
+	var manager: Dictionary = _manager_for(str(job["id"]))
+	var who := str(manager.get("name", ""))
+	if not who.is_empty():
+		left.add_child(_label("%s %s" % [who, str(manager.get("title", ""))], "Muted", 11, MUTED))
 
 	var apply := Button.new()
 	apply.custom_minimum_size = Vector2(88, 44)
@@ -165,6 +179,12 @@ func _board_row(job: Dictionary) -> Control:
 	return card
 
 # --- small builders --------------------------------------------------------
+
+func _manager_for(job_id: String) -> Dictionary:
+	var sys: Object = _gm.system("jobs")
+	if sys == null:
+		return {}
+	return sys.manager_for(job_id)
 
 func _slots_text(job: Dictionary) -> String:
 	var names := ["MORNING", "AFTERNOON", "EVENING", "NIGHT"]

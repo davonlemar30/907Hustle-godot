@@ -135,9 +135,9 @@ func push_intro_offer(today: int) -> void:
 	gs.dre_intro_offered = true
 	var phone: Object = _phone()
 	if phone != null:
-		phone.push_message("Juan",
+		phone.push_text("Juan",
 			"you should talk to Dre. he fronts people money when they need it. " \
-			+ "ask around Spenard, everybody knows where to find him.")
+			+ "ask around Spenard, everybody knows where to find him.", "juan_dre_mention")
 
 ## "" if the player can go meet Dre right now, the reason otherwise.
 func seek_out_blocker() -> String:
@@ -337,22 +337,22 @@ func settle_night(ended_day: int) -> void:
 	match status:
 		"active", "extended":
 			if ended_day + 2 == due_day and phone != null:
-				phone.push_message("Dre", "Due tomorrow. You know where to find me.",
-					{"kind": "dre_debt"})
+				phone.push_text("Dre", "Due tomorrow. You know where to find me.",
+					"dre_due_tomorrow", {"kind": "dre_debt"})
 			if ended_day + 1 >= due_day:
 				account["status"] = "due"
 				gs.dre_account = account
 				if phone != null:
-					phone.push_message("Dre", "Today's the day. I'll be expecting it.",
-						{"kind": "dre_debt"})
+					phone.push_text("Dre", "Today's the day. I'll be expecting it.",
+						"dre_due_today", {"kind": "dre_debt"})
 		"due":
 			account["status"] = "overdue"
 			gs.dre_account = account
 			gs.log_activity("Dre's money didn't come. That's a different conversation now.", RED)
 			if phone != null:
-				phone.push_message("Dre",
+				phone.push_text("Dre",
 					"We should talk before this becomes a different conversation.",
-					{"kind": "dre_debt"})
+					"dre_missed", {"kind": "dre_debt"})
 		"overdue":
 			# Triggering moved to `systems/doorstep.gd` (0.5.0 PR D, DOOR-D2)
 			# so Dre's own urgency can be weighed against a defaulted Book

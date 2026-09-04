@@ -55,6 +55,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_wander(state, repairs)
 	_validate_boost_discovery(state, repairs)
 	_validate_hustles_discovered(state, repairs)
+	_validate_phone_reply_history(state, repairs)
 	_validate_boost_bribes_used(state, repairs)
 	_validate_tip_effects(state, repairs)
 	_validate_tip_misses(state, repairs)
@@ -732,6 +733,33 @@ func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> voi
 			continue
 		cleaned.append(str(entry))
 	state["boost_targets_discovered"] = cleaned
+
+## v27 (WS-D3). A dictionary of per-NPC rows; a row is four non-negative
+## ints and a bool. A junk row is dropped; a junk field inside a row is
+## defaulted, because the rest of the row is still history.
+func _validate_phone_reply_history(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("phone_reply_history"):
+		return
+	if not state["phone_reply_history"] is Dictionary:
+		state["phone_reply_history"] = {}
+		_repair(repairs, "phone_reply_history", "wrong type; defaulted")
+		return
+	var cleaned: Dictionary = {}
+	for npc_id in (state["phone_reply_history"] as Dictionary).keys():
+		var row: Variant = (state["phone_reply_history"] as Dictionary)[npc_id]
+		if not row is Dictionary or not npc_id is String or str(npc_id).is_empty():
+			_repair(repairs, "phone_reply_history[%s]" % str(npc_id), "not a row; dropped")
+			continue
+		var fixed: Dictionary = row
+		for key in ["answered", "distanced", "ghosted"]:
+			_int(fixed, key, 0, "phone_reply_history[%s].%s" % [str(npc_id), key], repairs)
+			if int(fixed[key]) < 0:
+				fixed[key] = 0
+				_repair(repairs, "phone_reply_history[%s].%s" % [str(npc_id), key], "negative; zeroed")
+		_int(fixed, "last_day", -1, "phone_reply_history[%s].last_day" % str(npc_id), repairs)
+		_bool(fixed, "owed_ghost", false, "phone_reply_history[%s].owed_ghost" % str(npc_id), repairs)
+		cleaned[str(npc_id)] = fixed
+	state["phone_reply_history"] = cleaned
 
 ## v26 (WS-D1). Same shape as `_validate_boost_discovery`: every entry must be
 ## one of the four hustle ids GameState declares, and a set holds each once.

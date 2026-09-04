@@ -358,7 +358,7 @@ func _reconcile_callbacks() -> void:
 			continue
 		# --- the offer, once per run ---
 		if not callback_flag("discovery_notified", operation_id):
-			phone.push_message(_sender_for(operation_id),
+			phone.push_text(_sender_for(operation_id),
 				_adapter_copy(operation_id, "discovery_text", [], DISCOVERY_TEXT))
 			_set_callback_flag("discovery_notified", true, operation_id)
 		# --- the loyalty complaint, once per episode ---
@@ -379,7 +379,7 @@ func _reconcile_callbacks() -> void:
 		var gate: int = _loyalty_gate(operation_id)
 		if loyalty < gate:
 			if not callback_flag("loyalty_warning_sent", operation_id):
-				phone.push_message(_sender_for(operation_id),
+				phone.push_text(_sender_for(operation_id),
 					_adapter_copy(operation_id, "loyalty_warning_text", [],
 						LOYALTY_WARNING_TEXT))
 				_set_callback_flag("loyalty_warning_sent", true, operation_id)
@@ -476,7 +476,7 @@ func _settlement_callback(assignment: Dictionary) -> void:
 	if not (assignment.get("result") is Dictionary):
 		return
 	var operation_id := str(assignment.get("operation_id", ""))
-	phone.push_message(_sender_for(operation_id),
+	phone.push_text(_sender_for(operation_id),
 		_adapter_copy(operation_id, "settlement_text", [assignment],
 			_settlement_text(assignment)))
 

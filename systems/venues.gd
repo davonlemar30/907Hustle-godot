@@ -167,9 +167,9 @@ func _offer_the_counter() -> void:
 	gs.log_activity("Mina mentions the counter is short a night.", BLUE)
 	var phone: Object = gm.system("phone") if gm != null else null
 	if phone != null:
-		phone.push_message("Mina",
+		phone.push_text("Mina",
 			"we're short evenings if you want them. it's not much and you'd be "
-			+ "working next to me. say the word and i'll put you on.")
+			+ "working next to me. say the word and i'll put you on.", "mina_counter")
 
 func _train(activity_id: String) -> Dictionary:
 	var blocked: String = train_blocker(activity_id)

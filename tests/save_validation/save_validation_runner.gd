@@ -33,6 +33,7 @@ func _ready() -> void:
 	_test_v23_opportunities()
 	_test_v24_dre_pending_penance()
 	_test_v26_hustles_discovered()
+	_test_v27_phone_reply_history()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
 	_test_load_pipeline()
@@ -987,6 +988,29 @@ func _test_v26_hustles_discovered() -> void:
 		"wander_count": 0}})
 	_check("a v25 day-one save arrives knowing nothing",
 		young.get("hustles_discovered", ["x"]) == [])
+
+## v27 (WS-D3): the reply history. Rows survive, junk rows drop, junk
+## fields default, negatives zero, and a v26 save arrives having answered
+## nobody.
+func _test_v27_phone_reply_history() -> void:
+	var valid := _fixed(_state("phone_reply_history",
+		{"mina": {"answered": 2, "distanced": 1, "ghosted": 0, "last_day": 4, "owed_ghost": false}}))
+	_check("a valid v27 reply row survives",
+		int((valid["phone_reply_history"] as Dictionary)["mina"]["answered"]) == 2)
+	var wrong := _fixed(_state("phone_reply_history", "mina"))
+	_check("wrong-type reply history defaults to empty",
+		wrong["phone_reply_history"] is Dictionary and (wrong["phone_reply_history"] as Dictionary).is_empty())
+	var junk := _fixed(_state("phone_reply_history",
+		{"mina": {"answered": -3, "ghosted": "two"}, "dre": "nope"}))
+	var mina: Dictionary = (junk["phone_reply_history"] as Dictionary).get("mina", {})
+	_check("a junk row is dropped and a junk field defaults",
+		not (junk["phone_reply_history"] as Dictionary).has("dre")
+		and int(mina.get("answered", -1)) == 0 and int(mina.get("ghosted", -1)) == 0)
+	var saves := get_node("/root/SaveSystem")
+	var migrated: Dictionary = saves._migrate({"save_version": 26, "state": {
+		"day": 4, "cash": 300, "street_name": "Legacy"}})
+	_check("a v26 save arrives having answered nobody",
+		not migrated.has("phone_reply_history") or (migrated.get("phone_reply_history", {}) as Dictionary).is_empty())
 
 func _test_v24_dre_pending_penance() -> void:
 	# Same shape as _validate_dre_intro_offered -- manual wrong-type check,

@@ -193,6 +193,9 @@ const DAY_START_ORDER: Array[String] = [
 	# The World Speaks, PR 1 (WS-D1). After `tips`: a mention is somebody who
 	# trusts you telling you about the board, and it reads the ledger as the
 	# day left it.
+	# The World Speaks, PR 3 (WS-D3): a text left on read for a full day is
+	# a ghost, and the people who notice, notice at the start of the next.
+	"ghosts",
 	"mentions",
 	# Dre Lending & Loan-Shark Progression, PR B (DRE-D1). After `tips` for
 	# the same reason `tips` is after everything else: Juan's mention reads
@@ -467,6 +470,11 @@ func _run_day_start_step(step: String, today: int) -> void:
 		var tips: Object = gm.system("tips") if gm != null else null
 		if tips != null:
 			tips.push_tip(today)
+		return
+	if step == "ghosts":
+		var phone: Object = gm.system("phone") if gm != null else null
+		if phone != null:
+			phone.settle_ghosts(today)
 		return
 	if step == "mentions":
 		var wander: Object = gm.system("wander") if gm != null else null

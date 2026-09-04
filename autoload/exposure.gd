@@ -83,6 +83,13 @@ const THREAT := {
 ## Yalonda like you more, and the escalating count made it worse the longer you
 ## went without paying.
 const SHARED_EVENT_WEIGHTS := {
+	# WS-D3 (0.8.0): the phone. Answering warmly is worth a little to
+	# everybody; keeping distance is nothing; a text left on read costs the
+	# people who notice (`data/phone_replies.gd::CARES_ABOUT_SILENCE`) and
+	# is written only for them, so the shared weight here is the caring one.
+	"answered_text": 1.0,
+	"kept_distance": 0.0,
+	"ghosted_text": -1.0,
 	"missed_obligation": -2.5,
 	"let_them_down": -2.0,
 	"walked_a_debt": -3.0,

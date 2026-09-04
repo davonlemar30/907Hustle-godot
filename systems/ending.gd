@@ -231,6 +231,14 @@ func reckoning() -> Dictionary:
 		"clean": int(gs.clean_cash),
 		"cash": int(gs.cash),
 		"rank": str(exposure.rank()["name"]) if exposure != null else "",
+		# SA-D1 (1.1.0): the road not taken. What there was against what
+		# you took: the name against six, the corners against the board,
+		# the districts against the city.
+		"rank_index": int(exposure.rank_index()) if exposure != null else 0,
+		"rank_count": RANK.TIERS.size(),
+		"corner_count": gs.TERRITORY_DEFS.NODES.size(),
+		"districts_known": (gs.districts_unlocked as Array).size(),
+		"district_count": (gs.districts as Array).size(),
 		"corners": corners,
 		"crew": crew,
 		"people": people,

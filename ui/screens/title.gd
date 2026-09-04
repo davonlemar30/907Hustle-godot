@@ -65,11 +65,13 @@ func _has_save() -> bool:
 ## then "Saved run · Day X · Part", then "District · cash · debt".
 func _last_run_summary() -> String:
 	var p: Dictionary = _save_info.get("preview", {})
-	return "%s\nSAVED RUN · DAY %d · %s\n%s · $%d CASH · $%d DEBT" % [
+	# SA-D1 (1.1.0): the third line says who you were, not only where.
+	return "%s\nSAVED RUN · DAY %d · %s\n%s · %s · $%d CASH · $%d DEBT" % [
 		str(p.get("name", "")).to_upper(),
 		int(p.get("day", 1)),
 		str(p.get("part", "MORNING")),
 		str(p.get("district", "SPENARD")),
+		str(p.get("rank", "Nobody")).to_upper(),
 		int(p.get("cash", 0)),
 		int(p.get("debt", 0)),
 	]

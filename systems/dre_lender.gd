@@ -159,7 +159,7 @@ func _seek_out() -> Dictionary:
 		return {"ok": false, "reason": blocked}
 	gs.dre_introduced = true
 	gs.dre_access_tier = maxi(int(gs.dre_access_tier), 1)
-	gs.log_activity("You find Dre outside the Mini-Mart. He already knew you'd come.", AMBER)
+	gs.log_activity("You find Dre outside the Night Owl. He already knew you'd come.", AMBER)
 	time_system.handle("advance_time", {})
 	return {"ok": true}
 

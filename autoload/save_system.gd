@@ -202,6 +202,7 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## v32: `hot_goods` (One Good Run PR 5, OG-D5) -- what the Lift walked out
 ## with and has not fenced. Additive: an empty coat.
 const SAVE_VERSION := 32
+const RANK := preload("res://data/rank.gd")
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -405,8 +406,12 @@ func inspect() -> Dictionary:
 	if str(account.get("status", "clear")) != "clear":
 		owed = int(account.get("principal", 0)) + int(account.get("interest", 0)) \
 			+ int(account.get("fee", 0))
+	# SA-D1 (1.1.0): the name you earned, derived from the saved ledgers the
+	# same way the HUD derives it live, so the title says who you were.
+	var rank_score: int = RANK.score_of(state.get("npc_ledgers", {}))
 	return {"exists": true, "valid": true, "preview": {
 		"name": str(state.get("street_name", "")),
+		"rank": str(RANK.tier_for(rank_score).get("name", "Nobody")),
 		"day": int(state.get("day", 1)),
 		"part": str(state.get("time_slot", "MORNING")),
 		"district": str(district.get("name", "SPENARD")),

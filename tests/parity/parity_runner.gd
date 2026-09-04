@@ -19242,6 +19242,7 @@ func _check_batch15(gs: Node, gm: Node) -> void:
 	_check_rebuild_is_a_rebuild(gs)
 	_check_unlock_announcements(gs, gm)
 	_check_the_yalonda_intro(gs)
+	_check_the_first_morning(gs)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -19436,6 +19437,65 @@ func _check_rebuild_is_a_rebuild(gs: Node) -> void:
 ## charge is worse than no sheet — and it has to CHANGE NOTHING, because it is
 ## introducing a run that has already been reset and is the one thing positioned
 ## to make a fresh run not fresh.
+## SA-D1 (1.1.0): the morning after. Juan says how a day goes, in his voice,
+## with the run's real numbers, and changes nothing.
+func _check_the_first_morning(gs: Node) -> void:
+	var flow_sheets := preload("res://ui/components/flow_sheets.gd")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	var before: Dictionary = (get_node("/root/SaveSystem") as Node).capture()
+	var content: Control = flow_sheets.build_first_morning(gs)
+	if content == null:
+		_fail("first morning", "build_first_morning returned null")
+		return
+	var lines: Array[String] = []
+	_collect_labels(content, lines)
+	var text: String = "\n".join(lines)
+	_expect_true("the morning says the day has four parts", text.contains("four parts"))
+	_expect_true("...and names them", text.contains("Morning, afternoon, evening, night"))
+	_expect_true("...and the phone", text.to_lower().contains("phone"))
+	_expect_true("...and the rent, the real number", text.contains("$%d" % int(gs.WEEKLY_RENT)))
+	_expect_true("...and the honest way in", text.contains("Wash & Go"))
+	_expect_true("...and the block", text.contains("Walk the block"))
+	var buttons: Array = []
+	_collect_buttons(content, buttons)
+	var dismiss: Button = null
+	for entry in buttons:
+		if str((entry as Button).name) == "Dismiss":
+			dismiss = entry
+	_expect_true("the morning has a way out", dismiss != null and dismiss.visible)
+	_expect_true("...a real tap target", dismiss != null and dismiss.custom_minimum_size.y >= 44.0)
+	var after: Dictionary = (get_node("/root/SaveSystem") as Node).capture()
+	_expect_true("and it changed nothing", str(before) == str(after))
+	content.free()
+
+	# The help screen describes the game that exists.
+	var help := preload("res://ui/screens/help.gd")
+	var joined := ""
+	for card in help.CARDS:
+		joined += str((card as Dictionary).get("heading", "")) + " " + str((card as Dictionary).get("body", "")) + " "
+	_expect_true("help names the four parts", joined.contains("morning, afternoon, evening, night"))
+	_expect_true("help names the six names", joined.contains("Nobody, New Face, Known, Player, Connected, Boss"))
+	_expect_true("help says how it ends", joined.contains("third house warning"))
+	_expect_true("help has forgotten Week Zero", not joined.contains("Week Zero"))
+
+	# The saved-run preview carries the name you earned.
+	gs.reset_to_new_game()
+	var rank_table := preload("res://data/rank.gd")
+	_expect_str("a fresh preview is Nobody", str(rank_table.tier_for(rank_table.score_of(gs.npc_ledgers)).get("name", "")).to_upper(), "NOBODY")
+
+	# The reckoning says what there was.
+	gs.reset_to_new_game()
+	gs.game_over = true
+	gs.game_over_kind = "evicted"
+	var ending: Object = (get_node("/root/GameManager") as Node).system("ending")
+	var r: Dictionary = ending.reckoning()
+	_expect_int("the reckoning counts the names", int(r.get("rank_count", 0)), 6)
+	_expect_int("...and the board", int(r.get("corner_count", 0)), gs.TERRITORY_DEFS.NODES.size())
+	_expect_true("...and the city", int(r.get("district_count", 0)) >= 4)
+	_expect_int("...and where you stood on the board", int(r.get("districts_known", 0)), (gs.districts_unlocked as Array).size())
+	gs.reset_to_new_game()
+
 func _check_the_yalonda_intro(gs: Node) -> void:
 	var flow_sheets := preload("res://ui/components/flow_sheets.gd")
 	gs.street_name = "Parity"
@@ -21420,7 +21480,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13979
+const MIN_CHECKS := 13997
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

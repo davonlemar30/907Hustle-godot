@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bodoljojcw7v0"
-path="res://.godot/imported/Juan.webp-535ddf52ca90c9732660db57b9cf0308.ctex"
+path="res://.godot/imported/juan.webp-4099749dd771941a5b7e957957208774.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/img/Juan.webp"
-dest_files=["res://.godot/imported/Juan.webp-535ddf52ca90c9732660db57b9cf0308.ctex"]
+source_file="res://assets/img/juan.webp"
+dest_files=["res://.godot/imported/juan.webp-4099749dd771941a5b7e957957208774.ctex"]
 
 [params]
 

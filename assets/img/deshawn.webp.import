@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bus8dm21pyc3g"
-path="res://.godot/imported/Deshawn.webp-67ff711f8474bfc848dfb8c241b56d78.ctex"
+path="res://.godot/imported/deshawn.webp-85e5a4b0b6e32fc671a63bb1fd97d69e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/img/Deshawn.webp"
-dest_files=["res://.godot/imported/Deshawn.webp-67ff711f8474bfc848dfb8c241b56d78.ctex"]
+source_file="res://assets/img/deshawn.webp"
+dest_files=["res://.godot/imported/deshawn.webp-85e5a4b0b6e32fc671a63bb1fd97d69e.ctex"]
 
 [params]
 

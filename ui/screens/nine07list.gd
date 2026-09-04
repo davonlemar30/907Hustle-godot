@@ -40,6 +40,12 @@ func _build_body() -> void:
 			body.add_child(section("RUN THE BOARD"))
 			body.add_child(_operation_card(ops, summary))
 
+	# OG-D5: what the Lift walked out with, waiting for the board.
+	if not gs.hot_goods.is_empty():
+		body.add_child(section("UNDER YOUR COAT"))
+		for i in range(gs.hot_goods.size()):
+			body.add_child(_hot_row(sys, i))
+
 	if not gs.list_holdings.is_empty():
 		body.add_child(section("HOLDING"))
 		for i in range(gs.list_holdings.size()):
@@ -294,9 +300,36 @@ func _condition_colour(item: Dictionary, tier: Dictionary) -> Color:
 		"rough": return RED
 	return MUTED
 
+## OG-D5: a hot item, and the one thing to do with it.
+func _hot_row(sys: Object, index: int) -> Control:
+	var item: Dictionary = gs.hot_goods[index]
+	var c := card()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 5)
+	c.add_child(v)
+	var head := HBoxContainer.new()
+	v.add_child(head)
+	var nm := label(str(item.get("name", "")).capitalize(), "CardTitle", 13, CREAM, true)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(nm)
+	head.add_child(label("HOT", "Kicker", 10, RED))
+	v.add_child(label("From %s  ·  the fence pays about $%d" % [str(item.get("from", "somewhere")),
+		int(round(float(item.get("value", 0)) * float(gs.FENCE_RATE)))], "Muted", 11, MUTED, true))
+	var blocked: String = sys.list_hot_blocker(index)
+	var b := button("LIST IT" if blocked.is_empty() else blocked.to_upper(), blocked.is_empty(),
+		_on_list_hot.bind(index), 46)
+	b.disabled = not blocked.is_empty()
+	v.add_child(b)
+	return c
+
+func _on_list_hot(index: int) -> void:
+	if _gm.dispatch("list_hot", {"index": index}):
+		nav.show_toast("On the board. The meet is tomorrow.")
+
 func _holding_row(sys: Object, index: int, tier: Dictionary) -> Control:
 	var held: Dictionary = gs.list_holdings[index]
-	var item: Dictionary = gs.listing_item_by_id(str(held["item_id"]))
+	var hot: bool = bool(held.get("hot", false))
+	var item: Dictionary = gs.listing_item_by_id(str(held["item_id"])) if not hot else {}
 	var c := card()
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 5)
@@ -304,9 +337,17 @@ func _holding_row(sys: Object, index: int, tier: Dictionary) -> Control:
 
 	var head := HBoxContainer.new()
 	v.add_child(head)
-	var nm := label(str(item["name"]), "CardTitle", 13, CREAM)
+	var nm := label(str(held.get("name", "")).capitalize() if hot else str(item["name"]), "CardTitle", 13, CREAM, hot)
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(nm)
+	if hot:
+		head.add_child(label("HOT  ·  $%d" % int(round(float(held.get("value", 0)) * float(gs.FENCE_RATE))), "Mono", 12, RED))
+		v.add_child(label("A buyer who is a cop. A buyer who knows the tag. A listing that sits. Or cash. %s" % ("Pherris is on the board." if sys.pherris_backing() else "Pherris would halve the bad ones."), "Muted", 11, MUTED, true))
+		var hot_blocked: String = sys.sell_blocker(index)
+		var fb := button("FENCE IT" if hot_blocked.is_empty() else hot_blocked.to_upper(), hot_blocked.is_empty(), _on_sell.bind(index), 46)
+		fb.disabled = not hot_blocked.is_empty()
+		v.add_child(fb)
+		return c
 	head.add_child(label("paid $%d" % int(item["buy"]), "Mono", 12, MUTED))
 
 	# Hers is not the player's to sell, so the control is ABSENT rather than

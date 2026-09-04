@@ -2067,7 +2067,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
 	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
 	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
-	_expect_int("save version is 31", saves.SAVE_VERSION, 31)
+	_expect_int("save version is 32", saves.SAVE_VERSION, 32)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -4874,6 +4874,16 @@ func _check_frozen_behavior() -> void:
 const BOOST_FROZEN_PATTERN := "101111001000011101111111111101101111111110111101"
 
 ## A run standing in Spenard at the start of a day with money in hand.
+## OG-D5 (1.0.0): a successful lift walks out with a THING at tiers 1 and 2
+## (tier 3 is merchandise, as before), not cash. "The money moved" is now
+## "something worth money moved": cash, or a new item under the coat at its
+## take value -- which is the same keyed roll the cash used to be.
+func _boost_gain(gs: Node, cash_before: int, hot_before: int) -> int:
+	var gain: int = int(gs.cash) - cash_before
+	for index in range(hot_before, gs.hot_goods.size()):
+		gain += int((gs.hot_goods[index] as Dictionary).get("value", 0))
+	return gain
+
 func _frozen_ready(gs: Node, cash: int = 5000) -> void:
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
@@ -4917,6 +4927,7 @@ func _check_boost_behavior(gs: Node, gm: Node) -> void:
 			var key := "boost:%d:%d:%s" % [gs.day, gs.time_slots_today, str(t["id"])]
 			var expected: bool = rng.seeded_random(gs.run_seed, key) < boost.chance_for(t)
 			var before_cash: int = gs.cash
+			var hot_before: int = gs.hot_goods.size()
 			# Through dispatch, not handle(): a lift marks criminal activity on
 			# Curtis, and his mutators refuse outside a dispatch. Calling the
 			# system directly would exercise a stack the game never produces —
@@ -4937,7 +4948,7 @@ func _check_boost_behavior(gs: Node, gm: Node) -> void:
 			# The outcome read off state rather than a returned dictionary,
 			# which is the honest version of the question anyway: a win is a win
 			# because the money moved.
-			var take: int = gs.cash - before_cash
+			var take: int = _boost_gain(gs, before_cash, hot_before)
 			var won: bool = take > 0
 			outcomes += "1" if won else "0"
 			_expect_true("boost d%d %s resolves binary" % [day, str(t["id"])],
@@ -4954,7 +4965,7 @@ func _check_boost_behavior(gs: Node, gm: Node) -> void:
 						int(band[0]), int(band[1])))
 			else:
 				_expect_int("boost d%d %s pays nothing on a miss" % [day, str(t["id"])],
-					gs.cash, before_cash)
+					_boost_gain(gs, before_cash, hot_before), 0)
 	# A sweep that never wins or never loses would agree with a broken rule.
 	_expect_true("boost sweep saw both outcomes", wins > 0 and wins < checked)
 	_expect_true("boost sweep was substantial", checked >= 20)
@@ -4980,9 +4991,10 @@ func _check_boost_behavior(gs: Node, gm: Node) -> void:
 			gs.day = day
 			gs.curtis_last_criminal_day = -1
 			var cash_mark: int = gs.cash
+			var hot_mark: int = gs.hot_goods.size()
 			if not gm.dispatch("boost", {"target_id": "night_owl"}):
 				continue
-			if (gs.cash > cash_mark) != expect_win:
+			if (_boost_gain(gs, cash_mark, hot_mark) > 0) != expect_win:
 				continue
 			found = true
 			_expect_int("boost marks criminal activity on a %s" % ("win" if expect_win else "miss"),
@@ -5028,10 +5040,11 @@ func _check_boost_behavior(gs: Node, gm: Node) -> void:
 		_frozen_ready(gs)
 		gs.day = day
 		var cash_mark: int = gs.cash
+		var hot_mark: int = gs.hot_goods.size()
 		var slot_before: int = gs.time_slots_today
 		if not gm.dispatch("boost", {"target_id": "night_owl"}):
 			continue
-		var won: bool = gs.cash > cash_mark
+		var won: bool = _boost_gain(gs, cash_mark, hot_mark) > 0
 		if won and settle_success_day < 0:
 			settle_success_day = day
 			_expect_int("a successful lift costs exactly one slot",
@@ -5231,9 +5244,10 @@ func _check_heat_write_path(gs: Node, gm: Node) -> void:
 		gs.day = day
 		gs.heat = 0.0
 		var cash_mark: int = gs.cash
+		var hot_mark: int = gs.hot_goods.size()
 		if not gm.dispatch("boost", {"target_id": "night_owl"}):
 			continue
-		if gs.cash > cash_mark and success_day < 0:
+		if _boost_gain(gs, cash_mark, hot_mark) > 0 and success_day < 0:
 			success_day = day
 			# Canon's raw 0.5, times Spenard's 0.9 Boost multiplier (TI-003 §7,
 			# live from FS-003.9). The RAW value is still the thing being
@@ -5242,7 +5256,7 @@ func _check_heat_write_path(gs: Node, gm: Node) -> void:
 			# replaced.
 			_expect_float("boost tier 1 SUCCESS heat matches canon's 0.5 x Spenard 0.9",
 				snappedf(gs.heat, 0.0001), snappedf(0.5 * 0.9, 0.0001))
-		elif gs.cash == cash_mark and miss_day < 0:
+		elif _boost_gain(gs, cash_mark, hot_mark) == 0 and miss_day < 0:
 			miss_day = day
 			# WAS 1.0, and FS-003.7 removes it deliberately. TI-003 §11: "The
 			# failed branch removes its current immediate terminal Heat/log/time
@@ -11772,9 +11786,10 @@ func _check_pressure_source_gains(gs: Node, gm: Node, engine: RefCounted,
 		gs.day = day
 		gs.heat = 0.0
 		var cash_mark: int = int(gs.cash)
+		var hot_mark: int = gs.hot_goods.size()
 		if not gm.dispatch("boost", {"target_id": "night_owl"}):
 			continue
-		if int(gs.cash) <= cash_mark:
+		if _boost_gain(gs, cash_mark, hot_mark) <= 0:
 			gs.active_consequence = {}
 			continue
 		found_success = true
@@ -11793,9 +11808,10 @@ func _check_pressure_source_gains(gs: Node, gm: Node, engine: RefCounted,
 		gs.day = day
 		gs.heat = 0.0
 		var cash_mark2: int = int(gs.cash)
+		var hot_mark2: int = gs.hot_goods.size()
 		if not gm.dispatch("boost", {"target_id": "night_owl"}):
 			continue
-		if int(gs.cash) > cash_mark2:
+		if _boost_gain(gs, cash_mark2, hot_mark2) > 0:
 			continue
 		found_miss = true
 		_expect_float("a failed lift adds no pressure of its own",
@@ -13811,7 +13827,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v31", saves.SAVE_VERSION, 31)
+	_expect_int("the schema is v32", saves.SAVE_VERSION, 32)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -16243,7 +16259,15 @@ const ECON_CORRIDORS: Dictionary = {
 	# widening rather than a re-measurement of the whole profile is the
 	# right-sized response -- the corridor's floor and the rest of Boost's
 	# own economics are untouched.
-	"boost": {"floor": 5, "ceiling": 30},
+	# OG-D5 (1.0.0): the Lift walks out with a thing, not cash, and the
+	# thing is worth sixty cents on the dollar a day later, to a buyer who
+	# is sometimes a cop, sometimes reads the tag, and sometimes does not
+	# show. What walked out (`take`) did not move -- $707 across the same
+	# four seeds -- but what came back did, and a profile that only lifts
+	# now misses rent and is out of the room half the time. Measured 3%
+	# (was 29%); the floor records that the free money is gone, which is
+	# BLOCK_REMEMBERS_REVIEW §8's point. The ceiling stays.
+	"boost": {"floor": 0, "ceiling": 30},
 	# HEAT-D1 (0.3.0) / STK-D1 (0.3.0): measured at 8%, in the same
 	# single-digit range `stickup` and `boost` alone occupy — the expected
 	# shape for a profile spending its slots on crime rather than the market
@@ -16538,6 +16562,19 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 			if turf_sys != null:
 				metrics["turf_income"] = int(metrics.get("turf_income", 0)) \
 					+ int(turf_sys.nightly_income())
+		# OG-D5 (1.0.0): what the Lift walks out with goes on the board, and a
+		# hot listing whose day has come meets its buyer. The boost profile's
+		# income is the fence's now, at the fence's rate and risk.
+		var list_sys: Object = gm.system("list")
+		if list_sys != null and not gs.hot_goods.is_empty() \
+				and str(list_sys.list_hot_blocker(0)).is_empty():
+			gm.dispatch("list_hot", {"index": 0})
+		if list_sys != null:
+			for held_index in range(gs.list_holdings.size() - 1, -1, -1):
+				if bool((gs.list_holdings[held_index] as Dictionary).get("hot", false)) \
+						and str(list_sys.sell_blocker(held_index)).is_empty():
+					gm.dispatch("list_sell", {"index": held_index})
+					break
 		# A blocking consequence has to be answered before anything else. These
 		# profiles read the odds, the same as the `odds` consequence profile.
 		if not (gs.active_consequence as Dictionary).is_empty():
@@ -16792,7 +16829,7 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	# own header for why the receivable is valued at principal, not
 	# principal-plus-interest.
 	metrics["net_worth"] = int(gs.cash) + int(metrics["inventory_value"]) \
-		- int(gs.debt) + _econ_book_receivable(gs)
+		- int(gs.debt) + _econ_book_receivable(gs) + _econ_hot_value(gs)
 	metrics["net_trade"] = int(metrics["earned_from_product"]) \
 		- int(metrics["spent_on_product"]) - int(metrics["fares"])
 	# Boost's binding constraint, on the record rather than in a research note.
@@ -16893,10 +16930,15 @@ func _econ_try_crime(gs: Node, gm: Node, metrics: Dictionary, surface: String) -
 	if best.is_empty():
 		return false
 	var dirty_before: int = int(gs.dirty_cash)
+	var hot_before: int = gs.hot_goods.size()
 	if not gm.dispatch(surface, {"target_id": best}):
 		return false
 	metrics["jobs"] = int(metrics.get("jobs", 0)) + 1
-	metrics["take"] = int(metrics.get("take", 0)) + maxi(0, int(gs.dirty_cash) - dirty_before)
+	# OG-D5: `take` is what walked out -- cash, or the item's take value.
+	var walked_out: int = maxi(0, int(gs.dirty_cash) - dirty_before)
+	for index in range(hot_before, gs.hot_goods.size()):
+		walked_out += int((gs.hot_goods[index] as Dictionary).get("value", 0))
+	metrics["take"] = int(metrics.get("take", 0)) + walked_out
 	return true
 
 ## Unsold stock, priced where the profile is standing.
@@ -16904,6 +16946,18 @@ func _econ_try_crime(gs: Node, gm: Node, metrics: Dictionary, surface: String) -
 ## Reported so `net_worth` can be read honestly and never on its own. The web
 ## harness's standing trap: unsold inventory counts toward net worth, so a WORSE
 ## trade rule can make net worth RISE while the trade itself collapses.
+## OG-D5: what is under the coat or on the board, at the fence's rate. Not
+## the take value -- nobody pays that -- and not zero, because a listing that
+## meets its buyer tomorrow is worth something tonight.
+func _econ_hot_value(gs: Node) -> int:
+	var total := 0
+	for item in gs.hot_goods:
+		total += int((item as Dictionary).get("value", 0))
+	for held in gs.list_holdings:
+		if bool((held as Dictionary).get("hot", false)):
+			total += int((held as Dictionary).get("value", 0))
+	return int(round(float(total) * float(gs.FENCE_RATE)))
+
 func _econ_inventory_value(gs: Node) -> int:
 	var prices: Dictionary = (gs.markets.get(str(gs.current_district_id), {}) as Dictionary).get("prices", {})
 	var total: int = 0
@@ -19692,6 +19746,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_earn_your_name(gs, gm)
 	_check_the_kit(gs, gm)
 	_check_one_good_run(gs, gm)
+	_check_stolen_goods_have_a_name(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -20667,6 +20722,50 @@ func _check_one_good_run(gs: Node, gm: Node) -> void:
 				not str((ending.NPC_LINES[npc_id] as Dictionary).get(band, "")).is_empty())
 	gs.reset_to_new_game()
 
+## OG-D5 (1.0.0 PR 5): stolen goods have a name. A Lift walks out with a
+## thing; the 907List is where it becomes cash; the meet is a roll with
+## four ends, and Pherris halves the two bad ones.
+func _check_stolen_goods_have_a_name(gs: Node, gm: Node) -> void:
+	var list_sys: Object = gm.system("list")
+	var boost_sys: Object = gm.system("boost")
+	# The thresholds, as a pure function.
+	var cold: Array = list_sys.fence_thresholds(0.0, 0, false)
+	_expect_true("cold and alone, a cop is rare (%.3f)" % float(cold[0]), is_equal_approx(float(cold[0]), 0.04))
+	var hot: Array = list_sys.fence_thresholds(10.0, 3, false)
+	_expect_true("hot and loud, a cop is likely (%.3f)" % float(hot[0]), float(hot[0]) > 0.25)
+	var backed: Array = list_sys.fence_thresholds(10.0, 3, true)
+	_expect_true("Pherris halves the cop", is_equal_approx(float(backed[0]), float(hot[0]) * 0.5))
+	_expect_str("a low roll is a cop", list_sys.fence_outcome(0.01, 0.0, 0, false), "cop")
+	_expect_str("...then the tag", list_sys.fence_outcome(0.10, 0.0, 0, false), "tag")
+	_expect_str("...then a listing that sits", list_sys.fence_outcome(0.25, 0.0, 0, false), "unsold")
+	_expect_str("...and past that, cash", list_sys.fence_outcome(0.9, 0.0, 0, false), "clean")
+
+	# The Lift produces a thing; the board takes it; a day later the meet.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.hot_goods = []
+	gs.list_holdings = []
+	var target: Dictionary = gs.boost_target_by_id("northern_value")
+	var loot: Dictionary = boost_sys.loot_for(target, 80)
+	_expect_str("a coat from the thrift barn is clothes", str(loot.get("kind", "")), "clothes")
+	_expect_int("...worth what the take was", int(loot.get("value", 0)), 80)
+	gs.hot_goods.append(loot)
+	_expect_true("it goes on the board", gm.dispatch("list_hot", {"index": 0}))
+	_expect_true("...off the coat", gs.hot_goods.is_empty())
+	_expect_true("...as a hot holding", bool((gs.list_holdings[0] as Dictionary).get("hot", false)))
+	_expect_true("the meet is tomorrow", not gm.dispatch("list_sell", {"index": 0}))
+	gs.day += 1
+	var cash_before: int = int(gs.cash)
+	var heat_before: float = float(gs.heat)
+	_expect_true("...and tomorrow it meets", gm.dispatch("list_sell", {"index": 0}))
+	var sold: bool = gs.list_holdings.is_empty() and int(gs.cash) > cash_before
+	var burned: bool = gs.list_holdings.is_empty() and float(gs.heat) > heat_before
+	var sat: bool = not gs.list_holdings.is_empty() and float(gs.heat) > heat_before
+	_expect_true("...one of four ways (sold=%s burned=%s sat=%s)" % [sold, burned, sat], sold or burned or sat)
+	if sold:
+		_expect_int("cash is the fence's rate", int(gs.cash) - cash_before, int(round(80 * gs.FENCE_RATE)))
+	gs.reset_to_new_game()
+
 func _check_door_to_work(gs: Node, gm: Node) -> void:
 	var access: Node = get_node_or_null("/root/SurfaceVisibility")
 	var nav: Node = get_node("/root/ScreenManager")
@@ -21254,7 +21353,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13941
+const MIN_CHECKS := 13959
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -22049,7 +22148,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v31", int(saves.SAVE_VERSION), 31)
+	_expect_int("the schema is v32", int(saves.SAVE_VERSION), 32)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -22495,7 +22594,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v31 for Heat's teeth", int(saves.SAVE_VERSION), 31)
+	_expect_int("the schema is v32 for Heat's teeth", int(saves.SAVE_VERSION), 32)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -22968,7 +23067,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v31 for Wander", int(saves.SAVE_VERSION), 31)
+	_expect_int("the schema is v32 for Wander", int(saves.SAVE_VERSION), 32)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered", "wander_quiet_streak"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

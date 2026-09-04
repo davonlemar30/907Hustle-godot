@@ -38,6 +38,7 @@ func _ready() -> void:
 	_test_v29_rent_arrears()
 	_test_v30_kit()
 	_test_v31_ending()
+	_test_v32_hot_goods()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
 	_test_load_pipeline()
@@ -1068,6 +1069,18 @@ func _test_v31_ending() -> void:
 	var saves := get_node("/root/SaveSystem")
 	var migrated: Dictionary = saves._migrate({"save_version": 30, "state": {"day": 9, "cash": 10, "street_name": "L", "game_over": true}})
 	_check("an over v30 save was evicted", str(migrated.get("game_over_kind", "")) == "evicted")
+
+## v32 (OG-D5): hot goods ride the save; junk drops; a hot holding keeps
+## its name.
+func _test_v32_hot_goods() -> void:
+	var valid := _fixed(_state("hot_goods", [{"kind": "pills", "name": "a bottle", "value": 60, "heat": 1.0, "from": "the pharmacy", "day": 3}, "junk"]))
+	_check("a hot item survives and junk drops", (valid["hot_goods"] as Array).size() == 1)
+	var held := _fixed(_state("list_holdings", [{"item_id": "hot:pills", "bought_day": 3, "source": "player", "hot": true, "name": "a bottle", "value": 60}]))
+	_check("a hot holding keeps its name", str(((held["list_holdings"] as Array)[0] as Dictionary).get("name", "")) == "a bottle")
+	var saves := get_node("/root/SaveSystem")
+	var migrated: Dictionary = saves._migrate({"save_version": 31, "state": {"day": 2, "cash": 10, "street_name": "L"}})
+	_check("a v31 save arrives with an empty coat",
+		not migrated.has("hot_goods") or (migrated.get("hot_goods", []) as Array).is_empty())
 
 func _test_v24_dre_pending_penance() -> void:
 	# Same shape as _validate_dre_intro_offered -- manual wrong-type check,

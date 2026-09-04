@@ -173,6 +173,31 @@ func blocker(target_id: String) -> String:
 		return "They know your face in there now."
 	return ""
 
+## OG-D5: what walks out. Per target: what kind of thing it is (the fence
+## prices the kind), and what it reads as. Value is the target's own take
+## roll; heat rides the tier.
+const LOOT := {
+	"night_owl": {"kind": "electronics", "names": ["a tablet somebody left charging", "the tip-jar phone", "two bottles from behind the counter"]},
+	"spenard_fuel": {"kind": "goods", "names": ["a case of energy drinks", "a carton of Newports", "a box of phone chargers off the rack"]},
+	"fourth_ave_market": {"kind": "goods", "names": ["a backpack of cigarettes", "a display of vapes", "a case of beer out the side door"]},
+	"downtown_fuel": {"kind": "goods", "names": ["a bag of chargers and cables", "scratchers off the roll", "a tray of Zyn"]},
+	"mv_red_apple": {"kind": "goods", "names": ["a bag of rice and a bag of meat", "a case of formula", "somebody's whole grocery order"]},
+	"mv_drive_pharmacy": {"kind": "pills", "names": ["a bottle with somebody else's name on it", "a box of the thing the fence pays for", "a pharmacy bag off the pickup counter"]},
+	"service_stop": {"kind": "goods", "names": ["a CB radio", "a box of truck-stop electronics", "work gloves and a knife set"]},
+	"airport_fuel": {"kind": "goods", "names": ["a bag of duty-free-looking things", "a case of Red Bull", "a rack of sunglasses"]},
+	"northern_value": {"kind": "clothes", "names": ["a Carhartt with the tag on", "a bag of coats", "boots in a box that said $12"]},
+	"midtown_pharmacy": {"kind": "pills", "names": ["a bottle from behind the counter", "a bag from the pickup line", "the good stuff, still stapled"]},
+	"fourth_ave_electronics": {"kind": "electronics", "names": ["a boxed laptop", "a phone still in the plastic", "a speaker the size of a duffel"]},
+}
+
+func loot_for(target: Dictionary, take: int) -> Dictionary:
+	var row: Dictionary = LOOT.get(str(target.get("id", "")), {"kind": "goods", "names": ["a bag from %s" % str(target.get("name", "somewhere"))]})
+	var names: Array = row.get("names", [])
+	var name := str(names[int(gs.boost_technique) % maxi(1, names.size())]) if not names.is_empty() else "a bag"
+	return {"kind": str(row.get("kind", "goods")), "name": name, "value": take,
+		"heat": 0.5 * float(int(target.get("tier", 1))), "from": str(target.get("name", "")),
+		"day": int(gs.day)}
+
 func _run(target_id: String) -> Dictionary:
 	var blocked := blocker(target_id)
 	if not blocked.is_empty():
@@ -217,8 +242,12 @@ func _run(target_id: String) -> Dictionary:
 			gs.boost_merchandise += take
 			gs.log_activity("Out the door at %s with $%d of somebody else's inventory and your heart in your throat." % [str(t["name"]), take], GREEN)
 		else:
-			_wallet().credit(take, _wallet().DIRTY, {"source_id": "boost_take"})
-			gs.log_activity("You walk out of %s $%d heavier and nobody looks up." % [str(t["name"]), take], GREEN)
+			# OG-D5: not cash. A thing, with a name, worth something to
+			# somebody who does not ask -- on the 907List, at the fence's
+			# rate and the fence's risk.
+			var loot: Dictionary = loot_for(t, take)
+			gs.hot_goods.append(loot)
+			gs.log_activity("Out of %s with %s under your coat. Worth about $%d to somebody who does not ask where it came from." % [str(t["name"]), str(loot["name"]), take], GREEN)
 		result = {"ok": true, "success": true, "take": take, "tier": tier}
 	else:
 		# TI-003 §11: "The failed branch removes its current immediate terminal

@@ -199,7 +199,9 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## exist.
 ## v31: `game_over_kind`, `leaving`, `run_earnings` (One Good Run PR 4,
 ## OG-D4) -- the ending. Additive.
-const SAVE_VERSION := 31
+## v32: `hot_goods` (One Good Run PR 5, OG-D5) -- what the Lift walked out
+## with and has not fenced. Additive: an empty coat.
+const SAVE_VERSION := 32
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -288,6 +290,8 @@ const PERSIST_FIELDS: Array[String] = [
 	"weapon", "vehicle", "trunk",
 	# The ending (v31, OG-D4).
 	"game_over_kind", "leaving", "run_earnings", "curtis_doorstep",
+	# Stolen goods (v32, OG-D5).
+	"hot_goods",
 	# The interruption gate's quiet streak (v25, STR-D2). Same reasoning as
 	# wander_misses above: the run's own history of a mechanic that reads it.
 	"wander_quiet_streak",
@@ -937,6 +941,9 @@ func _migrate(payload: Dictionary) -> Dictionary:
 			24:
 				# v24 -> v25: wander_quiet_streak. Purely additive -- see this
 				# arm's own paragraph by SAVE_VERSION.
+				pass
+			31:
+				# v31 -> v32: hot_goods. Additive; see SAVE_VERSION.
 				pass
 			30:
 				# v30 -> v31: game_over_kind, leaving, run_earnings. A v30 save

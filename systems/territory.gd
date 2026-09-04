@@ -76,6 +76,13 @@ func claim_blocker(block_id: String) -> String:
 		return "No such corner."
 	if gs.holds_block(block_id):
 		return "Already yours."
+	# BR-D4: a block is claimed where it stands. The district has to be one
+	# the run knows, and you have to be in it.
+	var district := str(b.get("district", "north_star_lot"))
+	if not district in gs.districts_unlocked:
+		return "You don't know that part of town yet."
+	if gs.current_district_id != district:
+		return "You have to be standing there."
 	# Canon requires a free soldier to occupy the corner as it is taken.
 	if gs.soldiers_idle < 1:
 		return "Need a soldier free to stand on it."
@@ -249,6 +256,66 @@ func nightly_heat() -> float:
 		total += float(gs.block_by_id(str(id)).get("heat_exposure", 0))
 	return total
 
+# --- BR-D4: the board per district -------------------------------------------
+
+## The authored blocks of one district.
+func blocks_in(district_id: String) -> Array:
+	return gs.TERRITORY_DEFS.nodes_in(district_id)
+
+## How many of a district's blocks the run holds.
+func held_in(district_id: String) -> int:
+	var n := 0
+	for id in gs.territory_nodes.keys():
+		if gs.TERRITORY_DEFS.district_of(str(id)) == district_id:
+			n += 1
+	return n
+
+## Soldiers posted in one district.
+func posted_in(district_id: String) -> int:
+	var n := 0
+	for id in gs.territory_nodes.keys():
+		if gs.TERRITORY_DEFS.district_of(str(id)) == district_id:
+			n += int((gs.territory_nodes[id] as Dictionary).get("soldiers", 0))
+	return n
+
+## What one district's holdings bring in a night.
+func income_in(district_id: String) -> int:
+	var total := 0
+	for id in gs.territory_nodes.keys():
+		if gs.TERRITORY_DEFS.district_of(str(id)) == district_id:
+			total += block_income(str(id))
+	return total
+
+## What one district's holdings cost in heat a night.
+func heat_in(district_id: String) -> float:
+	var total := 0.0
+	for id in gs.territory_nodes.keys():
+		if gs.TERRITORY_DEFS.district_of(str(id)) == district_id:
+			total += float(gs.block_by_id(str(id)).get("heat_exposure", 0))
+	return total
+
+## BR-D4: Ship Creek's value. Every held lot with a `supply_discount` cuts
+## that much off every buy, anywhere; capped so three lots do not make
+## product free.
+const SUPPLY_DISCOUNT_CAP := 0.25
+
+func supply_discount() -> float:
+	var total := 0.0
+	for id in gs.territory_nodes.keys():
+		total += float(gs.block_by_id(str(id)).get("supply_discount", 0.0))
+	return minf(total, SUPPLY_DISCOUNT_CAP)
+
+## Why a district's board is closed, or "" when it is open.
+func district_blocker(district_id: String) -> String:
+	if district_id in gs.districts_unlocked:
+		return ""
+	match district_id:
+		"downtown":
+			return "Hold one corner in Spenard to open Downtown."
+		"airport_industrial":
+			return "Hold two corners to open Ship Creek."
+	return "Not yet."
+
 ## D-1 (86bbjxtfa, Batch 18 PR 4): the recurring cost Territory never had. Read
 ## as int, same rounding rule `block_income()` already uses — Territory has
 ## never carried a fractional dollar and this does not start.
@@ -291,10 +358,12 @@ func settle_night(_ended_day: int) -> void:
 		# by Deshawn and by nothing else — the scaling this line already had. Passed
 		# as `FAMILY_NONE` rather than as a bare "" so the exemption is named at both
 		# ends and cannot be re-derived from a dictionary miss (86bbjxtbm).
-		var raw: float = nightly_heat()
-		if raw > 0.0:
-			_heat().apply_gain(raw, _heat().FAMILY_NONE, gs.current_district_id,
-				{"source_id": "territory_nightly"})
+		# BR-D4: heat lands where the block stands, district by district.
+		for district_id in gs.TERRITORY_DEFS.DISTRICT_ORDER:
+			var raw: float = heat_in(str(district_id))
+			if raw > 0.0:
+				_heat().apply_gain(raw, _heat().FAMILY_NONE, str(district_id),
+					{"source_id": "territory_nightly"})
 
 		var unstaffed: Array = []
 		for id in gs.territory_nodes.keys():

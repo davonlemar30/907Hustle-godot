@@ -51,25 +51,88 @@ const OWNER_CURTIS := "curtis"
 ## ordering, which several fixtures (`tests/parity/parity_runner.gd`,
 ## `tests/territory/territory_runner.gd`) rely on by position.
 const NODES: Array[Dictionary] = [
-	{"id": "spenard_rec_lot", "cell": 1, "name": "Spenard Rec Center Lot",
+	{"id": "spenard_rec_lot", "district": "north_star_lot", "kind": "corner", "cell": 1, "name": "Spenard Rec Center Lot",
 		"earning": 45, "heat_exposure": 1, "claim_cost": 180,
 		"starting_owner": OWNER_NEUTRAL},
-	{"id": "wash_and_go_lot", "cell": 2, "name": "Wash & Go Lot",
+	{"id": "wash_and_go_lot", "district": "north_star_lot", "kind": "corner", "cell": 2, "name": "Wash & Go Lot",
 		"earning": 55, "heat_exposure": 1, "claim_cost": 220,
 		"starting_owner": OWNER_NEUTRAL},
-	{"id": "minnesota_offramp", "cell": 5, "name": "Minnesota Off-Ramp",
+	{"id": "minnesota_offramp", "district": "north_star_lot", "kind": "corner", "cell": 5, "name": "Minnesota Off-Ramp",
 		"earning": 65, "heat_exposure": 2, "claim_cost": 260,
 		"starting_owner": OWNER_CURTIS},
-	{"id": "service_road_chokepoint", "cell": 6, "name": "Service Road Chokepoint",
+	{"id": "service_road_chokepoint", "district": "north_star_lot", "kind": "corner", "cell": 6, "name": "Service Road Chokepoint",
 		"earning": 70, "heat_exposure": 2, "claim_cost": 300,
 		"starting_owner": OWNER_CURTIS},
-	{"id": "fourth_ave_strip", "cell": 9, "name": "Fourth Avenue Strip",
+	{"id": "fourth_ave_strip", "district": "north_star_lot", "kind": "corner", "cell": 9, "name": "Fourth Avenue Strip",
 		"earning": 80, "heat_exposure": 2, "claim_cost": 320,
 		"starting_owner": OWNER_CURTIS},
-	{"id": "northern_lights_motels", "cell": 10, "name": "Northern Lights Motel Row",
+	{"id": "northern_lights_motels", "district": "north_star_lot", "kind": "corner", "cell": 10, "name": "Northern Lights Motel Row",
 		"earning": 100, "heat_exposure": 3, "claim_cost": 400,
 		"starting_owner": OWNER_CURTIS},
+	# --- BR-D4 (0.9.0 PR 3): Downtown. Businesses and venues, not corners.
+	# Higher income, higher heat (APD's foot patrol lives here), higher
+	# Curtis visibility (`rival: 1` on the district). Costs more to take and
+	# more to hold; earns more a night. The World Bible names the streets.
+	{"id": "downtown_transit_center", "district": "downtown", "kind": "venue", "cell": -1,
+		"name": "Downtown Transit Center",
+		"earning": 85, "heat_exposure": 3, "claim_cost": 420,
+		"starting_owner": OWNER_NEUTRAL},
+	{"id": "downtown_snow_city_corner", "district": "downtown", "kind": "venue", "cell": -1,
+		"name": "Fourth and L, by Snow City",
+		"earning": 95, "heat_exposure": 3, "claim_cost": 460,
+		"starting_owner": OWNER_NEUTRAL},
+	{"id": "downtown_fourth_ave_bars", "district": "downtown", "kind": "venue", "cell": -1,
+		"name": "Fourth Avenue Bar Row",
+		"earning": 115, "heat_exposure": 4, "claim_cost": 540,
+		"starting_owner": OWNER_CURTIS},
+	{"id": "downtown_humpys_alley", "district": "downtown", "kind": "venue", "cell": -1,
+		"name": "The Alley Behind Humpy's",
+		"earning": 130, "heat_exposure": 4, "claim_cost": 600,
+		"starting_owner": OWNER_CURTIS},
+	{"id": "downtown_fifth_and_g", "district": "downtown", "kind": "venue", "cell": -1,
+		"name": "Fifth and G, Club Row",
+		"earning": 150, "heat_exposure": 5, "claim_cost": 700,
+		"starting_owner": OWNER_CURTIS},
+	# --- BR-D4: Ship Creek. Warehouse lots, not income. Holding one is
+	# supply infrastructure: a cut off every buy, anywhere, because product
+	# enters Anchorage here. Earns almost nothing a night on its own. Curtis's
+	# supply runs through here (`rival: 3`), and the staging lot is his.
+	{"id": "shipcreek_post_road_lot", "district": "airport_industrial", "kind": "lot", "cell": -1,
+		"name": "Post Road Warehouse Lot",
+		"earning": 20, "heat_exposure": 2, "claim_cost": 380,
+		"starting_owner": OWNER_NEUTRAL, "supply_discount": 0.06},
+	{"id": "shipcreek_railyard_siding", "district": "airport_industrial", "kind": "lot", "cell": -1,
+		"name": "Railyard Siding",
+		"earning": 25, "heat_exposure": 2, "claim_cost": 450,
+		"starting_owner": OWNER_NEUTRAL, "supply_discount": 0.08},
+	{"id": "shipcreek_container_staging", "district": "airport_industrial", "kind": "lot", "cell": -1,
+		"name": "Container Staging, Port Side",
+		"earning": 35, "heat_exposure": 3, "claim_cost": 560,
+		"starting_owner": OWNER_CURTIS, "supply_discount": 0.11},
 ]
+
+## BR-D4: the board is per district now. Spenard is corners, Downtown is
+## venues, Ship Creek is lots; ids stay globally unique.
+const DISTRICT_ORDER: Array[String] = ["north_star_lot", "downtown", "airport_industrial"]
+
+static func nodes_in(district_id: String) -> Array:
+	var out: Array = []
+	for node in NODES:
+		if str(node.get("district", "north_star_lot")) == district_id:
+			out.append(node)
+	return out
+
+static func district_of(id: String) -> String:
+	return str(by_id(id).get("district", "north_star_lot"))
+
+## What a district's blocks are called, for the screen.
+static func kind_label(district_id: String) -> String:
+	match district_id:
+		"downtown":
+			return "VENUES"
+		"airport_industrial":
+			return "LOTS"
+	return "CORNERS"
 
 ## The authored row for an id, or `{}` for one the table does not carry.
 ##

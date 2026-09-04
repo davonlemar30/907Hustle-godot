@@ -947,8 +947,11 @@ const PRESSURE_BLEED_FRACTION := 0.5
 ## derived from "every other district".
 const DISTRICT_ADJACENCY := {
 	"north_star_lot": ["downtown", "airport_industrial"],
-	"downtown": ["north_star_lot"],
-	"airport_industrial": ["north_star_lot"],
+	"downtown": ["north_star_lot", "mountain_view"],
+	"airport_industrial": ["north_star_lot", "mountain_view"],
+	# BR-D5: Mountain View sits between JBER and the freight yards; Bragaw
+	# runs to Ship Creek and the Glenn to Downtown.
+	"mountain_view": ["downtown", "airport_industrial"],
 }
 
 ## FS-003 §6's recovery rule, retuned by FS-003.13 Task 2.

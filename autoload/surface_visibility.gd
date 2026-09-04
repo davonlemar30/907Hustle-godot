@@ -105,6 +105,7 @@ const HUSTLE_STICKUP := "hustle.stickup"
 const HUSTLE_SHARK := "hustle.shark"
 const STREET_DOWNTOWN := "street.downtown"
 const STREET_SHIP_CREEK := "street.ship_creek"
+const STREET_MOUNTAIN_VIEW := "street.mountain_view"
 
 ## The access registry: what each surface requires, and how a failure looks.
 ##
@@ -158,6 +159,14 @@ const GATES := {
 		"hint": "Hold two corners before the port is worth the trip",
 		"announce": "Ship Creek is on the map. The yards run all night out there.",
 		"card_title": "SHIP CREEK UNLOCKED",
+		"card_icon": "res://assets/icons/nav/icon-street.webp",
+	},
+	STREET_MOUNTAIN_VIEW: {
+		"mode": MODE_LOCKED,
+		"requirements": [{"type": "district_discovered", "district_id": "mountain_view"}],
+		"hint": "Get established in Spenard before the block will have you",
+		"announce": "Mountain View is on the map. Forty languages, one set of eyes, and pills that pay.",
+		"card_title": "MOUNTAIN VIEW UNLOCKED",
 		"card_icon": "res://assets/icons/nav/icon-street.webp",
 	},
 

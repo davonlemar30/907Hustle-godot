@@ -109,11 +109,26 @@ const NODES: Array[Dictionary] = [
 		"name": "Container Staging, Port Side",
 		"earning": 35, "heat_exposure": 3, "claim_cost": 560,
 		"starting_owner": OWNER_CURTIS, "supply_discount": 0.11},
+	# --- BR-D5: Mountain View. Corners again, but the block's -- held on
+	# trust as much as on soldiers. Modest money, modest heat, and the one
+	# by the fence is Curtis's because the pipeline is.
+	{"id": "mv_red_apple_corner", "district": "mountain_view", "kind": "corner", "cell": -1,
+		"name": "Red Apple Corner",
+		"earning": 60, "heat_exposure": 2, "claim_cost": 260,
+		"starting_owner": OWNER_NEUTRAL},
+	{"id": "mv_bragaw_and_the_drive", "district": "mountain_view", "kind": "corner", "cell": -1,
+		"name": "Bragaw and the Drive",
+		"earning": 75, "heat_exposure": 2, "claim_cost": 320,
+		"starting_owner": OWNER_NEUTRAL},
+	{"id": "mv_fence_line", "district": "mountain_view", "kind": "corner", "cell": -1,
+		"name": "The Fence Line",
+		"earning": 95, "heat_exposure": 3, "claim_cost": 420,
+		"starting_owner": OWNER_CURTIS},
 ]
 
 ## BR-D4: the board is per district now. Spenard is corners, Downtown is
 ## venues, Ship Creek is lots; ids stay globally unique.
-const DISTRICT_ORDER: Array[String] = ["north_star_lot", "downtown", "airport_industrial"]
+const DISTRICT_ORDER: Array[String] = ["north_star_lot", "downtown", "airport_industrial", "mountain_view"]
 
 static func nodes_in(district_id: String) -> Array:
 	var out: Array = []

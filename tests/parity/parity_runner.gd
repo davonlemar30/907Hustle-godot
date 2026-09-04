@@ -411,6 +411,10 @@ func _check_market_walks(walks: Array) -> void:
 			var kind: String = str(frame["kind"])
 			for d in gs.districts:
 				var area_id: String = str(d["id"])
+				# BR-D5: a non-oracle district walks on its own stream and has
+				# no fixture; the canon three are what the oracle pins.
+				if not bool(d.get("oracle", true)):
+					continue
 				if kind == "initial":
 					local_markets[area_id] = economy_script.walk_initial_area(d, gs.products, stream)
 				else:
@@ -11286,12 +11290,13 @@ func _check_pressure_bands(rules: RefCounted) -> void:
 	_expect_float("pressure caps at nine", rules.PRESSURE_MAX, 9.0)
 	_expect_float("pressure floors at zero", rules.PRESSURE_MIN, 0.0)
 	# FS-003 §6's adjacency: Downtown and Industrial have no direct edge.
+	# BR-D5 (0.9.0): Mountain View sits between them and borders both.
 	_expect_str("spenard borders both", str(rules.adjacent_districts("north_star_lot")),
 		str(["downtown", "airport_industrial"]))
-	_expect_str("downtown borders only spenard",
-		str(rules.adjacent_districts("downtown")), str(["north_star_lot"]))
-	_expect_str("industrial borders only spenard",
-		str(rules.adjacent_districts("airport_industrial")), str(["north_star_lot"]))
+	_expect_str("downtown borders spenard and the block",
+		str(rules.adjacent_districts("downtown")), str(["north_star_lot", "mountain_view"]))
+	_expect_str("industrial borders spenard and the block",
+		str(rules.adjacent_districts("airport_industrial")), str(["north_star_lot", "mountain_view"]))
 	_expect_int("an unknown district borders nothing",
 		(rules.adjacent_districts("juneau") as Array).size(), 0)
 
@@ -16161,7 +16166,11 @@ const ECON_CORRIDORS: Dictionary = {
 	# re-tuned: this PR's mandate is Heat, not `CARRY_STOP_PER_HEAT` itself,
 	# and retuning that lever to claw the old ceiling back is a separate,
 	# deliberate decision for whoever owns the trading economy next.
-	"hustler": {"floor": 800, "ceiling": 1100},
+	# BR-D5 (0.9.0): a fourth market with a pill premium is one more route
+	# for the profile that trades everywhere; measured 1115% the day Mountain
+	# View opened (its bias already tempered from 1.24 to 1.16 on pills
+	# because arbitrage had gone to 403% against 320).
+	"hustler": {"floor": 800, "ceiling": 1150},
 	# 0.5.0 PR C (STR-D4): the checkpoint gate rolls on every district
 	# crossing, and arbitrage is the one profile built entirely out of
 	# crossings -- it feels a cost none of the other corridors above are
@@ -19629,6 +19638,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_job_applications(gs, gm)
 	_check_clock_in_move_up(gs, gm)
 	_check_your_corners_their_corners(gs, gm)
+	_check_mountain_view(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -20072,6 +20082,90 @@ func _check_your_corners_their_corners(gs: Node, gm: Node) -> void:
 	gs.markets["north_star_lot"]["availability"]["weed"] = 5
 	_expect_true("the buy goes through at the cut price", gm.dispatch("market_buy", {"product_id": "weed", "quantity": 1}))
 	_expect_int("...charging exactly the one function's price", cash_before - int(gs.cash), after)
+	gs.reset_to_new_game()
+
+## BR-D5 (0.9.0 PR 4): Mountain View. A district with its own pricing,
+## risk, police, rival and bias; pills and lean pay, the club drugs do
+## not; it opens a week in or when the block names it; the first bus
+## there is an arrival; four cards of its own; two marks and two targets;
+## three corners on the board.
+func _check_mountain_view(gs: Node, gm: Node) -> void:
+	var district: Dictionary = gs.district_by_id("mountain_view")
+	_expect_true("Mountain View is a district", not district.is_empty())
+	if district.is_empty():
+		return
+	var bias: Dictionary = district.get("bias", {})
+	_expect_true("pills pay on the block", float(bias.get("pills", 1.0)) > 1.1)
+	_expect_true("lean pays on the block", float(bias.get("lean", 1.0)) > 1.1)
+	_expect_true("the club drugs want Downtown", float(bias.get("molly", 1.0)) < 1.0 and float(bias.get("coke", 1.0)) < 1.0)
+	_expect_true("weed has its own channels", float((district.get("availability", {}) as Dictionary).get("weed", 1.0)) < 0.7)
+	var heat: Object = gm.system("heat")
+	_expect_true("the stickup family carries the city's heaviest multiplier here",
+		float((heat.DISTRICT_FAMILY_MULTIPLIERS.get("mountain_view", {}) as Dictionary).get(heat.FAMILY_STICK, 1.0)) >= 1.5)
+	_expect_true("the block is adjacent to Downtown and Ship Creek",
+		"mountain_view" in preload("res://data/consequence_rules.gd").DISTRICT_ADJACENCY["downtown"]
+		and "mountain_view" in preload("res://data/consequence_rules.gd").DISTRICT_ADJACENCY["airport_industrial"])
+	_expect_true("the market walks the block from day one", gs.markets.has("mountain_view"))
+
+	# Opens a week in, or when the block names it.
+	gs.reset_to_new_game()
+	gs.day = int(gs.MOUNTAIN_VIEW_DAY) - 1
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	_expect_true("the night before is not yet the block", not "mountain_view" in gs.districts_unlocked)
+	gm.dispatch("advance_time", {})
+	_expect_true("day seven's morning is", "mountain_view" in gs.districts_unlocked)
+	gs.reset_to_new_game()
+	gs.day = 4
+	gs.current_district_id = "north_star_lot"
+	var wander_sys: Object = gm.system("wander")
+	var card: Dictionary = B10_EVENTS.card_by_id("mv_word_of_the_block")
+	_expect_true("the bus shelter card exists", not card.is_empty())
+	wander_sys._play_ambient(card)
+	_expect_true("...and names the block", "mountain_view" in gs.districts_unlocked)
+
+	# The first bus there is an arrival.
+	gs.cash = 100
+	var nav: Node = get_node("/root/ScreenManager")
+	while not nav.take_next_flow_sheet().is_empty():
+		pass
+	_expect_true("the bus runs", gm.dispatch("travel", {"district_id": "mountain_view"}))
+	var arrival: Dictionary = {}
+	for _drain in 6:
+		var spec: Dictionary = nav.take_next_flow_sheet()
+		if spec.is_empty():
+			break
+		if str(spec.get("kind", "")) == "arrival":
+			arrival = spec
+	_expect_str("...and the block says what it is", str(arrival.get("title", "")), "MOUNTAIN VIEW")
+	gm.dispatch("travel", {"district_id": "north_star_lot"})
+	gm.dispatch("travel", {"district_id": "mountain_view"})
+	var again := false
+	for _drain in 6:
+		var spec: Dictionary = nav.take_next_flow_sheet()
+		if spec.is_empty():
+			break
+		if str(spec.get("kind", "")) == "arrival":
+			again = true
+	_expect_true("...once", not again)
+
+	# Its own cards, marks, targets and corners.
+	var cards := 0
+	for entry in B10_EVENTS.CARDS:
+		if "mountain_view" in ((entry as Dictionary).get("districts", []) as Array):
+			cards += 1
+	_expect_true("the block has cards of its own (%d)" % cards, cards >= 4)
+	var marks := 0
+	for t in gs.stick_targets:
+		if str((t as Dictionary).get("area", "")) == "mountain_view":
+			marks += 1
+	var targets := 0
+	for t in gs.boost_targets:
+		if str((t as Dictionary).get("area", "")) == "mountain_view":
+			targets += 1
+	_expect_int("two marks on the block", marks, 2)
+	_expect_int("two targets on the block", targets, 2)
+	_expect_int("three corners on the block", (B18_TERRITORY.nodes_in("mountain_view") as Array).size(), 3)
 	gs.reset_to_new_game()
 
 func _check_door_to_work(gs: Node, gm: Node) -> void:
@@ -20653,7 +20747,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13683
+const MIN_CHECKS := 13766
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -23407,6 +23501,8 @@ const ROSTER_GATES := {
 	"wander_shakedown": "known_carrying",
 	"rep_a_favor": "reputation",
 	"wt_curtis_probe": "weight_curtis_watching",
+	# BR-D5 (0.9.0): the block's own encounter, staged on the block.
+	"mv_who_are_you": "mountain_view",
 }
 
 func _stage_roster_gate(gs: Node, gm: Node, gate: String) -> void:
@@ -23419,6 +23515,10 @@ func _stage_roster_gate(gs: Node, gm: Node, gate: String) -> void:
 	gs.time_slots_today = 1
 	gs.time_slot = "AFTERNOON"
 	match gate:
+		"mountain_view":
+			gs.day = 8
+			gs.districts_unlocked = ["north_star_lot", "mountain_view"]
+			gs.current_district_id = "mountain_view"
 		"week_zero":
 			gs.day = 2
 		"known_night":

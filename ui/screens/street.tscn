@@ -936,6 +936,182 @@ expand_mode = 1
 stretch_mode = 5
 self_modulate = Color(0.827, 0.161, 0.125, 1)
 
+[node name="Dist3" type="PanelContainer" parent="Shell/Scroll/Pad/Content/Districts"]
+layout_mode = 2
+theme_type_variation = &"Card"
+
+[node name="V" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist3"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Top" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V"]
+layout_mode = 2
+
+[node name="Name" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Top"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"CardTitle"
+theme_override_font_sizes/font_size = 16
+text = "MOUNTAIN VIEW"
+
+[node name="Travel" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Top"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"Mono"
+theme_override_font_sizes/font_size = 12
+text = "TRAVEL"
+
+[node name="Role" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+theme_override_colors/font_color = Color(0.608, 0.608, 0.608, 1)
+text = "THE BLOCK"
+
+[node name="Blurb" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V"]
+layout_mode = 2
+autowrap_mode = 3
+theme_type_variation = &"Muted"
+text = "Forty languages and one set of eyes. Pills move. Trust moves first."
+
+[node name="Pips" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Risk" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Risk"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 8
+text = "RISK"
+
+[node name="P" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Risk"]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="D0" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Risk/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.882, 0.651, 0.227, 1)
+
+[node name="D1" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Risk/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.882, 0.651, 0.227, 1)
+
+[node name="D2" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Risk/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.882, 0.651, 0.227, 1)
+
+[node name="D3" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Risk/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.882, 0.651, 0.227, 1)
+
+[node name="Police" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Police"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 8
+text = "POLICE"
+
+[node name="P" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Police"]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="D0" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Police/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.373, 0.663, 0.847, 1)
+
+[node name="D1" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Police/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.373, 0.663, 0.847, 1)
+
+[node name="D2" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Police/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(1, 1, 1, 0.12)
+
+[node name="Rival" type="VBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="N" type="Label" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Rival"]
+layout_mode = 2
+theme_type_variation = &"Muted"
+theme_override_font_sizes/font_size = 8
+text = "RIVAL"
+
+[node name="P" type="HBoxContainer" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Rival"]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="D0" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Rival/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.827, 0.161, 0.125, 1)
+
+[node name="D1" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Rival/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.827, 0.161, 0.125, 1)
+
+[node name="D2" type="TextureRect" parent="Shell/Scroll/Pad/Content/Districts/Dist3/V/Pips/Rival/P"]
+custom_minimum_size = Vector2(7, 7)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("ic_pip")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.827, 0.161, 0.125, 1)
+
 [node name="AroundLabel" type="Label" parent="Shell/Scroll/Pad/Content"]
 layout_mode = 2
 theme_type_variation = &"Kicker"

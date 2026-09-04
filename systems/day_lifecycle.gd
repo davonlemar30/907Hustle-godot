@@ -477,6 +477,10 @@ func _run_day_start_step(step: String, today: int) -> void:
 			phone.settle_ghosts(today)
 		return
 	if step == "mentions":
+		# BR-D5: Mountain View opens a week in, at day start.
+		if today >= int(gs.MOUNTAIN_VIEW_DAY) and not "mountain_view" in gs.districts_unlocked:
+			gs.districts_unlocked.append("mountain_view")
+			gs.log_activity("Mountain View. You have heard the name enough times now to know where it is.", Color(0.882, 0.651, 0.227))
 		var wander: Object = gm.system("wander") if gm != null else null
 		if wander != null:
 			wander.day_start_mentions(today)

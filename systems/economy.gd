@@ -522,6 +522,12 @@ func evolve() -> void:
 		var market: Dictionary = gs.markets.get(d["id"], {})
 		if market.is_empty():
 			continue
+		if not bool(d.get("oracle", true)):
+			# BR-D5: off the canon stream, on its own (see GameState's table).
+			walk_evolve_area(d, gs.products, market,
+				rng.make_stream(hash("%d:%d:%s" % [int(gs.run_seed), int(gs.day), str(d["id"])])))
+			market["updated_at"] = absolute
+			continue
 		walk_evolve_area(d, gs.products, market, stream)
 		market["updated_at"] = absolute
 	gs.rng_state = stream.state

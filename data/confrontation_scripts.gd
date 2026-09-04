@@ -175,6 +175,26 @@ const STICK_SCRIPTS := {
 			},
 		],
 	},
+	# BR-D5 (0.9.0): Mountain View's tier-2 mark. An off-duty soldier by
+	# the fence with a paycheck and a reason to keep it quiet -- and a
+	# reason to fight, which is the room.
+	"mv_fence_buyer": {
+		"sheet_title": "THE FENCE LINE",
+		"opponent": "The soldier",
+		"left": 1, "left_label": "STILL UP",
+		"talk": true,
+		"stage_mods": [0.0, -0.05],
+		"beats": [
+			{
+				"enter": "Payday, out of uniform, and what he came to the fence for is in his other hand. He cannot call this in. He knows it, and it makes him worse, not better.",
+				"bank_log": "The roll comes out of the jacket. $%d banked.",
+			},
+			{
+				"enter": "He is trained and he is angry and there is a base full of people on the other side of the fence who would not call the police either. He squares up.",
+				"bank_log": "The rest, and the watch. $%d banked.",
+			},
+		],
+	},
 	"rec_center_dice": {
 		"sheet_title": "THE GAME",
 		"opponent": "The dice game",

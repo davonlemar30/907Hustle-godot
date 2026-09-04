@@ -314,6 +314,8 @@ func district_blocker(district_id: String) -> String:
 			return "Hold one corner in Spenard to open Downtown."
 		"airport_industrial":
 			return "Hold two corners to open Ship Creek."
+		"mountain_view":
+			return "Get established in Spenard. The block opens on day %d, or sooner if somebody names it." % int(gs.MOUNTAIN_VIEW_DAY)
 	return "Not yet."
 
 ## D-1 (86bbjxtfa, Batch 18 PR 4): the recurring cost Territory never had. Read

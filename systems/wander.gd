@@ -780,6 +780,11 @@ func _breadcrumb() -> Dictionary:
 	return {"ok": true, "kind": "breadcrumb", "card_id": ""}
 
 func _play_ambient(card: Dictionary) -> Dictionary:
+	# BR-D5: a card can put a district on the map -- the bus shelter card
+	# that names Mountain View before day seven does.
+	var opens := str(card.get("discovers_district", ""))
+	if not opens.is_empty() and not opens in gs.districts_unlocked:
+		gs.districts_unlocked.append(opens)
 	gs.log_activity(str(card["line"]), MUTED)
 	var spec: Variant = card.get("observation")
 	if spec is Dictionary:

@@ -71,14 +71,19 @@ func _district_tabs(sys: Object) -> Control:
 		var district: Dictionary = gs.district_by_id(id)
 		var held: int = sys.held_in(id)
 		var total: int = (TERRITORY_DEFS.nodes_in(id) as Array).size()
-		var b := button("%s %d/%d" % [str(district.get("name", id)), held, total], id == _district,
-			_on_pick_district.bind(id), 44)
+		var b := button("%s %d/%d" % [str(TAB_NAMES.get(id, district.get("name", id))), held, total],
+			id == _district, _on_pick_district.bind(id), 44)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.add_theme_font_size_override("font_size", 11)
+		b.add_theme_font_size_override("font_size", 10)
+		b.clip_text = true
 		if not str(sys.district_blocker(id)).is_empty():
 			b.modulate = Color(1, 1, 1, 0.55)
 		row.add_child(b)
 	return row
+
+## Four tabs across 375 pixels: the names have to be short.
+const TAB_NAMES := {"north_star_lot": "SPENARD", "downtown": "DOWNTOWN",
+	"airport_industrial": "SHIP CRK", "mountain_view": "MTN VIEW"}
 
 func _on_pick_district(id: String) -> void:
 	_district = id
@@ -110,6 +115,8 @@ func _district_card(sys: Object) -> Control:
 			v.add_child(label("Venues, not corners. More money a night, more police, and Curtis can see you from here.", "Muted", 11, MUTED, true))
 		"airport_industrial":
 			v.add_child(label("Warehouse lots. Not income -- supply. Every lot you hold cuts every buy you make, anywhere. Holding: -%d%% on buys." % int(round(float(sys.supply_discount()) * 100.0)), "Muted", 11, MUTED, true))
+		"mountain_view":
+			v.add_child(label("The block's corners. Held on trust as much as on soldiers; the fence line is Curtis's because the pipeline is.", "Muted", 11, MUTED, true))
 	if gs.current_district_id != _district:
 		v.add_child(label("You claim from where you stand. Travel there to take one.", "Muted", 11, AMBER, true))
 	return c

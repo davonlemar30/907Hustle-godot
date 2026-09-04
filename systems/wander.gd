@@ -227,6 +227,8 @@ func facts() -> Dictionary:
 		# happens to people with plates.
 		"on_the_road": (gs.districts_unlocked as Array).size() > 1 or bool(gs.has_vehicle()),
 		"has_vehicle": bool(gs.has_vehicle()),
+		# SA-D3: Mina's read of you, for the card where her family shows up.
+		"mina_warm": str(Engine.get_main_loop().root.get_node("/root/Exposure").band_of("mina")) in ["warm", "trusted", "bonded"],
 		"trunk_loaded": not (gs.trunk as Dictionary).is_empty(),
 		# `market_pressure_visible` gates the territorial beef. Reads the
 		# engine's own band for the district the player is standing in --

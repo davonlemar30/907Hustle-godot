@@ -93,11 +93,129 @@ func setup(game_state: Node, rng_manager: Node, time: RefCounted,
 	attributes = attribute_system
 	gm = manager
 
+# --- OG-D5 (1.0.0 PR 5): stolen goods have a name -------------------------
+#
+# The Lift's items come here to become cash. Listing one is a real roll:
+# a buyer who is a cop, a buyer who knows the store's tag, a listing that
+# sits and costs heat, or a clean sale at the fence's rate. Pherris
+# backing the board halves the two bad buyers. Thresholds are a pure
+# function so the suite can assert them.
+
+const FENCE_COP_BASE := 0.04
+const FENCE_COP_PER_HEAT := 0.015
+const FENCE_COP_VOLUME := 0.08
+const FENCE_VOLUME_AT := 3
+const FENCE_TAG := 0.10
+const FENCE_UNSOLD := 0.15
+const FENCE_HEAT_COP := 3.0
+const FENCE_HEAT_TAG := 1.5
+const FENCE_HEAT_UNSOLD := 0.5
+
+## The three thresholds on a unit roll, in order: cop, tag, unsold. Past
+## the third is a clean sale.
+static func fence_thresholds(heat: float, hot_listed: int, pherris_backing: bool) -> Array:
+	var cop: float = FENCE_COP_BASE + FENCE_COP_PER_HEAT * maxf(0.0, heat)
+	if hot_listed >= FENCE_VOLUME_AT:
+		cop += FENCE_COP_VOLUME
+	var tag: float = FENCE_TAG
+	if pherris_backing:
+		cop *= 0.5
+		tag *= 0.5
+	return [cop, cop + tag, cop + tag + FENCE_UNSOLD]
+
+static func fence_outcome(roll: float, heat: float, hot_listed: int, pherris_backing: bool) -> String:
+	var t: Array = fence_thresholds(heat, hot_listed, pherris_backing)
+	if roll < float(t[0]):
+		return "cop"
+	if roll < float(t[1]):
+		return "tag"
+	if roll < float(t[2]):
+		return "unsold"
+	return "clean"
+
+func pherris_backing() -> bool:
+	return gs.is_recruited("pherris") and int(gs.crew_record("pherris").get("loyalty", 0)) >= 5
+
+func hot_listed_count() -> int:
+	var n := 0
+	for held in gs.list_holdings:
+		if bool((held as Dictionary).get("hot", false)):
+			n += 1
+	return n
+
+func list_hot_blocker(index: int) -> String:
+	if gs.game_over:
+		return "The run is over."
+	if index < 0 or index >= gs.hot_goods.size():
+		return "Nothing there."
+	if gs.list_holdings.size() >= capacity():
+		return "Board is full. %d is all you can carry." % capacity()
+	return ""
+
+## Put a hot item on the board. It settles like a holding: a day, then
+## the meet, then the roll.
+func _list_hot(index: int) -> Dictionary:
+	var blocked := list_hot_blocker(index)
+	if not blocked.is_empty():
+		return {"ok": false, "reason": blocked}
+	var item: Dictionary = gs.hot_goods[index]
+	gs.hot_goods.remove_at(index)
+	gs.list_holdings.append({
+		"item_id": "hot:%s" % str(item.get("kind", "goods")), "bought_day": gs.day,
+		"source": SOURCE_PLAYER, "hot": true, "name": str(item.get("name", "")),
+		"from": str(item.get("from", "")), "value": int(item.get("value", 0)),
+		"heat": float(item.get("heat", 0.5)),
+	})
+	gs.log_activity("%s goes on the board with no photo and a price that says what it is." % str(item.get("name", "It")).capitalize(), AMBER)
+	return {"ok": true}
+
+## The meet, for a hot holding. Seeded on the day, the item and the slot.
+func _fence(index: int) -> Dictionary:
+	var held: Dictionary = gs.list_holdings[index]
+	var name := str(held.get("name", "the thing"))
+	var value: int = int(held.get("value", 0))
+	var key := "%d:%d:fence:%d:%s" % [gs.day, gs.time_slots_today, index, name]
+	var roll: float = rng.seeded_random(gs.run_seed, key)
+	var outcome := fence_outcome(roll, float(gs.heat), hot_listed_count(), pherris_backing())
+	var heat_sys: Object = gm.system("heat")
+	var wallet: Object = gm.system("wallet")
+	match outcome:
+		"clean":
+			var got: int = int(round(float(value) * float(gs.FENCE_RATE)))
+			wallet.credit(got, wallet.DIRTY, {"source_id": "fence"})
+			gs.record_earning("fence", got)
+			gs.list_holdings.remove_at(index)
+			gs.list_flips += 1
+			_update_tier()
+			gs.log_activity("%s gone for $%d, cash, in a parking lot, to somebody who did not ask." % [name.capitalize(), got], GREEN)
+			return {"ok": true, "outcome": outcome, "got": got}
+		"tag":
+			gs.list_holdings.remove_at(index)
+			if heat_sys != null:
+				heat_sys.apply_gain(FENCE_HEAT_TAG, heat_sys.FAMILY_BOOST, gs.current_district_id, {"source_id": "fence_tag"})
+			gs.log_activity("The buyer turns %s over, sees the store's tag, and hands it back with a look. He is going to tell somebody." % name, RED)
+			return {"ok": true, "outcome": outcome, "got": 0}
+		"cop":
+			gs.list_holdings.remove_at(index)
+			if heat_sys != null:
+				heat_sys.apply_gain(FENCE_HEAT_COP, heat_sys.FAMILY_BOOST, gs.current_district_id, {"source_id": "fence_cop"})
+			gs.log_activity("The buyer for %s has a badge in his other hand. He keeps the item, he keeps your face, and he lets you walk. This time." % name, RED)
+			return {"ok": true, "outcome": outcome, "got": 0}
+	# Unsold: it sits, and it costs.
+	held["bought_day"] = int(gs.day)
+	gs.list_holdings[index] = held
+	if heat_sys != null:
+		heat_sys.apply_gain(FENCE_HEAT_UNSOLD, heat_sys.FAMILY_BOOST, gs.current_district_id, {"source_id": "fence_unsold"})
+	gs.log_activity("Nobody shows for %s. It sits another day, and a listing that sits is a listing somebody is reading." % name, AMBER)
+	return {"ok": true, "outcome": outcome, "got": 0}
+
 func can_handle(action: String) -> bool:
-	return action in ["list_buy", "list_sell"]
+	return action in ["list_buy", "list_sell", "list_hot"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
 	match action:
+		"list_hot":
+			return _list_hot(int(payload.get("index", -1)))
 		"list_buy":
 			return _buy(str(payload.get("item_id", "")))
 		"list_sell":
@@ -244,6 +362,11 @@ func sell_blocker(index: int) -> String:
 	# the flip to their standing.
 	if str(held.get("source", SOURCE_PLAYER)) == SOURCE_PHERRIS:
 		return "That's Pherris's pickup. It settles tonight."
+	# OG-D5: a hot listing always waits a day for its buyer, whatever the tier.
+	if bool(held.get("hot", false)):
+		if gs.day - int(held["bought_day"]) < 1:
+			return "The meet is tomorrow."
+		return ""
 	var delay: int = int(gs.market_tier()["sell_delay"])
 	if gs.day - int(held["bought_day"]) < delay:
 		return "The meet is tomorrow."
@@ -253,6 +376,9 @@ func _sell(index: int) -> Dictionary:
 	var blocked := sell_blocker(index)
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked}
+	# OG-D5: a hot holding meets the fence, not the board's settle.
+	if bool((gs.list_holdings[index] as Dictionary).get("hot", false)):
+		return _fence(index)
 	return settle_holding(index, PERSONAL)
 
 ## Turn one held item into money. **The single settlement path**, used by the

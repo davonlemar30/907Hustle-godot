@@ -501,6 +501,7 @@ func reset_to_new_game() -> void:
 	leaving = false
 	curtis_doorstep = 0
 	run_earnings = {}
+	hot_goods = []
 	stick_tier = 1
 	stick_daily_count = 0
 	stick_rep = 0
@@ -832,6 +833,13 @@ var leaving: bool = false
 ## Mornings in a row Curtis has been maxed and nobody stood with you. The
 ## door is the third. Reset the morning either stops being true.
 var curtis_doorstep: int = 0
+## OG-D5 (1.0.0, v32): stolen goods have a name. What a Lift walks out
+## with is an item -- `{kind, name, value, heat, from, day}` -- not cash,
+## and the 907List is where it becomes cash, at the fence's rate and the
+## fence's risk. Tier-three merchandise keeps its own channel (Slide).
+var hot_goods: Array = []
+const FENCE_RATE := 0.6
+
 ## Earnings over the whole run, by source, for the reckoning. `record_earning`
 ## adds to both this and today's.
 var run_earnings: Dictionary = {}

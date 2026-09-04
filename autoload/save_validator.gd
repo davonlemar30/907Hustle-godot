@@ -59,6 +59,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_job_applications(state, repairs)
 	_validate_kit(state, repairs)
 	_validate_ending(state, repairs)
+	_validate_hot_goods(state, repairs)
 	_validate_boost_bribes_used(state, repairs)
 	_validate_tip_effects(state, repairs)
 	_validate_tip_misses(state, repairs)
@@ -352,6 +353,12 @@ func _validate_list_holdings(state: Dictionary, repairs: Array[String]) -> void:
 		_int(holding, "bought_day", -1,
 			"list_holdings[%d].bought_day" % index, repairs)
 		_string(holding, "source", "player", "list_holdings[%d].source" % index, repairs)
+		# OG-D5: a hot holding carries its own name and value, because the
+		# board's item table never heard of it.
+		if bool(holding.get("hot", false)):
+			_string(holding, "name", "a bag of somebody else's things", "list_holdings[%d].name" % index, repairs)
+			_string(holding, "from", "", "list_holdings[%d].from" % index, repairs)
+			_int(holding, "value", 0, "list_holdings[%d].value" % index, repairs)
 		clean.append(holding)
 	state["list_holdings"] = clean
 
@@ -736,6 +743,32 @@ func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> voi
 			continue
 		cleaned.append(str(entry))
 	state["boost_targets_discovered"] = cleaned
+
+## v32 (OG-D5). Every hot item is a name, a value and a heat; junk drops.
+func _validate_hot_goods(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("hot_goods"):
+		return
+	if not state["hot_goods"] is Array:
+		state["hot_goods"] = []
+		_repair(repairs, "hot_goods", "wrong type; defaulted")
+		return
+	var clean: Array = []
+	for index in (state["hot_goods"] as Array).size():
+		var value: Variant = (state["hot_goods"] as Array)[index]
+		if not value is Dictionary:
+			_repair(repairs, "hot_goods[%d]" % index, "invalid item dropped")
+			continue
+		var item: Dictionary = value
+		_string(item, "kind", "goods", "hot_goods[%d].kind" % index, repairs)
+		_string(item, "name", "a bag of somebody else's things", "hot_goods[%d].name" % index, repairs)
+		_string(item, "from", "", "hot_goods[%d].from" % index, repairs)
+		_int(item, "value", 0, "hot_goods[%d].value" % index, repairs)
+		_int(item, "day", 1, "hot_goods[%d].day" % index, repairs)
+		if not (item.get("heat") is float or item.get("heat") is int):
+			item["heat"] = 0.5
+			_repair(repairs, "hot_goods[%d].heat" % index, "wrong type; defaulted")
+		clean.append(item)
+	state["hot_goods"] = clean
 
 ## v31 (OG-D4). A kind the ending knows, a bool, a dictionary of ints.
 func _validate_ending(state: Dictionary, repairs: Array[String]) -> void:

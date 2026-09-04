@@ -5441,7 +5441,7 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# Word of Mouth (0.1.2) appends `tips` and reorders nothing above it: a
 	# tip is a claim about today's board, so it goes last, after every other
 	# step that could still change what today's board is.
-	"DAY_START:tips", "DAY_START:ghosts", "DAY_START:mentions",
+	"DAY_START:tips", "DAY_START:ghosts", "DAY_START:mentions", "DAY_START:crew_ideas",
 	# Dre Lending & Loan-Shark Progression PR B appends `dre_intro` after
 	# `tips` for the same reason: Juan's mention reads the fully-settled day.
 	"DAY_START:dre_intro",
@@ -19639,6 +19639,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_clock_in_move_up(gs, gm)
 	_check_your_corners_their_corners(gs, gm)
 	_check_mountain_view(gs, gm)
+	_check_their_own_ideas(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -20166,6 +20167,90 @@ func _check_mountain_view(gs: Node, gm: Node) -> void:
 	_expect_int("two marks on the block", marks, 2)
 	_expect_int("two targets on the block", targets, 2)
 	_expect_int("three corners on the block", (B18_TERRITORY.nodes_in("mountain_view") as Array).size(), 3)
+	gs.reset_to_new_game()
+
+## BR-D6 (0.9.0 PR 5): they have their own ideas. Two operations join the
+## substrate (Eli scouts, Tone puts it down); a trusted member with a
+## situation texts a proposal at day start; yes is the assignment; the
+## night settles it and the member reports.
+func _check_their_own_ideas(gs: Node, gm: Node) -> void:
+	var ops: Object = gm.system("crew_operations")
+	var engine: Object = gm.system("consequence")
+	_expect_true("scouting is on the substrate", "scout_district" in ops.operation_ids())
+	_expect_true("putting it down is on the substrate", "put_it_down" in ops.operation_ids())
+	_expect_true("the scout adapter is registered", gm.system("scout_adapter") != null)
+	_expect_true("the enforcer adapter is registered", gm.system("enforcer_adapter") != null)
+
+	# Tone, trusted, with a problem on the block: the proposal, the yes,
+	# the night.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 500
+	gs.phone_inbox = []
+	gs.day = 9
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 8, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	ops.reconcile()
+	engine.add_pressure("north_star_lot", "market", 6.0, "cause:parity:idea")
+	var fired := false
+	for day in range(9, 20):
+		gs.day = day
+		gs.time_slots_today = 0
+		ops.day_start_ideas(day)
+		for m in gs.phone_inbox:
+			if str((m as Dictionary).get("from", "")) == "Tone":
+				fired = true
+		if fired:
+			break
+	_expect_true("Tone texts a proposal within ten mornings", fired)
+	if fired:
+		var text: Dictionary = gs.phone_inbox[0]
+		var reply: Dictionary = (text.get("action", {}) as Dictionary).get("reply", {})
+		_expect_true("...with its own two answers", reply.has("a") and reply.has("on_accept"))
+		_expect_str("...that name the district", str((reply.get("on_accept", {}) as Dictionary).get("params", {}).get("district_id", "")), "north_star_lot")
+		var pressure_before: float = float(engine.pressure_score("north_star_lot", "market"))
+		_expect_true("yes dispatches", gm.dispatch("phone_reply", {"id": str(text["id"]), "option": "a"}))
+		_expect_true("...and is the assignment", not (ops.assignment_for("tone") as Dictionary).is_empty())
+		gm.dispatch("advance_time", {})
+		gm.dispatch("advance_time", {})
+		gm.dispatch("advance_time", {})
+		gm.dispatch("advance_time", {})
+		_expect_true("the night settles it",
+			bool((ops.last_assignment("tone") as Dictionary).get("settled", false)))
+		_expect_true("...and the pressure came off (%.1f -> %.1f)" % [pressure_before,
+			float(engine.pressure_score("north_star_lot", "market"))],
+			float(engine.pressure_score("north_star_lot", "market")) < pressure_before)
+		var reported := false
+		for m in gs.phone_inbox:
+			if str((m as Dictionary).get("from", "")) == "Tone" and str((m as Dictionary).get("text", "")).begins_with("Handled"):
+				reported = true
+		_expect_true("...and Tone reports", reported)
+
+	# Eli scouts a district you have not been to, from the Crew screen's
+	# dispatch, and comes back with the board.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 500
+	gs.phone_inbox = []
+	gs.day = 9
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	gs.crew_records["eli"] = {"recruited": true, "status": "active", "loyalty": 7, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	ops.reconcile()
+	_expect_true("the scout is assignable from the screen", gm.dispatch("assign_crew_operation",
+		{"crew_id": "eli", "operation_id": "scout_district", "params": {"district_id": "downtown"}}))
+	for _slot in 4:
+		gm.dispatch("advance_time", {})
+	var report := ""
+	for m in gs.phone_inbox:
+		if str((m as Dictionary).get("from", "")) == "Eli":
+			report = str((m as Dictionary).get("text", ""))
+			break
+	_expect_true("Eli's report names the board (%s)" % report.left(40), report.contains("open") and report.contains("cops"))
 	gs.reset_to_new_game()
 
 func _check_door_to_work(gs: Node, gm: Node) -> void:
@@ -20747,7 +20832,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13766
+const MIN_CHECKS := 13782
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

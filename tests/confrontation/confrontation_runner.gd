@@ -77,7 +77,7 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## range, plus the two things that deliberately survive (the arrest warning and
 ## the guaranteed road's price) and the proof that the ENGINE still projects
 ## odds it no longer shows.
-const MIN_CHECKS := 2994
+const MIN_CHECKS := 3161
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -116,6 +116,7 @@ func _ready() -> void:
 	_check_result_voice()
 	_check_interim_results()
 	_check_pay_roads()
+	_check_meetings()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -2782,3 +2783,74 @@ func _check_pay_roads() -> void:
 	gm.dispatch("consequence_continue", {})
 	gs.active_consequence = {}
 	gs.npc_ledgers = {}
+
+# --- check block 22: WS-D1, the meetings (0.8.0 PR 1) ------------------------
+#
+# A meeting is an encounter-shaped card that reveals a hustle. Every one has
+# to obey the chassis the way an encounter does -- a guaranteed road, labels,
+# copy, an ending for every road and tier -- and say its verb in the
+# universal set, because the meetings are the first cards a new player ever
+# sees and they set the vocabulary.
+
+const UNIVERSAL_VERBS: Array[String] = ["FIGHT", "RUN", "TALK", "PAY", "SURRENDER", "BLUFF", "COMPLY"]
+
+func _check_meetings() -> void:
+	var wander: Object = gm.system("wander")
+	var engine: Object = _engine()
+	for entry in EVENTS.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != EVENTS.KIND_MEETING:
+			continue
+		var card_id := str(card["id"])
+		var spec: Dictionary = card["encounter"]
+		var choices: Array = spec["choices"]
+		var deterministic: Array = spec.get("deterministic", [])
+		a.check("%s offers a guaranteed road" % card_id, not deterministic.is_empty())
+		for choice_id in choices:
+			var label := str(EVENTS.CHOICE_LABELS.get(choice_id, ""))
+			a.check("%s's '%s' is labelled in the universal verbs (%s)" % [card_id, choice_id, label],
+				label in UNIVERSAL_VERBS)
+			a.check("%s's '%s' has a line under it" % [card_id, choice_id],
+				not str(EVENTS.CHOICE_COPY.get(choice_id, "")).is_empty())
+			if choice_id in deterministic:
+				a.check("%s's guaranteed '%s' states its price" % [card_id, choice_id],
+					not str(EVENTS.CHOICE_GUARANTEE.get(choice_id, "")).is_empty())
+		# Every road and tier ends in its own words.
+		_reset_probe()
+		gs.active_consequence = {}
+		gs.cash = 500
+		gs.dirty_cash = 500
+		gs.clean_cash = 0
+		wander._play_encounter(card, "test:meeting:%s" % card_id)
+		a.eq_bool("%s reveals its hustle the moment it opens" % card_id,
+			str(card["discovers"]) in gs.hustles_discovered, true)
+		a.eq_str("%s opens on its own line" % card_id,
+			ENCOUNTER_SHEET.situation_body(engine, engine.active_summary()), str(card["line"]))
+		var effects: Dictionary = spec.get("effects", {})
+		for choice_id in effects.keys():
+			for tier in (effects[choice_id] as Dictionary).keys():
+				_assert_voiced("%s/%s/%s" % [card_id, choice_id, tier],
+					str(wander.result_headline(str(choice_id), str(tier), {})),
+					str(wander.result_body(str(choice_id), str(tier), {})))
+		gs.active_consequence = {}
+
+	# Goodie's PAY road hands over product and takes the price -- a grant,
+	# receipted, through the wallet and the inventory.
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.cash = 100
+	gs.dirty_cash = 100
+	gs.clean_cash = 0
+	gs.inventory = {}
+	wander._play_encounter(EVENTS.card_by_id("wander_meet_goodie"), "test:meeting:buy")
+	var cause_id := str(gs.active_consequence.get("cause_id", ""))
+	a.check("buying in commits", _commit("goodie_buy"))
+	a.eq_int("twenty dollars leaves", int(gs.cash), 80)
+	a.eq_int("two units arrive", int(gs.inventory.get("weed", 0)), 2)
+	a.eq_bool("the grant is receipted", engine.has_receipt(cause_id, "wander_encounter:grant"), true)
+	a.eq_str("the ending is Goodie's", str(engine.result_headline("")), "YOU BUY IN")
+	# A replay hands nothing over twice.
+	wander._apply_grants(gs.active_consequence, "wander_meet_goodie", "goodie_buy", "deterministic")
+	a.eq_int("a replayed grant hands over nothing", int(gs.inventory.get("weed", 0)), 2)
+	gm.dispatch("consequence_continue", {})
+	gs.active_consequence = {}

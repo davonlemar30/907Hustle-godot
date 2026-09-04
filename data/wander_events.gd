@@ -277,6 +277,13 @@ static func effort_for(walks_today: int) -> float:
 const KIND_AMBIENT := "ambient"
 const KIND_OPPORTUNITY := "opportunity"
 const KIND_ENCOUNTER := "encounter"
+## WS-D1 (0.8.0): the city reveals itself. A MEETING is an encounter-shaped
+## card (same `encounter` block, same chain, same roads) with one extra fact:
+## playing it DISCOVERS a hustle. Meetings do not compete with the pool or
+## with the gate -- an eligible one is the walk, first, because the whole
+## point is that the world shows you the thing on the day it is ready to.
+## Once each, and gated on the hustle still being unknown.
+const KIND_MEETING := "meeting"
 ## A card whose whole payload is telling you something true. See INTENT_READ.
 const KIND_READ := "read"
 
@@ -319,7 +326,10 @@ static func miss_ceiling() -> int:
 ## NOTHING in the codebase able to add them to `jobs_discovered`. Batch 7 made
 ## the Night Owl findable by putting it behind its own counter. These two had no
 ## door at all, and this is the one the web build built for them.
-const DISCOVERY_JOBS: Array[String] = ["juan_warehouse", "ship_creek"]
+## WS-D1 (0.8.0): every job but the one Yalonda vouches for is found by
+## walking, one at a time. The ramp picks which, seeded.
+const DISCOVERY_JOBS: Array[String] = ["spenard_chevron", "rebel_convenience",
+	"northern_value", "day_labor", "juan_warehouse", "ship_creek"]
 
 ## Breadcrumbs, by how many times you have come back empty.
 ##
@@ -1551,6 +1561,157 @@ const CARDS: Array[Dictionary] = [
 			},
 		},
 	},
+	# --- WS-D1 (0.8.0): the meetings -- the city reveals itself --------------
+	#
+	# Nothing criminal is on the board on day one. Each path arrives through
+	# one of these: an authored moment, in the register, that DISCOVERS the
+	# hustle the moment it opens (you now know the thing exists; how you
+	# handle it is the road). Once each. `observations` are authored empty on
+	# purpose: none of these is Curtis's business yet, and the role fallback
+	# would write to his ledger otherwise.
+
+	{
+		"id": "wander_meet_goodie", "kind": KIND_MEETING, "weight": 1,
+		"intents": [], "gate_bias": "",
+		"districts": [SPENARD], "slots": [], "once": true,
+		"requirements": [{"type": "day_min", "min": 2},
+			{"type": "hustle_undiscovered", "hustle": "market"}],
+		"discovers": "market",
+		"line": "A man in a Carhartt with the hood down is watching the corner like it owes him money. He has been watching you longer than that.",
+		"encounter": {
+			"definition_id": "wander_meet_goodie",
+			"opponent": "Goodie",
+			"shape": "negotiation",
+			"choices": ["goodie_talk", "goodie_buy", "goodie_pass"],
+			"roles": {"goodie_talk": ROLE_FIGHT, "goodie_pass": ROLE_RUN,
+				"goodie_buy": ROLE_SURRENDER},
+			"admits_crew": false,
+			"deterministic": ["goodie_buy", "goodie_pass"],
+			"base": {"goodie_talk": 0.66},
+			"observations": {"goodie_talk": {}, "goodie_buy": {}, "goodie_pass": {}},
+			"grants": {"goodie_buy": {"deterministic": {"weed": 2}}},
+			"effects": {
+				"goodie_talk": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 0.5},
+				},
+				"goodie_buy": {
+					"deterministic": {"health": 0, "cash_flat": 20, "goods_fraction": 0.0},
+				},
+				"goodie_pass": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+			},
+		},
+	},
+	{
+		"id": "wander_first_lift", "kind": KIND_MEETING, "weight": 1,
+		"intents": [], "gate_bias": "",
+		"districts": [], "slots": [MORNING, AFTERNOON], "once": true,
+		"requirements": [{"type": "day_min", "min": 3},
+			{"type": "hustle_undiscovered", "hustle": "boost"}],
+		"discovers": "boost",
+		"discovers_target": "northern_value",
+		"line": "Northern Value, mid-afternoon. One kid on the floor, the guard on his phone by the doors, and a rack of jackets nobody has counted since Christmas.",
+		"encounter": {
+			"definition_id": "wander_first_lift",
+			"opponent": "The floor at Northern Value",
+			"shape": "escape",
+			"choices": ["lift_take", "lift_leave"],
+			"roles": {"lift_take": ROLE_FIGHT, "lift_leave": ROLE_RUN},
+			"admits_crew": false,
+			"deterministic": ["lift_leave"],
+			"base": {"lift_take": 0.60},
+			"observations": {"lift_take": {}, "lift_leave": {}},
+			"grants": {"lift_take": {"clean": {"cash": 45}, "messy": {"cash": 30}}},
+			"effects": {
+				"lift_take": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 0.5},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 1.0},
+					"catastrophic": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 2.0},
+				},
+				"lift_leave": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+			},
+		},
+	},
+	{
+		"id": "wander_first_stickup_broke", "kind": KIND_MEETING, "weight": 1,
+		"intents": [], "gate_bias": "",
+		"districts": [], "slots": [], "once": true,
+		"requirements": [{"type": "day_min", "min": 5},
+			{"type": "fact_true", "fact": "broke"},
+			{"type": "hustle_undiscovered", "hustle": "stickup"}],
+		"discovers": "stickup",
+		"line": "Under thirty dollars to your name and a week of rent standing behind it. The man coming out of the Chevron is counting a fold of cash like the street is his living room.",
+		"encounter": {
+			"definition_id": "wander_first_stickup_broke",
+			"opponent": "The man with the fold",
+			"shape": "confrontation",
+			"choices": ["stick_take", "stick_pass"],
+			"roles": {"stick_take": ROLE_FIGHT, "stick_pass": ROLE_RUN},
+			"admits_crew": false,
+			"deterministic": ["stick_pass"],
+			"base": {"stick_take": 0.45},
+			"observations": {"stick_take": {}, "stick_pass": {}},
+			"grants": {"stick_take": {"clean": {"cash": 60}, "messy": {"cash": 40}}},
+			"effects": {
+				"stick_take": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 1.5},
+					"messy": {"health": 3, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 2.0},
+					"failure": {"health": 6, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 1.0},
+					"catastrophic": {"health": 12, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 2.5},
+				},
+				"stick_pass": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+			},
+		},
+	},
+	{
+		"id": "wander_first_stickup_witness", "kind": KIND_MEETING, "weight": 1,
+		"intents": [], "gate_bias": "",
+		"districts": [SPENARD], "slots": [EVENING, NIGHT], "once": true,
+		"requirements": [{"type": "day_min", "min": 5},
+			{"type": "hustle_undiscovered", "hustle": "stickup"}],
+		"discovers": "stickup",
+		"line": "Half a block up, a kid in a grey hoodie walks up on a man at the ATM. It takes eleven seconds, and the kid does not run afterward.",
+		"encounter": {
+			"definition_id": "wander_first_stickup_witness",
+			"opponent": "The kid at the ATM",
+			"shape": "negotiation",
+			"choices": ["witness_ask", "witness_pass"],
+			"roles": {"witness_ask": ROLE_FIGHT, "witness_pass": ROLE_RUN},
+			"admits_crew": false,
+			"deterministic": ["witness_pass"],
+			"base": {"witness_ask": 0.55},
+			"observations": {"witness_ask": {}, "witness_pass": {}},
+			"effects": {
+				"witness_ask": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0,
+						"heat": 0.5},
+					"catastrophic": {"health": 5, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+				"witness_pass": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+			},
+		},
+	},
 ]
 
 ## Player-facing copy for the encounter choices, in the two shapes the screen
@@ -1626,6 +1787,16 @@ const CHOICE_LABELS := {
 	"cross_over": "CROSS OVER",
 	"look_away": "LOOK AWAY",
 	# BB-D8: the four priced roads.
+	# WS-D1: the meetings, in the universal verbs (WS-D2 standardises the rest).
+	"goodie_talk": "TALK",
+	"goodie_buy": "PAY",
+	"goodie_pass": "RUN",
+	"lift_take": "BLUFF",
+	"lift_leave": "RUN",
+	"stick_take": "FIGHT",
+	"stick_pass": "RUN",
+	"witness_ask": "TALK",
+	"witness_pass": "RUN",
 	"pay_them": "PAY THEM",
 	"slip_him_something": "SLIP HIM SOMETHING",
 	"pay_them_off": "PAY THEM OFF",
@@ -1679,6 +1850,16 @@ const CHOICE_COPY := {
 	"cross_over": "Other side of the street, same pace, eyes forward.",
 	"look_away": "Somebody is going to remember that you saw.",
 	# BB-D8. A price is a price; the copy says what it buys.
+	# WS-D1: the meetings. The line under the verb carries the situation.
+	"goodie_talk": "Ask him what he has and what it costs. He has already decided whether to answer.",
+	"goodie_buy": "Twenty dollars for two. He remembers a customer longer than a question.",
+	"goodie_pass": "Eyes forward. He will still be there tomorrow, and so will the corner.",
+	"lift_take": "Two jackets under your own, and walk out like you paid. The guard is still on his phone.",
+	"lift_leave": "Not today. But you saw how loose it was, and you will not unsee it.",
+	"stick_take": "Walk up on him before he looks up. Whatever is in that fold is rent.",
+	"stick_pass": "Let him count. You saw how easy it would have been; that is the part that stays.",
+	"witness_ask": "Catch the kid at the corner and ask him how. He will either tell you or size you up.",
+	"witness_pass": "Keep walking. You saw the whole thing, and eleven seconds is a number you now know.",
 	"pay_them": "Sixty dollars buys the corner's patience. Cheaper than the bag, if you have it.",
 	"slip_him_something": "Eighty dollars folded small. He takes it or he takes you in, and you find out which.",
 	"pay_them_off": "Thirty dollars and the argument goes back to being theirs.",
@@ -1719,6 +1900,12 @@ const CHOICE_GUARANTEE := {
 	"call_tone": "Guaranteed: it ends. It costs a favor you will want back later.",
 	"let_deshawn_talk": "Guaranteed: everybody walks, and you keep what you were carrying.",
 	# BB-D8: a flat price from either pocket, stated whole.
+	# WS-D1: the meetings' guaranteed roads.
+	"goodie_buy": "Guaranteed: $20, two units of product, and Goodie knows your face as a customer.",
+	"goodie_pass": "Guaranteed: nothing changes hands. You know where the corner is now.",
+	"lift_leave": "Guaranteed: nothing taken, nothing risked. You know what a loose rack looks like now.",
+	"stick_pass": "Guaranteed: nothing happens. You know how it would have gone.",
+	"witness_pass": "Guaranteed: nothing happens to you. You know how fast it is now.",
 	"pay_them": "Guaranteed: $60, and they let you keep walking with the rest.",
 	"slip_him_something": "Guaranteed: $80, no search, and a cop who knows your face and your price.",
 	"pay_them_off": "Guaranteed: $30. Nobody swings, and you keep what is on you.",
@@ -1987,6 +2174,57 @@ const RESULT_COPY := {
 	},
 }
 
+## WS-D1: the meetings' own endings, same shape as the cards above.
+const MEETING_RESULT_COPY := {
+	"wander_meet_goodie": {
+		"goodie_talk": {
+			"clean": ["HE GIVES YOU A PRICE", "He tells you what he has like he is reading a menu, and what it costs like you already agreed. You know the corner now, and the corner knows you."],
+			"messy": ["HE GIVES YOU HALF AN ANSWER", "Enough to know he is the one to ask, and not enough to think you are owed anything. It is a start."],
+			"failure": ["HE DOES NOT ANSWER", "He looks at you for a long moment and goes back to watching the corner. You still know where it is. He knows you asked."],
+			"catastrophic": ["WRONG QUESTION, WRONG VOLUME", "You said it loud enough for the block to hear, and the block includes a cruiser two lights down. He walks. So should you."],
+		},
+		"goodie_buy": {
+			"deterministic": ["YOU BUY IN", "Twenty dollars, two in a fold of foil, no conversation. He nods like a cashier. That nod is the whole relationship, for now."],
+		},
+		"goodie_pass": {
+			"deterministic": ["YOU KEEP WALKING", "He does not stop watching. You have seen where the corner is and who runs it, and that is a thing you cannot give back."],
+		},
+	},
+	"wander_first_lift": {
+		"lift_take": {
+			"clean": ["OUT THE DOOR", "Two jackets under your own and nobody looked up. You sell them behind the Chevron before the guard finishes his call."],
+			"messy": ["OUT THE DOOR, BARELY", "The kid on the floor saw something and decided it was not his problem. One jacket sells. The other you leave in a dumpster because your hands would not stop."],
+			"failure": ["THE GUARD LOOKS UP", "He takes the jackets back at the door and takes your face with them. Nobody calls anybody. Nobody has to."],
+			"catastrophic": ["THE GUARD PUTS YOU DOWN", "He was not on his phone. Everybody in the parking lot watches you get walked out, and one of them is a cop's brother-in-law."],
+		},
+		"lift_leave": {
+			"deterministic": ["YOU LEAVE IT", "You walk out with what you came in with and a piece of information you did not have: how loose a rack can be, and how bored a guard."],
+		},
+	},
+	"wander_first_stickup_broke": {
+		"stick_take": {
+			"clean": ["THE FOLD IS YOURS", "You were on him before he looked up, and the fold was in your hand before he understood the question. Rent, the bad way."],
+			"messy": ["YOU GET MOST OF IT", "He held on longer than his money was worth. You leave with the fold and a cut lip, and he leaves with your description."],
+			"failure": ["HE IS NOT WHO YOU THOUGHT", "He was counting cash outside a gas station because nobody had ever taken it from him. You find out why."],
+			"catastrophic": ["ALL THE WAY DOWN", "He puts you on the ground in front of the pumps and keeps his money. Somebody films it. That is Spenard now."],
+		},
+		"stick_pass": {
+			"deterministic": ["YOU LET HIM COUNT", "He folds the money into his jacket and drives off. You stand there under thirty dollars, and you know exactly how it would have gone."],
+		},
+	},
+	"wander_first_stickup_witness": {
+		"witness_ask": {
+			"clean": ["HE TELLS YOU", "He is nineteen and proud of it. Where they stand, when they look down, how long you have. He tells you like it is a recipe."],
+			"messy": ["HE SIZES YOU UP FIRST", "He wants to know who is asking before he answers, and then answers anyway, in fewer words. You got the shape of it."],
+			"failure": ["HE DOES NOT LIKE THE QUESTION", "Asking how it is done is a way of saying you saw it done. He tells you to forget both, and means it."],
+			"catastrophic": ["HE THINKS YOU ARE A PROBLEM", "You asked the wrong kid the wrong thing. He makes sure you will not describe him well, and you will not."],
+		},
+		"witness_pass": {
+			"deterministic": ["ELEVEN SECONDS", "You keep walking. The man at the ATM is still standing there deciding whether to call anybody. You know how fast it is now, and how nobody ran."],
+		},
+	},
+}
+
 ## The two chassis actions read the same on every card: a call is a call.
 const CREW_RESULT_COPY := {
 	"call_tone": ["TONE ENDS IT", "He does not say much. He does not need to. They look at him and decide the evening is over."],
@@ -1999,7 +2237,7 @@ static func result_copy(card_id: String, choice_id: String, tier: String,
 		in_room: bool) -> Array:
 	if CREW_RESULT_COPY.has(choice_id):
 		return CREW_RESULT_COPY[choice_id]
-	var card_table: Dictionary = RESULT_COPY.get(card_id, {})
+	var card_table: Dictionary = RESULT_COPY.get(card_id, MEETING_RESULT_COPY.get(card_id, {}))
 	var table: Dictionary = card_table.get("room", {}) if in_room else card_table
 	var road: Dictionary = table.get(choice_id, {})
 	if road.has(tier):

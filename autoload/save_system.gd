@@ -177,7 +177,14 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## exist as a concept before this build's interruption gate. No v24 save has
 ## ever had a streak running, so `0` is that save's honest history -- the
 ## same call `wander_misses` itself got at v13.
-const SAVE_VERSION := 25
+## v26: `hustles_discovered` (The World Speaks PR 1, WS-D1) -- the hustle
+## paths the run has been shown. A v25 save had every path on the board by
+## its own old rules (Market on its latch, Boost at three walks, Stickup on
+## day two, 907List on day three), so the migration derives the array from
+## exactly those rules: nothing a v25 player could already see closes on
+## them. A fresh run starts empty, and `jobs_discovered` starts with Wash & Go
+## alone -- no migration needed for that one, an old save keeps what it knew.
+const SAVE_VERSION := 26
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -252,6 +259,9 @@ const PERSIST_FIELDS: Array[String] = [
 	# Wander (v13). The ramp and the seen-cards ledger; both are the run's own
 	# history of going out and looking, and neither can be reconstructed.
 	"wander_misses", "wander_count", "wander_seen", "wander_recent",
+	# The hustle latches (v26, WS-D1). One-way discovery, like the two axes
+	# above it; what the city has shown you cannot be reconstructed.
+	"hustles_discovered",
 	# The interruption gate's quiet streak (v25, STR-D2). Same reasoning as
 	# wander_misses above: the run's own history of a mechanic that reads it.
 	"wander_quiet_streak",
@@ -902,6 +912,19 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# v24 -> v25: wander_quiet_streak. Purely additive -- see this
 				# arm's own paragraph by SAVE_VERSION.
 				pass
+			25:
+				# v25 -> v26: hustles_discovered, derived from the gates a v25
+				# save opened by rule, so nothing it could see closes on it.
+				var known: Array = []
+				if bool(state.get("market_discovered", false)):
+					known.append("market")
+				if int(state.get("wander_count", 0)) >= 3:
+					known.append("boost")
+				if int(state.get("day", 1)) >= 2:
+					known.append("stickup")
+				if int(state.get("day", 1)) >= 3:
+					known.append("list")
+				state["hustles_discovered"] = known
 			_:
 				return {}
 		version += 1

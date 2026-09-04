@@ -131,9 +131,14 @@ const GATES := {
 		"requirements": [{"type": "crew_count_min", "min": 1}],
 		"hint": "Recruit your first crew member",
 	},
+	# WS-D1 (0.8.0): the door opens on KNOWING a place that hires, and a
+	# fresh run knows one -- the Wash & Go Yalonda vouches for. It used to
+	# need a contact, and the playtest defect was a run that knew five places
+	# and could reach none of them. The lock stays authored so a save that
+	# somehow knows nothing still reads the hint.
 	MENU_JOBS: {
 		"mode": MODE_LOCKED,
-		"requirements": [{"type": "job_contacts_min", "min": 1}],
+		"requirements": [{"type": "collection_non_empty", "collection": "jobs_known"}],
 		"hint": "Find work on the block, or meet someone who hires",
 		"announce": "Somebody will vouch for you now. There is work on the board.",
 		"card_title": "WORK IS ON THE BOARD",
@@ -247,25 +252,33 @@ const GATES := {
 		"card_title": "STREET MARKET UNLOCKED",
 		"card_icon": "res://assets/icons/nav/icon-market.svg",
 	},
+	# WS-D1 (0.8.0): the three rows below stopped being clocks. A day count
+	# and a walk count opened every criminal surface in the first three days
+	# whether or not the city had shown the player anything, and the playtest
+	# read exactly that -- "everything unlocks at once". Each row now opens on
+	# a DISCOVERY the run has actually made (`hustles_discovered`): the first
+	# loose rack, a desperate afternoon or a kid at an ATM, somebody who
+	# trusts you mentioning the board. The moments themselves are authored in
+	# `data/wander_events.gd` (the meeting cards) and `systems/wander.gd`.
 	HUSTLE_LIST: {
 		"mode": MODE_HIDDEN,
-		"requirements": [{"type": "day_min", "min": 3}],
+		"requirements": [{"type": "hustle_discovered", "hustle": "list"}],
 		"hint": "",
-		"announce": "People are posting things worth having. 907List is on the board.",
+		"announce": "Somebody trusted you with the board. 907List is on it.",
 		"card_title": "907LIST UNLOCKED",
 	},
 	HUSTLE_BOOST: {
 		"mode": MODE_HIDDEN,
-		"requirements": [{"type": "wander_count_min", "min": 3}],
+		"requirements": [{"type": "hustle_discovered", "hustle": "boost"}],
 		"hint": "",
-		"announce": "You have walked past enough doors to know which ones are loose.",
+		"announce": "You saw how loose a rack can be. Boost is on the board.",
 		"card_title": "BOOST UNLOCKED",
 	},
 	HUSTLE_STICKUP: {
 		"mode": MODE_HIDDEN,
-		"requirements": [{"type": "day_min", "min": 2}],
+		"requirements": [{"type": "hustle_discovered", "hustle": "stickup"}],
 		"hint": "",
-		"announce": "Rent does not wait. Stickup is on the board, for what that is worth.",
+		"announce": "You know how fast it happens now. Stickup is on the board, for what that is worth.",
 		"card_title": "STICKUP UNLOCKED",
 	},
 	HUSTLE_SHARK: {
@@ -364,6 +377,13 @@ func facts() -> Dictionary:
 		# The Market discovery latch (PR 4). A named boolean rather than a
 		# population, for `fact_true` — HUSTLE_MARKET's own gate.
 		"market_discovered": bool(gs.market_discovered),
+		# WS-D1 (0.8.0): the hustle latches, for `hustle_discovered`.
+		"hustles_discovered": gs.hustles_discovered,
+		# WS-D1: doors onto work -- places that hire the run has heard of
+		# (Yalonda's Wash & Go on day one, then one at a time by walking)
+		# PLUS the people who connect you to it. Either kind opens the Jobs
+		# door; a contact still counts the way it did before the reveal.
+		"jobs_known": gs.jobs_discovered.size() + int(gs.job_contacts),
 		# Populations. Named for the surface that reads them, not the field
 		# that backs them, so a rename on GameState is one line here.
 		#

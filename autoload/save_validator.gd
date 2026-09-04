@@ -54,6 +54,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_heat_day(state, repairs)
 	_validate_wander(state, repairs)
 	_validate_boost_discovery(state, repairs)
+	_validate_hustles_discovered(state, repairs)
 	_validate_boost_bribes_used(state, repairs)
 	_validate_tip_effects(state, repairs)
 	_validate_tip_misses(state, repairs)
@@ -731,6 +732,29 @@ func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> voi
 			continue
 		cleaned.append(str(entry))
 	state["boost_targets_discovered"] = cleaned
+
+## v26 (WS-D1). Same shape as `_validate_boost_discovery`: every entry must be
+## one of the four hustle ids GameState declares, and a set holds each once.
+func _validate_hustles_discovered(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("hustles_discovered"):
+		return
+	if not state["hustles_discovered"] is Array:
+		state["hustles_discovered"] = []
+		_repair(repairs, "hustles_discovered", "wrong type; defaulted")
+		return
+	var known: Array = ["market", "boost", "stickup", "list"]
+	var cleaned: Array = []
+	var found: Array = state["hustles_discovered"]
+	for index in range(found.size()):
+		var entry: Variant = found[index]
+		if not entry is String or not str(entry) in known:
+			_repair(repairs, "hustles_discovered[%d]" % index, "no such hustle; dropped")
+			continue
+		if str(entry) in cleaned:
+			_repair(repairs, "hustles_discovered[%d]" % index, "duplicate; dropped")
+			continue
+		cleaned.append(str(entry))
+	state["hustles_discovered"] = cleaned
 
 ## 0.1.2. Same shape as `_validate_boost_discovery`, same reason: every entry
 ## must be a real target id, and a store cannot be bought from twice.

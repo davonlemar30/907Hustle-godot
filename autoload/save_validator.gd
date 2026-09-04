@@ -57,6 +57,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_hustles_discovered(state, repairs)
 	_validate_phone_reply_history(state, repairs)
 	_validate_job_applications(state, repairs)
+	_validate_kit(state, repairs)
 	_validate_boost_bribes_used(state, repairs)
 	_validate_tip_effects(state, repairs)
 	_validate_tip_misses(state, repairs)
@@ -734,6 +735,29 @@ func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> voi
 			continue
 		cleaned.append(str(entry))
 	state["boost_targets_discovered"] = cleaned
+
+## v30 (OG-D3). A weapon the table knows, a vehicle the table knows, a
+## trunk of ints.
+func _validate_kit(state: Dictionary, repairs: Array[String]) -> void:
+	if state.has("weapon") and not str(state["weapon"]) in ["hands", "knife", "piece"]:
+		state["weapon"] = "hands"
+		_repair(repairs, "weapon", "unknown; defaulted to hands")
+	if state.has("vehicle") and not str(state["vehicle"]) in ["", "beater"]:
+		state["vehicle"] = ""
+		_repair(repairs, "vehicle", "unknown; defaulted to none")
+	if state.has("trunk"):
+		if not state["trunk"] is Dictionary:
+			state["trunk"] = {}
+			_repair(repairs, "trunk", "wrong type; defaulted")
+		else:
+			var cleaned: Dictionary = {}
+			for pid in (state["trunk"] as Dictionary).keys():
+				var units: Variant = (state["trunk"] as Dictionary)[pid]
+				if pid is String and (units is int or units is float) and int(units) > 0:
+					cleaned[str(pid)] = int(units)
+				else:
+					_repair(repairs, "trunk[%s]" % str(pid), "invalid; dropped")
+			state["trunk"] = cleaned
 
 ## v28 (BR-D2). `job_id -> {day, slot, status}`. A row for a job the run
 ## does not know, or a junk row, is dropped; a junk field defaults.

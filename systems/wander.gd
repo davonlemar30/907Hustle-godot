@@ -69,6 +69,7 @@ const SCRIPTS := preload("res://data/confrontation_scripts.gd")
 
 const GREEN := Color(0.451, 0.722, 0.404)
 const AMBER := Color(0.882, 0.651, 0.227)
+const RED := Color(0.827, 0.161, 0.125)
 const BLUE := Color(0.373, 0.663, 0.847)
 const MUTED := Color(0.6, 0.6, 0.6)
 
@@ -202,6 +203,10 @@ func facts() -> Dictionary:
 		# WS-D1 (0.8.0): the hustle latches and the desperate afternoon.
 		"hustles_discovered": gs.hustles_discovered,
 		"broke": int(gs.cash) < BROKE_LINE,
+		# OG-D3: the kit.
+		"unarmed": str(gs.weapon) == "hands",
+		"no_piece": str(gs.weapon) != "piece",
+		"rank_index": int(Engine.get_main_loop().root.get_node("/root/Exposure").rank_index()),
 		# --- 0.6.0 PR C, the roster's own three new gates -------------------
 		#
 		# All three read state the build ALREADY keeps. That is the whole bar
@@ -1040,6 +1045,8 @@ func _play_encounter(card: Dictionary, key: String) -> Dictionary:
 		}
 
 	gs.log_activity(str(card["line"]), AMBER)
+	# OG-D3: the weapon in the coat moves the FIGHT road's odds.
+	shown = _armed_odds(card, shown)
 	var opened: Dictionary = engine.open_chain(engine.KIND_WANDER, {
 		"district_id": str(gs.current_district_id),
 		"return_route": "HOME",
@@ -1416,12 +1423,28 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	if _swung_first(card_id, choice_id, effects, chain):
 		return _open_shakedown_room(chain, choice_id, tier, effects.duplicate())
 
+	# OG-D3: what a fight with a weapon costs in heat, on top of the tier's.
+	if EVENTS.role_of(EVENTS.card_by_id(card_id), choice_id) == EVENTS.ROLE_FIGHT \
+			and tier != "deterministic" and float(gs.weapon_def().get("heat", 0.0)) > 0.0:
+		effects = effects.duplicate()
+		effects["heat"] = float(effects.get("heat", 0.0)) + float(gs.weapon_def()["heat"])
+		gs.log_activity("The %s comes out. Somebody saw it." % str(gs.weapon_def()["name"]).to_lower(), AMBER)
 	var applied: Dictionary = LOOP.apply_effects(gs, gm, effects, choice_id, "wander_encounter")
 	# WS-D1: a meeting can HAND the player something -- two units from Goodie,
 	# a fold of cash off a lift or a mark. Read off the card's own `grants`
 	# table, receipted, through the wallet and the inventory's own owners.
 	var granted_cash: int = _apply_grants(chain, card_id, choice_id, tier)
+	_apply_kit_grant(card_id, choice_id, tier)
 	_feed_line_for(choice_id, tier)
+	# OG-D3: a piece on you when the police card goes wrong is its own
+	# problem -- heat, and a line, and the day the arrest system reads the
+	# kit it will read this.
+	if str(gs.weapon) == "piece" and not EVENTS.answers_back(EVENTS.card_by_id(card_id)) \
+			and tier in ["failure", "catastrophic"]:
+		var heat_sys: Object = gm.system("heat") if gm != null else null
+		if heat_sys != null:
+			heat_sys.apply_gain(3.0, heat_sys.FAMILY_NONE, gs.current_district_id, {"source_id": "piece_found"})
+		gs.log_activity("They find the piece. That is a different night now.", RED)
 	# SQ-D8. On RESOLUTION, which is here — an escalating road has not resolved
 	# anything yet and the room writes its own when it finally ends.
 	_record_encounter_observation(chain, choice_id, tier)
@@ -1471,9 +1494,14 @@ func _resolve_pay(chain: Dictionary, choice_id: String) -> Dictionary:
 		heat_gain = LOOP.apply_heat(gs, gm, float(row["heat"]), "wander_encounter")
 	gs.log_activity("You pay. It stops being a conversation and starts being a price.", AMBER)
 	_record_encounter_observation(chain, choice_id, "deterministic")
+	# OG-D3: a priced road can hand something over -- a knife, a piece --
+	# through the same grants table a meeting's other roads read.
+	var card_id := str(source.get("card_id", ""))
+	var granted: int = _apply_grants(chain, card_id, choice_id, "deterministic")
+	_apply_kit_grant(card_id, choice_id, "deterministic")
 	var result := {
 		"choice_id": choice_id, "tier": "deterministic", "arrested": false, "banned": false,
-		"cash": -paid, "goods": 0, "health": 0, "heat": heat_gain, "pressure": 0,
+		"cash": granted - paid, "goods": 0, "health": 0, "heat": heat_gain, "pressure": 0,
 		"take_disposition": "keep",
 	}
 	decision["resolved_tier"] = "deterministic"
@@ -1487,6 +1515,17 @@ func _resolve_pay(chain: Dictionary, choice_id: String) -> Dictionary:
 ## DIRTY (nothing a meeting hands over is documented money); product goes
 ## into the inventory the same way a market buy does. Receipted once per
 ## chain. Returns the cash credited, for the result's own row.
+## OG-D3: a road can hand the player a weapon. One slot; a better one
+## replaces a worse one, and the feed says what you are carrying now.
+func _apply_kit_grant(card_id: String, choice_id: String, tier: String) -> void:
+	var grants: Dictionary = EVENTS.card_by_id(card_id).get("grants", {})
+	var row: Dictionary = (grants.get(choice_id, {}) as Dictionary).get(tier, {})
+	var weapon := str(row.get("weapon", ""))
+	if weapon.is_empty() or not gs.WEAPONS.has(weapon):
+		return
+	gs.weapon = weapon
+	gs.log_activity(str((gs.WEAPONS[weapon] as Dictionary).get("line", "")), AMBER)
+
 func _apply_grants(chain: Dictionary, card_id: String, choice_id: String,
 		tier: String) -> int:
 	var card: Dictionary = EVENTS.card_by_id(card_id)
@@ -1610,6 +1649,18 @@ func _resolve_legacy(chain: Dictionary, choice_id: String, tier: String) -> Dict
 # to a number that never changed.
 
 ## The card's own room block, or {} for a card with no room.
+## OG-D3: FIGHT-role roads carry the weapon's bonus, clamped so a piece
+## never makes a fight a certainty.
+func _armed_odds(card: Dictionary, shown: Dictionary) -> Dictionary:
+	var bonus: float = float(gs.weapon_def().get("fight_bonus", 0.0))
+	if bonus <= 0.0:
+		return shown
+	var out: Dictionary = shown.duplicate()
+	for choice_id in out.keys():
+		if EVENTS.role_of(card, str(choice_id)) == EVENTS.ROLE_FIGHT:
+			out[choice_id] = clampf(float(out[choice_id]) + bonus, 0.05, 0.92)
+	return out
+
 func _room_of(card_id: String) -> Dictionary:
 	var card: Dictionary = EVENTS.card_by_id(card_id)
 	var authored: Dictionary = card.get("encounter", {}).get("room", {})
@@ -1749,6 +1800,12 @@ func _present_beat(chain: Dictionary, loop: Dictionary, index: int) -> Dictionar
 		var base: Variant = (beat.get("base", {}) as Dictionary).get(str(choice_id))
 		if base != null:
 			shown[str(choice_id)] = float(base)
+	# OG-D3: the weapon rides into the room too.
+	var bonus: float = float(gs.weapon_def().get("fight_bonus", 0.0))
+	if bonus > 0.0:
+		for choice_id in shown.keys():
+			if str((beat.get("roles", {}) as Dictionary).get(choice_id, "")) == EVENTS.ROLE_FIGHT:
+				shown[choice_id] = clampf(float(shown[choice_id]) + bonus, 0.05, 0.92)
 
 	LOOP.present_round(chain, loop, offered, deterministic, shown)
 	# `present_round` bumps `decision.round`; the loop's own round counter

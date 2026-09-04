@@ -160,6 +160,8 @@ static func build_sheet(engine: Object, gs: Node, wire: Callable) -> Control:
 	pad.add_child(scroll)
 	return pad
 
+const PORTRAITS := preload("res://data/portraits.gd")
+
 const SHEET_HEIGHT_FRACTION := 0.58
 const SHEET_MAX_HEIGHT := 480
 
@@ -192,7 +194,23 @@ static func build_situation(engine: Object, gs: Node, summary: Dictionary) -> Ar
 	# CONSEQUENCE used to sit -- the engine's name for itself, which the player
 	# was never meant to read.
 	v.add_child(_label(kicker_for(engine, summary), "Kicker", 10, ORANGE))
-	v.add_child(_label(headline_for(engine, summary), "CardTitle", 17, CREAM))
+	# OG-D3: the face across the table, when the opponent is somebody the
+	# game has a portrait of. Nothing when it is "the one who will not stop
+	# talking".
+	# 64, not the 96 the brief named: measured at the phone's width, 96 pushed
+	# the third road of two four-road cards a finger below the fold.
+	var face := PORTRAITS.portrait_rect(opponent_for(summary), 64)
+	if face != null:
+		var who_row := HBoxContainer.new()
+		who_row.add_theme_constant_override("separation", 10)
+		who_row.add_child(face)
+		var title := _label(headline_for(engine, summary), "CardTitle", 17, CREAM, true)
+		title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		who_row.add_child(title)
+		v.add_child(who_row)
+	else:
+		v.add_child(_label(headline_for(engine, summary), "CardTitle", 17, CREAM))
 	var context := context_line(engine, gs, summary)
 	if not context.is_empty():
 		v.add_child(_label(context, "Muted", 11, MUTED))

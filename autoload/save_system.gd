@@ -194,7 +194,10 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## v29: `rent_arrears_day` (One Good Run PR 1, OG-D1) -- the rent
 ## escalation clock. Additive: -1 for every earlier save, which is "not in
 ## arrears", and a save that was would have rolled its due day already.
-const SAVE_VERSION := 29
+## v30: `weapon`, `vehicle`, `trunk` (One Good Run PR 3, OG-D3) -- the
+## player's kit. Additive: hands, no car, nothing in a trunk that does not
+## exist.
+const SAVE_VERSION := 30
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -279,6 +282,8 @@ const PERSIST_FIELDS: Array[String] = [
 	"job_applications",
 	# The rent escalation clock (v29, OG-D1).
 	"rent_arrears_day",
+	# The kit (v30, OG-D3).
+	"weapon", "vehicle", "trunk",
 	# The interruption gate's quiet streak (v25, STR-D2). Same reasoning as
 	# wander_misses above: the run's own history of a mechanic that reads it.
 	"wander_quiet_streak",
@@ -928,6 +933,9 @@ func _migrate(payload: Dictionary) -> Dictionary:
 			24:
 				# v24 -> v25: wander_quiet_streak. Purely additive -- see this
 				# arm's own paragraph by SAVE_VERSION.
+				pass
+			29:
+				# v29 -> v30: weapon, vehicle, trunk. Additive; see SAVE_VERSION.
 				pass
 			28:
 				# v28 -> v29: rent_arrears_day. Additive; see SAVE_VERSION.

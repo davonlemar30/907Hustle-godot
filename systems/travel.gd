@@ -14,7 +14,16 @@ extends RefCounted
 
 ## game-core.js:2850 — "Need $5 fare."
 const FARE := 5
+## OG-D3: what the beater burns instead of the fare.
+const GAS := 2
+## A cold morning the beater does not start: seeded, one day in ten in
+## a late-fall run. Battery below -10, and no block heater.
+const COLD_START_CHANCE := 0.10
+## Downtown parking: a window, once in seven trips.
+const PARKING_CHANCE := 0.15
 const ARRIVAL_AMBER := Color(0.882, 0.651, 0.227)
+const RED := Color(0.827, 0.161, 0.125)
+const GREEN := Color(0.451, 0.722, 0.404)
 
 ## BR-D5: the first time the bus lets you off somewhere, the place says
 ## what it is. A sheet, once per district, tracked in the wander ledger
@@ -33,6 +42,159 @@ const ARRIVALS := {
 		"line": "Post Road. Diesel, wind off the inlet, containers stacked four high and nobody on foot but you. The streetlights stop at the railyard.",
 	},
 }
+
+## OG-D3: the ride is a scene. One card per trip: the mode, a line about
+## the ride in, the destination's banner, and the door. The People Mover
+## lines are the routes the World Bible names; the beater's are shorter,
+## because so is the ride.
+const RIDES := {
+	"north_star_lot": {
+		"bus": "The 7 down Spenard Road. A woman with three laundry bags, a man asleep against the window, and the Chevron sign coming up on the right like it always does.",
+		"car": "Spenard Road in twelve minutes, the heater finally working by the time you park behind the Wash & Go.",
+	},
+	"downtown": {
+		"bus": "Forty minutes on the People Mover, the transit center, and Fourth Avenue opening up under the cameras. Everybody on the bus knew where you were going.",
+		"car": "Down Minnesota and across on Fifth. Twelve minutes. You park on G Street and pay attention to who watched you do it.",
+	},
+	"airport_industrial": {
+		"bus": "The last run out Post Road. The driver looks at you in the mirror when you pull the cord, because nobody gets off here on purpose.",
+		"car": "Out past the railyard with the lights thinning. The beater is the only car on Post Road that is not a truck, and everybody who sees it knows that.",
+	},
+	"mountain_view": {
+		"bus": "The 45 across the Glenn. Three languages on the bus before Bragaw, and a kid who asks you where you're from like it is a real question.",
+		"car": "Across the Glenn and down the Drive. Ten minutes, and a plate that is not from around here, which the block reads before it reads you.",
+	},
+}
+
+## OG-D3: whether this trip is in the beater. A dead battery is a day on
+## the People Mover.
+func _driving() -> bool:
+	return gs.has_vehicle() and not bool(gs.beater_dead_today)
+
+## Day start: the cold, and whether the beater turns over.
+func day_start_beater(today: int) -> void:
+	gs.beater_dead_today = false
+	if not gs.has_vehicle():
+		return
+	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
+	if rng == null:
+		return
+	if rng.seeded_int_range(gs.run_seed, "%d:cold_start" % today, 0, 99) < int(COLD_START_CHANCE * 100.0):
+		gs.beater_dead_today = true
+		gs.log_activity("Fourteen below. The beater turns over twice and quits. People Mover today.", AMBER)
+
+## Downtown parking, on arrival by car.
+func _park(target: String) -> void:
+	if target != "downtown" or not _driving():
+		return
+	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
+	if rng == null:
+		return
+	if rng.seeded_int_range(gs.run_seed, "%d:%d:parking" % [gs.day, gs.time_slots_today], 0, 99) \
+			>= int(PARKING_CHANCE * 100.0):
+		return
+	if not gs.trunk.is_empty():
+		gs.trunk = {}
+		gs.log_activity("Back at the car: the passenger window is on the seat and the trunk is open. Whatever was in it is gone. Downtown.", RED)
+		return
+	var wallet: Object = gm.system("wallet")
+	var taken: int = mini(60, int(gs.cash))
+	if taken > 0:
+		wallet.spend(taken, wallet.ROUTINE_DIRTY_FIRST, {"source_id": "parking_window"})
+	gs.log_activity("Back at the car: the passenger window is on the seat. $%d in glass and a tow ticket under the wiper. Downtown." % taken, RED)
+
+## OG-D3: Sonny's nephew sells the beater. Bought through the phone: the
+## offer is a text, yes is the keys.
+func buy_beater() -> Dictionary:
+	if gs.has_vehicle():
+		return {"ok": false, "reason": "You already have the car."}
+	if gs.cash < gs.BEATER_PRICE:
+		return {"ok": false, "reason": "Need $%d." % gs.BEATER_PRICE}
+	var wallet: Object = gm.system("wallet")
+	wallet.spend(gs.BEATER_PRICE, wallet.ROUTINE_DIRTY_FIRST, {"source_id": "beater"})
+	gs.vehicle = "beater"
+	gs.cargo_max = int(gs.cargo_max) + int(gs.BEATER_CARGO)
+	gs.log_activity("A '04 Corolla with a cracked dash, a heater that works and a plate from the Valley. Yours. The day just got bigger.", GREEN)
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure != null:
+		# Uninsured, and she noticed. Curtis's people can read a plate.
+		exposure.record_observation("yalonda", {"type": "financial", "event": "uninsured_car", "source": "household"})
+		exposure.record_observation("curtis", {"type": "growth", "event": "has_a_car", "source": "network"})
+	return {"ok": true}
+
+## The trunk: everything on you goes in, or everything in it comes out.
+func trunk_stash() -> Dictionary:
+	if not gs.has_vehicle():
+		return {"ok": false, "reason": "No trunk to stash in."}
+	if gs.inventory.is_empty():
+		return {"ok": false, "reason": "Nothing on you."}
+	for pid in gs.inventory.keys():
+		gs.trunk[pid] = int(gs.trunk.get(pid, 0)) + int(gs.inventory[pid])
+	gs.inventory = {}
+	gs.log_activity("Everything goes in the trunk under the spare. The checkpoint needs a reason to open that.", AMBER)
+	return {"ok": true}
+
+func trunk_take() -> Dictionary:
+	if not gs.has_vehicle():
+		return {"ok": false, "reason": "No trunk."}
+	if gs.trunk.is_empty():
+		return {"ok": false, "reason": "The trunk is empty."}
+	var room: int = int(gs.cargo_max) - int(gs.cargo_used())
+	var moved := 0
+	for pid in gs.trunk.keys().duplicate():
+		var units: int = mini(int(gs.trunk[pid]), room - moved)
+		if units <= 0:
+			continue
+		gs.inventory[pid] = int(gs.inventory.get(pid, 0)) + units
+		gs.trunk[pid] = int(gs.trunk[pid]) - units
+		if int(gs.trunk[pid]) <= 0:
+			gs.trunk.erase(pid)
+		moved += units
+	if moved == 0:
+		return {"ok": false, "reason": "No room on you."}
+	gs.log_activity("%d out of the trunk and onto you." % moved, AMBER)
+	return {"ok": true, "moved": moved}
+
+## Sonny's nephew, by text, once, when the money is there.
+func day_start_beater_offer(today: int) -> void:
+	if gs.has_vehicle() or today < 5 or int(gs.cash) < gs.BEATER_PRICE:
+		return
+	if int(gs.wander_seen.get("beater_offer", 0)) > 0:
+		return
+	var phone: Object = gm.system("phone")
+	if phone == null:
+		return
+	gs.wander_seen["beater_offer"] = 1
+	phone.push_text("Sonny", "my nephew is selling his corolla. 04. runs. heater works. $%d cash and its yours. you want it?" % gs.BEATER_PRICE, "", {
+		"kind": "beater_offer",
+		"reply_override": {
+			"npc": "sonny",
+			"a": {"text": "yeah. ill bring the cash", "reaction": "keys under the mat at the rebel. dont crash it in front of the store"},
+			"b": {"text": "not right now", "reaction": "ok. it wont last"},
+			"on_accept": {"kind": "buy_vehicle"},
+		},
+	})
+
+func _ride(from_district: String, to_district: String) -> void:
+	var loop: MainLoop = Engine.get_main_loop()
+	if loop == null or not loop is SceneTree:
+		return
+	var nav: Node = (loop as SceneTree).root.get_node_or_null("/root/ScreenManager")
+	if nav == null:
+		return
+	var by_car: bool = _driving()
+	var lines: Dictionary = RIDES.get(to_district, {})
+	var line := str(lines.get("car" if by_car else "bus", ""))
+	var name := str(gs.district_by_id(to_district).get("name", to_district))
+	nav.enqueue_flow_sheet({
+		"kind": "ride",
+		"district_id": to_district,
+		"kicker": "THE BEATER" if by_car else "THE PEOPLE MOVER",
+		"title": name,
+		"line": line,
+		"cost": ("Gas $%d  ·  one slot" % GAS) if by_car else ("$%d fare  ·  one slot" % FARE),
+		"button": "PARK" if by_car else "STEP OFF",
+	})
 
 func _first_arrival(district_id: String) -> void:
 	if not ARRIVALS.has(district_id):
@@ -70,9 +232,17 @@ func setup(game_state: Node, time: RefCounted, manager: Node) -> void:
 	gm = manager
 
 func can_handle(action: String) -> bool:
-	return action == "travel"
+	return action in ["travel", "trunk_stash", "trunk_take", "buy_beater"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
+	# OG-D3: the beater's own actions ride the travel system.
+	match action:
+		"trunk_stash":
+			return trunk_stash()
+		"trunk_take":
+			return trunk_take()
+		"buy_beater":
+			return buy_beater()
 	if action != "travel":
 		return {"ok": false, "reason": "Unknown travel action."}
 
@@ -91,11 +261,13 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 	# one answer regardless of who asked.
 	if not target in gs.districts_unlocked:
 		return {"ok": false, "reason": "You don't know your way around there yet."}
-	if gs.cash < FARE:
-		return {"ok": false, "reason": "Need $%d fare." % FARE}
+	var driving: bool = _driving()
+	var cost: int = GAS if driving else FARE
+	if gs.cash < cost:
+		return {"ok": false, "reason": "Need $%d %s." % [cost, "for gas" if driving else "fare"]}
 
 	var wallet: Object = gm.system("wallet")
-	wallet.spend(FARE, wallet.ROUTINE_DIRTY_FIRST, {"source_id": "travel_fare"})
+	wallet.spend(cost, wallet.ROUTINE_DIRTY_FIRST, {"source_id": "travel_gas" if driving else "travel_fare"})
 	var previous_district: String = str(gs.current_district_id)
 	gs.current_district_id = target
 	# One slot, the same as any other district action. Routed through the time
@@ -150,6 +322,8 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 	var engine: Object = gm.system("consequence")
 	if engine != null and not gs.game_over:
 		engine.try_surface_delayed(int(gs.day), gs.current_district_id)
+	_ride(previous_district, target)
+	_park(target)
 	_first_arrival(target)
 	return {"ok": true, "arrived": district.get("name", ""), "watcher": watcher,
 		"carry": carry, "checkpointed": checkpointed}

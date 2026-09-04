@@ -480,6 +480,12 @@ func reset_to_new_game() -> void:
 	rent_due_day = 7
 	rent_missed = 0
 	rent_arrears_day = -1
+	weapon = "hands"
+	vehicle = ""
+	trunk = {}
+	beater_dead_today = false
+	# The beater's four ride the run, not the class: a new run carries ten.
+	cargo_max = BASE_CARGO
 	household_warnings = 0
 	phone_due_day = 7
 	phone_days_past_due = 0
@@ -656,6 +662,33 @@ var rent_missed: int = 0
 ## since, or -1. The escalation clock reads days late off it; paying
 ## clears it. `rent_missed` keeps counting misses for the doorstep.
 var rent_arrears_day: int = -1
+
+## OG-D3 (1.0.0, v30): the player's kit. `weapon` is "hands", "knife" or
+## "piece" -- one slot, changing FIGHT odds and what a fight writes.
+## `vehicle` is "" or "beater". `trunk` is the beater's overnight stash,
+## product by id, the first place in the game the checkpoint cannot reach.
+var weapon: String = "hands"
+var vehicle: String = ""
+var trunk: Dictionary = {}
+## Not persisted: a cold morning the beater would not turn over. Reset at
+## day start.
+var beater_dead_today: bool = false
+
+const WEAPONS := {
+	"hands": {"name": "HANDS", "fight_bonus": 0.0, "heat": 0.0, "line": "Your hands. What everybody starts with."},
+	"knife": {"name": "KNIFE", "fight_bonus": 0.10, "heat": 0.5, "line": "A knife in the coat. It changes the odds and it changes what you are."},
+	"piece": {"name": "PIECE", "fight_bonus": 0.22, "heat": 2.5, "line": "A piece. Nobody swings on you twice. Everybody who sees it remembers."},
+}
+const BEATER_PRICE := 1400
+const BEATER_CARGO := 4
+## What you carry on foot. The beater adds `BEATER_CARGO`.
+const BASE_CARGO := 10
+
+func weapon_def() -> Dictionary:
+	return WEAPONS.get(weapon, WEAPONS["hands"])
+
+func has_vehicle() -> bool:
+	return not vehicle.is_empty()
 ## Canon: household.warnings; 3 means evicted.
 var household_warnings: int = 0
 const HOUSEHOLD_WARNING_LIMIT := 3
@@ -725,6 +758,9 @@ func reconcile_persistent_invariants() -> void:
 ## the roster), so no single owner can settle them, and this function is already
 ## the declared place where persistent invariants settle before autosave.
 func _reconcile_progression_latches() -> void:
+	# OG-D3: cargo is derived from the kit, so a reload carries the beater's
+	# four without persisting a number that could drift from it.
+	cargo_max = BASE_CARGO + (BEATER_CARGO if has_vehicle() else 0)
 	# Territory expansion is what opens the city. The gate table's own rationale
 	# for the two locked districts is "territory not yet expanded", so the fact
 	# it reads is the held-block count: one corner earns Downtown, a second

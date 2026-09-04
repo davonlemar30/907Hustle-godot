@@ -119,6 +119,7 @@ static func build_hire(job: Dictionary, manager: Dictionary) -> VBoxContainer:
 	var content := VBoxContainer.new()
 	content.add_theme_constant_override("separation", 10)
 	content.add_child(_label("HIRED", "Kicker", 10, MUTED))
+	_add_face(content, str(manager.get("name", "")))
 	content.add_child(_label(str(job.get("name", "")), "CardTitle", 18, CREAM, true))
 	for line in (manager.get("hire", []) as Array):
 		content.add_child(_label(str(line), "Muted", 14, CREAM, true, HORIZONTAL_ALIGNMENT_LEFT))
@@ -139,6 +140,7 @@ static func build_interview(job: Dictionary, manager: Dictionary, gm: Node) -> V
 	var content := VBoxContainer.new()
 	content.add_theme_constant_override("separation", 10)
 	content.add_child(_label("INTERVIEW", "Kicker", 10, MUTED))
+	_add_face(content, str(manager.get("name", "")))
 	content.add_child(_label("%s, %s" % [str(manager.get("name", "")), str(manager.get("title", ""))],
 		"CardTitle", 18, CREAM, true))
 	var question := _label("", "Muted", 14, CREAM, true, HORIZONTAL_ALIGNMENT_LEFT)
@@ -197,6 +199,38 @@ static func build_fired(job: Dictionary, manager: Dictionary) -> VBoxContainer:
 	content.add_child(_label(str(manager.get("fired", "")), "Muted", 14, CREAM, true, HORIZONTAL_ALIGNMENT_LEFT))
 	content.add_child(_spacer(4))
 	content.add_child(_dismiss_button("OK"))
+	return content
+
+const PORTRAITS := preload("res://data/portraits.gd")
+
+## OG-D3: a 96px face, centered, or nothing.
+static func _add_face(content: VBoxContainer, name: String) -> void:
+	var face := PORTRAITS.portrait_rect(name, 96)
+	if face == null:
+		return
+	face.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	content.add_child(face)
+
+## OG-D3: a district's header banner, 120 tall, or nothing.
+static func _add_header(content: VBoxContainer, district_id: String) -> void:
+	var banner := PORTRAITS.header_rect(PORTRAITS.district_header(district_id), 120)
+	if banner != null:
+		content.add_child(banner)
+
+## OG-D3: the ride. The transition between districts is a card: the mode,
+## the line about the ride, the destination's banner, and the door.
+static func build_ride(spec: Dictionary) -> VBoxContainer:
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	content.add_child(_label(str(spec.get("kicker", "THE PEOPLE MOVER")), "Kicker", 10, MUTED))
+	_add_header(content, str(spec.get("district_id", "")))
+	content.add_child(_label(str(spec.get("title", "")), "CardTitle", 18, CREAM, true))
+	content.add_child(_label(str(spec.get("line", "")), "Muted", 14, CREAM, true, HORIZONTAL_ALIGNMENT_LEFT))
+	var cost := str(spec.get("cost", ""))
+	if not cost.is_empty():
+		content.add_child(_label(cost, "Kicker", 11, MUTED))
+	content.add_child(_spacer(4))
+	content.add_child(_dismiss_button(str(spec.get("button", "STEP OFF"))))
 	return content
 
 static func _label(text: String, variation: String, size: int, col: Color,

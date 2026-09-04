@@ -94,6 +94,10 @@ func _identity_card(attrs: Object) -> Control:
 			line += "  ·  %s at %d" % [str(next["name"]), int(next["floor"])]
 		v.add_child(label(line, "Mono", 11, AMBER))
 		v.add_child(label("Your rank is what people have seen you do. Crew join a Known name; corners need a Player behind them; the Board answers a Known one.", "Muted", 11, MUTED, true))
+	# OG-D3: the kit.
+	var kit := "%s  ·  %s" % [str(gs.weapon_def()["name"]), "THE BEATER" if gs.has_vehicle() else "ON FOOT"]
+	v.add_child(label(kit, "Mono", 11, CREAM))
+	v.add_child(label(str(gs.weapon_def()["line"]), "Muted", 11, MUTED, true))
 	return c
 
 ## One attribute: its name, its LABEL (never its value), and what it is for.

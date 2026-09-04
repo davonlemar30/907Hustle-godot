@@ -80,6 +80,14 @@ func setup(game_state: Node, economy_system: RefCounted, phone_system: RefCounte
 	phone = phone_system
 	day_lifecycle = lifecycle
 
+## BR-D2: applications resolve on the clock, so the clock knows the jobs
+## system. Attached after both exist (`GameManager._ready`), optional so a
+## suite that builds a bare clock still runs.
+var jobs: RefCounted = null
+
+func attach_jobs(jobs_system: RefCounted) -> void:
+	jobs = jobs_system
+
 func can_handle(action: String) -> bool:
 	return action == "advance_time"
 
@@ -102,4 +110,8 @@ func handle(action: String, _payload: Dictionary) -> Dictionary:
 	# Canon runs this on every advance, day-cross or not (game-core.js
 	# advanceRun -> restorePhoneIfReady), after the clock has moved.
 	phone.restore_if_ready(previous_absolute)
+	# BR-D2: the clock moved; an application that has waited its slots is
+	# answered, by text, from whoever runs the place.
+	if jobs != null:
+		jobs.resolve_applications()
 	return {"ok": true}

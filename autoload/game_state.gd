@@ -451,6 +451,7 @@ func reset_to_new_game() -> void:
 	jobs_discovered = ["wash_go"]
 	hustles_discovered = []
 	phone_reply_history = {}
+	job_applications = {}
 	rent_due_day = 7
 	rent_missed = 0
 	household_warnings = 0
@@ -561,6 +562,12 @@ var hustles_discovered: Array = []
 ## transcript: what a future text needs to know is whether you are somebody
 ## who answers, not what you said.
 var phone_reply_history: Dictionary = {}
+
+## BR-D2 (0.9.0, v28): applications in flight. `job_id -> {day, slot,
+## status}`. Tapping APPLY used to roll the interview on the spot and say
+## nothing on the screen; now it is a state the board shows ("APPLIED"),
+## resolved a couple of slots later by a text from whoever runs the place.
+var job_applications: Dictionary = {}
 
 func reply_history_for(npc_id: String) -> Dictionary:
 	var row: Variant = phone_reply_history.get(npc_id, null)

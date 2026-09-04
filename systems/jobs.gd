@@ -38,6 +38,11 @@ extends RefCounted
 ## canon's. Turned down is not a lockout: canon's line is that nothing stops you
 ## applying again, and a later slot is a different key.
 
+## BR-D2 (0.9.0): how many slots an application waits before the answer
+## comes. Two: apply in the morning, hear back by evening; apply at night,
+## hear back tomorrow afternoon.
+const APPLICATION_WAIT_SLOTS := 2
+
 ## Canon thresholds. Warnings at 1 and 2, gone at 3.
 const MISSED_FIRST_WARNING := 1
 const MISSED_FINAL_WARNING := 2
@@ -102,25 +107,67 @@ func _apply(job_id: String) -> Dictionary:
 		return {"ok": false, "reason": "You haven't heard about that one."}
 	if gs.active_job_id == job_id:
 		return {"ok": false, "reason": "You already work there."}
+	var manager: Dictionary = MANAGERS.manager_for(job_id)
+	var who := str(manager.get("name", ""))
+	# BR-D2: day labor takes walk-ins -- no application, no wait. Everybody
+	# else is a state on the board and an answer by text a couple of slots
+	# later. The tap is acknowledged the moment it happens.
+	if not bool(job.get("day_labor", false)):
+		if gs.job_applications.has(job_id):
+			return {"ok": false, "reason": "You already applied. %s will let you know."
+				% (who if not who.is_empty() else "They")}
+		gs.job_applications[job_id] = {"day": int(gs.day), "slot": int(gs.time_slots_today),
+			"status": "pending"}
+		gs.log_activity("Applied at %s. %s will let you know." % [job["name"],
+			who if not who.is_empty() else "They"], AMBER)
+		return {"ok": true, "applied": job_id}
+	return _hire(job_id, "clean")
 
-	# Canon keys the interview on the job and the day/slot it was applied for.
-	# v0.1.0 seeded-key audit: day and slot lead the key. Canon keys the
-	# interview on the job and the day/slot it was applied for; the components
-	# are unchanged, only their order.
-	var key := "%d:%d:job_interview:%s" % [gs.day, gs.time_slots_today, job_id]
+## BR-D2: the clock moved. Every application that has waited its slots is
+## rolled -- canon's interview chance, keyed on the day and slot it was made
+## -- and answered by text from whoever runs the place. Hired is `_hire` plus
+## the text; turned down is the text and the board opening back up.
+func resolve_applications() -> void:
+	if gs.game_over or gs.job_applications.is_empty():
+		return
 	var resolver: Object = gm.system("outcome_resolver") if gm != null else null
 	if resolver == null:
-		return {"ok": false, "reason": "No outcome resolver."}
-	var outcome: Dictionary = resolver.resolve_action(
-		"job_interview", interview_chance(), attributes.effective("charisma"), gs.run_seed, key)
-	var tier: String = str(outcome["tier"])
-	resolver.broadcast_outcome("job_interview", tier, gs.current_district_id)
-	if not resolver.is_success_tier(tier):
-		# Not a failed ACTION — the interview happened and went the other way,
-		# so this still logs and refreshes rather than firing action_failed.
-		gs.log_activity("%s passed. Nothing stops you applying again." % job["name"], RED)
-		return {"ok": true, "hired": "", "tier": tier}
+		return
+	var phone: Object = gm.system("phone") if gm != null else null
+	var now: int = int(gs.day) * 4 + int(gs.time_slots_today)
+	for job_key in gs.job_applications.keys().duplicate():
+		var job_id := str(job_key)
+		var row: Dictionary = gs.job_applications[job_id]
+		var then: int = int(row.get("day", gs.day)) * 4 + int(row.get("slot", 0))
+		if now - then < APPLICATION_WAIT_SLOTS:
+			continue
+		var job: Dictionary = gs.job_by_id(job_id)
+		if job.is_empty():
+			gs.job_applications.erase(job_id)
+			continue
+		var key := "%d:%d:job_interview:%s" % [int(row.get("day", gs.day)),
+			int(row.get("slot", 0)), job_id]
+		var outcome: Dictionary = resolver.resolve_action(
+			"job_interview", interview_chance(), attributes.effective("charisma"), gs.run_seed, key)
+		var tier: String = str(outcome["tier"])
+		resolver.broadcast_outcome("job_interview", tier, gs.current_district_id)
+		gs.job_applications.erase(job_id)
+		var manager: Dictionary = MANAGERS.manager_for(job_id)
+		var who := str(manager.get("name", ""))
+		if not resolver.is_success_tier(tier):
+			gs.log_activity("%s passed. Nothing stops you applying again." % job["name"], RED)
+			if phone != null and not who.is_empty():
+				phone.push_text(who, str(manager.get("reject_text",
+					"We went with somebody else. Good luck out there.")), "manager_rejected")
+			continue
+		_hire(job_id, tier)
+		if phone != null and not who.is_empty():
+			phone.push_text(who, str(manager.get("hire_text", "You're on. Come in tomorrow.")),
+				"manager_hired")
 
+## The hire itself: the record, the ladder reset, the feed, the sheet.
+func _hire(job_id: String, tier: String) -> Dictionary:
+	var job: Dictionary = gs.job_by_id(job_id)
 	gs.active_job_id = job_id
 	if not gs.job_records.has(job_id):
 		gs.job_records[job_id] = {"xp": 0.0, "rank": 0, "last_worked_day": -1, "hired_day": gs.day}

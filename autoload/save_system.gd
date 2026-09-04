@@ -188,7 +188,10 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## player has answered each NPC's texts. Purely additive: no v26 save ever
 ## answered anybody, because nobody could be answered. Empty is that save's
 ## honest history.
-const SAVE_VERSION := 27
+## v28: `job_applications` (The Block Remembers PR 1, BR-D2) -- applications
+## in flight. Additive: no earlier save ever had one pending, because the
+## interview resolved on the tap.
+const SAVE_VERSION := 28
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -269,6 +272,8 @@ const PERSIST_FIELDS: Array[String] = [
 	# The reply history (v27, WS-D3): counts per NPC of answered, distanced
 	# and ghosted texts. What a future text reads to know who you are.
 	"phone_reply_history",
+	# Applications in flight (v28, BR-D2).
+	"job_applications",
 	# The interruption gate's quiet streak (v25, STR-D2). Same reasoning as
 	# wander_misses above: the run's own history of a mechanic that reads it.
 	"wander_quiet_streak",
@@ -918,6 +923,9 @@ func _migrate(payload: Dictionary) -> Dictionary:
 			24:
 				# v24 -> v25: wander_quiet_streak. Purely additive -- see this
 				# arm's own paragraph by SAVE_VERSION.
+				pass
+			27:
+				# v27 -> v28: job_applications. Additive; see SAVE_VERSION.
 				pass
 			26:
 				# v26 -> v27: phone_reply_history. Purely additive -- see this

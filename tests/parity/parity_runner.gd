@@ -988,8 +988,10 @@ func _check_save_roundtrip() -> void:
 	# and the interview is keyed on day and slot — so this walks slots until the
 	# job lands rather than pinning a seed that a later balance change would
 	# quietly invalidate. Two days of slots is far more than the 0.62 floor needs.
+	# BR-D2 (0.9.0): an application waits two slots for its answer, so the
+	# walk is longer than it was when the interview resolved on the tap.
 	var hired := false
-	for _attempt in 8:
+	for _attempt in 24:
 		gm.dispatch("apply_job", {"job_id": "wash_go"})
 		if gs.active_job_id == "wash_go":
 			hired = true
@@ -2052,7 +2054,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
 	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
 	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
-	_expect_int("save version is 27", saves.SAVE_VERSION, 27)
+	_expect_int("save version is 28", saves.SAVE_VERSION, 28)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -13792,7 +13794,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v27", saves.SAVE_VERSION, 27)
+	_expect_int("the schema is v28", saves.SAVE_VERSION, 28)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -16239,7 +16241,15 @@ const ECON_CORRIDORS: Dictionary = {
 	# counted, the empirical echo of the structural proof in `_check_no_
 	# risk_free_dre_carry` that it can never be strictly better. Headroom
 	# on both sides, same as every other corridor in this table.
-	"leveraged_lender": {"floor": 70, "ceiling": 115},
+	# BR-D2 (0.9.0): the application wait (two slots, then an interview)
+	# leaves the worker profiles unemployed a little longer at the start,
+	# and that is when their OTHER branches finally run. `repeat_contractor`
+	# had measured 0.0 contracts worked in every run to this build -- the
+	# shift branch always won the slot -- and works 7 in 31 days now;
+	# `leveraged_lender` reaches its lending branch the same way. Ceilings
+	# lifted to the measured values plus room; the finding is recorded in
+	# docs/BLOCK_REMEMBERS_REVIEW.md.
+	"leveraged_lender": {"floor": 70, "ceiling": 130},
 	# 0.4.0 PR D (`86bbp7cw2`): measured at 109% of the day job (1.5 Dre loans
 	# taken, 0.2 Book loans funded, 3.5 standing contracts worked, averaged
 	# over the 4 seeds) — a working player who also walks the arc and then
@@ -16247,7 +16257,7 @@ const ECON_CORRIDORS: Dictionary = {
 	# working alone, the same "meaningful without dominating" shape `hustler`
 	# occupies relative to `legal_worker`, not `worker_wanders`'s outlier
 	# multiple. Headroom on both sides, same as every other corridor here.
-	"repeat_contractor": {"floor": 90, "ceiling": 135},
+	"repeat_contractor": {"floor": 90, "ceiling": 150},
 }
 
 const ECON_DAYS := 30
@@ -16555,7 +16565,9 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		if wants_job and can.call("menu.jobs") and best_job \
 				and not str(gs.active_job_id).is_empty():
 			var better := _econ_job_for(gs, true)
-			if better != str(gs.active_job_id):
+			# BR-D2 (0.9.0): an application in flight is not a reason to
+			# stop working -- the answer comes by text while you clock in.
+			if better != str(gs.active_job_id) and not gs.job_applications.has(better):
 				metrics["applications"] = int(metrics.get("applications", 0)) + 1
 				metrics["upgrades"] = int(metrics.get("upgrades", 0)) + 1
 				gm.dispatch("apply_job", {"job_id": better})
@@ -19588,6 +19600,8 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_door_to_work(gs, gm)
 	_check_managers(gs, gm)
 	_check_market_causes(gs, gm)
+	_check_answer_back(gs, gm)
+	_check_job_applications(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -19737,6 +19751,120 @@ func _check_market_causes(gs: Node, gm: Node) -> void:
 	market["history"]["weed"] = [100, 105]
 	economy.explain_moves()
 	_expect_int("a five percent move is not worth a rumor", (gs.activity_log as Array).size(), feed_before + 1)
+	gs.reset_to_new_game()
+
+## BR-D1 (0.9.0 PR 1): he swung first. Every non-fight road tier that hurts
+## on a civilian card answers back with the card's own FIGHT road; the police
+## cards opt out by name. Driven once on the desperate approach: the hit
+## lands, the interim result reads, the next round offers FIGHT, and the
+## fight ends the encounter one way or another.
+func _check_answer_back(gs: Node, gm: Node) -> void:
+	var wander_sys: Object = gm.system("wander")
+	var engine: Object = gm.system("consequence")
+	var covered := 0
+	for entry in B10_EVENTS.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != B10_EVENTS.KIND_ENCOUNTER:
+			continue
+		var card_id := str(card["id"])
+		var encounter: Dictionary = card["encounter"]
+		var effects: Dictionary = encounter.get("effects", {})
+		var hurts_off_fight := false
+		for choice_id in effects.keys():
+			if B10_EVENTS.role_of(card, str(choice_id)) == B10_EVENTS.ROLE_FIGHT:
+				continue
+			for tier in (effects[choice_id] as Dictionary).keys():
+				if int(((effects[choice_id] as Dictionary)[tier] as Dictionary).get("health", 0)) > 0:
+					hurts_off_fight = true
+		if not hurts_off_fight:
+			continue
+		if not B10_EVENTS.answers_back(card):
+			_expect_true("%s opts out of answering back by name (police)" % card_id,
+				card_id.begins_with("wander_stopped") or card_id.begins_with("wander_vehicle")
+				or card_id.begins_with("wander_warrant"))
+			continue
+		covered += 1
+		var room: Dictionary = wander_sys._room_of(card_id)
+		_expect_true("%s answers back in a room" % card_id, not room.is_empty())
+		if room.is_empty():
+			continue
+		var first: Dictionary = (room.get("beats", []) as Array)[0]
+		var offers_fight := false
+		for choice_id in (first.get("choices", []) as Array):
+			if str((first.get("roles", {}) as Dictionary).get(choice_id, "")) == B10_EVENTS.ROLE_FIGHT:
+				offers_fight = true
+		_expect_true("%s's answer round offers FIGHT" % card_id, offers_fight)
+		_expect_true("%s's answer round keeps a guaranteed out" % card_id,
+			not (first.get("deterministic", []) as Array).is_empty())
+	_expect_true("the answer covers the civilian roster (%d cards)" % covered, covered >= 8)
+
+	# Driven: the desperate approach, RUN, and he catches you from behind.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 100
+	gs.active_consequence = {}
+	var card: Dictionary = B10_EVENTS.card_by_id("wander_desperate_approach")
+	wander_sys._play_encounter(card, "parity:answer:desperate")
+	var chain: Dictionary = gs.active_consequence
+	var health_before: int = int(gs.health)
+	var opened: Dictionary = wander_sys._open_shakedown_room(chain, "keep_moving_past",
+		"failure", {"health": 2})
+	_expect_true("the hit opens the answer room", bool(opened.get("ok", false)))
+	_expect_int("the hit landed", int(gs.health), health_before - 2)
+	_expect_true("the door's result is an interim one", preload("res://systems/confrontation_loop.gd").is_interim(gs.active_consequence))
+	_expect_str("...and it says he swung first", wander_sys.result_headline("keep_moving_past",
+		"failure", {}), "HE SWUNG FIRST")
+	_expect_true("CONTINUE puts the next round on the table",
+		gm.dispatch("consequence_continue", {}))
+	var summaries: Array = engine.choice_summaries()
+	var labels: Array = []
+	for row in summaries:
+		labels.append(str((row as Dictionary).get("label", "")))
+	_expect_true("the next round offers FIGHT (%s)" % str(labels), "FIGHT" in labels)
+	_expect_true("...and SURRENDER", "SURRENDER" in labels)
+	_expect_true("FIGHT commits", gm.dispatch("resolve_consequence_choice",
+		{"choice_id": "swing"}))
+	var guard := 0
+	while not gs.active_consequence.is_empty() and guard < 6:
+		gm.dispatch("consequence_continue", {})
+		if not gs.active_consequence.is_empty() and str(engine.active_stage()) == "decision":
+			gm.dispatch("resolve_consequence_choice", {"choice_id": "swing"})
+		guard += 1
+	_expect_true("the fight ends the encounter", gs.active_consequence.is_empty())
+	gs.reset_to_new_game()
+
+## BR-D2 (0.9.0 PR 1): applying is a state. The tap is acknowledged on the
+## board, cannot be repeated while pending, and is answered two slots later
+## by a text from whoever runs the place -- hired or not. Day labor still
+## takes walk-ins.
+func _check_job_applications(gs: Node, gm: Node) -> void:
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.phone_inbox = []
+	_expect_true("applying dispatches", gm.dispatch("apply_job", {"job_id": "wash_go"}))
+	_expect_true("...and is a pending application", gs.job_applications.has("wash_go"))
+	_expect_str("...not a job yet", gs.active_job_id, "")
+	_expect_true("applying twice is refused", not gm.dispatch("apply_job", {"job_id": "wash_go"}))
+	gm.dispatch("advance_time", {})
+	_expect_true("one slot is not an answer", gs.job_applications.has("wash_go"))
+	gm.dispatch("advance_time", {})
+	_expect_true("two slots is", not gs.job_applications.has("wash_go"))
+	var from_lani := 0
+	for m in gs.phone_inbox:
+		if str((m as Dictionary).get("from", "")) == "Lani":
+			from_lani += 1
+	_expect_int("the answer is a text from Lani", from_lani, 1)
+	_expect_true("...that can be answered",
+		((gs.phone_inbox[0] as Dictionary).get("action", {}) as Dictionary).has("reply"))
+	var hired: bool = gs.active_job_id == "wash_go"
+	var said := str((gs.phone_inbox[0] as Dictionary).get("text", ""))
+	_expect_true("the text matches the answer", (hired and said.contains("You're on"))
+		or (not hired and not said.contains("You're on")))
+	# Day labor takes walk-ins.
+	gs.jobs_discovered.append("day_labor")
+	_expect_true("day labor dispatches", gm.dispatch("apply_job", {"job_id": "day_labor"}))
+	_expect_str("...and hires on the spot", gs.active_job_id, "day_labor")
+	_expect_true("...with nothing pending", not gs.job_applications.has("day_labor"))
 	gs.reset_to_new_game()
 
 func _check_door_to_work(gs: Node, gm: Node) -> void:
@@ -20318,7 +20446,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13556
+const MIN_CHECKS := 13599
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -21113,7 +21241,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v27", int(saves.SAVE_VERSION), 27)
+	_expect_int("the schema is v28", int(saves.SAVE_VERSION), 28)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -21559,7 +21687,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v27 for Heat's teeth", int(saves.SAVE_VERSION), 27)
+	_expect_int("the schema is v28 for Heat's teeth", int(saves.SAVE_VERSION), 28)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -22031,7 +22159,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v27 for Wander", int(saves.SAVE_VERSION), 27)
+	_expect_int("the schema is v28 for Wander", int(saves.SAVE_VERSION), 28)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered", "wander_quiet_streak"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

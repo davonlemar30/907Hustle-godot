@@ -56,6 +56,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_boost_discovery(state, repairs)
 	_validate_hustles_discovered(state, repairs)
 	_validate_phone_reply_history(state, repairs)
+	_validate_job_applications(state, repairs)
 	_validate_boost_bribes_used(state, repairs)
 	_validate_tip_effects(state, repairs)
 	_validate_tip_misses(state, repairs)
@@ -733,6 +734,28 @@ func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> voi
 			continue
 		cleaned.append(str(entry))
 	state["boost_targets_discovered"] = cleaned
+
+## v28 (BR-D2). `job_id -> {day, slot, status}`. A row for a job the run
+## does not know, or a junk row, is dropped; a junk field defaults.
+func _validate_job_applications(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("job_applications"):
+		return
+	if not state["job_applications"] is Dictionary:
+		state["job_applications"] = {}
+		_repair(repairs, "job_applications", "wrong type; defaulted")
+		return
+	var cleaned: Dictionary = {}
+	for job_id in (state["job_applications"] as Dictionary).keys():
+		var row: Variant = (state["job_applications"] as Dictionary)[job_id]
+		if not row is Dictionary or not job_id is String or str(job_id).is_empty():
+			_repair(repairs, "job_applications[%s]" % str(job_id), "not a row; dropped")
+			continue
+		var fixed: Dictionary = row
+		_int(fixed, "day", 1, "job_applications[%s].day" % str(job_id), repairs)
+		_int(fixed, "slot", 0, "job_applications[%s].slot" % str(job_id), repairs)
+		_string(fixed, "status", "pending", "job_applications[%s].status" % str(job_id), repairs)
+		cleaned[str(job_id)] = fixed
+	state["job_applications"] = cleaned
 
 ## v27 (WS-D3). A dictionary of per-NPC rows; a row is four non-negative
 ## ints and a bool. A junk row is dropped; a junk field inside a row is

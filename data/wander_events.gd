@@ -1207,6 +1207,79 @@ const CARDS: Array[Dictionary] = [
 	# the Chevron a week in; a piece from Dre's cousin, later, once the run
 	# is a player. Each is a meeting card with a PAY road that grants it.
 
+	# --- SA-D2 (1.1.0): the beater on the street ------------------------------
+	#
+	# Three cards that only exist once there is a car. Two are ambient -- the
+	# plate being read, Juan with the cables -- and one is an encounter with a
+	# trunk to lose. `has_vehicle` is the gate on all three, and the traffic
+	# stop above reads `on_the_road` as "or you have a car" now.
+	{
+		"id": "wander_plates_read", "kind": KIND_AMBIENT, "weight": 7,
+		"intents": [INTENT_READ],
+		"districts": [], "slots": [], "once": false,
+		"requirements": [{"type": "fact_true", "fact": "has_vehicle"},
+			{"type": "fact_true", "fact": "curtis_visible"}],
+		"line": "A kid on a bike rides a slow circle around the Corolla, reading the plate out loud to somebody on speaker.",
+		"observation": {"npc": "curtis", "type": "growth", "event": "plates_read",
+			"source": "neighborhood"},
+	},
+	{
+		"id": "wander_juan_jumps_it", "kind": KIND_AMBIENT, "weight": 6,
+		"intents": [INTENT_WORK, INTENT_READ],
+		"districts": [SPENARD], "slots": [MORNING], "once": false,
+		"requirements": [{"type": "fact_true", "fact": "has_vehicle"}],
+		"line": "Fourteen below and the Corolla is thinking about it. Juan is already walking over with the cables. He does not say anything about the car.",
+		"observation": {"npc": "juan", "type": "presence", "event": "jumped_the_car",
+			"source": "household"},
+	},
+	{
+		"id": "wander_beater_breakin", "kind": KIND_ENCOUNTER, "weight": 8,
+		# Answers back: a thief who does not scare is a thief who comes over,
+		# and BR-D1's fistfight is what that is.
+		"intents": [], "gate_bias": "",
+		"districts": [SPENARD, DOWNTOWN], "slots": [EVENING, NIGHT], "once": false,
+		"requirements": [{"type": "fact_true", "fact": "has_vehicle"}],
+		"line": "The Corolla's back window is a hole with the glass on the seat, and somebody is still leaning into the trunk.",
+		"encounter": {
+			"definition_id": "wander_beater_breakin",
+			"opponent": "Whoever is in your trunk",
+			"shape": "negotiation",
+			"choices": ["run_up", "shout", "let_it_go"],
+			"roles": {"run_up": ROLE_FIGHT, "shout": ROLE_RUN, "let_it_go": ROLE_SURRENDER},
+			"admits_crew": false,
+			"deterministic": ["let_it_go"],
+			"base": {"run_up": 0.50, "shout": 0.58},
+			"observations": {
+				"run_up": {"type": "violence", "event": "ran_up_on_a_thief"},
+				"shout": {
+					"clean": {"type": "presence", "event": "shouted_off_the_lot"},
+					"messy": {"type": "presence", "event": "shouted_off_the_lot"},
+					"failure": {"type": "presence", "event": "watched_the_trunk_go"},
+					"catastrophic": {"type": "presence", "event": "watched_the_trunk_go"},
+				},
+				"let_it_go": {"type": "submission", "event": "let_the_trunk_go"},
+			},
+			"effects": {
+				# What is in the trunk is what is at risk; the wallet and the
+				# bag on your back are not in the car.
+				"run_up": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 3, "cash_fraction": 0.0, "goods_fraction": 0.0, "trunk_fraction": 0.5},
+					"failure": {"health": 6, "cash_fraction": 0.0, "goods_fraction": 0.0, "trunk_fraction": 1.0},
+					"catastrophic": {"health": 12, "cash_fraction": 0.0, "goods_fraction": 0.0, "trunk_fraction": 1.0, "heat": 0.5},
+				},
+				"shout": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "trunk_fraction": 0.5},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "trunk_fraction": 1.0},
+					"catastrophic": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.0, "trunk_fraction": 1.0},
+				},
+				"let_it_go": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "trunk_fraction": 1.0},
+				},
+			},
+		},
+	},
 	{
 		"id": "wander_meet_the_knife", "kind": KIND_MEETING, "weight": 7,
 		"intents": [], "gate_bias": "",
@@ -2039,6 +2112,10 @@ const CHOICE_LABELS := {
 	# "fight", "run" or "surrender". That is SQ-D6 working: the role is the
 	# structural position and the label is what this particular situation
 	# actually offers you.
+	# SA-D2: the break-in.
+	"run_up": "FIGHT",
+	"shout": "BLUFF",
+	"let_it_go": "SURRENDER",
 	"ask_why": "TALK",
 	"roll_slow": "BLUFF",
 	"open_it_up": "COMPLY",
@@ -2115,6 +2192,9 @@ const CHOICE_COPY := {
 	"let_deshawn_talk": "His voice, not yours. Everybody walks.",
 	# VOX-D1: short declaratives, terms rather than threats, and the addict
 	# lines carry no comedy and no pity.
+	"run_up": "Cross the lot fast. He has a screwdriver and a decision to make.",
+	"shout": "From where you stand, loud enough for the building. Most of them run.",
+	"let_it_go": "Stand there. Let him have the trunk. Keep the car.",
 	"ask_why": "Make him say the reason out loud, politely. Sometimes there is not one.",
 	"roll_slow": "Two inches of window and every answer already ready.",
 	"open_it_up": "Trunk, doors, all of it. It ends when they are finished.",
@@ -2176,6 +2256,7 @@ const CHOICE_COPY := {
 ## Heat on the card. A player is owed that price BEFORE they commit, and
 ## "CERTAIN" beside an odds band is not a price.
 const CHOICE_GUARANTEE := {
+	"let_it_go": "Guaranteed: nobody swings. The trunk is his.",
 	"knife_buy": "Guaranteed: $120, and the knife is yours.",
 	"knife_pass": "Guaranteed: nothing changes hands.",
 	"piece_buy": "Guaranteed: $600, and the piece is yours. Heat rides with it from here.",
@@ -2330,6 +2411,23 @@ const RESULT_COPY := {
 		},
 		"cross_the_street": {
 			"deterministic": ["YOU CROSS THE STREET", "Nothing happens to you. They watch it not happen, and they know what it means, and so does the block."],
+		},
+	},
+	"wander_beater_breakin": {
+		"run_up": {
+			"clean": ["HE DROPS IT", "He sees you coming and drops what he had. The window is still a hole, but the trunk is yours."],
+			"messy": ["HE SWINGS", "The screwdriver catches your arm on the way past. He goes with half of what was under the spare."],
+			"failure": ["HE WAS NOT ALONE", "Somebody in the car across the lot gets out. The trunk goes, and so does a little of you."],
+			"catastrophic": ["THE LOT", "Two of them, and a tire iron. The trunk is empty, the window is gone, and somebody called it in."],
+		},
+		"shout": {
+			"clean": ["HE RUNS", "One shout and the whole lot hears it. He is over the fence before he has closed the trunk."],
+			"messy": ["HE GRABS WHAT HE CAN", "He runs, but not with empty hands. Half of it goes with him."],
+			"failure": ["HE DOES NOT CARE", "He looks up, looks back down, and finishes. You watched the trunk go."],
+			"catastrophic": ["HE COMES OVER", "He was not scared, and now he is annoyed. The trunk is empty and your lip is split."],
+		},
+		"let_it_go": {
+			"deterministic": ["YOU LET HIM", "He takes what he came for and leaves the keys in the ignition, which is a kind of manners."],
 		},
 	},
 	"wander_vehicle_search": {

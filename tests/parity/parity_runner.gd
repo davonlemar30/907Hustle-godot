@@ -19805,6 +19805,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_rent_escalation(gs, gm)
 	_check_earn_your_name(gs, gm)
 	_check_the_kit(gs, gm)
+	_check_the_beater_on_the_street(gs, gm)
 	_check_one_good_run(gs, gm)
 	_check_stolen_goods_have_a_name(gs, gm)
 	_check_his_blocks_fight_back(gs, gm)
@@ -20595,6 +20596,63 @@ func _stage_rank(gs: Node, tier_id: String, short_by: int = 0) -> void:
 	gs.npc_ledgers["juan"] = rows
 
 ## OG-D3 (1.0.0 PR 3): the kit, the faces, the places, the ride.
+## SA-D2 (1.1.0): the beater on the street. Three cards that only exist
+## once there is a car, a trunk that can be lost, and the weapon's own
+## sentence in the room.
+func _check_the_beater_on_the_street(gs: Node, gm: Node) -> void:
+	var wander_sys: Object = gm.system("wander")
+	var loop_script := preload("res://systems/confrontation_loop.gd")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.districts_unlocked = ["north_star_lot"]
+	var facts: Dictionary = wander_sys.facts()
+	_expect_true("no car: not on the road", not bool(facts["on_the_road"]))
+	_expect_true("...and no vehicle", not bool(facts["has_vehicle"]))
+	gs.vehicle = "beater"
+	facts = wander_sys.facts()
+	_expect_true("a car is somewhere to be", bool(facts["on_the_road"]))
+	_expect_true("...and the fact says so", bool(facts["has_vehicle"]))
+	_expect_true("...and an empty trunk reads empty", not bool(facts["trunk_loaded"]))
+
+	# The cards gate on the car.
+	gs.reset_to_new_game()
+	gs.day = 10
+	gs.current_district_id = "north_star_lot"
+	gs.time_slots_today = 2
+	gs.curtis_awareness = 8
+	gs.curtis_phase = "watching"
+	_expect_true("no car, no break-in", not _wander_card_eligible(gs, gm, "wander_beater_breakin"))
+	_expect_true("no car, no plate to read", not _wander_ambient_eligible(gs, gm, "wander_plates_read"))
+	gs.vehicle = "beater"
+	_expect_true("a car, and the trunk is a target", _wander_card_eligible(gs, gm, "wander_beater_breakin"))
+	_expect_true("...and the plate is a thing Curtis's people can read", _wander_ambient_eligible(gs, gm, "wander_plates_read"))
+
+	# The trunk can be lost, and only the trunk.
+	gs.reset_to_new_game()
+	gs.vehicle = "beater"
+	gs.trunk = {"weed": 4, "pills": 3}
+	gs.inventory = {"weed": 2}
+	var applied: Dictionary = loop_script.apply_effects(gs, gm,
+		{"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "trunk_fraction": 0.5},
+		"shout", "parity")
+	_expect_int("half the trunk goes", int(applied.get("trunk", 0)), 4)
+	_expect_int("...and the bag on your back does not", int(gs.inventory.get("weed", 0)), 2)
+	applied = loop_script.apply_effects(gs, gm,
+		{"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "trunk_fraction": 1.0},
+		"let_it_go", "parity")
+	_expect_true("...and all of it can", (gs.trunk as Dictionary).is_empty())
+
+	# The weapon's sentence in the room.
+	gs.reset_to_new_game()
+	_expect_str("hands add nothing to a beat", str(wander_sys.weapon_beat_line(0)), "")
+	gs.weapon = "knife"
+	_expect_true("a knife has a line", not str(wander_sys.weapon_beat_line(0)).is_empty())
+	_expect_true("...a different one on the next beat",
+		str(wander_sys.weapon_beat_line(1)) != str(wander_sys.weapon_beat_line(0)))
+	gs.weapon = "piece"
+	_expect_true("a piece has its own", str(wander_sys.weapon_beat_line(0)).contains("piece"))
+	gs.reset_to_new_game()
+
 func _check_the_kit(gs: Node, gm: Node) -> void:
 	var portraits := preload("res://data/portraits.gd")
 	var exposure: Node = get_node("/root/Exposure")
@@ -20682,6 +20740,13 @@ func _check_the_kit(gs: Node, gm: Node) -> void:
 	_expect_true("...and back", gm.dispatch("trunk_take", {}))
 	_expect_int("...onto you", int(gs.inventory.get("weed", 0)), 3)
 	gs.reset_to_new_game()
+
+## SA-D2: the ambient pool, which `eligible_encounters` does not cover.
+func _wander_ambient_eligible(_gs: Node, gm: Node, card_id: String) -> bool:
+	for card in (gm.system("wander").eligible_cards() as Array):
+		if str((card as Dictionary).get("id", "")) == card_id:
+			return true
+	return false
 
 func _wander_card_eligible(gs: Node, gm: Node, card_id: String) -> bool:
 	for card in (gm.system("wander").eligible_encounters() as Array):
@@ -21480,7 +21545,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13997
+const MIN_CHECKS := 14068
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

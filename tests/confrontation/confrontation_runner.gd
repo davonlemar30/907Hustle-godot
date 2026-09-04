@@ -2842,6 +2842,9 @@ func _check_meetings() -> void:
 			if choice_id in deterministic:
 				a.check("%s's guaranteed '%s' states its price" % [card_id, choice_id],
 					not str(EVENTS.CHOICE_GUARANTEE.get(choice_id, "")).is_empty())
+		# OG-D3 (1.0.0): the kit's meetings hand over a weapon, not a hustle.
+		if str(card.get("discovers", "")).is_empty():
+			continue
 		# Every road and tier ends in its own words.
 		_reset_probe()
 		gs.active_consequence = {}
@@ -2850,7 +2853,7 @@ func _check_meetings() -> void:
 		gs.clean_cash = 0
 		wander._play_encounter(card, "test:meeting:%s" % card_id)
 		a.eq_bool("%s reveals its hustle the moment it opens" % card_id,
-			str(card["discovers"]) in gs.hustles_discovered, true)
+			str(card.get("discovers", "")) in gs.hustles_discovered, true)
 		a.eq_str("%s opens on its own line" % card_id,
 			ENCOUNTER_SHEET.situation_body(engine, engine.active_summary()), str(card["line"]))
 		var effects: Dictionary = spec.get("effects", {})

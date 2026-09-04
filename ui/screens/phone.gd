@@ -51,6 +51,7 @@ extends "res://ui/screens/surface_base.gd"
 ## branch is here and named rather than silently absent.
 
 const BLUE := Color(0.373, 0.663, 0.847)
+const PORTRAITS := preload("res://data/portraits.gd")
 const CYAN := Color(0.475, 0.733, 0.757)
 
 ## Canon: `defaultExpanded: true` on Texts, nothing else.
@@ -181,6 +182,10 @@ func _message_card(message: Dictionary) -> Control:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 8)
 	v.add_child(head)
+	# OG-D3: who is texting, when the game has their face.
+	var face := PORTRAITS.portrait_rect(str(message.get("from", "")), 48)
+	if face != null:
+		head.add_child(face)
 	var from := label(str(message.get("from", "")).to_upper(), "CardTitle", 13, CREAM)
 	from.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(from)

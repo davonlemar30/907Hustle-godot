@@ -22,7 +22,17 @@ func _venues() -> Object:
 func _obligations() -> Object:
 	return _gm.system("obligations")
 
+## OG-D3: the interior, when the game has it.
+func _bind_interior() -> void:
+	var bg := get_node_or_null("BGPhoto") as TextureRect
+	if bg == null:
+		return
+	var interior: Texture2D = preload("res://data/portraits.gd").venue_image("night_owl")
+	if interior != null:
+		bg.texture = interior
+
 func _build_body() -> void:
+	_bind_interior()
 	var sys: Object = _venues()
 	if sys == null:
 		return

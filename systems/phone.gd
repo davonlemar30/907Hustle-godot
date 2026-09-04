@@ -157,6 +157,15 @@ func _reply(id: String, option: String) -> Dictionary:
 	# window closed, the member got busy), the reply stands and the member
 	# says so instead of their yes line.
 	var on_accept: Dictionary = reply.get("on_accept", {})
+	# OG-D3: yes to Sonny's nephew is the car, if the money is there.
+	if option == "a" and str(on_accept.get("kind", "")) == "buy_vehicle":
+		var manager_node: Node = Engine.get_main_loop().root.get_node_or_null("/root/GameManager")
+		var travel: Object = manager_node.system("travel") if manager_node != null else null
+		var bought: Dictionary = travel.buy_beater() if travel != null else {"ok": false}
+		if not bool(bought.get("ok", false)):
+			push_message(str(message.get("from", "")), "%s. come back when you got it" % str(bought.get("reason", "no")).to_lower().trim_suffix("."),
+				{"kind": "reaction"})
+			return {"ok": true, "npc": npc_id, "option": option, "bought": false}
 	if option == "a" and not on_accept.is_empty() and str(on_accept.get("kind", "")) == "crew_assign":
 		var manager: Node = Engine.get_main_loop().root.get_node_or_null("/root/GameManager")
 		var ops: Object = manager.system("crew_operations") if manager != null else null

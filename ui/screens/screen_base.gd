@@ -110,8 +110,28 @@ func _bind_phone_badge() -> void:
 	else:
 		cell.remove_theme_color_override("font_color")
 
+## OG-D3: know where you are in two seconds, on any screen. The location
+## label in the top bar takes the district's accent, the line under the top
+## bar takes it too, and the top bar's second line says what kind of place
+## it is rather than the state you are in.
+func _bind_district_accent() -> void:
+	if gs == null:
+		return
+	var district: Dictionary = gs.current_district()
+	var accent: Color = district.get("accent", Color(0.842, 0.842, 0.842))
+	var l1 := get_node_or_null("Shell/TopBar/HBox/Right/LocBox/V/L1") as Label
+	if l1 != null:
+		l1.add_theme_color_override("font_color", accent)
+	var l2 := get_node_or_null("Shell/TopBar/HBox/Right/LocBox/V/L2") as Label
+	if l2 != null:
+		l2.text = str(district.get("role", gs.city))
+	var line := get_node_or_null("Shell/Line") as CanvasItem
+	if line != null:
+		line.modulate = accent
+
 func refresh() -> void:
 	_bind_phone_badge()
+	_bind_district_accent()
 	# One place catches the end of the run, and one place catches a consequence
 	# opening under whatever screen the player happened to be on. Every game
 	# screen extends this, so whichever one is open when it lands is the one
@@ -312,6 +332,8 @@ func _build_flow_sheet_content(spec: Dictionary) -> Control:
 		"arrival":
 			return FlowSheets.build_discovery({"title": str(spec.get("title", "")),
 				"line": str(spec.get("line", "")), "icon": ""})
+		"ride":
+			return FlowSheets.build_ride(spec)
 		"interview":
 			var job: Dictionary = gs.job_by_id(str(spec.get("job_id", "")))
 			var jobs_system: Object = get_node("/root/GameManager").system("jobs")

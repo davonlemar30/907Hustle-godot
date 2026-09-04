@@ -10,6 +10,8 @@ extends "res://ui/screens/surface_base.gd"
 ## means "no problem to me", so his bands run the other way: NEUTRAL is
 ## invisible, HOSTILE is the confrontation.
 
+const PORTRAITS := preload("res://data/portraits.gd")
+
 const NAMES := {
 	"yalonda": "Yalonda", "juan": "Juan", "mina": "Mina",
 	"curtis": "Curtis Foyer", "dre": "Dre Smooth",
@@ -187,7 +189,12 @@ func _person_row(E: Node, entry: Dictionary) -> Control:
 	c.add_child(v)
 
 	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
 	v.add_child(head)
+	# OG-D3: the face, when there is one.
+	var face := PORTRAITS.portrait_rect(id, 64)
+	if face != null:
+		head.add_child(face)
 	var nm := label(str(NAMES.get(id, id)), "CardTitle", 13, CREAM)
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(nm)

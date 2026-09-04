@@ -36,6 +36,7 @@ func _ready() -> void:
 	_test_v27_phone_reply_history()
 	_test_v28_job_applications()
 	_test_v29_rent_arrears()
+	_test_v30_kit()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
 	_test_load_pipeline()
@@ -1041,6 +1042,20 @@ func _test_v29_rent_arrears() -> void:
 	var migrated: Dictionary = saves._migrate({"save_version": 28, "state": {"day": 2, "cash": 10, "street_name": "L"}})
 	_check("a v28 save arrives not in arrears",
 		not migrated.has("rent_arrears_day") or int(migrated.get("rent_arrears_day", -1)) == -1)
+
+## v30 (OG-D3): the kit rides the save; junk defaults.
+func _test_v30_kit() -> void:
+	var valid := _fixed(_state("weapon", "knife"))
+	_check("a knife survives", str(valid["weapon"]) == "knife")
+	var junk := _fixed(_state("weapon", "bazooka"))
+	_check("an unknown weapon is hands", str(junk["weapon"]) == "hands")
+	var trunk := _fixed(_state("trunk", {"weed": 3, "x": -1, "pills": "two"}))
+	_check("a trunk keeps its ints and drops its junk",
+		int((trunk["trunk"] as Dictionary).get("weed", 0)) == 3 and (trunk["trunk"] as Dictionary).size() == 1)
+	var saves := get_node("/root/SaveSystem")
+	var migrated: Dictionary = saves._migrate({"save_version": 29, "state": {"day": 2, "cash": 10, "street_name": "L"}})
+	_check("a v29 save arrives on foot with its hands",
+		not migrated.has("vehicle") or str(migrated.get("vehicle", "")) == "")
 
 func _test_v24_dre_pending_penance() -> void:
 	# Same shape as _validate_dre_intro_offered -- manual wrong-type check,

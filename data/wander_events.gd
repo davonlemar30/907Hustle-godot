@@ -1201,6 +1201,60 @@ const CARDS: Array[Dictionary] = [
 		},
 	},
 
+	# --- OG-D3 (1.0.0 PR 3): the kit -------------------------------------------
+	#
+	# Weapons are bought off people, not from a menu. A knife from a man at
+	# the Chevron a week in; a piece from Dre's cousin, later, once the run
+	# is a player. Each is a meeting card with a PAY road that grants it.
+
+	{
+		"id": "wander_meet_the_knife", "kind": KIND_MEETING, "weight": 7,
+		"intents": [], "gate_bias": "",
+		"districts": [SPENARD], "slots": [2, 3], "once": true,
+		"requirements": [{"type": "day_min", "min": 6}, {"type": "fact_true", "fact": "unarmed"}],
+		"line": "A man by the Chevron ice machine with a folding knife in his palm, showing it the way you would show a phone. \"Hundred twenty. Nobody's on it.\"",
+		"encounter": {
+			"definition_id": "wander_meet_the_knife",
+			"opponent": "The man at the ice machine",
+			"shape": "negotiation",
+			"choices": ["knife_buy", "knife_pass"],
+			"roles": {"knife_buy": ROLE_PAY, "knife_pass": ROLE_RUN},
+			"admits_crew": false,
+			"deterministic": ["knife_buy", "knife_pass"],
+			"base": {},
+			"observations": {},
+			"effects": {
+				"knife_buy": {"deterministic": {"health": 0, "cash_flat": 120, "goods_fraction": 0.0}},
+				"knife_pass": {"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0}},
+			},
+		},
+		"grants": {"knife_buy": {"deterministic": {"weapon": "knife"}}},
+	},
+	{
+		"id": "wander_meet_the_piece", "kind": KIND_MEETING, "weight": 6,
+		"intents": [], "gate_bias": "",
+		"districts": [SPENARD], "slots": [3], "once": true,
+		"requirements": [{"type": "day_min", "min": 14}, {"type": "fact_true", "fact": "no_piece"},
+			{"type": "rank_min", "rank": "player"}],
+		"line": "Dre's cousin, who you have seen but never been introduced to, sits down next to you at the Night Owl and puts a gym bag between his feet. \"Six hundred. Dre said you were somebody now. Are you?\"",
+		"encounter": {
+			"definition_id": "wander_meet_the_piece",
+			"opponent": "Dre's cousin",
+			"shape": "negotiation",
+			"choices": ["piece_buy", "piece_pass"],
+			"roles": {"piece_buy": ROLE_PAY, "piece_pass": ROLE_RUN},
+			"admits_crew": false,
+			"deterministic": ["piece_buy", "piece_pass"],
+			"base": {},
+			"observations": {},
+			"effects": {
+				"piece_buy": {"deterministic": {"health": 0, "cash_flat": 600, "goods_fraction": 0.0}},
+				"piece_pass": {"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0}},
+			},
+		},
+		"grants": {"piece_buy": {"deterministic": {"weapon": "piece"}}},
+	},
+
 	# --- BR-D5 (0.9.0 PR 4): Mountain View ---------------------------------------
 	#
 	# The community district. Ambients that say what the block is; one
@@ -1212,7 +1266,7 @@ const CARDS: Array[Dictionary] = [
 		"intents": [], "gate_bias": "",
 		"districts": [SPENARD], "slots": [], "once": true,
 		# Days four to six: after that the block opens on its own.
-		"requirements": [{"type": "day_min", "day": 4}, {"type": "day_max", "day": 6}],
+		"requirements": [{"type": "day_min", "min": 4}, {"type": "day_max", "max": 6}],
 		"discovers_district": MOUNTAIN_VIEW,
 		"line": "Two Samoan brothers at the bus shelter, going home to Mountain View. One of them says pills go for real money over there because of the base, and the other one tells him to stop talking to strangers. They both laugh. Now you know where it is.",
 	},
@@ -1943,6 +1997,8 @@ const CARDS: Array[Dictionary] = [
 ## engine's own table is Boost's vocabulary (fight / run / talk / yield) and was
 ## never going to cover a different chain's.
 const CHOICE_LABELS := {
+	# OG-D3: the kit.
+	"knife_buy": "PAY", "knife_pass": "RUN", "piece_buy": "PAY", "piece_pass": "RUN",
 	# BR-D5: Mountain View.
 	"say_your_name": "TALK", "keep_walking_mv": "RUN", "come_correct": "COMPLY",
 	"stand": "FIGHT",
@@ -2030,6 +2086,10 @@ const CHOICE_LABELS := {
 }
 
 const CHOICE_COPY := {
+	"knife_buy": "A hundred and twenty. A knife in the coat from here on.",
+	"knife_pass": "Keep your hands in your pockets.",
+	"piece_buy": "Six hundred. Say you are somebody, and carry what that costs.",
+	"piece_pass": "Tell him you're good. Let Dre hear that too.",
 	# BR-D5: Mountain View.
 	"say_your_name": "Say your name, and whose. Let the block decide what it's worth.",
 	"keep_walking_mv": "It wasn't a question you have to answer. Yet.",
@@ -2116,6 +2176,10 @@ const CHOICE_COPY := {
 ## Heat on the card. A player is owed that price BEFORE they commit, and
 ## "CERTAIN" beside an odds band is not a price.
 const CHOICE_GUARANTEE := {
+	"knife_buy": "Guaranteed: $120, and the knife is yours.",
+	"knife_pass": "Guaranteed: nothing changes hands.",
+	"piece_buy": "Guaranteed: $600, and the piece is yours. Heat rides with it from here.",
+	"piece_pass": "Guaranteed: nothing changes hands.",
 	# BR-D5: Mountain View.
 	"come_correct": "Guaranteed: nobody touches you. A quarter of what you carry, and an invitation.",
 	"hand_over": "Guaranteed: you walk away whole. Everything you are carrying is theirs.",
@@ -2501,7 +2565,7 @@ static func result_copy(card_id: String, choice_id: String, tier: String,
 		return CREW_RESULT_COPY[choice_id]
 	var card_table: Dictionary = RESULT_COPY.get(card_id,
 		MEETING_RESULT_COPY.get(card_id, PHASE_RESULT_COPY.get(card_id,
-			MV_RESULT_COPY.get(card_id, {}))))
+			MV_RESULT_COPY.get(card_id, KIT_RESULT_COPY.get(card_id, {})))))
 	var table: Dictionary = card_table.get("room", {}) if in_room else card_table
 	var road: Dictionary = table.get(choice_id, {})
 	if road.has(tier):
@@ -2554,6 +2618,18 @@ const MV_RESULT_COPY := {
 		"come_correct": {
 			"deterministic": ["YOU COME CORRECT", "You tell him you are nobody yet and you are not here to be somebody at his expense. He takes a little off the top -- \"tax\" -- and tells you to come see him before you sell anything on his Drive again. That is an invitation."],
 		},
+	},
+}
+
+## OG-D3: what buying or passing on a weapon reads.
+const KIT_RESULT_COPY := {
+	"wander_meet_the_knife": {
+		"knife_buy": {"deterministic": ["IT'S YOURS", "He folds it, hands it over handle first, and does not tell you his name. The coat is heavier now, and so are you."]},
+		"knife_pass": {"deterministic": ["NOT TODAY", "You keep your hands in your pockets. He shrugs. \"It'll be here.\""]},
+	},
+	"wander_meet_the_piece": {
+		"piece_buy": {"deterministic": ["SOMEBODY NOW", "The bag goes under your stool and the money goes into his. \"Don't be stupid with it.\" Everybody in the Night Owl saw the bag change feet."]},
+		"piece_pass": {"deterministic": ["NOT LIKE THAT", "You tell him you're good. He looks at you for a while and decides to believe it. Dre will hear that too."]},
 	},
 }
 

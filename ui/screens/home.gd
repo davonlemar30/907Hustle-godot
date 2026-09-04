@@ -208,6 +208,7 @@ func _on_people() -> void:
 ## lock legible — a greyed-out card with real numbers under it says "this is
 ## coming", where a greyed-out card of placeholder text says nothing.
 const EVENTS := preload("res://data/wander_events.gd")
+const PORTRAITS := preload("res://data/portraits.gd")
 const ACCESS := preload("res://autoload/surface_visibility.gd")
 
 func _bind_content() -> void:
@@ -227,6 +228,8 @@ func _bind_gates() -> void:
 	gate_surface(ACCESS.HOME_ACTIVITY_FEED, "Shell/Scroll/Pad/Content/Activity")
 
 func _bind_all() -> void:
+	_bind_hero()
+	_bind_car()
 	_bind_wander()
 	_bind_actions()
 	_bind_operation()
@@ -242,6 +245,88 @@ func _bind_all() -> void:
 ## arithmetic — 30% base, +10% a miss, capped at 70% — and the player is told
 ## how the looking is going, which is the part that makes another walk feel
 ## worth a slot. Telling them 0.60 would be telling them to do arithmetic.
+## OG-D3: the beater, on Home once you have it: the trunk, and the day it
+## would not start.
+func _bind_car() -> void:
+	var existing := get_node_or_null("Shell/Scroll/Pad/Content/CarCard")
+	if existing != null:
+		existing.queue_free()
+	if not gs.has_vehicle():
+		return
+	var content := get_node_or_null("Shell/Scroll/Pad/Content") as VBoxContainer
+	if content == null:
+		return
+	var card := PanelContainer.new()
+	card.name = "CarCard"
+	card.theme_type_variation = &"Card"
+	card.mouse_filter = Control.MOUSE_FILTER_PASS
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	card.add_child(v)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	v.add_child(head)
+	var art := PORTRAITS.header_rect(PORTRAITS.vehicle_image(gs.vehicle), 56)
+	if art != null:
+		art.custom_minimum_size = Vector2(84, 56)
+		art.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		head.add_child(art)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(col)
+	var title := Label.new()
+	title.text = "THE BEATER"
+	title.theme_type_variation = &"CardTitle"
+	title.add_theme_font_size_override("font_size", 13)
+	col.add_child(title)
+	var trunk_units := 0
+	for pid in gs.trunk.keys():
+		trunk_units += int(gs.trunk[pid])
+	var sub := Label.new()
+	sub.theme_type_variation = &"Muted"
+	sub.add_theme_font_size_override("font_size", 11)
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sub.text = ("Dead this morning. Fourteen below. People Mover today." if gs.beater_dead_today
+		else "Gas, not fare. Cargo +%d. %d in the trunk." % [int(gs.BEATER_CARGO), trunk_units])
+	col.add_child(sub)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	v.add_child(row)
+	var stash := Button.new()
+	stash.text = "STASH IN TRUNK"
+	stash.custom_minimum_size = Vector2(0, 44)
+	stash.focus_mode = Control.FOCUS_NONE
+	stash.theme_type_variation = &"BtnSecondary"
+	stash.add_theme_font_size_override("font_size", 11)
+	stash.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stash.disabled = gs.inventory.is_empty()
+	tap_connect(stash, func() -> void: _gm.dispatch("trunk_stash", {}))
+	row.add_child(stash)
+	var take := Button.new()
+	take.text = "TAKE FROM TRUNK"
+	take.custom_minimum_size = Vector2(0, 44)
+	take.focus_mode = Control.FOCUS_NONE
+	take.theme_type_variation = &"BtnSecondary"
+	take.add_theme_font_size_override("font_size", 11)
+	take.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	take.disabled = trunk_units == 0
+	tap_connect(take, func() -> void: _gm.dispatch("trunk_take", {}))
+	row.add_child(take)
+	content.add_child(card)
+	var wander_card := get_node_or_null("Shell/Scroll/Pad/Content/Wander")
+	if wander_card != null:
+		content.move_child(card, wander_card.get_index() + 1)
+
+## OG-D3: the photo at the top of Home is the district you are standing in,
+## when the game has its banner; the Spenard photo it shipped with otherwise.
+func _bind_hero() -> void:
+	var photo := get_node_or_null("Shell/Scroll/Pad/Content/Photo") as TextureRect
+	if photo == null:
+		return
+	var banner: Texture2D = PORTRAITS.district_header(str(gs.current_district_id))
+	if banner != null:
+		photo.texture = banner
+
 func _bind_wander() -> void:
 	var sys: Object = _gm.system("wander")
 	if sys == null:

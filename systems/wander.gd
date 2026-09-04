@@ -222,7 +222,12 @@ func facts() -> Dictionary:
 		# Read off districts unlocked rather than a travel counter -- travel
 		# is a slot action with its own checkpoint chain (STR-D4), and a
 		# wander encounter is what happens on the walk, not on the drive.
-		"on_the_road": (gs.districts_unlocked as Array).size() > 1,
+		# SA-D2 (1.1.0): or you have a car, which is somewhere to be all by
+		# itself. A traffic stop in your own district is a thing that
+		# happens to people with plates.
+		"on_the_road": (gs.districts_unlocked as Array).size() > 1 or bool(gs.has_vehicle()),
+		"has_vehicle": bool(gs.has_vehicle()),
+		"trunk_loaded": not (gs.trunk as Dictionary).is_empty(),
 		# `market_pressure_visible` gates the territorial beef. Reads the
 		# engine's own band for the district the player is standing in --
 		# the same read `_read_pressure()` renders, not a second scale.
@@ -1697,6 +1702,27 @@ func _beat_at(card_id: String, index: int) -> Dictionary:
 		return {}
 	return beats[clampi(index, 0, beats.size() - 1)]
 
+## SA-D2: what the weapon does to the sentence. Indexed by beat, cycling,
+## so a long room does not repeat itself on the first turn.
+const WEAPON_BEAT_LINES := {
+	"knife": [
+		"The knife is in your hand before you decided anything.",
+		"He has seen the knife. He is working out what it is worth to him.",
+		"The knife has done the talking. What is left is who walks.",
+	],
+	"piece": [
+		"Your hand is on the piece and everybody in the room knows it.",
+		"Nobody has moved since they saw where your hand went.",
+		"The piece is out. There is no version of this the block does not hear about.",
+	],
+}
+
+func weapon_beat_line(index: int) -> String:
+	var lines: Array = WEAPON_BEAT_LINES.get(str(gs.weapon), [])
+	if lines.is_empty():
+		return ""
+	return str(lines[posmod(index, lines.size())])
+
 ## Open the room on its FIRST authored beat. Reached from a card-level road
 ## whose authored effects row says `escalate: true` -- the fight did not end
 ## where it started.
@@ -1782,6 +1808,12 @@ func _present_beat(chain: Dictionary, loop: Dictionary, index: int) -> Dictionar
 	# to the sheet, which is what makes "each round is a new situation" a thing
 	# the player reads rather than a thing the code believes.
 	loop["beat"] = str(beat.get("beat", ""))
+	# SA-D2 (1.1.0): the weapon is in the room, not only in the odds. One
+	# sentence per beat, per weapon, after the situation; hands add nothing,
+	# so a bare room reads exactly as authored.
+	var armed_line := weapon_beat_line(index)
+	if not armed_line.is_empty():
+		loop["beat"] = str(loop["beat"]) + " " + armed_line
 	LOOP.append_log(loop, str(beat.get("log", "")))
 
 	# Burned verbs come off the offer; the deterministic out never burns, so it

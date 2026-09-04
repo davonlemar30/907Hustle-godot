@@ -235,6 +235,22 @@ static func tip_modifiers_for(gs: Node, target_id: String, tier: int) -> Diction
 ## fraction above zero. The floor is correct for an authored fraction; it is
 ## wrong for an authored zero, which is why every caller here skips the call
 ## entirely rather than letting "no loss" round up to "lose one anyway".
+## SA-D2: the same arithmetic as `lose_cargo`, on the trunk.
+static func lose_trunk(gs: Node, fraction: float) -> int:
+	var taken: int = 0
+	for product_id in (gs.trunk as Dictionary).keys():
+		var held: int = int(gs.trunk[product_id])
+		if held <= 0:
+			continue
+		var lose: int = held if fraction >= 1.0 else maxi(1, int(ceil(float(held) * fraction)))
+		lose = mini(lose, held)
+		gs.trunk[product_id] = held - lose
+		taken += lose
+	for product_id in (gs.trunk as Dictionary).keys():
+		if int(gs.trunk[product_id]) <= 0:
+			gs.trunk.erase(product_id)
+	return taken
+
 static func lose_cargo(gs: Node, fraction: float) -> int:
 	var taken: int = 0
 	for product_id in gs.inventory.keys():
@@ -269,6 +285,11 @@ static func apply_effects(gs: Node, gm: Node, effects: Dictionary, choice_id: St
 		source_tag: String) -> Dictionary:
 	var goods_fraction: float = float(effects.get("goods_fraction", 0.0))
 	var lost_goods: int = lose_cargo(gs, goods_fraction) if goods_fraction > 0.0 else 0
+	# SA-D2 (1.1.0): the trunk is a place things can be taken from too.
+	var trunk_fraction: float = float(effects.get("trunk_fraction", 0.0))
+	var lost_trunk: int = lose_trunk(gs, trunk_fraction) if trunk_fraction > 0.0 else 0
+	if lost_trunk > 0:
+		gs.log_activity("%d unit%s gone out of the trunk." % [lost_trunk, "" if lost_trunk == 1 else "s"], Color(0.827, 0.161, 0.125))
 	var lost_cash: int = 0
 	var wallet: Object = gm.system("wallet") if gm != null else null
 	if wallet != null:
@@ -294,4 +315,4 @@ static func apply_effects(gs: Node, gm: Node, effects: Dictionary, choice_id: St
 	var heat_gain: float = float(effects.get("heat", 0.0))
 	if heat_gain > 0.0:
 		heat_gain = apply_heat(gs, gm, heat_gain, source_tag)
-	return {"goods": lost_goods, "cash": lost_cash, "health": hurt, "heat": heat_gain}
+	return {"goods": lost_goods, "cash": lost_cash, "health": hurt, "heat": heat_gain, "trunk": lost_trunk}

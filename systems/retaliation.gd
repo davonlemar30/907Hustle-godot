@@ -319,6 +319,15 @@ func open_encounter(row: Dictionary) -> Dictionary:
 ##
 ## Called by the engine after it has revalidated identity, stage and the allowed
 ## choice — the same contract Boost's Caught resolution runs under.
+## WS-D2 (0.8.0): the universal verbs, through the same seam every other
+## adapter uses. YIELD is SURRENDER; the ids are unchanged.
+func choice_label(choice_id: String) -> String:
+	match choice_id:
+		"fight": return "FIGHT"
+		"run": return "RUN"
+		"yield": return "SURRENDER"
+	return ""
+
 func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	var engine: Object = _engine()
 	if engine == null:

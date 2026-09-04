@@ -627,7 +627,7 @@ const CARDS: Array[Dictionary] = [
 		"id": "wander_shakedown", "kind": KIND_ENCOUNTER, "weight": 7,
 		"intents": [INTENT_DEAL], "gate_bias": "stick",
 		"districts": [], "slots": [EVENING, NIGHT], "once": false,
-		"requirements": [{"type": "collection_non_empty", "collection": "inventory"}],
+		"requirements": [{"type": "day_min", "min": 4}, {"type": "collection_non_empty", "collection": "inventory"}],
 		"line": "Two of them peel off the wall as you pass, and one is already talking.",
 		"encounter": {
 			"definition_id": "wander_shakedown",
@@ -966,11 +966,11 @@ const CARDS: Array[Dictionary] = [
 		"id": "wander_young_ones", "kind": KIND_ENCOUNTER, "weight": 8,
 		"intents": [], "gate_bias": "",
 		"districts": [], "slots": [], "once": false,
-		"requirements": [],
-		"line": "A couple of them post up across the street, not hiding that they are watching. They want to see what you do.",
+		"requirements": [{"type": "day_max", "max": 4}],
+		"line": "Three of them on the wall outside the Rebel, none of them older than nineteen, and all three watching the new face walk past like it is the only thing happening on the block. It is.",
 		"encounter": {
 			"definition_id": "wander_young_ones",
-			"opponent": "The kids across the street",
+			"opponent": "The three on the wall",
 			"shape": "negotiation",
 			# The low-stakes test the roster's own floor names: the cheap
 			# answer is composure, and composure is genuinely cheap — a clean
@@ -1275,8 +1275,8 @@ const CARDS: Array[Dictionary] = [
 		"id": "wander_lot_side", "kind": KIND_ENCOUNTER, "weight": 7,
 		"intents": [], "gate_bias": "",
 		"districts": [], "slots": [EVENING, NIGHT], "once": false,
-		"requirements": [],
-		"line": "Two of them are already arguing about something that has nothing to do with you, on the side of the lot you have to walk past.",
+		"requirements": [{"type": "day_min", "min": 4}],
+		"line": "Two men arguing under the one working light on the Chevron lot, loud enough to carry, about money one of them says he never borrowed. You have to walk past them to get anywhere.",
 		"encounter": {
 			"definition_id": "wander_lot_side",
 			"opponent": "The argument on the lot",
@@ -1342,11 +1342,11 @@ const CARDS: Array[Dictionary] = [
 		"id": "wander_wrong_place", "kind": KIND_ENCOUNTER, "weight": 8,
 		"intents": [], "gate_bias": "",
 		"districts": [], "slots": [EVENING, NIGHT], "once": false,
-		"requirements": [],
-		"line": "Something already happened here. You did not see it, and the people who did are looking at you.",
+		"requirements": [{"type": "day_min", "min": 4}],
+		"line": "Something happened in this lot ten minutes ago. Glass on the ground, a door still open, and two people who know your name now, looking at you like you are a witness or a problem.",
 		"encounter": {
 			"definition_id": "wander_wrong_place",
-			"opponent": "Whoever was already here",
+			"opponent": "The two who were here first",
 			"shape": "negotiation",
 			"choices": ["say_your_piece", "keep_it_moving", "back_out"],
 			"roles": {"say_your_piece": ROLE_FIGHT, "keep_it_moving": ROLE_RUN,
@@ -1391,66 +1391,13 @@ const CARDS: Array[Dictionary] = [
 		},
 	},
 	{
-		"id": "wander_mistaken_identity", "kind": KIND_ENCOUNTER, "weight": 8,
-		"intents": [], "gate_bias": "",
-		"districts": [], "slots": [], "once": false,
-		"requirements": [],
-		"line": "He says your name. It is not your name, and he is very sure about it.",
-		"encounter": {
-			"definition_id": "wander_mistaken_identity",
-			"opponent": "The man who is sure",
-			"shape": "negotiation",
-			"choices": ["set_him_straight", "let_him_talk", "be_who_he_wants"],
-			"roles": {"set_him_straight": ROLE_FIGHT, "let_him_talk": ROLE_RUN,
-				"be_who_he_wants": ROLE_SURRENDER},
-			"admits_crew": true,
-			"deterministic": ["be_who_he_wants"],
-			"base": {"set_him_straight": 0.60, "let_him_talk": 0.52},
-			"observations": {
-				"set_him_straight": {
-					"clean": {"type": "honesty", "event": "cleared_it_up"},
-					"messy": {"type": "honesty", "event": "cleared_it_up"},
-					"failure": {"type": "violence", "event": "street_fight"},
-					"catastrophic": {"type": "violence", "event": "street_fight"},
-				},
-				"let_him_talk": {
-					"clean": {"type": "discretion", "event": "walked_it_off"},
-					"messy": {"type": "discretion", "event": "walked_it_off"},
-					"failure": {"type": "honesty", "event": "wore_somebody_elses_name"},
-					"catastrophic": {"type": "honesty", "event": "wore_somebody_elses_name"},
-				},
-				# Answering to a name that is not yours is a lie the street
-				# can check later, and it is the road that carries the debt.
-				"be_who_he_wants": {"type": "honesty", "event": "wore_somebody_elses_name"},
-			},
-			"effects": {
-				"set_him_straight": {
-					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
-					"messy": {"health": 2, "cash_fraction": 0.0, "goods_fraction": 0.0},
-					"failure": {"health": 6, "cash_fraction": 0.0, "goods_fraction": 0.0},
-					"catastrophic": {"health": 12, "cash_fraction": 0.25, "goods_fraction": 0.0},
-				},
-				"let_him_talk": {
-					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
-					"messy": {"health": 0, "cash_fraction": 0.25, "goods_fraction": 0.0},
-					"failure": {"health": 3, "cash_fraction": 0.5, "goods_fraction": 0.0},
-					"catastrophic": {"health": 8, "cash_fraction": 1.0, "goods_fraction": 0.25},
-				},
-				# Whatever the other man owed, you just agreed to.
-				"be_who_he_wants": {
-					"deterministic": {"health": 0, "cash_flat": 60, "goods_fraction": 0.0},
-				},
-			},
-		},
-	},
-	{
 		"id": "wander_territorial_beef", "kind": KIND_ENCOUNTER, "weight": 7,
 		"intents": [INTENT_DEAL], "gate_bias": "stick",
 		"districts": [], "slots": [], "once": false,
 		# The block has to already be paying attention for this to make sense.
 		# Reads the engine's own MARKET band for the district underfoot, which
 		# is the same read `SEE WHO IS OUT` renders -- not a second scale.
-		"requirements": [{"type": "fact_true", "fact": "market_pressure_visible"}],
+		"requirements": [{"type": "day_min", "min": 8}, {"type": "fact_true", "fact": "market_pressure_visible"}],
 		"line": "They know what you have been doing on this block, and they have decided it is their block.",
 		"encounter": {
 			"definition_id": "wander_territorial_beef",
@@ -1514,7 +1461,7 @@ const CARDS: Array[Dictionary] = [
 		"id": "wander_somebody_elses_problem", "kind": KIND_ENCOUNTER, "weight": 6,
 		"intents": [], "gate_bias": "",
 		"districts": [], "slots": [], "once": false,
-		"requirements": [{"type": "fact_true", "fact": "curtis_visible"}],
+		"requirements": [{"type": "day_min", "min": 20}, {"type": "fact_true", "fact": "curtis_visible"}],
 		"line": "Somebody is getting worked over half a block up, and one of them has already looked at you twice.",
 		"encounter": {
 			"definition_id": "wander_somebody_elses_problem",
@@ -1561,6 +1508,189 @@ const CARDS: Array[Dictionary] = [
 			},
 		},
 	},
+	# --- WS-D2 (0.8.0): the roster answers three questions -------------------
+	#
+	# Who is this? Why are they in front of me? Why should I care? Every card
+	# below is keyed to WHEN in a run it makes sense, through `day_min` /
+	# `day_max` and the facts the run already keeps:
+	#
+	#   Week Zero    days 1-4    arriving, cold, nobody knows you
+	#   Getting Known days 4-10  you are doing something; people notice
+	#   Reputation   days 10-20  the city knows your name; favors and warnings
+	#   Weight       days 20+    you are a factor; probes and traps
+
+	# Week Zero, ambient: orientation. Low stakes, high atmosphere.
+	{
+		"id": "wz_bus_shelter", "kind": KIND_AMBIENT, "weight": 14,
+		"intents": [INTENT_READ], "gate_bias": "",
+		"districts": [SPENARD], "slots": [MORNING, AFTERNOON], "once": true,
+		"requirements": [{"type": "day_max", "max": 4}],
+		"line": "The bus shelter on Spenard Road has a schedule nobody has updated since the snow came. An old man in a fur hat tells you the 7 runs when it runs, and that you are standing on the wrong side for downtown.",
+	},
+	{
+		"id": "wz_the_chevron_sign", "kind": KIND_AMBIENT, "weight": 12,
+		"intents": [INTENT_READ], "gate_bias": "",
+		"districts": [SPENARD], "slots": [EVENING, NIGHT], "once": true,
+		"requirements": [{"type": "day_max", "max": 4}],
+		"line": "Four in the afternoon and the sun is already gone. The Chevron sign is the brightest thing for three blocks, and everybody on the block is orbiting it the way moths would if Anchorage had moths.",
+	},
+	{
+		"id": "wz_overheard", "kind": KIND_AMBIENT, "weight": 10,
+		"intents": [INTENT_READ, INTENT_DEAL], "gate_bias": "",
+		"districts": [SPENARD], "slots": [], "once": true,
+		"requirements": [{"type": "day_max", "max": 4}],
+		"line": "Two women outside the laundromat, talking about somebody named Curtis the way people talk about weather. You do not know who that is yet. You will.",
+	},
+
+	# Getting Known, ambient: people start noticing.
+	{
+		"id": "gk_new_guy", "kind": KIND_AMBIENT, "weight": 10,
+		"intents": [INTENT_WORK, INTENT_READ], "gate_bias": "",
+		"districts": [SPENARD], "slots": [], "once": true,
+		"requirements": [{"type": "day_min", "min": 4}, {"type": "day_max", "max": 12},
+			{"type": "job_contacts_min", "min": 1}],
+		"line": "A regular at the Chevron counter looks up from his scratch tickets. \"You the new one?\" He does not wait for an answer. He already had one.",
+	},
+	{
+		"id": "gk_goodies_spot", "kind": KIND_AMBIENT, "weight": 10,
+		"intents": [INTENT_DEAL, INTENT_READ], "gate_bias": "",
+		"districts": [SPENARD], "slots": [EVENING, NIGHT], "once": true,
+		"requirements": [{"type": "day_min", "min": 4}, {"type": "day_max", "max": 14},
+			{"type": "fact_true", "fact": "market_discovered"}],
+		"line": "Somebody at the Night Owl counter, not looking at you, says they have seen you around Goodie's spot. Just that. Then they go back to their coffee.",
+		"observation": {"npc": "mina", "type": "presence", "event": "seen_around",
+			"source": "witnessed"},
+	},
+
+	# Reputation: the city knows your name, and it wants things.
+	{
+		"id": "rep_a_favor", "kind": KIND_ENCOUNTER, "weight": 8,
+		"intents": [INTENT_DEAL, INTENT_READ], "gate_bias": "",
+		"districts": [], "slots": [], "once": false,
+		"requirements": [{"type": "day_min", "min": 10}],
+		"line": "A man you have seen twice and never spoken to says your name like he has said it before. He has a gym bag. He needs it held for an hour, and he is asking you because you are the one who is always around.",
+		"encounter": {
+			"definition_id": "rep_a_favor",
+			"opponent": "The man with the gym bag",
+			"shape": "negotiation",
+			"choices": ["favor_ask", "favor_decline", "favor_hold"],
+			"roles": {"favor_ask": ROLE_FIGHT, "favor_decline": ROLE_RUN,
+				"favor_hold": ROLE_SURRENDER},
+			"admits_crew": false,
+			"deterministic": ["favor_hold"],
+			"base": {"favor_ask": 0.55, "favor_decline": 0.70},
+			"observations": {
+				"favor_ask": {
+					"clean": {"type": "honesty", "event": "asked_the_right_question"},
+					"messy": {"type": "honesty", "event": "asked_the_right_question"},
+					"failure": {"type": "defiance", "event": "refused_a_favor"},
+					"catastrophic": {"type": "defiance", "event": "refused_a_favor"},
+				},
+				"favor_decline": {
+					"clean": {"type": "discretion", "event": "walked_it_off"},
+					"messy": {"type": "discretion", "event": "walked_it_off"},
+					"failure": {"type": "defiance", "event": "refused_a_favor"},
+					"catastrophic": {"type": "defiance", "event": "refused_a_favor"},
+				},
+				"favor_hold": {"type": "loyalty", "event": "held_the_bag"},
+			},
+			"grants": {"favor_ask": {"clean": {"cash": 40}, "messy": {"cash": 25}},
+				"favor_hold": {"deterministic": {"cash": 30}}},
+			"effects": {
+				"favor_ask": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "heat": 0.5},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 3, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+				"favor_decline": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+				"favor_hold": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "heat": 1.0},
+				},
+			},
+		},
+	},
+	{
+		"id": "rep_a_warning", "kind": KIND_AMBIENT, "weight": 9,
+		"intents": [INTENT_READ], "gate_bias": "",
+		"districts": [], "slots": [], "once": true,
+		"requirements": [{"type": "day_min", "min": 10}, {"type": "fact_true", "fact": "curtis_visible"}],
+		"line": "Juan's cousin, who has never said ten words to you, stops you outside the building. \"People are saying your name in places you are not.\" He does not say which people. He does not have to.",
+		"observation": {"npc": "juan", "type": "presence", "event": "seen_around",
+			"source": "household"},
+	},
+
+	# Weight: you are a factor. Encounters are political.
+	{
+		"id": "wt_curtis_probe", "kind": KIND_ENCOUNTER, "weight": 9,
+		"intents": [INTENT_DEAL, INTENT_READ], "gate_bias": "",
+		"districts": [], "slots": [], "once": false,
+		"requirements": [{"type": "day_min", "min": 20},
+			{"type": "fact_true", "fact": "curtis_watching_or_worse"}],
+		"line": "Two of Curtis's people, not the ones who collect. These two ask questions -- where you were Tuesday, who you buy from, whether you know a man named Dre -- and every question is one they already know the answer to.",
+		"encounter": {
+			"definition_id": "wt_curtis_probe",
+			"opponent": "Curtis's two",
+			"shape": "negotiation",
+			"choices": ["probe_answer", "probe_walk", "probe_pay", "probe_fold"],
+			"roles": {"probe_answer": ROLE_FIGHT, "probe_walk": ROLE_RUN,
+				"probe_pay": ROLE_PAY, "probe_fold": ROLE_SURRENDER},
+			"admits_crew": true,
+			"deterministic": ["probe_pay", "probe_fold"],
+			"base": {"probe_answer": 0.50, "probe_walk": 0.45},
+			"observations": {
+				"probe_answer": {
+					"clean": {"type": "defiance", "event": "gave_curtis_nothing"},
+					"messy": {"type": "defiance", "event": "gave_curtis_nothing"},
+					"failure": {"type": "honesty", "event": "gave_curtis_a_name"},
+					"catastrophic": {"type": "honesty", "event": "gave_curtis_a_name"},
+				},
+				"probe_walk": {
+					"clean": {"type": "defiance", "event": "walked_past_the_tax"},
+					"messy": {"type": "defiance", "event": "walked_past_the_tax"},
+					"failure": {"type": "violence", "event": "street_fight"},
+					"catastrophic": {"type": "violence", "event": "street_fight"},
+				},
+				"probe_pay": {"type": "submission", "event": "paid_the_tax"},
+				"probe_fold": {"type": "submission", "event": "gave_curtis_a_name"},
+			},
+			"effects": {
+				"probe_answer": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "heat": 0.5},
+					"failure": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 9, "cash_fraction": 0.25, "goods_fraction": 0.0},
+				},
+				"probe_walk": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 3, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 8, "cash_fraction": 0.25, "goods_fraction": 0.25},
+					"catastrophic": {"health": 14, "cash_fraction": 0.5, "goods_fraction": 0.5},
+				},
+				"probe_pay": {
+					"deterministic": {"health": 0, "cash_flat": 100, "goods_fraction": 0.0},
+				},
+				"probe_fold": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+			},
+		},
+	},
+	{
+		"id": "wt_protection", "kind": KIND_AMBIENT, "weight": 8,
+		"intents": [INTENT_READ, INTENT_DEAL], "gate_bias": "",
+		"districts": [], "slots": [MORNING, AFTERNOON], "once": true,
+		"requirements": [{"type": "day_min", "min": 20}, {"type": "crew_count_min", "min": 1}],
+		"line": "The woman who runs the laundromat waits until nobody else is in it. She has heard you have people. She wants to know what it would cost for those people to be on her side of the street. She says it like a price, because it is one.",
+		"observation": {"npc": "curtis", "type": "growth", "event": "asked_for_protection",
+			"source": "neighborhood"},
+	},
+
 	# --- WS-D1 (0.8.0): the meetings -- the city reveals itself --------------
 	#
 	# Nothing criminal is on the board on day one. Each path arrives through
@@ -1717,6 +1847,15 @@ const CARDS: Array[Dictionary] = [
 ## Player-facing copy for the encounter choices, in the two shapes the screen
 ## needs: the button, and the line under it.
 ##
+## WS-D2 (0.8.0): the button is one of seven universal verbs -- FIGHT, RUN,
+## TALK, PAY, SURRENDER, BLUFF, COMPLY -- plus the two crew calls, which are
+## names. The old labels were phrases in each card's voice (STAND THERE, HANDS
+## OUT, KEEP YOUR PACE), and the playtest verdict was that a player should
+## never have to read a button to know what it does. The situation lives in
+## the line UNDER the button now (`CHOICE_COPY`), and the story lives in the
+## result. The ROLE is still what the chassis reads; the verb is what the
+## thumb reads.
+##
 ## Both are reached through the engine's adapter seam. Before that seam existed
 ## Wander shipped with FOUR of its five choices rendering an EMPTY description
 ## and the fifth inheriting Boost's — `talk` read "Hand it back and try to keep
@@ -1724,35 +1863,35 @@ const CARDS: Array[Dictionary] = [
 ## engine's own table is Boost's vocabulary (fight / run / talk / yield) and was
 ## never going to cover a different chain's.
 const CHOICE_LABELS := {
-	"stand": "STAND THERE",
-	"walk": "KEEP MOVING",
-	"hand_over": "GIVE IT UP",
-	"talk": "TALK TO THEM",
-	"keep_walking": "DO NOT STOP",
+	"stand": "FIGHT",
+	"walk": "RUN",
+	"hand_over": "SURRENDER",
+	"talk": "TALK",
+	"keep_walking": "RUN",
 	# SQ-D6's two missing surrender roads, and the run road Curtis's man never
 	# had. Labels stay in each card's own voice -- the ROLE is the thing the
 	# chassis reads, and it is not any of these strings.
-	"hands_out": "HANDS OUT",
-	"keep_pace": "KEEP YOUR PACE",
-	"cross_the_street": "CROSS THE STREET",
+	"hands_out": "COMPLY",
+	"keep_pace": "RUN",
+	"cross_the_street": "SURRENDER",
 	# Duplicated from SCRIPTS.STASH_IT's own "label" rather than read off it:
 	# GDScript's const initializer must be a compile-time-foldable expression,
 	# and a cross-script dictionary subscript is not one. The value this
 	# duplicates is asserted equal to the source in the suite, so the two
 	# cannot drift silently.
-	"stash_it": "STASH IT",
-	"pay_it": "PAY IT",
-	"push_back": "PUSH BACK",
-	"hold_steady": "HOLD STEADY",
-	"stare_back": "STARE BACK",
+	"stash_it": "BLUFF",
+	"pay_it": "PAY",
+	"push_back": "TALK",
+	"hold_steady": "RUN",
+	"stare_back": "BLUFF",
 	# The shakedown room's verbs. SQ-D7 replaced 0.5.0's single KEEP FIGHTING
 	# (which re-rolled STAND at decaying odds) with the triad, offered fresh
 	# against each authored beat: SWING is the fight, BREAK FOR IT is the run
 	# where the beat still has one, GIVE IT UP is the guaranteed out mid-fight
 	# — the same shape HAND OVER already is at the door.
-	"swing": "SWING",
-	"break_for_it": "BREAK FOR IT",
-	"give_it_up": "GIVE IT UP",
+	"swing": "FIGHT",
+	"break_for_it": "RUN",
+	"give_it_up": "SURRENDER",
 	# SQ-D9's chassis actions. Copy is `CREW_CALLS`' own; the labels are here
 	# because this is where the wander adapter looks its buttons up.
 	"call_tone": "CALL TONE",
@@ -1762,32 +1901,37 @@ const CHOICE_LABELS := {
 	# "fight", "run" or "surrender". That is SQ-D6 working: the role is the
 	# structural position and the label is what this particular situation
 	# actually offers you.
-	"ask_why": "ASK WHY",
-	"roll_slow": "ROLL IT DOWN SLOW",
-	"open_it_up": "OPEN IT UP",
-	"give_a_name": "GIVE HIM A NAME",
-	"walk_now": "WALK NOW",
-	"wait_it_out": "WAIT IT OUT",
-	"shut_it_down": "SHUT IT DOWN",
-	"keep_moving_past": "KEEP MOVING",
-	"give_him_something": "GIVE HIM SOMETHING",
-	"put_them_down": "PUT THEM DOWN",
-	"go_around": "GO AROUND",
-	"hands_up": "HANDS UP",
-	"say_your_piece": "SAY YOUR PIECE",
-	"keep_it_moving": "KEEP IT MOVING",
-	"back_out": "BACK OUT",
-	"set_him_straight": "SET HIM STRAIGHT",
-	"let_him_talk": "LET HIM TALK",
-	"be_who_he_wants": "BE WHO HE WANTS",
-	"it_is_my_block": "IT IS MY BLOCK",
-	"not_today": "NOT TODAY",
-	"off_the_block": "OFF THE BLOCK",
-	"step_in": "STEP IN",
-	"cross_over": "CROSS OVER",
-	"look_away": "LOOK AWAY",
+	"ask_why": "TALK",
+	"roll_slow": "BLUFF",
+	"open_it_up": "COMPLY",
+	"give_a_name": "BLUFF",
+	"walk_now": "RUN",
+	"wait_it_out": "COMPLY",
+	"shut_it_down": "TALK",
+	"keep_moving_past": "RUN",
+	"give_him_something": "PAY",
+	"put_them_down": "FIGHT",
+	"go_around": "RUN",
+	"hands_up": "SURRENDER",
+	"say_your_piece": "TALK",
+	"keep_it_moving": "RUN",
+	"back_out": "SURRENDER",
+	"it_is_my_block": "FIGHT",
+	"not_today": "RUN",
+	"off_the_block": "SURRENDER",
+	"step_in": "FIGHT",
+	"cross_over": "RUN",
+	"look_away": "SURRENDER",
 	# BB-D8: the four priced roads.
 	# WS-D1: the meetings, in the universal verbs (WS-D2 standardises the rest).
+	# WS-D2: the favor and the probe.
+	"favor_ask": "TALK",
+	"favor_decline": "RUN",
+	"favor_hold": "COMPLY",
+	"probe_answer": "BLUFF",
+	"probe_walk": "RUN",
+	"probe_pay": "PAY",
+	"probe_fold": "SURRENDER",
 	"goodie_talk": "TALK",
 	"goodie_buy": "PAY",
 	"goodie_pass": "RUN",
@@ -1797,60 +1941,64 @@ const CHOICE_LABELS := {
 	"stick_pass": "RUN",
 	"witness_ask": "TALK",
 	"witness_pass": "RUN",
-	"pay_them": "PAY THEM",
-	"slip_him_something": "SLIP HIM SOMETHING",
-	"pay_them_off": "PAY THEM OFF",
-	"settle_it_here": "SETTLE IT HERE",
+	"pay_them": "PAY",
+	"slip_him_something": "PAY",
+	"pay_them_off": "PAY",
+	"settle_it_here": "PAY",
 }
 
 const CHOICE_COPY := {
-	"stand": "Make them decide how much they want it. Costs blood if they do.",
-	"walk": "Keep the bag and keep going. It works until it does not.",
-	"hand_over": "Hand it over and walk away whole. You lose what you are carrying.",
-	"talk": "Answer what they ask and nothing else. Charisma, not speed.",
-	"keep_walking": "Do not stop and do not run. Either one is an answer.",
+	"stand": "Do not move. Make the two of them decide how much the bag is worth to them.",
+	"walk": "Keep the bag and keep your pace, past them and around the corner.",
+	"hand_over": "Hand it over and walk away whole. What is in your pockets and on your back goes with them.",
+	"talk": "Answer what he asks and nothing he did not. It is a conversation until he decides it is not.",
+	"keep_walking": "Do not stop and do not run. The cruiser has to decide what that means.",
 	# Same duplication, same reason — see CHOICE_LABELS's own note above.
-	"stash_it": "Product goes somewhere that is not on you. Fast hands, faster story.",
-	"pay_it": "The toll on a corner you do not own. Cheap, considering.",
-	"push_back": "Tell him the corner does not have your name on it either.",
-	"hold_steady": "Do not blink first. That is the whole test.",
-	"stare_back": "Make them remember whose block this is too.",
-	"hands_out": "Hands where they can see them. It ends on their terms, and it ends.",
-	"keep_pace": "Same speed, same direction, no answer. See if that is allowed.",
-	"cross_the_street": "Give them the block. It costs nothing you can count.",
-	"swing": "Hit first and keep hitting. This is not a conversation any more.",
+	"stash_it": "Product goes somewhere that is not on you before he is out of the car. Fast hands, faster story.",
+	"pay_it": "The toll on a corner you do not own. Forty dollars, and he stops walking beside you.",
+	"push_back": "Tell him the corner does not have your name on it either, and see what he does with that.",
+	"hold_steady": "Same pace, eyes forward. Give them nothing to react to.",
+	"stare_back": "Hold their eyes across the street until one of them looks away. That is the bet.",
+	"hands_out": "Hands where he can see them. The search happens, and it ends.",
+	"keep_pace": "Same speed, same direction, no answer. Find out whether that is allowed.",
+	"cross_the_street": "Give them the block. Costs nothing you can count, and they will remember it.",
+	"swing": "Hit first and keep hitting. This stopped being a conversation.",
 	"break_for_it": "One gap, one chance. Take it before it closes.",
-	"give_it_up": "Whatever you are holding stops being worth this.",
+	"give_it_up": "Open your hands and say the word. Whatever you are holding stops being worth this.",
 	"call_tone": "He ends it by standing there. Costs a favor.",
 	"let_deshawn_talk": "His voice, not yours. Everybody walks.",
 	# VOX-D1: short declaratives, terms rather than threats, and the addict
 	# lines carry no comedy and no pity.
-	"ask_why": "Make him say the reason out loud. Sometimes there is not one.",
+	"ask_why": "Make him say the reason out loud, politely. Sometimes there is not one.",
 	"roll_slow": "Two inches of window and every answer already ready.",
 	"open_it_up": "Trunk, doors, all of it. It ends when they are finished.",
-	"give_a_name": "A name that is close enough to be boring. Boring gets waved through.",
-	"walk_now": "Before the computer finishes. Every second is worse odds.",
-	"wait_it_out": "Stand there and let it come back. It will come back.",
-	"shut_it_down": "End the conversation. He will not end it himself.",
+	"give_a_name": "A name close enough to be boring. Boring gets waved through.",
+	"walk_now": "Away from the car before the computer finishes. Every second is worse odds.",
+	"wait_it_out": "Stand there and let the name come back. It will come back.",
+	"shut_it_down": "End the conversation in the voice that means once. He will not end it himself.",
 	"keep_moving_past": "Do not slow down and do not answer. He loses interest or he does not.",
-	"give_him_something": "Twenty dollars is cheaper than the next ten minutes.",
-	"put_them_down": "Neither of them is in any state to stop you. Everybody on this lot will see it.",
-	"go_around": "Long way, well lit, nobody's business but yours.",
+	"give_him_something": "Twenty dollars is cheaper than the next ten minutes of him.",
+	"put_them_down": "Both of them, before they agree about you. Everybody on this lot will see it.",
+	"go_around": "The long way, under the lights, nobody's business but yours.",
 	"hands_up": "Whatever is on you is theirs. Nobody swings.",
 	"say_your_piece": "Tell them what you did and did not see. Hope it lands.",
-	"keep_it_moving": "You were never here. Act like it.",
+	"keep_it_moving": "You were never here. Walk like it.",
 	"back_out": "The way you came, at the speed you came. Nothing lost but the walk.",
-	"set_him_straight": "Tell him whose name it is. He is going to argue.",
-	"let_him_talk": "Let him finish and find out what the other man owes.",
-	"be_who_he_wants": "Answer to it. Whatever that man owed, you just agreed to.",
-	"it_is_my_block": "You have been working it. That is the argument.",
-	"not_today": "Not the day for it. There will be another block.",
-	"off_the_block": "Agree not to work here. Leave what you brought.",
-	"step_in": "It is not your problem until you make it yours.",
+	"it_is_my_block": "You have been working it. That is the whole argument, and it is made with your hands.",
+	"not_today": "Not the day for it. Leave them the corner and find another one.",
+	"off_the_block": "Agree not to work here. Leave half of what you brought as the agreement.",
+	"step_in": "Make it your problem. Two of them, one of you, and the man on the ground.",
 	"cross_over": "Other side of the street, same pace, eyes forward.",
-	"look_away": "Somebody is going to remember that you saw.",
+	"look_away": "Keep walking and let it happen. Somebody will remember that you saw.",
 	# BB-D8. A price is a price; the copy says what it buys.
 	# WS-D1: the meetings. The line under the verb carries the situation.
+	"favor_ask": "Ask what is in the bag before you touch it. The answer is the whole favor.",
+	"favor_decline": "You do not hold bags. Say it once and keep walking.",
+	"favor_hold": "Take the bag, stand where he says, and be somebody's for an hour.",
+	"probe_answer": "Answer every question with something true and useless. Give them a story to check.",
+	"probe_walk": "Do not answer. Walk. Find out whether Curtis's people are allowed to stop you yet.",
+	"probe_pay": "A hundred dollars, and the questions stop for today. Curtis learns what your quiet costs.",
+	"probe_fold": "Give them the name they came for. It is not yours, and it will be somebody's problem.",
 	"goodie_talk": "Ask him what he has and what it costs. He has already decided whether to answer.",
 	"goodie_buy": "Twenty dollars for two. He remembers a customer longer than a question.",
 	"goodie_pass": "Eyes forward. He will still be there tomorrow, and so will the corner.",
@@ -1861,7 +2009,7 @@ const CHOICE_COPY := {
 	"witness_ask": "Catch the kid at the corner and ask him how. He will either tell you or size you up.",
 	"witness_pass": "Keep walking. You saw the whole thing, and eleven seconds is a number you now know.",
 	"pay_them": "Sixty dollars buys the corner's patience. Cheaper than the bag, if you have it.",
-	"slip_him_something": "Eighty dollars folded small. He takes it or he takes you in, and you find out which.",
+	"slip_him_something": "Eighty dollars folded small. He takes it or he takes you in.",
 	"pay_them_off": "Thirty dollars and the argument goes back to being theirs.",
 	"settle_it_here": "A cut for the block, and you keep working it. Curtis's people will hear you paid.",
 }
@@ -1894,13 +2042,15 @@ const CHOICE_GUARANTEE := {
 	"give_him_something": "Guaranteed: $20, and he goes and asks somebody else.",
 	"hands_up": "Guaranteed: nobody swings. Half of what is on you leaves with them.",
 	"back_out": "Guaranteed: nothing lost but the walk back.",
-	"be_who_he_wants": "Guaranteed: $60. Whatever that other man owed is yours now.",
 	"off_the_block": "Guaranteed: no injury. Half of what you brought stays on this corner.",
 	"look_away": "Guaranteed: nothing happens to you at all. Somebody will remember that you saw.",
 	"call_tone": "Guaranteed: it ends. It costs a favor you will want back later.",
 	"let_deshawn_talk": "Guaranteed: everybody walks, and you keep what you were carrying.",
 	# BB-D8: a flat price from either pocket, stated whole.
 	# WS-D1: the meetings' guaranteed roads.
+	"favor_hold": "Guaranteed: $30 for the hour, and whatever is in the bag was in your hands. Heat comes with it.",
+	"probe_pay": "Guaranteed: $100, no hands on you, and Curtis knows you pay when asked.",
+	"probe_fold": "Guaranteed: nobody touches you. You gave Curtis a name, and the block will hear whose.",
 	"goodie_buy": "Guaranteed: $20, two units of product, and Goodie knows your face as a customer.",
 	"goodie_pass": "Guaranteed: nothing changes hands. You know where the corner is now.",
 	"lift_leave": "Guaranteed: nothing taken, nothing risked. You know what a loose rack looks like now.",
@@ -2118,23 +2268,6 @@ const RESULT_COPY := {
 			"deterministic": ["YOU BACK OUT", "The way you came, at the speed you came. Nothing lost but the walk, and the block writes it down."],
 		},
 	},
-	"wander_mistaken_identity": {
-		"set_him_straight": {
-			"clean": ["HE SEES IT", "Something in your face finally does not match. He apologizes the way a man apologizes to someone he almost hit."],
-			"messy": ["HE HALF BELIEVES YOU", "He backs off with a shove and a look. He is not sure. He is going to keep not being sure."],
-			"failure": ["HE DOES NOT BUY IT", "Whoever you are, you are the one in front of him. The other man's beating finds a home."],
-			"catastrophic": ["THE OTHER MAN'S DEBT", "You paid it in full, in the currency he came to collect. He goes through your pockets for the interest."],
-		},
-		"let_him_talk": {
-			"clean": ["HE TALKS HIMSELF OUT OF IT", "You let him finish. Somewhere in the middle he says a detail that does not fit, and he hears it too."],
-			"messy": ["HE TAKES A DEPOSIT", "He is not sure enough to hurt you and not unsure enough to leave. He takes some money on account."],
-			"failure": ["HE COLLECTS", "The other man owed him. Now you do, and he takes it in cash while you are still deciding what to say."],
-			"catastrophic": ["HE COLLECTS ALL OF IT", "Whatever the other man owed, you had it on you, and now you do not. He hits you once on the way out, for the other man."],
-		},
-		"be_who_he_wants": {
-			"deterministic": ["YOU ANSWER TO IT", "You take a name that is not yours and pay the debt that came with it. He will remember the face he collected from."],
-		},
-	},
 	"wander_territorial_beef": {
 		"it_is_my_block": {
 			"clean": ["THE BLOCK IS YOURS", "You do not move, and they see something in that. They go, and the corner is quieter than it was."],
@@ -2170,6 +2303,47 @@ const RESULT_COPY := {
 		},
 		"look_away": {
 			"deterministic": ["YOU LOOK AWAY", "Nothing happens to you at all. Somebody up the block is going to remember that you saw and did not."],
+		},
+	},
+}
+
+## WS-D2: the favor and the probe, same shape.
+const PHASE_RESULT_COPY := {
+	"rep_a_favor": {
+		"favor_ask": {
+			"clean": ["HE TELLS YOU", "Cash, he says, and it is. You hold it for an hour by the Chevron and he tips you out of it when he comes back. You are somebody who can be asked now."],
+			"messy": ["HE TELLS YOU MOST OF IT", "He says clothes. It is heavier than clothes. You hold it anyway, and he pays anyway, and now you both know something about each other."],
+			"failure": ["HE DOES NOT LIKE THE QUESTION", "Asking what is in it was answering no. He takes the bag somewhere else, and takes your name with him."],
+			"catastrophic": ["WRONG THING TO ASK", "He decides you are the kind who asks. He makes sure you remember not to, and takes his bag with him."],
+		},
+		"favor_decline": {
+			"clean": ["YOU DO NOT HOLD BAGS", "He nods like he expected it and finds somebody who does. No harm. No favor owed either way."],
+			"messy": ["HE ASKS AGAIN", "You say no twice. The second no costs you a look you will get again someday."],
+			"failure": ["HE REMEMBERS THAT", "Saying no to a man who knows your name is a thing the man does with your name afterward."],
+			"catastrophic": ["HE TAKES IT PERSONALLY", "He decides your no was about him. It gets brief and physical, and it will not be the last time you see him."],
+		},
+		"favor_hold": {
+			"deterministic": ["YOU HOLD THE BAG", "An hour by the Chevron with somebody else's problem in your hand. He comes back, pays, and says nothing about what was in it. Neither do you."],
+		},
+	},
+	"wt_curtis_probe": {
+		"probe_answer": {
+			"clean": ["THEY GET A STORY", "Every answer true, none of them useful. They leave with a Tuesday that checks out and nothing Curtis can use. That is the whole game, and you played it."],
+			"messy": ["THEY GET MOST OF A STORY", "One answer came out too fast. They noticed. Curtis will hear that you talk, and that you are careful, and he will weigh those against each other."],
+			"failure": ["THEY GET A NAME", "You gave them something real to make the rest sound real. It was Dre's. That is going to be a conversation."],
+			"catastrophic": ["THEY GET EVERYTHING", "You ran out of story before they ran out of questions. Curtis knows who you buy from, where you keep it, and what your Tuesdays look like."],
+		},
+		"probe_walk": {
+			"clean": ["THEY LET YOU WALK", "Not yet, one of them says to the other, and they do not follow. Curtis hears that you do not stop for his people. He files it."],
+			"messy": ["THEY WALK WITH YOU", "Half a block of it, one on either side, asking the questions anyway. You gave nothing, and it cost you a shoulder."],
+			"failure": ["THEY STOP YOU", "It turns out they were allowed to. Not badly, and not for long, but Curtis's people put hands on you and the block saw it."],
+			"catastrophic": ["THEY MAKE THEIR POINT", "Curtis's people do not hit you like they are angry. When it is over you have answered everything, and paid for making them ask."],
+		},
+		"probe_pay": {
+			"deterministic": ["YOU PAY FOR QUIET", "A hundred dollars and the questions stop. Curtis now knows the exact price of your afternoon, and that you will pay it."],
+		},
+		"probe_fold": {
+			"deterministic": ["YOU GIVE THEM A NAME", "It was not yours. They leave satisfied, and somewhere on the block a man you have met twice just became Curtis's problem instead of you."],
 		},
 	},
 }
@@ -2237,7 +2411,8 @@ static func result_copy(card_id: String, choice_id: String, tier: String,
 		in_room: bool) -> Array:
 	if CREW_RESULT_COPY.has(choice_id):
 		return CREW_RESULT_COPY[choice_id]
-	var card_table: Dictionary = RESULT_COPY.get(card_id, MEETING_RESULT_COPY.get(card_id, {}))
+	var card_table: Dictionary = RESULT_COPY.get(card_id,
+		MEETING_RESULT_COPY.get(card_id, PHASE_RESULT_COPY.get(card_id, {})))
 	var table: Dictionary = card_table.get("room", {}) if in_room else card_table
 	var road: Dictionary = table.get(choice_id, {})
 	if road.has(tier):

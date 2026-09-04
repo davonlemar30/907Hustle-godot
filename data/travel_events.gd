@@ -61,10 +61,11 @@ const CHECKPOINT := {
 	},
 }
 
+## WS-D2 (0.8.0): the universal verbs; the line under each carries the stop.
 const CHOICE_LABELS := {
-	"talk": "TALK YOUR WAY THROUGH",
-	"run_it": "RUN FOR IT",
-	"hand_over": "HAND IT OVER",
+	"talk": "TALK",
+	"run_it": "RUN",
+	"hand_over": "COMPLY",
 }
 
 const CHOICE_COPY := {

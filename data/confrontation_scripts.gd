@@ -224,6 +224,16 @@ const STICK_SCRIPTS := {
 ## The loop's action copy, all scripts. Labels are the buttons; copy is the line
 ## under them. Reached through the engine's adapter seam (`choice_label` /
 ## `choice_copy` on the stickup system), the same seam Wander's vocabulary uses.
+## WS-D2 (0.8.0): the caught encounter's four roads in the universal verbs.
+## The room's own verbs (PRESS, WATCH THE ROOM, TAKE AND GO...) are the
+## robbery's, not a confrontation's, and keep their names below.
+const STICK_CAUGHT_CHOICE_LABELS := {
+	"fight": "FIGHT",
+	"run": "RUN",
+	"talk": "TALK",
+	"yield": "SURRENDER",
+}
+
 const STICK_CHOICE_LABELS := {
 	"press": "PRESS",
 	"talk": "TALK",
@@ -408,9 +418,15 @@ const LIFT_BEATS := {
 ## HAND IT BACK). `fight`/`run`/`talk`/`yield` are unlisted on purpose --
 ## boost.gd's adapter methods fall back to the engine's own
 ## `choice_id.capitalize()` for them, unchanged from before this file existed.
+## WS-D2 (0.8.0): the universal verbs. YIELD is SURRENDER, SETTLE IT is PAY,
+## HAND IT BACK is COMPLY. The ids and the roads are unchanged.
 const LIFT_CHOICE_LABELS := {
-	"bribe": "SETTLE IT",
-	"hand_it_back": "HAND IT BACK",
+	"fight": "FIGHT",
+	"run": "RUN",
+	"talk": "TALK",
+	"yield": "SURRENDER",
+	"bribe": "PAY",
+	"hand_it_back": "COMPLY",
 }
 
 const LIFT_CHOICE_COPY := {
@@ -454,13 +470,13 @@ const MARKET_SCRIPTS := {
 			},
 		],
 		"actions": {
-			"count_again": {"label": "COUNT IT AGAIN", "attribute": "intelligence",
+			"count_again": {"label": "TALK", "attribute": "intelligence",
 				"shape": "negotiation", "base": 0.60,
 				"copy": "Catch it before he is gone. Numbers do not get embarrassed."},
-			"press_him": {"label": "PRESS HIM", "attribute": "combat",
+			"press_him": {"label": "FIGHT", "attribute": "combat",
 				"shape": "confrontation", "base": 0.50,
 				"copy": "Full price, plus he remembers. Costs blood if he minds."},
-			"let_it_ride": {"label": "LET IT RIDE", "deterministic": true,
+			"let_it_ride": {"label": "SURRENDER", "deterministic": true,
 				"copy": "Eat the short and keep the corner quiet. Sometimes thirty dollars is the play."},
 		},
 	},
@@ -487,13 +503,13 @@ const MARKET_SCRIPTS := {
 			},
 		],
 		"actions": {
-			"stand_on_it": {"label": "STAND ON IT", "attribute": "combat",
+			"stand_on_it": {"label": "FIGHT", "attribute": "combat",
 				"shape": "confrontation", "base": 0.44,
 				"copy": "The corner is yours if you are still on it after.",
 				"observation": {"type": "defiance", "event": "held_the_corner"}},
 			"call_tone": {"label": "CALL TONE", "crew": "tone", "deterministic": true,
 				"copy": "He ends it by standing there. Costs a favor."},
-			"step_off": {"label": "STEP OFF", "deterministic": true,
+			"step_off": {"label": "SURRENDER", "deterministic": true,
 				"copy": "Live to sell somewhere else. The block remembers who moved.",
 				"observation": {"type": "submission", "event": "ceded_the_corner"}},
 		},
@@ -506,7 +522,7 @@ const MARKET_SCRIPTS := {
 ## this stop's seizure only), failure worsens it — they watched you do it
 ## (+0.5 raw Heat on top of the stop's own costs).
 const STASH_IT := {
-	"label": "STASH IT", "attribute": "intelligence", "shape": "escape_route",
+	"label": "BLUFF", "attribute": "intelligence", "shape": "escape_route",
 	"base": 0.55, "heat_on_failure": 0.5,
 	"copy": "Product goes somewhere that is not on you. Fast hands, faster story.",
 }
@@ -531,13 +547,13 @@ const MEETUP_SCRIPT := {
 		"The friend is between you and the lot now, and the buyer has stopped making eye contact. The price is about to change hands again.",
 	],
 	"actions": {
-		"read_it": {"label": "READ IT", "attribute": "intelligence",
+		"read_it": {"label": "BLUFF", "attribute": "intelligence",
 			"shape": "escape_route", "base": 0.58,
 			"copy": "Clock the play before it starts. Leave with everything."},
-		"stay_commercial": {"label": "STAY COMMERCIAL", "attribute": "charisma",
+		"stay_commercial": {"label": "TALK", "attribute": "charisma",
 			"shape": "negotiation", "base": 0.52,
 			"copy": "Receipts, handshakes, everybody's day continues."},
-		"refund_him": {"label": "GIVE IT BACK", "deterministic": true,
+		"refund_him": {"label": "PAY", "deterministic": true,
 			"copy": "Refund the money, take the item back, sell it to somebody with fewer friends."},
 	},
 }

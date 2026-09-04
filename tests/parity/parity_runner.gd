@@ -7662,8 +7662,9 @@ func _check_engine_projections(gs: Node, engine: RefCounted) -> void:
 	var first: Dictionary = rows[0]
 	first["label"] = "MUTATED"
 	var rows_again: Array = engine.choice_summaries()
+	# WS-D2 (0.8.0): the Lift's roads are labelled in the universal verbs now.
 	_expect_str("mutating a projection does not change the chain",
-		str((rows_again[0] as Dictionary)["label"]), "Fight")
+		str((rows_again[0] as Dictionary)["label"]), "FIGHT")
 
 	# Odds come from the chain, so a reload shows the numbers the player decided
 	# on rather than odds re-derived against state that has since moved.
@@ -13245,8 +13246,9 @@ func _check_consequence_scene(gs: Node, gm: Node, engine: RefCounted) -> void:
 	# BB-D6 (0.7.0): a road is its button now -- the label rides the Button's
 	# own text, not a Label above it.
 	var offered: Array = _button_texts(screen)
+	# WS-D2 (0.8.0): the universal verbs -- YIELD reads SURRENDER now.
 	_expect_true("the decision stage offers the four responses",
-		"FIGHT" in offered and "RUN" in offered and "TALK" in offered and "YIELD" in offered)
+		"FIGHT" in offered and "RUN" in offered and "TALK" in offered and "SURRENDER" in offered)
 	# The audit. The percentage rule is FS-003.11's and is unchanged; what
 	# moved is everything underneath it.
 	_expect_true("no rendered label shows a raw percentage", not joined.contains("%"))
@@ -13386,9 +13388,9 @@ func _check_consequence_scene(gs: Node, gm: Node, engine: RefCounted) -> void:
 		_expect_true("the retaliation names the situation",
 			joined.contains("THEY WERE WAITING"))
 		var retaliation_offered: Array = _button_texts(screen)
-		_expect_true("it offers fight, run and yield",
+		_expect_true("it offers fight, run and surrender",
 			"FIGHT" in retaliation_offered and "RUN" in retaliation_offered
-				and "YIELD" in retaliation_offered)
+				and "SURRENDER" in retaliation_offered)
 		_expect_true("and offers no talk lane", not ("TALK" in retaliation_offered))
 		_expect_true("the retaliation stage shows no percentage", not joined.contains("%"))
 		_free_screen(screen)
@@ -20167,7 +20169,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13376
+const MIN_CHECKS := 13493
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -22910,11 +22912,16 @@ const ROSTER_GATES := {
 	"wander_vehicle_search": "on_the_road_and_noticed",
 	"wander_warrant_check": "priors",
 	"wander_desperate_approach": "none",
-	"wander_lot_side": "night",
-	"wander_wrong_place": "night",
-	"wander_mistaken_identity": "none",
-	"wander_territorial_beef": "market_watched",
-	"wander_somebody_elses_problem": "curtis_visible",
+	"wander_lot_side": "known_night",
+	"wander_wrong_place": "known_night",
+	"wander_territorial_beef": "reputation_market_watched",
+	"wander_somebody_elses_problem": "weight_curtis_visible",
+	# WS-D2 (0.8.0): the phases. Week Zero cards stop after day four; the
+	# favor and the probe start on days ten and twenty.
+	"wander_young_ones": "week_zero",
+	"wander_shakedown": "known_carrying",
+	"rep_a_favor": "reputation",
+	"wt_curtis_probe": "weight_curtis_watching",
 }
 
 func _stage_roster_gate(gs: Node, gm: Node, gate: String) -> void:
@@ -22927,6 +22934,28 @@ func _stage_roster_gate(gs: Node, gm: Node, gate: String) -> void:
 	gs.time_slots_today = 1
 	gs.time_slot = "AFTERNOON"
 	match gate:
+		"week_zero":
+			gs.day = 2
+		"known_night":
+			gs.day = 6
+			gs.time_slots_today = 3
+			gs.time_slot = "NIGHT"
+		"known_carrying":
+			gs.day = 6
+			gs.time_slots_today = 3
+			gs.time_slot = "NIGHT"
+		"reputation":
+			gs.day = 12
+		"reputation_market_watched":
+			gs.day = 12
+			(gm.system("consequence") as Object).add_pressure("north_star_lot",
+				"market", 7.0, "cause:roster:probe")
+		"weight_curtis_visible":
+			gs.day = 22
+			gs.curtis_phase = "watching"
+		"weight_curtis_watching":
+			gs.day = 22
+			gs.curtis_phase = "watching"
 		"on_the_road_and_noticed":
 			gs.districts_unlocked = ["north_star_lot", "downtown"]
 			gs.heat = 6.0
@@ -22952,6 +22981,10 @@ func _check_roster_2026(gs: Node, gm: Node) -> void:
 func _check_roster_reachability(gs: Node, gm: Node) -> void:
 	var wander_sys: Object = gm.system("wander")
 	for card_id in ROSTER_GATES.keys():
+		# WS-D2: a Week Zero card is reachable on a fresh day-one run BY
+		# DESIGN -- its gate is a ceiling, proven the other way round below.
+		if str(ROSTER_GATES[card_id]) == "week_zero":
+			continue
 		# Gate unsatisfied: the card must NOT be reachable. Half of a gate is
 		# not a gate, and a requirement nobody ever fails is decoration.
 		gs.reset_to_new_game()
@@ -23049,8 +23082,13 @@ func _check_roster_every_road(gs: Node, gm: Node) -> void:
 			var cash_taken: int = dirty_before - int(wallet.dirty_balance())
 			var expected_cash: int = int(authored.get("cash_flat", 0)) if authored.has("cash_flat") \
 				else int(round(float(dirty_before) * float(authored.get("cash_fraction", 0.0))))
+			# WS-D1/D2 (0.8.0): a road may HAND the player cash too (the favor's
+			# thirty), credited dirty through the same wallet; the net is what
+			# the table says minus what the table grants.
+			var granted: int = int((((encounter.get("grants", {}) as Dictionary)
+				.get(choice_id, {}) as Dictionary).get(tier, {}) as Dictionary).get("cash", 0))
 			_expect_int("%s/%s/%s takes its authored cash"
-				% [card_id, choice_id, tier], cash_taken, mini(expected_cash, dirty_before))
+				% [card_id, choice_id, tier], cash_taken, mini(expected_cash, dirty_before) - granted)
 
 			# Goods: through `lose_cargo`'s one owner, floored at one unit for
 			# any authored fraction above zero.
@@ -23145,6 +23183,9 @@ func _check_gate_rate_independent_of_pool(gs: Node, gm: Node) -> void:
 	gs.inventory = {"weed": 5}
 	gs.time_slots_today = 3
 	gs.time_slot = "NIGHT"
+	# WS-D2 (0.8.0): deep into a run, so the phase-gated cards are staged too.
+	gs.day = 22
+	_reveal_everything(gs)
 	gs.curtis_phase = "watching"
 	gs.districts_unlocked = ["north_star_lot", "downtown"]
 	gs.heat = 6.0
@@ -23213,7 +23254,7 @@ func _check_gate_rate_independent_of_pool(gs: Node, gm: Node) -> void:
 
 	# The one thing the pool DOES decide is whether the gate can open at all --
 	# and the honest finding is that in shipped content it never blocks:
-	# `wander_desperate_approach`, `wander_mistaken_identity` and
+	# `wander_desperate_approach` (and, on days one to four, `wander_young_ones`) and
 	# `wander_young_ones` are authored for any district, any slot, with no
 	# requirements, so the pool has a floor of three no matter what the player
 	# has or has not done. `_roll_gate`'s empty-pool branch is therefore
@@ -23224,10 +23265,13 @@ func _check_gate_rate_independent_of_pool(gs: Node, gm: Node) -> void:
 	gs.current_district_id = "north_star_lot"
 	gs.time_slots_today = 0
 	gs.time_slot = "MORNING"
+	# WS-D2 (0.8.0): the floor is two on a cold day-one morning -- the
+	# desperate approach, which is authored for anybody anywhere, and the
+	# three on the wall, who size up every new face for the first four days.
 	_expect_true("the pool has an ungated floor, so the gate is never silenced "
 		+ "by content (%d cards at a cold morning)"
 		% (wander_sys.eligible_encounters() as Array).size(),
-		(wander_sys.eligible_encounters() as Array).size() >= 3)
+		(wander_sys.eligible_encounters() as Array).size() >= 2)
 	gs.reset_to_new_game()
 
 # === 0.5.0 PR C — The checkpoint (STR-D4) ===================================

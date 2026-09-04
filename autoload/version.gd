@@ -61,7 +61,18 @@ extends Node
 ## floor rises with a cold cap and a first-walk guarantee, and PAY is a fourth
 ## road on four cards (BB-D8/D9). New player-facing behaviour, squarely MINOR.
 ## No schema bump: interim results ride the persisted chain's own blocks.
-const VERSION := "0.9.0"
+##
+## 1.0.0 (One Good Run): the run has an end. A way out priced by what the
+## player built, three ways it ends on them, and one reckoning screen
+## (OG-D4); rank derived from the ledgers and gating crew, corners, the
+## board and the door (OG-D2); a weapon, a car and a trunk (OG-D3); the
+## Lift walking out with a thing the 907List fences (OG-D5); Curtis's
+## blocks fighting back (OG-D6). "The shape of the run itself" changed --
+## it has a beginning, a middle and an ending -- which is the MAJOR case
+## this file's header has been holding at 0 for. Four schema bumps rode
+## the build (v29 rent arrears, v30 the kit, v31 the ending, v32 hot
+## goods), every one migrated, none breaking.
+const VERSION := "1.0.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

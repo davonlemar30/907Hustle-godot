@@ -2052,6 +2052,116 @@ with shipped code).
 
 ---
 
+## D-28 — One Good Run: the run has an end
+
+**Decided** 2026-09-04 · **Ships in** 1.0.0, seven PRs (`#146` the rent
+day, `#147` earn your name, `#148` the player's kit, `#149` one good run
+has an end, `#150` stolen goods have a name, `#151` his blocks fight back,
+the close-out) · **Source:** `907Hustle_Build_Prompt_v4.md`, the creative
+director's 0.9.0 playtest
+
+### The question
+
+0.9.0 had a beginning and a middle. The playtest named what was missing:
+a bill the player could not see, a rent that did not escalate, a respect
+number nobody earned, a player with no kit and no face, a city with no
+pictures, a Lift and a board that were free money, and a rival whose
+blocks were labels. The prompt drew the lines: parity holds or rises,
+every PR green before the next, PR 1 first, the schema moves only for
+new persisted state, the ending uses VISION_REVIEW §5, the car uses
+BLOCK_REMEMBERS_REVIEW §7, the pipeline uses §8, and the weapon, car and
+stash extend existing systems rather than adding engines.
+
+### The rulings
+
+**OG-D1 — the rent escalates in her voice.** `rent_arrears_day` (v29) is
+the one new field. The night it is due is a text; a day late is a feed
+line and a `missed_obligation` on Yalonda's ledger (weighted -1.0); two
+days is her second text and Juan's; every third day is a house warning
+and the third warning is the eviction (the existing
+`household_warnings` limit, not a new counter). Paid late is a line, not
+a discount. People hides any NPC whose ledger is empty; the nav badges
+the phone when a bill is due. Rejected: a rent grace period (the prompt
+asked for escalation, not mercy).
+
+**OG-D2 — rank is derived, never persisted.** `data/rank.gd` scores the
+observation ledgers every NPC already keeps, by type weight with a cap
+of three per type, into six tiers (0/3/8/15/25/40). `gs.respect` is
+deleted, from the persisted fields too. Gates are requirements
+(`rank_min`) and SurfaceVisibility facts (`rank_index`), not new code
+paths: crew at Known, corners at Player, the board's tiers at Known,
+the door at Boss. The suites stage a rank through synthetic ledger rows
+where an arm is about corners or crew rather than about earning a name;
+the gate itself is asserted where it lives. Rejected: a persisted rank
+with a rank-up event (a rank you can save is a rank that disagrees with
+the ledger the first time a migration touches one).
+
+**OG-D3 — the kit extends what exists.** A weapon is one field and a
+table (`WEAPONS`: FIGHT bonus, heat when drawn); the bonus is applied
+to the card's shown odds before the chain opens, so the button says the
+number; the cost lands as heat at the beat. The beater is one field, a
+derived cargo (`BASE_CARGO + BEATER_CARGO` on reconcile, so a reload
+cannot drift it), a trunk dictionary, and four authored costs as
+lifecycle steps and observations rather than a vehicle system. Both are
+bought from people: wander meetings for the knife and the piece, a text
+from Sonny for the car, with `_resolve_pay` now applying a card's grants.
+Portraits, banners and interiors resolve by name through one table with
+a null fallback, so every image slot renders as nothing until the file
+exists; `docs/ASSET_CHECKLIST.md` is the list. The ride is a flow sheet
+(`build_ride`), one per trip, per district and per mode. Rejected:
+vehicle encounters this build (a wander card with `has_vehicle` is the
+seam; the deck's budget went to the two weapon meetings).
+
+**OG-D4 — the run has an end, and every loss warns first.** The way out
+is `WAY_OUT_BASE + PER_CORNER × corners + PER_CREW × crew`, clean
+money only, at Boss, chosen on Home and settled at `POST_SETTLE:way_out`;
+the card is visible from Connected so the door is seen before it
+opens. The losses: the existing eviction; a third serious booking
+(`SERIOUS` = stick T2/T3, boost T2, counted in `arrest_record`); and
+Curtis at max awareness with no recruited crew, as a three-morning
+countdown (`curtis_doorstep`, v31) -- a one-way text, his car, the door
+-- reset the morning either condition stops being true. One reckoning
+screen for all four kinds, with per-NPC lines by disposition band and
+run earnings by source (`run_earnings`, v31). Rejected: the door on the
+first maxed morning (the economy driver's stickup profiles died on day
+six with no line in the feed; a loss the player cannot see coming is a
+crash, not an ending).
+
+**OG-D5 — stolen goods have a name.** Tier 1 and 2 lifts produce
+`{kind, name, value, heat, from, day}` into `hot_goods` (v32), value
+being the same keyed take roll the cash was, so the frozen boost
+pattern did not move. The 907List lists a hot item as a holding flagged
+`hot` that always waits a day and then resolves through `_fence`: a
+seeded roll against cumulative thresholds (cop, tag, unsold, clean),
+Pherris halving cop and tag, the clean price `FENCE_RATE` of value as
+dirty cash under a `fence` earning source. Tier 3 stays merchandise
+for Slide. Every parity probe that read "the money moved" now reads
+`_boost_gain` (cash or a new item at its value). The boost corridor's
+floor fell to 0 with a note: what walked out did not move, what came
+back did. Rejected: fencing at the tap (the wait is the decision), and
+a fence rate above sixty (the review asked for friction; the constant
+is one line if play says otherwise).
+
+**OG-D6 — his blocks fight back, on the loop the game has.** A claim on
+a Curtis block opens a `KIND_CONFRONTATION` chain through the existing
+engine with a `territory` source adapter; `contest_chance` is pure and
+pinned; FIGHT's win resolves through `_take_from_curtis` (claim, live
+front, retaliation queued); RUN is deterministic and marks his ledger.
+Nightly probes at SETTLE test undefended, defended and contested blocks
+at three pinned rates; a lost block is a feed line and a crew member's
+text in their voice. The territory suite takes his corners by hand
+where an arm is about a held corner rather than the fight. Rejected: a
+separate war system (the confrontation loop and the front already
+existed; the contest is one adapter and one nightly step).
+
+### Recommended next, from the review
+
+`docs/ONE_GOOD_RUN_REVIEW.md`: the images, then sound, then the first
+ten minutes; the road not taken on the reckoning; per-weapon beat copy;
+vehicle encounters on the wander deck; a contest win rate from a
+playtest; the cuts the last review already asked for (the 907List's
+execution modes, soldiers into crew).
+
 ## D-27 — The Block Remembers: the screen holds, the city gets a fourth district, and the crew has ideas
 
 **Decided** 2026-09-03 · **Ships in** 0.9.0, six PRs (`#139` the screen

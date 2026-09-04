@@ -12,14 +12,14 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `0.9.0`** — shown bottom-right on the title screen, and stamped into
+**Current: `1.0.0`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
 
 | Part | Increments when |
 | --- | --- |
-| **MAJOR** | Save compatibility breaks, or the shape of a run changes. `0` until the game is feature-complete. |
+| **MAJOR** | Save compatibility breaks, or the shape of a run changes. `1` from 1.0.0: the run has a beginning, a middle and an ending. |
 | **MINOR** | A feature milestone ships — new surfaces, new systems, a playtest pass. |
 | **PATCH** | Bug fixes and tuning against an unchanged feature set. |
 

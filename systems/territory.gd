@@ -76,6 +76,10 @@ func claim_blocker(block_id: String) -> String:
 		return "No such corner."
 	if gs.holds_block(block_id):
 		return "Already yours."
+	# OG-D2: a corner needs a name behind it.
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure != null and not exposure.has_rank("player"):
+		return "You are not a player yet. A corner needs a name behind it."
 	# BR-D4: a block is claimed where it stands. The district has to be one
 	# the run knows, and you have to be in it.
 	var district := str(b.get("district", "north_star_lot"))

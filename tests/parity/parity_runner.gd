@@ -2364,6 +2364,7 @@ func _check_crew_regression() -> void:
 	gs.cash = 5000
 
 	# Recruiting: cost, roster, the new proofs field, and the rank label.
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_true("crew recruit dispatches", gm.dispatch("recruit_crew", {"crew_id": "eli"}))
 	_expect_int("crew recruit charges cost", gs.cash, 5000 - int(gs.crew_member_by_id("eli")["cost"]))
 	_expect_true("crew recruit is active", gs.is_recruited("eli"))
@@ -2376,7 +2377,9 @@ func _check_crew_regression() -> void:
 	_expect_true("boost sees field crew", boost != null and crew.has_field_crew())
 
 	# Capacity is two, and it is read through the function now.
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_true("crew second recruit fits", gm.dispatch("recruit_crew", {"crew_id": "deshawn"}))
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_str("crew third recruit is refused by capacity",
 		crew.recruit_blocker("tone"), "No room. %d is all you can carry." % gs.crew_capacity())
 
@@ -17196,6 +17199,7 @@ func _econ_try_turf(gs: Node, gm: Node, metrics: Dictionary) -> bool:
 		var cost: int = int(block["claim_cost"])
 		if cost >= best_cost:
 			continue
+		_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 		if not str(terr.claim_blocker(str(block["id"]))).is_empty():
 			continue
 		if int(gs.cash) < cost + reserve:
@@ -17204,6 +17208,7 @@ func _econ_try_turf(gs: Node, gm: Node, metrics: Dictionary) -> bool:
 		best_id = str(block["id"])
 	if best_id.is_empty():
 		return false
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	if not gm.dispatch("claim_block", {"block_id": best_id}):
 		return false
 	metrics["turf_spend"] = int(metrics.get("turf_spend", 0)) + best_cost
@@ -19651,6 +19656,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_mountain_view(gs, gm)
 	_check_their_own_ideas(gs, gm)
 	_check_rent_escalation(gs, gm)
+	_check_earn_your_name(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -20063,16 +20069,20 @@ func _check_your_corners_their_corners(gs: Node, gm: Node) -> void:
 	gs.current_district_id = "north_star_lot"
 	gs.cash = 5000
 	gs.soldiers_idle = 4
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_true("Downtown is closed on day one",
 		not str(territory.claim_blocker("downtown_transit_center")).is_empty())
 	_expect_true("Downtown's tab says what opens it",
 		str(territory.district_blocker("downtown")).contains("one corner"))
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	gm.dispatch("claim_block", {"block_id": "spenard_rec_lot"})
 	gs._reconcile_progression_latches()
 	_expect_true("one corner opens Downtown", "downtown" in gs.districts_unlocked)
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_str("...but you claim from where you stand",
 		str(territory.claim_blocker("downtown_transit_center")), "You have to be standing there.")
 	gs.current_district_id = "downtown"
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_true("standing Downtown, the venue is claimable",
 		gm.dispatch("claim_block", {"block_id": "downtown_transit_center"}))
 	_expect_int("...and counts on Downtown's board", int(territory.held_in("downtown")), 1)
@@ -20083,6 +20093,7 @@ func _check_your_corners_their_corners(gs: Node, gm: Node) -> void:
 	_expect_true("two corners open Ship Creek", "airport_industrial" in gs.districts_unlocked)
 	gs.current_district_id = "airport_industrial"
 	var before: int = int(economy.buy_unit_price("north_star_lot", "weed"))
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_true("the lot is claimable from the yard",
 		gm.dispatch("claim_block", {"block_id": "shipcreek_post_road_lot"}))
 	_expect_true("a held lot is a cut on the buy (%.2f)" % float(territory.supply_discount()),
@@ -20364,6 +20375,74 @@ func _visible_names(screen: Node) -> Array:
 			out.append(text)
 	return out
 
+## OG-D2 (1.0.0 PR 2): earn your name. Rank is the ledgers summed; it
+## gates crew, corners and the board; reaching one is a line and a text.
+func _check_earn_your_name(gs: Node, gm: Node) -> void:
+	var exposure: Node = get_node("/root/Exposure")
+	var rank := preload("res://data/rank.gd")
+	gs.reset_to_new_game()
+	gs.npc_ledgers = {}
+	gs.phone_inbox = []
+	_expect_str("a fresh run is nobody", str(exposure.rank_id()), "nobody")
+	_expect_true("the HUD has no number to show", not ("respect" in gs))
+	_expect_true("nobody cannot recruit",
+		str(gm.system("crew").recruit_blocker("eli")).contains("Get known"))
+	gs.cash = 5000
+	gs.soldiers_idle = 2
+	gs.current_district_id = "north_star_lot"
+	_expect_true("nobody cannot claim a corner",
+		str(gm.system("territory").claim_blocker("spenard_rec_lot")).contains("not a player"))
+	_stage_rank(gs, "known")
+	_expect_str("staged rows make a name", str(exposure.rank_id()), "known")
+	_expect_str("known can recruit", str(gm.system("crew").recruit_blocker("eli")), "")
+	_expect_true("known still cannot claim",
+		str(gm.system("territory").claim_blocker("spenard_rec_lot")).contains("not a player"))
+	_stage_rank(gs, "player")
+	_expect_str("a player can claim", str(gm.system("territory").claim_blocker("spenard_rec_lot")), "")
+	# The moment: written at the write, once.
+	_lifecycle_ready(gs)
+	gs.npc_ledgers = {}
+	# One point short of NEW FACE; the rent paid is the one point.
+	_stage_rank(gs, "new_face", 1)
+	gs.phone_inbox = []
+	gs.cash = 500
+	gs.rent_due_day = int(gs.day)
+	_expect_true("one more thing seen tips the rank", gm.dispatch("pay_rent", {}))
+	_expect_true("...into new face", exposure.rank_index() >= rank.index_of("new_face"))
+	var noticed := false
+	for m in gs.phone_inbox:
+		if str((m as Dictionary).get("from", "")) == "Juan" and str((m as Dictionary).get("text", "")).contains("roommate"):
+			noticed = true
+	_expect_true("...and Juan noticed", noticed)
+	_expect_int("...once", gs.phone_inbox.size(), 1)
+	# The board wants a name too.
+	gs.reset_to_new_game()
+	gs.npc_ledgers = {}
+	gs.list_flips = int(gs.FLIPPER_FLIP_REQUIREMENT)
+	gm.system("list")._update_tier()
+	_expect_int("flips alone do not make a flipper", int(gs.list_tier), 1)
+	_stage_rank(gs, "known")
+	gm.system("list")._update_tier()
+	_expect_int("...a known name does", int(gs.list_tier), 2)
+	gs.reset_to_new_game()
+
+## Synthetic ledger rows that add up to a rank: `short_by` leaves the score
+## that many points under the floor.
+func _stage_rank(gs: Node, tier_id: String, short_by: int = 0) -> void:
+	var rank := preload("res://data/rank.gd")
+	var floor_score: int = int(rank.by_index(rank.index_of(tier_id))["floor"])
+	var want: int = maxi(0, floor_score - short_by)
+	var rows: Array = []
+	var have := 0
+	var i := 0
+	while have < want:
+		var step: int = mini(2, want - have)
+		rows.append({"key": "stage:%d" % i, "type": "growth" if step == 2 else "presence",
+			"event": "staged", "location": "north_star_lot", "source": "network", "count": 1, "day": 1})
+		have += step
+		i += 1
+	gs.npc_ledgers["juan"] = rows
+
 func _check_door_to_work(gs: Node, gm: Node) -> void:
 	var access: Node = get_node_or_null("/root/SurfaceVisibility")
 	var nav: Node = get_node("/root/ScreenManager")
@@ -20444,6 +20523,7 @@ func _check_door_to_work(gs: Node, gm: Node) -> void:
 	gs.jobs_discovered = []
 	_expect_true("a run that never walked has not found work",
 		not access.is_unlocked(access.MENU_JOBS))
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_true("recruiting the fixer goes through",
 		gm.dispatch("recruit_crew", {"crew_id": "deshawn"}))
 	_expect_true("and meeting somebody who hires still opens the door",
@@ -20525,8 +20605,10 @@ func _check_city_chain(gs: Node, gm: Node) -> void:
 	gs.reset_to_new_game()
 	gs.cash = 100000
 	_expect_int("a fresh run has no soldier free", int(gs.soldiers_idle), 0)
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_str("so a corner needs somebody free to stand on it",
 		str(terr.claim_blocker(block_id)), "Need a soldier free to stand on it.")
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_true("and the claim is refused however rich the run is",
 		not gm.dispatch("claim_block", {"block_id": block_id}))
 	_expect_int("nothing was taken", gs.territory_nodes.size(), 0)
@@ -20534,8 +20616,10 @@ func _check_city_chain(gs: Node, gm: Node) -> void:
 	# 2. A soldier, and then money is the only thing left.
 	_expect_true("a soldier can be hired", gm.dispatch("recruit_soldier", {}))
 	_expect_int("and stands idle until posted", int(gs.soldiers_idle), 1)
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_str("now the corner is affordable and free", str(terr.claim_blocker(block_id)), "")
 	gs.cash = int(cheapest["claim_cost"]) - 1
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_str("one dollar short is short", str(terr.claim_blocker(block_id)),
 		"Need $%d." % int(cheapest["claim_cost"]))
 
@@ -20543,6 +20627,7 @@ func _check_city_chain(gs: Node, gm: Node) -> void:
 	gs.cash = 100000
 	_expect_true("the city is shut before the first corner",
 		not access.is_unlocked("street.downtown"))
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_true("the corner is taken", gm.dispatch("claim_block", {"block_id": block_id}))
 	_expect_int("the soldier went to stand on it", int(gs.soldiers_idle), 0)
 	_expect_true("the first corner is what opens Downtown",
@@ -20552,6 +20637,7 @@ func _check_city_chain(gs: Node, gm: Node) -> void:
 	# 4. And the second opens the port.
 	var second: Dictionary = B18_TERRITORY.NODES[1]
 	gm.dispatch("recruit_soldier", {})
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_true("a second corner is taken",
 		gm.dispatch("claim_block", {"block_id": str(second["id"])}))
 	_expect_true("two corners open Ship Creek",
@@ -20583,6 +20669,7 @@ func _check_turf_costs_no_slot(gs: Node, gm: Node) -> void:
 	var slot_before: int = int(gs.time_slots_today)
 	_expect_true("a soldier is hired", gm.dispatch("recruit_soldier", {}))
 	_expect_int("hiring costs no slot", int(gs.time_slots_today), slot_before)
+	_stage_rank(gs, "player")  # OG-D2: a name behind the corner or the crew
 	_expect_true("a corner is taken",
 		gm.dispatch("claim_block", {"block_id": str(B18_TERRITORY.NODES[0]["id"])}))
 	_expect_int("taking a corner costs money and not a slot",
@@ -20943,7 +21030,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13797
+const MIN_CHECKS := 13809
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

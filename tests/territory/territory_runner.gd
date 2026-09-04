@@ -104,6 +104,24 @@ func _fresh(cash: int = 5000, idle: int = 0) -> void:
 	gs.clean_cash = cash
 	gs.dirty_cash = 0
 	gs.soldiers_idle = idle
+	# OG-D2: corners need a Player behind them; this suite is about corners.
+	_stage_rank("player")
+
+## OG-D2 (1.0.0): synthetic ledger rows that add up to a rank, for arms
+## that are about corners or crew rather than about earning a name. The
+## gate itself is asserted where it belongs.
+func _stage_rank(tier_id: String) -> void:
+	var rank := preload("res://data/rank.gd")
+	var want: int = int(rank.by_index(rank.index_of(tier_id))["floor"])
+	var rows: Array = []
+	var have := 0
+	var i := 0
+	while have < want:
+		rows.append({"key": "stage:%d" % i, "type": "growth", "event": "staged",
+			"location": "north_star_lot", "source": "network", "count": 1, "day": 1})
+		have += 2
+		i += 1
+	gs.npc_ledgers["juan"] = rows
 
 func _block(id: String) -> Dictionary:
 	return gs.block_by_id(id)

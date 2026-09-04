@@ -79,6 +79,11 @@ const CONTEXTS := {
 		"a": {"text": "say less", "reaction": "That's what I like to hear."},
 		"b": {"text": "not really my thing", "reaction": "Everything is your thing when the rent is due."},
 	},
+	# OG-D2: somebody noticed the name (exposure.gd).
+	"rank_notice": {
+		"a": {"text": "good. let em know", "reaction": ""},
+		"b": {"text": "keep it quiet", "reaction": ""},
+	},
 	# OG-D1: the rent, late (obligations.gd).
 	"yalonda_rent_due": {
 		"a": {"text": "ill have it tomorrow. im sorry", "reaction": "Tomorrow, then."},

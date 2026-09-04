@@ -84,7 +84,6 @@ var debt_due_days: int:
 			return 0
 		return int(dre_account.get("due_day", day)) - day
 var cargo_max: int = 10  # canon: web cargoCapacity
-var respect: int = 4
 
 # --- Attributes (canon: src/data/attributes.js) ----------------------------
 ## Canon's three: combat, charisma, intelligence. Stored 0..12, starting at 1.
@@ -427,7 +426,6 @@ func reset_to_new_game() -> void:
 	active_opportunities = []
 	opportunity_history = {}
 	opportunity_next_instance_id = 1
-	respect = 0
 	attributes = {"combat": 1, "charisma": 1, "intelligence": 1}
 	attribute_progress = {"combat": 0.0, "charisma": 0.0, "intelligence": 0.0}
 	crew_power = 0

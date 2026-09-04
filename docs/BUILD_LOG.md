@@ -28,6 +28,42 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 1.1.0 — Somebody Shows You Around: five PRs (added 2026-09-04)
+
+Source: the 1.0.0 assessment (`docs/ONE_GOOD_RUN_REVIEW.md`) and the open
+ClickUp tickets, reconciled. Rulings: `D-29` (SA-D1..D4). Five PRs, `#153`
+through `#156` and the close-out.
+
+### What this build actually was
+
+A content build on the systems 1.0.0 finished. The review's "before
+showing outsiders" list started with images and sound, which are assets,
+and then the first ten minutes, which is code and copy; this build took
+the code and copy. The rest came from the ticket queue: the car with
+nothing happening to it on the street, Mina with a voice and no trust,
+the landlord with no opinions, and the per-weapon beat copy the 1.0.0
+review filed as a table row.
+
+### What it cost, and what was measured
+
+No schema bump. Parity 13,979 → 14,162; confrontation 3,628 → 3,946
+(three new encounter cards, each swept); smoke panel 98 → 112. No
+corridor moved: nothing here earns.
+
+### Gotchas worth the next reader's time
+
+- Encounter road labels must be one of the seven universal verbs (FIGHT,
+  RUN, TALK, PAY, SURRENDER, BLUFF, COMPLY); the confrontation runner
+  refuses anything else.
+- A card that hurts off its FIGHT road and opts out of answering back
+  must be a police card by name. A thief who comes over is an answer
+  back; let it.
+- Choice ids are global across `CHOICE_LABELS` and `CHOICE_COPY`. Prefix
+  a new card's ids with the card's own word.
+- The ambient pool is `eligible_cards()`; `eligible_encounters()` and
+  `eligible_meetings()` do not include it.
+- Rank tier names are uppercase (`NOBODY`), not title case.
+
 ## 1.0.0 — One Good Run: seven PRs (added 2026-09-04)
 
 Source: `907Hustle_Build_Prompt_v4.md`. Rulings: `D-28` (OG-D1..D6). Seven

@@ -12,7 +12,7 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `1.0.0`** — shown bottom-right on the title screen, and stamped into
+**Current: `1.1.0`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
@@ -34,6 +34,55 @@ the first time somebody bumps one copy.
 
 *Full technical detail in [`CHANGELOG.md`](CHANGELOG.md) and
 [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
+
+### 1.1.0 — Somebody Shows You Around: the first ten minutes, the beater, Mina, the house
+
+**The first ten minutes.** The morning after Yalonda's welcome, Juan says
+how a day goes: four parts, one thing each, the phone, the rent, the
+block. Help describes the game that exists. The title's saved run says
+who you were. The reckoning says what there was: the name against six,
+the corners against the board, the districts against the city.
+
+**The beater on the street.** A kid reads your plate out loud to somebody
+on speaker. Juan has the cables before you ask. The back window is a hole
+and somebody is still in the trunk: FIGHT, BLUFF or SURRENDER, with what
+is under the spare as the stake. The knife or the piece has its own
+sentence in every room.
+
+**Mina Vale.** Her trust is her ledger. Warm, she tells you one true thing
+about the block. Trusted, the coffee is on her. Bonded, it is on your
+phone by morning. And once, a man with her last name at her counter, and
+her whole face gone still.
+
+**The house talks back.** Every third morning Yalonda or Juan says
+something true: the rent, the car outside that wasn't anybody's, the
+plate in the oven, Tone outside asking for you, forty until Friday.
+
+### 1.0.0 — One Good Run: the run has an end
+
+**The rent day.** Bills on the nav, the unmet hidden, and rent that
+escalates in Yalonda's voice until the third warning is the door.
+
+**Earn your name.** Respect is gone. Rank is what the people you have
+met wrote down, added up: Nobody, New Face, Known, Player, Connected,
+Boss. Crew needs Known, a corner needs Player, the way out needs Boss.
+
+**The player's kit.** A knife from a man at the ice machine, a piece from
+Dre's cousin, an '04 Corolla from Sonny's nephew with a trunk the
+checkpoint cannot count. Every face, banner and interior the game will
+ever look for, rendering as nothing until the file exists. Every trip is
+a card.
+
+**One good run has an end.** The way out, priced by what you built.
+Three ways it ends on you, each one warning first. One reckoning screen,
+scored in people.
+
+**Stolen goods have a name.** The Lift walks out with a thing; the
+907List is the fence, and the buyer is sometimes a cop.
+
+**His blocks fight back.** A Curtis block is a fight with the odds shown.
+He tests what looks weak every night, and the crew texts you when he
+takes something back.
 
 ### 0.9.0 — The Block Remembers: the screen holds, the city gets a fourth district, and the crew has ideas
 
@@ -313,9 +362,11 @@ does not stop.
 
 The run opens on a title screen. NEW RUN leads through name entry into a fresh Day 1
 in Spenard. From there: work a legitimate job or one of five criminal surfaces, move
-between three districts, hire crew and pay their wages, take corners and post soldiers
+between four districts, hire crew and pay their wages, take corners and post soldiers
 on them — while rent, the phone bill and Curtis's attention all advance on their own
-schedule. Miss enough rent and you are evicted, which ends the run.
+schedule. The run ends four ways: the way out, priced by what you built, once
+you are Boss; or on you, after a warning each time, by the third house warning,
+the third serious booking, or Curtis at the door.
 
 Crime answers back. A blown lift holds the screen until you decide how to play it;
 a bad enough answer ends in a booking, where you trade cash against calendar time
@@ -428,7 +479,8 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 
 ### Not built yet
 
-Tactical combat, equipment, gambling, and court/trial/prison simulation.
+Tactical combat, gambling, and court/trial/prison simulation. Equipment is one
+weapon slot and one car (1.0.0), not an inventory.
 
 Two of the four Spenard venues have interiors as of batch 7 — the **Spenard
 Gym** and the **Night Owl**. The other two are deliberately still cards. **The

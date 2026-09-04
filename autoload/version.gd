@@ -72,7 +72,17 @@ extends Node
 ## this file's header has been holding at 0 for. Four schema bumps rode
 ## the build (v29 rent arrears, v30 the kit, v31 the ending, v32 hot
 ## goods), every one migrated, none breaking.
-const VERSION := "1.0.0"
+##
+## 1.1.0 (Somebody Shows You Around): the first ten minutes (Juan says how a
+## day goes, Help describes the game that exists, the title says who you
+## were, the reckoning says what there was -- SA-D1); the beater on the
+## street (three cards, a trunk that can be lost, the weapon's sentence in
+## the room -- SA-D2); Mina Vale's trust off her ledger and the evening her
+## family shows up (SA-D3); the house talking back every third morning
+## (SA-D4). New player-facing content and surfaces on the existing
+## systems, squarely MINOR. No schema bump: everything this build needed
+## was derivable from a field the game already kept.
+const VERSION := "1.1.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

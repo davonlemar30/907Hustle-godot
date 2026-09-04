@@ -5464,7 +5464,7 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# Word of Mouth (0.1.2) appends `tips` and reorders nothing above it: a
 	# tip is a claim about today's board, so it goes last, after every other
 	# step that could still change what today's board is.
-	"DAY_START:tips", "DAY_START:ghosts", "DAY_START:mentions", "DAY_START:crew_ideas", "DAY_START:beater", "DAY_START:curtis_doorstep",
+	"DAY_START:tips", "DAY_START:ghosts", "DAY_START:mentions", "DAY_START:crew_ideas", "DAY_START:beater", "DAY_START:curtis_doorstep", "DAY_START:household",
 	# Dre Lending & Loan-Shark Progression PR B appends `dre_intro` after
 	# `tips` for the same reason: Juan's mention reads the fully-settled day.
 	"DAY_START:dre_intro",
@@ -19807,6 +19807,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_the_kit(gs, gm)
 	_check_the_beater_on_the_street(gs, gm)
 	_check_mina_vale(gs, gm)
+	_check_the_house_talks_back(gs, gm)
 	_check_one_good_run(gs, gm)
 	_check_stolen_goods_have_a_name(gs, gm)
 	_check_his_blocks_fight_back(gs, gm)
@@ -20597,6 +20598,72 @@ func _stage_rank(gs: Node, tier_id: String, short_by: int = 0) -> void:
 	gs.npc_ledgers["juan"] = rows
 
 ## OG-D3 (1.0.0 PR 3): the kit, the faces, the places, the ride.
+## SA-D4 (1.1.0): the house talks back. Every third morning, one of the two
+## people who see you every day says something true, and it is only ever a
+## line -- nothing moves.
+func _check_the_house_talks_back(gs: Node, gm: Node) -> void:
+	var house: Object = gm.system("household")
+	if house == null:
+		_fail("household", "no household system registered")
+		return
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_expect_str("day three is Yalonda's", str(house.speaker_for(3)), "yalonda")
+	_expect_str("day six is Juan's", str(house.speaker_for(6)), "juan")
+	_expect_str("day nine is hers again", str(house.speaker_for(9)), "yalonda")
+	_expect_true("the tables carry the variants the ticket asked for", house.YALONDA.size() + house.JUAN.size() >= 12)
+	var seen: Array = []
+	for entry in house.YALONDA + house.JUAN:
+		var line := str((entry as Dictionary).get("line", ""))
+		_expect_true("every line is its own", not line.is_empty() and not line in seen)
+		seen.append(line)
+
+	# A quiet run gets the default.
+	gs.reset_to_new_game()
+	_expect_str("nothing on: she says eat something", str(house.line_for("yalonda").get("id", "")), "default")
+	_expect_str("...and he talks about the cold", str(house.line_for("juan").get("id", "")), "default")
+	# The rent first.
+	gs.rent_arrears_day = 2
+	_expect_str("rent late comes first", str(house.line_for("yalonda").get("id", "")), "rent_late")
+	gs.rent_arrears_day = -1
+	# The car, the crew, the name.
+	gs.vehicle = "beater"
+	_expect_str("she has seen the car", str(house.line_for("yalonda").get("id", "")), "car")
+	_expect_str("so has he", str(house.line_for("juan").get("id", "")), "car")
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	_expect_str("Tone outside beats the car", str(house.line_for("juan").get("id", "")), "crew")
+	gs.reset_to_new_game()
+	_stage_rank(gs, "connected")
+	_expect_str("Connected, and she has heard", str(house.line_for("yalonda").get("id", "")), "connected")
+	_expect_str("...and so has the shop", str(house.line_for("juan").get("id", "")), "player")
+
+	# The morning itself: a line in the feed, and only a line.
+	gs.reset_to_new_game()
+	gs.day = 3
+	var cash_before: int = int(gs.cash)
+	var heat_before: float = float(gs.heat)
+	var ledgers_before := str(gs.npc_ledgers)
+	house.day_start(3)
+	_expect_true("day three, she speaks", str((gs.activity_log[0] as Dictionary).get("text", "")).begins_with("Yalonda:"))
+	_expect_int("...and the money did not move", int(gs.cash), cash_before)
+	_expect_float("...nor the heat", float(gs.heat), heat_before)
+	_expect_str("...nor a ledger", str(gs.npc_ledgers), ledgers_before)
+	var log_size: int = gs.activity_log.size()
+	house.day_start(4)
+	_expect_int("day four, nobody", gs.activity_log.size(), log_size)
+	# The police, in writing.
+	gs.reset_to_new_game()
+	gs.heat = 9.0
+	gs.phone_inbox = []
+	house.day_start(3)
+	var texted := false
+	for msg in gs.phone_inbox:
+		if str((msg as Dictionary).get("from", "")) == "Yalonda":
+			texted = true
+	_expect_true("a car outside is a text from her", texted)
+	gs.reset_to_new_game()
+
 ## SA-D3 (1.1.0): Mina Vale. Her trust is her ledger, and it buys the
 ## counter line, the price, one true thing, and a text -- and it gates the
 ## evening her family shows up.
@@ -21619,7 +21686,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14127
+const MIN_CHECKS := 14162
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

@@ -34,6 +34,7 @@ func _ready() -> void:
 	_test_v24_dre_pending_penance()
 	_test_v26_hustles_discovered()
 	_test_v27_phone_reply_history()
+	_test_v28_job_applications()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
 	_test_load_pipeline()
@@ -1011,6 +1012,24 @@ func _test_v27_phone_reply_history() -> void:
 		"day": 4, "cash": 300, "street_name": "Legacy"}})
 	_check("a v26 save arrives having answered nobody",
 		not migrated.has("phone_reply_history") or (migrated.get("phone_reply_history", {}) as Dictionary).is_empty())
+
+## v28 (BR-D2): applications in flight survive, junk drops, fields default.
+func _test_v28_job_applications() -> void:
+	var valid := _fixed(_state("job_applications", {"wash_go": {"day": 3, "slot": 1, "status": "pending"}}))
+	_check("a pending application survives",
+		int(((valid["job_applications"] as Dictionary)["wash_go"] as Dictionary)["day"]) == 3)
+	var wrong := _fixed(_state("job_applications", [1, 2]))
+	_check("wrong-type applications default to empty",
+		wrong["job_applications"] is Dictionary and (wrong["job_applications"] as Dictionary).is_empty())
+	var junk := _fixed(_state("job_applications", {"wash_go": {"day": "three"}, "x": 5}))
+	var row: Dictionary = (junk["job_applications"] as Dictionary).get("wash_go", {})
+	_check("a junk row drops and a junk field defaults",
+		not (junk["job_applications"] as Dictionary).has("x") and int(row.get("day", -1)) == 1
+		and str(row.get("status", "")) == "pending")
+	var saves := get_node("/root/SaveSystem")
+	var migrated: Dictionary = saves._migrate({"save_version": 27, "state": {"day": 2, "cash": 10, "street_name": "L"}})
+	_check("a v27 save arrives with nothing pending",
+		not migrated.has("job_applications") or (migrated.get("job_applications", {}) as Dictionary).is_empty())
 
 func _test_v24_dre_pending_penance() -> void:
 	# Same shape as _validate_dre_intro_offered -- manual wrong-type check,

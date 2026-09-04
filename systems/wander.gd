@@ -1203,6 +1203,12 @@ func choice_label(choice_id: String) -> String:
 	return str(EVENTS.CHOICE_LABELS.get(choice_id, ""))
 
 func choice_copy(choice_id: String) -> String:
+	# BR-D1: inside an answer room the fistfight's roads read as a fistfight.
+	var chain: Dictionary = gs.active_consequence
+	if LOOP.has_loop(chain) and EVENTS.ANSWER_CHOICE_COPY.has(choice_id):
+		var card_id := str((chain.get("source", {}) as Dictionary).get("card_id", ""))
+		if bool(_room_of(card_id).get("answer", false)):
+			return str(EVENTS.ANSWER_CHOICE_COPY[choice_id])
 	return str(EVENTS.CHOICE_COPY.get(choice_id, ""))
 
 ## BB-D8: a priced road is blocked when the wallet cannot cover it, in either
@@ -1308,11 +1314,20 @@ func _result_row(choice_id: String, tier: String) -> Array:
 	# BB-D4: an interim result is the road's own "escalate" row. At the door
 	# the room's loop already exists but the road that escalated was the
 	# door's, so the door's table is the one to read.
+	var row: Array = []
 	if LOOP.is_interim(chain):
 		var at_door: bool = int(LOOP.loop_of(chain).get("beat_index", 0)) == 0 \
 			and int((chain.get("decision", {}) as Dictionary).get("round", 0)) == 0
-		return EVENTS.result_copy(card_id, choice_id, "escalate", not at_door)
-	return EVENTS.result_copy(card_id, choice_id, tier, LOOP.has_loop(chain))
+		row = EVENTS.result_copy(card_id, choice_id, "escalate", not at_door)
+		if row.is_empty() and bool(_room_of(card_id).get("answer", false)):
+			row = EVENTS.ANSWER_RESULT_COPY["escalate"]
+		return row
+	row = EVENTS.result_copy(card_id, choice_id, tier, LOOP.has_loop(chain))
+	# BR-D1: a generated room has no authored room copy; it reads the answer
+	# table by tier.
+	if row.is_empty() and LOOP.has_loop(chain) and bool(_room_of(card_id).get("answer", false)):
+		row = EVENTS.ANSWER_RESULT_COPY.get(tier, [])
+	return row
 
 
 ## What the choice does. The engine calls exactly this one method on a source
@@ -1390,6 +1405,11 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 		return _resolve_legacy(chain, choice_id, tier)
 	if bool(effects.get("escalate", false)):
 		return _open_shakedown_room(chain, choice_id, tier)
+	# BR-D1: he swung first. The hit lands -- only the hit; what else that
+	# tier would have taken is now the fight's to decide -- and the room
+	# opens on the card's own FIGHT road.
+	if _swung_first(card_id, choice_id, effects, chain):
+		return _open_shakedown_room(chain, choice_id, tier, effects.duplicate())
 
 	var applied: Dictionary = LOOP.apply_effects(gs, gm, effects, choice_id, "wander_encounter")
 	# WS-D1: a meeting can HAND the player something -- two units from Goodie,
@@ -1586,7 +1606,34 @@ func _resolve_legacy(chain: Dictionary, choice_id: String, tier: String) -> Dict
 
 ## The card's own room block, or {} for a card with no room.
 func _room_of(card_id: String) -> Dictionary:
-	return EVENTS.card_by_id(card_id).get("encounter", {}).get("room", {})
+	var card: Dictionary = EVENTS.card_by_id(card_id)
+	var authored: Dictionary = card.get("encounter", {}).get("room", {})
+	if not authored.is_empty():
+		return authored
+	# BR-D1: a card with no room of its own still answers back, in a room
+	# generated from its own roads.
+	if EVENTS.answers_back(card):
+		return EVENTS.answer_room(card)
+	return {}
+
+## BR-D1: did he swing first? A non-fight road at the door whose tier hurts
+## on a card that answers back.
+func _swung_first(card_id: String, choice_id: String, effects: Dictionary,
+		chain: Dictionary) -> bool:
+	if LOOP.has_loop(chain):
+		return false
+	if int(effects.get("health", 0)) <= 0:
+		return false
+	var card: Dictionary = EVENTS.card_by_id(card_id)
+	if not EVENTS.answers_back(card):
+		return false
+	# A card with an authored room authors its own escalation; the shakedown's
+	# WALK failing is them taking the bag, not a fight left unanswered.
+	if not (card.get("encounter", {}) as Dictionary).get("room", {}).is_empty():
+		return false
+	if EVENTS.role_of(card, choice_id) == EVENTS.ROLE_FIGHT:
+		return false
+	return not _room_of(card_id).is_empty()
 
 func _beat_at(card_id: String, index: int) -> Dictionary:
 	var beats: Array = _room_of(card_id).get("beats", [])
@@ -1598,7 +1645,7 @@ func _beat_at(card_id: String, index: int) -> Dictionary:
 ## whose authored effects row says `escalate: true` -- the fight did not end
 ## where it started.
 func _open_shakedown_room(chain: Dictionary, choice_id: String,
-		tier: String = "messy") -> Dictionary:
+		tier: String = "messy", hit: Dictionary = {}) -> Dictionary:
 	var source: Dictionary = chain.get("source", {})
 	var card_id := str(source.get("card_id", ""))
 	var room: Dictionary = _room_of(card_id)
@@ -1628,13 +1675,29 @@ func _open_shakedown_room(chain: Dictionary, choice_id: String,
 		"left": int(_beat_at(card_id, 0).get("left", 0)),
 		"banked": 0,
 	}
-	gs.log_activity("They don't scatter. Somebody's hood comes off. This is a fight now.", AMBER)
+	var engine: Object = gm.system("consequence")
+	# BR-D1: the hit that opened the room lands now, under its own receipt,
+	# and the door's interim result carries it.
+	var landed := 0
+	if int(hit.get("health", 0)) > 0 and engine.record_receipt(str(chain.get("cause_id", "")),
+			"answer_hit"):
+		var applied: Dictionary = LOOP.apply_effects(gs, gm,
+			{"health": int(hit["health"])}, choice_id, "wander_encounter")
+		landed = int(applied["health"])
+		loop["banked_health"] = landed
+		# What the door's tier would have taken besides the hit is the price
+		# of NOT winning: it lands at the stalemate, so answering back is a
+		# chance to keep it, not a way to never lose it.
+		var door_cost: Dictionary = hit.duplicate()
+		door_cost.erase("health")
+		loop["door_cost"] = door_cost
+	gs.log_activity(str(room.get("open_line",
+		"They don't scatter. Somebody's hood comes off. This is a fight now.")), AMBER)
 	# BB-D4: the door's own round ends in a result the player reads -- it did
 	# not go their way, and here is what that means -- before the first beat
 	# is on the table. `pending` is the beat CONTINUE presents.
-	var engine: Object = gm.system("consequence")
 	return LOOP.present_interim(engine, gs, chain, loop, choice_id, tier,
-		"escalate", {}, 0)
+		"escalate", {"health": -landed} if landed > 0 else {}, 0)
 
 ## BB-D4: the engine's `_continue` hands an interim chain back here. The loop's
 ## own note says which beat comes next; nothing else is re-derived.
@@ -1762,9 +1825,14 @@ func _room_round(chain: Dictionary, choice_id: String) -> Dictionary:
 		# The cap, and the end of the authored beats, are the same wall: a room
 		# that runs out of situations to author is a room that is over.
 		if next_index >= mini(cap, beats.size()):
-			return _room_exit(chain, loop, "messy", choice_id,
-				{"health": 4, "cash_fraction": 0.5, "goods_fraction": 0.5},
-				"Nobody wins outright. You both just stop.")
+			var stalemate: Dictionary = room.get("stalemate", {})
+			var cost: Dictionary = (stalemate.get("effects", {"health": 4, "cash_fraction": 0.5,
+				"goods_fraction": 0.5}) as Dictionary).duplicate()
+			# BR-D1: an answer room's stalemate costs what the door would have.
+			for key in (loop.get("door_cost", {}) as Dictionary).keys():
+				cost[key] = maxf(float(cost.get(key, 0.0)), float(loop["door_cost"][key]))
+			return _room_exit(chain, loop, "messy", choice_id, cost,
+				str(stalemate.get("line", "Nobody wins outright. You both just stop.")))
 		# BB-D4: the round has a result before the next beat is on the table.
 		return LOOP.present_interim(engine, gs, chain, loop, choice_id, tier,
 			"escalate", {"health": -landed}, next_index)
@@ -1779,9 +1847,17 @@ func _room_round(chain: Dictionary, choice_id: String) -> Dictionary:
 	# BB-D3: nothing is added back at the exit. What the beats cost has
 	# already landed, beat by beat, and `banked_health` is its receipt.
 	return _room_exit(chain, loop, tier, choice_id, effects.duplicate(),
-		_room_exit_line(tier, choice_id))
+		_room_exit_line(tier, choice_id, room, str((beat.get("roles", {}) as Dictionary)
+			.get(choice_id, EVENTS.ROLE_FIGHT))))
 
-func _room_exit_line(tier: String, choice_id: String) -> String:
+func _room_exit_line(tier: String, choice_id: String, room: Dictionary = {},
+		role: String = "") -> String:
+	# BR-D1: an answer room ends in its own words when it breaks your way.
+	if bool(room.get("answer", false)) and tier == "clean":
+		if role == EVENTS.ROLE_RUN and not str(room.get("ran_line", "")).is_empty():
+			return str(room["ran_line"])
+		if not str(room.get("won_line", "")).is_empty():
+			return str(room["won_line"])
 	if tier == "deterministic":
 		return "You give it up mid-fight. Whatever was in hand is gone."
 	match tier:
@@ -1805,9 +1881,17 @@ func _room_exit(chain: Dictionary, loop: Dictionary, exit_tier: String,
 
 	var applied: Dictionary = LOOP.apply_effects(gs, gm, effects, choice_id,
 		"wander_encounter")
+	# BR-D1: a clean FIGHT exit in an answer room leaves what fell out of his
+	# pockets. Dirty, receipted, through the wallet like every other grant.
+	var granted := 0
+	if int(effects.get("grant_cash", 0)) > 0 and engine.record_receipt(
+			str(chain.get("cause_id", "")), "answer_room:grant"):
+		granted = int(effects["grant_cash"])
+		var wallet: Object = gm.system("wallet")
+		wallet.credit(granted, wallet.DIRTY, {"source_id": "wander_answer_room"})
 	var result := {
 		"choice_id": choice_id, "tier": exit_tier, "arrested": false, "banned": false,
-		"cash": -int(applied["cash"]), "goods": -int(applied["goods"]),
+		"cash": granted - int(applied["cash"]), "goods": -int(applied["goods"]),
 		"health": -int(applied["health"]), "heat": float(applied["heat"]), "pressure": 0,
 		"take_disposition": "lose" if (int(applied["goods"]) > 0 or int(applied["cash"]) > 0) else "keep",
 		"room_log": (loop.get("log", []) as Array).duplicate(),

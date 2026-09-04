@@ -795,6 +795,7 @@ const CARDS: Array[Dictionary] = [
 	},
 	{
 		"id": "wander_stopped_on_foot", "kind": KIND_ENCOUNTER, "weight": 9,
+		"answers_back": false,
 		"intents": [], "gate_bias": "",
 		"districts": [], "slots": [], "once": false,
 		# Only when you are already carrying enough attention to be worth
@@ -1059,6 +1060,7 @@ const CARDS: Array[Dictionary] = [
 
 	{
 		"id": "wander_vehicle_search", "kind": KIND_ENCOUNTER, "weight": 7,
+		"answers_back": false,
 		"intents": [], "gate_bias": "",
 		"districts": [], "slots": [], "once": false,
 		# Somewhere else to be, and enough attention to be worth pulling over
@@ -1125,6 +1127,7 @@ const CARDS: Array[Dictionary] = [
 	},
 	{
 		"id": "wander_warrant_check", "kind": KIND_ENCOUNTER, "weight": 6,
+		"answers_back": false,
 		"intents": [], "gate_bias": "",
 		"districts": [], "slots": [], "once": false,
 		# The one card in the roster that requires a history. A warrant check
@@ -2429,6 +2432,221 @@ static func pay_price(card: Dictionary, choice_id: String) -> int:
 	var effects: Dictionary = (card.get("encounter", {}) as Dictionary).get("effects", {})
 	return int(((effects.get(choice_id, {}) as Dictionary).get("deterministic", {}) as Dictionary)
 		.get("cash_flat", 0))
+
+# --- BR-D1 (0.9.0): he swung first ---------------------------------------------
+#
+# "If he chooses to hit us why can't we fight back until he runs away, dies,
+# or gives up?" A non-fight road whose rolled tier hurts is somebody
+# initiating violence, and the encounter used to end there with the damage
+# landed and nothing to do about it. Now it answers back: the hit lands, the
+# result says so, and the next round offers the card's own FIGHT road (and
+# its RUN and its SURRENDER) in a room generated from the card. Two beats,
+# then a stalemate. A clean FIGHT exit sends him off and leaves what fell
+# out of his pockets -- a few dollars, not a wage: the first cut paid $25/$35
+# and lifted two job-plus profiles 8-12% past their corridors, because a
+# street fight you win must not out-earn a shift.
+#
+# Police cards opt out (`answers_back: false`): a cop's hands on you is not
+# a fight the game lets you win, and their FIGHT-role road is TALK anyway.
+# A card with an authored room opens that room instead of a generated one.
+
+const ANSWER_LINES := {
+	"wander_desperate_approach": {
+		"open": "He swings before the sentence is finished. It catches you high on the cheek, and now he is not talking at all.",
+		"beat": "He is off balance from the first one and swinging again, wild, crying a little. He is not going to stop on his own.",
+		"beat2": "He is bleeding from the mouth and still coming. Whatever he needed, he needs it more now.",
+		"won": "He goes down and stays down long enough to think about it, then gets up and runs. There is money on the ground that was in his hand.",
+		"ran": "You get a step on him and he does not chase. He is yelling something you do not stop to hear.",
+	},
+	"wander_lot_side": {
+		"open": "She comes off the car door with something in her hand and it catches your shoulder. Not a knife. Not nothing, either.",
+		"beat": "She is between you and the sidewalk now, and she is faster than she looks.",
+		"beat2": "She drops whatever it was and comes with her hands. There is nothing left in her but this.",
+		"won": "She backs off the lot, swearing, and does not come back. There is a fold of bills on the asphalt where she was standing.",
+		"ran": "You put the row of cars between you and her and she loses interest before you reach the street.",
+	},
+	"wander_wrong_place": {
+		"open": "Somebody you did not see puts a hand on the back of your neck and the ground comes up. Then there are two of them.",
+		"beat": "You are up. The one who hit you is already reaching again; the other one is watching the street.",
+		"beat2": "The second one steps in. It is two on one now and they know it.",
+		"won": "The first one goes down and the second one decides. They walk, and one of them leaves a phone and a roll behind.",
+		"ran": "You break for the lights and they do not follow past the corner. Wrong place. You know that now.",
+	},
+	"wander_territorial_beef": {
+		"open": "He does not argue. He hits you, once, hard, to say the block has already decided.",
+		"beat": "He is squared up and waiting. He wants you to swing, so everybody watching sees who started it.",
+		"beat2": "He comes again, and this time he has his boys' attention. This is the whole block now.",
+		"won": "He goes down in front of his own people, and that is worse for him than the hit. He leaves what was in his pocket.",
+		"ran": "You walk off his block backwards. He lets you. That is its own message.",
+	},
+	"wander_somebody_elses_problem": {
+		"open": "It was not your problem until his elbow found your face. Now it is.",
+		"beat": "He has turned all the way around. Whoever he was fighting is gone; you are what is left.",
+		"beat2": "He is not tired. He is one of those people who is never tired.",
+		"won": "He backs off with his hands up and leaves faster than he came, and whatever fell out of his jacket stays.",
+		"ran": "You get out of range. He finds somebody else to be angry at.",
+	},
+	"wander_young_ones": {
+		"open": "One of them, the smallest, hits you in the ear from behind. The other two laugh.",
+		"beat": "They are kids. They are also three, and they have done this before.",
+		"beat2": "The big one stops laughing and steps in. That was the one who mattered.",
+		"won": "The big one goes down and the other two are gone before he lands. He leaves a phone. He leaves his shoes.",
+		"ran": "They chase you half a block and quit, still laughing.",
+	},
+	"wander_curtis_tax": {
+		"open": "The one who was smiling stops smiling and puts you into the fence. \"That is the courtesy version.\"",
+		"beat": "He lets you up. He is waiting to see what you do with it, and so is the one behind him.",
+		"beat2": "He comes again, slower, meaning it. This is what Curtis's people are for.",
+		"won": "He goes down and the other one does not step in, which tells you something about Curtis's people. He leaves the fold he was collecting.",
+		"ran": "You get off the block. He does not chase. Curtis will hear about it either way.",
+	},
+	"rep_a_favor": {
+		"open": "He does not take no. His hand is on your collar and the bag is on the ground between you.",
+		"beat": "He is bigger than you and knows it, and he has one hand free.",
+		"beat2": "He is not letting go of you or the bag. One of those is going to give.",
+		"won": "He lets go of everything. The bag, your collar, and a roll that was in his coat, and he is gone.",
+		"ran": "You slip the collar and leave him with his bag. He shouts. You keep going.",
+	},
+	"wt_curtis_probe": {
+		"open": "The question was a formality. The first one hits you while the second one keeps asking it.",
+		"beat": "They are professionals. They are not angry. That is the problem with them.",
+		"beat2": "The second one puts his phone away. Whatever he was going to report, he is going to report this instead.",
+		"won": "One of them goes down and the other one helps him up and they leave, unhurried. They leave the envelope.",
+		"ran": "You put a door between you and them. They do not try it. They already know where you live.",
+	},
+	"_": {
+		"open": "He swings first. Now it is a fight.",
+		"beat": "He is still coming. He is not going to stop on his own.",
+		"beat2": "He is hurt and still coming. Whatever this is about, it is about more than you.",
+		"won": "He goes down, gets up, and runs. He leaves what fell out of his pockets.",
+		"ran": "You get clear. He does not follow.",
+	},
+}
+
+## BR-D1: what the sheet says at each stage of an answer room, when the card
+## has no room copy of its own. `[headline, body]`, by the tier the round
+## ended in, or "escalate" for the interim result.
+const ANSWER_RESULT_COPY := {
+	"escalate": ["HE SWUNG FIRST", "It landed. You are still standing, and now it is a fight -- yours to finish or to leave."],
+	"clean": ["HE IS DONE", "It breaks your way. He runs, and he leaves what was in his hand."],
+	"messy": ["YOU GET OUT OF IT", "Not clean, and not for free. But you are walking and he is not chasing."],
+	"failure": ["IT DOES NOT BREAK YOUR WAY", "You gave it what you had. It was not enough."],
+	"catastrophic": ["IT GOES BADLY", "All the way through. You are on the ground and your pockets are lighter."],
+	"deterministic": ["YOU GIVE IT UP", "Hands up, mid-fight. He takes what he came for and goes."],
+}
+
+static func answers_back(card: Dictionary) -> bool:
+	return str(card.get("kind", "")) == KIND_ENCOUNTER \
+		and bool(card.get("answers_back", true))
+
+static func answer_lines(card_id: String) -> Dictionary:
+	return ANSWER_LINES.get(card_id, ANSWER_LINES["_"])
+
+## The road of `role` on a card, or "".
+static func road_of_role(card: Dictionary, role: String) -> String:
+	var roles: Dictionary = (card.get("encounter", {}) as Dictionary).get("roles", {})
+	for choice_id in roles.keys():
+		if str(roles[choice_id]) == role:
+			return str(choice_id)
+	return ""
+
+## A two-beat room built from the card's own roads, for a card that has no
+## authored room. FIGHT is always on the table; RUN on the first beat; the
+## card's SURRENDER road is the guaranteed out on both.
+## The roads of an answer room are the fistfight's own -- SWING, BREAK FOR
+## IT, GIVE IT UP -- not the door's. A door whose FIGHT road read TALK (the
+## talker, a negotiation) is a fistfight now, and the verb has to say so.
+const ANSWER_CHOICE_COPY := {
+	"swing": "He started it. Finish it.",
+	"break_for_it": "Get clear before it gets worse.",
+	"give_it_up": "Hands up. He takes what he takes.",
+}
+
+static func answer_room(card: Dictionary) -> Dictionary:
+	var card_fight := road_of_role(card, ROLE_FIGHT)
+	var card_run := road_of_role(card, ROLE_RUN)
+	if card_fight.is_empty():
+		return {}
+	var fight := "swing"
+	var run := "break_for_it"
+	var out := "give_it_up"
+	var encounter: Dictionary = card.get("encounter", {})
+	var base: Dictionary = encounter.get("base", {})
+	var lines := answer_lines(str(card.get("id", "")))
+	var fight_base: float = clampf(float(base.get(card_fight, 0.5)) + 0.05, 0.2, 0.9)
+	var run_base: float = clampf(float(base.get(card_run, 0.5)), 0.2, 0.9)
+	var roles: Dictionary = {fight: ROLE_FIGHT, run: ROLE_RUN, out: ROLE_SURRENDER}
+	var deterministic: Array = [out]
+	var give_up := {"deterministic": {"health": 0, "cash_fraction": 0.5, "goods_fraction": 0.5}}
+	var first_choices: Array = [fight]
+	if not run.is_empty():
+		first_choices.append(run)
+	if not out.is_empty():
+		first_choices.append(out)
+	var first_effects := {
+		fight: {
+			"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "grant_cash": 10},
+			"messy": {"escalate": true},
+			"failure": {"escalate": true},
+			"catastrophic": {"health": 9, "cash_fraction": 0.5, "goods_fraction": 0.25},
+		},
+	}
+	if not run.is_empty():
+		first_effects[run] = {
+			"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+			"messy": {"health": 2, "cash_fraction": 0.0, "goods_fraction": 0.0},
+			"failure": {"escalate": true},
+			"catastrophic": {"health": 7, "cash_fraction": 0.5, "goods_fraction": 0.25},
+		}
+	if not out.is_empty():
+		first_effects[out] = give_up
+	var second_choices: Array = [fight]
+	if not out.is_empty():
+		second_choices.append(out)
+	var second_effects := {
+		fight: {
+			"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "grant_cash": 15},
+			"messy": {"health": 3, "cash_fraction": 0.0, "goods_fraction": 0.0},
+			"failure": {"health": 6, "cash_fraction": 0.25, "goods_fraction": 0.0},
+			"catastrophic": {"health": 11, "cash_fraction": 0.5, "goods_fraction": 0.5},
+		},
+	}
+	if not out.is_empty():
+		second_effects[out] = give_up
+	return {
+		"answer": true,
+		"cap": 2,
+		"left_label": "STILL COMING",
+		"open_line": str(lines.get("open", "")),
+		"won_line": str(lines.get("won", "")),
+		"ran_line": str(lines.get("ran", "")),
+		"stalemate": {"line": "You both stop. Nobody won it, and everybody watching knows that.",
+			"effects": {"health": 3, "cash_fraction": 0.0, "goods_fraction": 0.0}},
+		"beats": [
+			{
+				"beat": str(lines.get("beat", "")),
+				"log": "He came at you. You are still standing.",
+				"left": 1,
+				"choices": first_choices,
+				"roles": roles,
+				"deterministic": deterministic,
+				"base": {fight: fight_base, run: run_base} if not run.is_empty() else {fight: fight_base},
+				"banked": 2,
+				"effects": first_effects,
+			},
+			{
+				"beat": str(lines.get("beat2", "")),
+				"log": "He is hurt and still coming.",
+				"left": 1,
+				"choices": second_choices,
+				"roles": roles,
+				"deterministic": deterministic,
+				"base": {fight: clampf(fight_base + 0.1, 0.2, 0.95)},
+				"banked": 3,
+				"effects": second_effects,
+			},
+		],
+	}
 
 static func card_by_id(card_id: String) -> Dictionary:
 	for card in CARDS:

@@ -93,6 +93,14 @@ const CONTEXTS := {
 		"a": {"text": "im sorry. wont happen again", "reaction": "It happened twice. That's the count."},
 		"b": {"text": "ok", "reaction": "Ok."},
 	},
+	"manager_hired": {
+		"a": {"text": "thank you. ill be there early", "reaction": "Good. See you then."},
+		"b": {"text": "ok", "reaction": ""},
+	},
+	"manager_rejected": {
+		"a": {"text": "i understand. thank you for looking", "reaction": "Take care of yourself."},
+		"b": {"text": "ok", "reaction": ""},
+	},
 	"manager_fired": {
 		"a": {"text": "i understand. thank you for the chance", "reaction": "Take care of yourself."},
 		"b": {"text": "whatever", "reaction": ""},

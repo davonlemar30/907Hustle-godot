@@ -174,7 +174,14 @@ func _board_row(job: Dictionary) -> Control:
 	apply.add_theme_font_size_override("font_size", 12)
 	apply.text = "APPLY"
 	apply.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	tap_connect(apply, func() -> void: _gm.dispatch("apply_job", {"job_id": str(job["id"])}))
+	# BR-D2: the tap is a state. Applied reads on the card and the button
+	# cannot be spammed; the answer comes by text.
+	if gs.job_applications.has(str(job["id"])):
+		apply.text = "APPLIED"
+		apply.disabled = true
+		left.add_child(_label("Waiting to hear back.", "Muted", 11, MUTED))
+	else:
+		tap_connect(apply, func() -> void: _gm.dispatch("apply_job", {"job_id": str(job["id"])}))
 	h.add_child(apply)
 	return card
 

@@ -30,6 +30,13 @@ func _ready() -> void:
 	gs.reset_to_new_game()
 	gs.day = 9
 	gs.cash = 5000
+	# BR-D1 (0.9.0): the stretch bug. A single long feed line on Home had no
+	# wrap, so its minimum width pushed the whole shell past the viewport and
+	# the web build rendered it centered with both edges cut off -- the bug
+	# the owner reported for three builds. Every screen is instantiated over
+	# state that carries the longest lines the game writes, and every visible
+	# control has to sit inside the viewport's width.
+	_stage_long_lines(gs)
 	var dir := DirAccess.open("res://ui/screens")
 	var names: Array = []
 	dir.list_dir_begin()
@@ -43,6 +50,8 @@ func _ready() -> void:
 	var ok := 0
 	var touch_checks := 0
 	var touch_failed := 0
+	var width_checks := 0
+	var width_failed := 0
 	for n in names:
 		var packed: PackedScene = load("res://ui/screens/%s" % n)
 		if packed == null:
@@ -66,12 +75,21 @@ func _ready() -> void:
 		for violation in touch_result[1]:
 			printerr("TOUCH FAILED: %s" % violation)
 			touch_failed += 1
+		await get_tree().process_frame
+		var width_result := _check_width_fit(inst, n)
+		width_checks += int(width_result[0])
+		for violation in width_result[1]:
+			printerr("WIDTH FAILED: %s" % violation)
+			width_failed += 1
 		inst.queue_free()
 		await get_tree().process_frame
 		ok += 1
 		print("screen ok: %s" % n)
 	print("screen smoke: %d/%d instantiated" % [ok, names.size()])
 	print("screen smoke: touch checks %d/%d passed" % [touch_checks - touch_failed, touch_checks])
+	print("screen smoke: width checks %d/%d passed" % [width_checks - width_failed, width_checks])
+	if width_failed > 0:
+		get_tree().quit.call_deferred(1)
 	await _check_components(gs)
 	await _check_panel_fit(gs)
 	get_tree().quit.call_deferred(0)
@@ -220,6 +238,44 @@ func _check_scroll_transparency(inst: Node, screen_name: String) -> Array:
 ## Read off the file rather than off the loaded resource: a PackedScene whose
 ## script failed to parse comes back with that property already dropped, which
 ## is the whole reason the instance cannot be trusted to report it.
+## BR-D1: the longest lines the game writes, on every surface that shows
+## them. A Week Zero ambient line is the one that broke Home.
+const LONG_LINE := "Two women outside the laundromat, talking about somebody named Curtis the way people talk about weather. You do not know who that is yet, and you can tell from how they say it that you will."
+
+func _stage_long_lines(gs: Node) -> void:
+	for i in 3:
+		gs.log_activity(LONG_LINE, Color(0.8, 0.8, 0.8))
+	var gm: Node = get_node("/root/GameManager")
+	var phone: Object = gm.system("phone")
+	if phone != null:
+		phone.push_text("Yalonda", LONG_LINE, "yalonda_rent")
+		phone.push_message("Around town", LONG_LINE)
+
+## Every visible control inside the viewport's width. The screen root is
+## anchored full-rect; a child whose minimum width exceeds the viewport grows
+## the shell instead of wrapping, and that is exactly the failure.
+func _check_width_fit(inst: Node, screen_name: String) -> Array:
+	var checks := 0
+	var violations: Array = []
+	var width: float = get_viewport().get_visible_rect().size.x
+	var stack: Array = [inst]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+			if not (child is Control):
+				continue
+			var control: Control = child
+			if not control.is_visible_in_tree():
+				continue
+			checks += 1
+			var rect: Rect2 = control.get_global_rect()
+			if rect.position.x < -1.0 or rect.end.x > width + 1.0:
+				violations.append("%s: %s spans %d..%d against a %d-wide viewport (min %s)"
+					% [screen_name, inst.get_path_to(control), int(rect.position.x),
+						int(rect.end.x), int(width), control.get_combined_minimum_size()])
+	return [checks, violations]
+
 func _declares_script(scene_name: String) -> bool:
 	var file := FileAccess.open("res://ui/screens/%s" % scene_name, FileAccess.READ)
 	if file == null:

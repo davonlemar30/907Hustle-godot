@@ -99,6 +99,7 @@ func _ready() -> void:
 	# Jobs and obligations both hang off day_crossed, which time_system emits.
 	var jobs = preload("res://systems/jobs.gd").new()
 	jobs.setup(_gs, rng, time, self, attributes)
+	time.attach_jobs(jobs)
 	register_system("jobs", jobs)
 
 	var obligations = preload("res://systems/obligations.gd").new()

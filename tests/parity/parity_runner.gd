@@ -992,7 +992,10 @@ func _check_save_roundtrip() -> void:
 	# walk is longer than it was when the interview resolved on the tap.
 	var hired := false
 	for _attempt in 24:
-		gm.dispatch("apply_job", {"job_id": "wash_go"})
+		if str((gs.job_applications.get("wash_go", {}) as Dictionary).get("status", "")) == "interview":
+			gm.dispatch("finish_interview", {"job_id": "wash_go", "score": 1})
+		else:
+			gm.dispatch("apply_job", {"job_id": "wash_go"})
 		if gs.active_job_id == "wash_go":
 			hired = true
 			break
@@ -16547,7 +16550,14 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 			# `day:slot:job_interview:job`, so re-applying in the same slot
 			# re-reads the same seeded answer forever.
 			metrics["applications"] = int(metrics.get("applications", 0)) + 1
-			gm.dispatch("apply_job", {"job_id": _econ_job_for(gs, best_job)})
+			var wanted := _econ_job_for(gs, best_job)
+			# BR-D3 (0.9.0): an interview offer is taken the moment it comes,
+			# as a middling interview (score 0) -- the profile is a worker,
+			# not a talker.
+			if str(((gs.job_applications.get(wanted, {})) as Dictionary).get("status", "")) == "interview":
+				gm.dispatch("finish_interview", {"job_id": wanted, "score": 0})
+			else:
+				gm.dispatch("apply_job", {"job_id": wanted})
 			if str(gs.active_job_id).is_empty():
 				gm.dispatch("advance_time", {})
 			continue
@@ -16574,11 +16584,25 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 				if str(gs.active_job_id) != better:
 					gm.dispatch("advance_time", {})
 				continue
+			if better != str(gs.active_job_id) \
+					and str(((gs.job_applications.get(better, {})) as Dictionary).get("status", "")) == "interview":
+				gm.dispatch("finish_interview", {"job_id": better, "score": 0})
 
 		if wants_job and not str(gs.active_job_id).is_empty() \
 				and jobs_system != null and str(jobs_system.shift_blocker()).is_empty():
 			var clean_before: int = int(gs.clean_cash)
-			if gm.dispatch("work_shift", {"approach": "work_hard"}):
+			# BR-D3 (0.9.0): a competent worker mixes the floor -- a coworker
+			# every fourth shift, the manual every fourth -- because the rungs
+			# are earned through rapport and the job's attribute now, not
+			# filled by XP, and a profile that only ever WORK HARDs never
+			# meets the boss and never learns the room.
+			var worked_so_far: int = int((gs.job_records.get(gs.active_job_id, {}) as Dictionary).get("shifts", 0))
+			var approach := "work_hard"
+			if worked_so_far % 4 == 1:
+				approach = "socialize"
+			elif worked_so_far % 4 == 3:
+				approach = "learn_job"
+			if gm.dispatch("work_shift", {"approach": approach}):
 				metrics["shifts"] = int(metrics["shifts"]) + 1
 				metrics["wages"] = int(metrics["wages"]) + (int(gs.clean_cash) - clean_before)
 				continue
@@ -17343,6 +17367,7 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			print("               store bans %.1f of %d — permanent, see CAUGHT_EFFECTS talk/messy"
 				% [float(row["bans"]), int(gs.boost_targets.size())])
 		print("economy-metrics: %s" % JSON.stringify({
+			"shifts": float(row.get("shifts", 0)), "wages": float(row.get("wages", 0)),
 			"profile": str(row["profile"]),
 			"net_worth": int(row["net_worth"]),
 			"pct_of_job": pct,
@@ -19602,6 +19627,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_market_causes(gs, gm)
 	_check_answer_back(gs, gm)
 	_check_job_applications(gs, gm)
+	_check_clock_in_move_up(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -19636,13 +19662,16 @@ func _check_managers(gs: Node, gm: Node) -> void:
 	while not nav.take_next_flow_sheet().is_empty():
 		pass
 	var hired := false
-	for _attempt in 10:
-		gm.dispatch("apply_job", {"job_id": "wash_go"})
+	for _attempt in 24:
+		if str((gs.job_applications.get("wash_go", {}) as Dictionary).get("status", "")) == "interview":
+			gm.dispatch("finish_interview", {"job_id": "wash_go", "score": 2})
+		else:
+			gm.dispatch("apply_job", {"job_id": "wash_go"})
 		if gs.active_job_id == "wash_go":
 			hired = true
 			break
 		gm.dispatch("advance_time", {})
-	_expect_true("the Wash & Go hires within ten tries", hired)
+	_expect_true("the Wash & Go hires within twenty-four tries", hired)
 	var sheet: Dictionary = {}
 	for _drain in 6:
 		var spec: Dictionary = nav.take_next_flow_sheet()
@@ -19846,25 +19875,139 @@ func _check_job_applications(gs: Node, gm: Node) -> void:
 	_expect_str("...not a job yet", gs.active_job_id, "")
 	_expect_true("applying twice is refused", not gm.dispatch("apply_job", {"job_id": "wash_go"}))
 	gm.dispatch("advance_time", {})
-	_expect_true("one slot is not an answer", gs.job_applications.has("wash_go"))
+	_expect_true("one slot is not an answer", str((gs.job_applications.get("wash_go", {}) as Dictionary).get("status", "")) == "pending")
 	gm.dispatch("advance_time", {})
-	_expect_true("two slots is", not gs.job_applications.has("wash_go"))
+	_expect_str("two slots is an interview offer",
+		str((gs.job_applications.get("wash_go", {}) as Dictionary).get("status", "")), "interview")
 	var from_lani := 0
 	for m in gs.phone_inbox:
 		if str((m as Dictionary).get("from", "")) == "Lani":
 			from_lani += 1
-	_expect_int("the answer is a text from Lani", from_lani, 1)
+	_expect_int("the offer is a text from Lani", from_lani, 1)
 	_expect_true("...that can be answered",
 		((gs.phone_inbox[0] as Dictionary).get("action", {}) as Dictionary).has("reply"))
+	# BR-D3: the interview. Going in queues the sheet; the sheet hands back a
+	# score; the answer comes a slot later, with the score on the chance.
+	var nav: Node = get_node("/root/ScreenManager")
+	while not nav.take_next_flow_sheet().is_empty():
+		pass
+	_expect_true("going in dispatches", gm.dispatch("start_interview", {"job_id": "wash_go"}))
+	_expect_str("...and queues the interview sheet",
+		str(nav.take_next_flow_sheet().get("kind", "")), "interview")
+	_expect_true("Lani has three questions", B10_MANAGERS.questions_for("wash_go").size() == 3)
+	_expect_true("the interview finishes with a score",
+		gm.dispatch("finish_interview", {"job_id": "wash_go", "score": 3}))
+	_expect_str("...and waits on the answer",
+		str((gs.job_applications.get("wash_go", {}) as Dictionary).get("status", "")), "interviewed")
+	_expect_true("finishing twice is refused",
+		not gm.dispatch("finish_interview", {"job_id": "wash_go", "score": 3}))
+	gm.dispatch("advance_time", {})
+	_expect_true("a slot later it is answered", not gs.job_applications.has("wash_go"))
 	var hired: bool = gs.active_job_id == "wash_go"
 	var said := str((gs.phone_inbox[0] as Dictionary).get("text", ""))
 	_expect_true("the text matches the answer", (hired and said.contains("You're on"))
 		or (not hired and not said.contains("You're on")))
+	if hired:
+		_expect_int("a good interview starts with rapport",
+			int((gs.job_records["wash_go"] as Dictionary).get("rapport", 0)), 6)
+	# An offer ignored lapses.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.phone_inbox = []
+	gm.dispatch("apply_job", {"job_id": "wash_go"})
+	for _slot in 2:
+		gm.dispatch("advance_time", {})
+	_expect_str("the offer stands", str((gs.job_applications.get("wash_go", {}) as Dictionary).get("status", "")), "interview")
+	for _slot in 8:
+		gm.dispatch("advance_time", {})
+	_expect_true("...and lapses when ignored for two days", not gs.job_applications.has("wash_go"))
+	_expect_str("...with nobody hired", gs.active_job_id, "")
 	# Day labor takes walk-ins.
 	gs.jobs_discovered.append("day_labor")
 	_expect_true("day labor dispatches", gm.dispatch("apply_job", {"job_id": "day_labor"}))
 	_expect_str("...and hires on the spot", gs.active_job_id, "day_labor")
 	_expect_true("...with nothing pending", not gs.job_applications.has("day_labor"))
+	gs.reset_to_new_game()
+
+## BR-D3 (0.9.0 PR 2): clock in, move up. The rung is earned, not filled:
+## XP alone does not promote; days, a streak, rapport and the attribute do,
+## and the moment is the manager's line and a text. The floor buttons do
+## something you can see.
+func _check_clock_in_move_up(gs: Node, gm: Node) -> void:
+	var jobs_system: Object = gm.system("jobs")
+	for job in (gs.jobs as Array):
+		var id := str((job as Dictionary)["id"])
+		if not B10_MANAGERS.has_manager(id):
+			continue
+		_expect_int("%s has three rungs" % id, B10_MANAGERS.tiers_for(id).size(), 3)
+		_expect_int("%s has three questions" % id, B10_MANAGERS.questions_for(id).size(), 3)
+		_expect_true("%s has two promotion lines" % id,
+			(B10_MANAGERS.manager_for(id).get("promotion_lines", []) as Array).size() == 2)
+		_expect_true("%s has coworkers and a break room" % id,
+			(B10_MANAGERS.manager_for(id).get("social", []) as Array).size() >= 3
+			and (B10_MANAGERS.manager_for(id).get("overhear", []) as Array).size() >= 3)
+
+	# XP alone does not promote.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.active_job_id = "wash_go"
+	gs.job_records["wash_go"] = {"xp": 20.0, "rank": 0, "last_worked_day": -1, "hired_day": gs.day,
+		"streak": 0, "rapport": 0}
+	gs.day = 2
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	var result: Dictionary = jobs_system.handle("work_shift", {"approach": "work_hard"})
+	_expect_int("twenty XP on day one is still the bottom rung",
+		int((gs.job_records["wash_go"] as Dictionary).get("rank", 0)), 0)
+	_expect_true("...and the screen can say why",
+		(jobs_system.promotion_gaps("wash_go") as Array).size() >= 2)
+	# Every gate met: the rung, the line, the text.
+	gs.phone_inbox = []
+	gs.day = 12
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.job_records["wash_go"] = {"xp": 20.0, "rank": 0, "last_worked_day": -1, "hired_day": 1,
+		"streak": 6, "rapport": 9, "shifts": 5}
+	gs.attributes["charisma"] = 4
+	result = jobs_system.handle("work_shift", {"approach": "work_hard"})
+	_expect_true("every gate met is a promotion", bool(result.get("ranked_up", false)))
+	_expect_int("...to the second rung", int((gs.job_records["wash_go"] as Dictionary).get("rank", 0)), 1)
+	_expect_str("...with a title", B10_MANAGERS.title_for("wash_go", 1), "Keyholder")
+	var from_lani := 0
+	for m in gs.phone_inbox:
+		if str((m as Dictionary).get("from", "")) == "Lani":
+			from_lani += 1
+	_expect_int("...and a text from Lani", from_lani, 1)
+
+	# The floor buttons.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.active_job_id = "wash_go"
+	gs.job_records["wash_go"] = {"xp": 0.0, "rank": 0, "last_worked_day": -1, "hired_day": 1, "shifts": 0}
+	gs.day = 3
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	var charisma_before: float = float(gs.attribute_progress.get("charisma", 0.0)) + float(gs.attributes.get("charisma", 0))
+	jobs_system.handle("work_shift", {"approach": "socialize"})
+	_expect_true("SOCIALIZE is a little charisma",
+		float(gs.attribute_progress.get("charisma", 0.0)) + float(gs.attributes.get("charisma", 0)) > charisma_before)
+	_expect_int("...and a point with Lani", int((gs.job_records["wash_go"] as Dictionary).get("rapport", 0)), 1)
+	gs.day = 4
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.health = 50
+	jobs_system.handle("work_shift", {"approach": "take_it_easy"})
+	_expect_int("BREAK ROOM is rest", int(gs.health),
+		50 + int(gs.approach_by_id("take_it_easy")["health"]) + int(jobs_system.BREAK_ROOM_HEALTH))
+	# A miss breaks the streak and costs the boss a point.
+	_lifecycle_ready(gs)
+	gs.active_job_id = "wash_go"
+	gs.job_records["wash_go"] = {"xp": 0.0, "rank": 0, "last_worked_day": 3, "hired_day": 1,
+		"streak": 4, "rapport": 5}
+	gs.job_missed["wash_go"] = 0
+	gm.dispatch("advance_time", {})
+	_expect_int("a miss breaks the streak", int((gs.job_records["wash_go"] as Dictionary).get("streak", -1)), 0)
+	_expect_int("...and costs two with the boss", int((gs.job_records["wash_go"] as Dictionary).get("rapport", -1)), 3)
 	gs.reset_to_new_game()
 
 func _check_door_to_work(gs: Node, gm: Node) -> void:
@@ -20446,7 +20589,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13599
+const MIN_CHECKS := 13649
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -21925,6 +22068,7 @@ func _check_ban_follows_failure(gs: Node, gm: Node) -> void:
 #           ==> "a save cannot pin the ramp at its cap" fails.
 
 const B10_EVENTS := preload("res://data/wander_events.gd")
+const B10_MANAGERS := preload("res://data/job_managers.gd")
 
 func _check_batch10(gs: Node, gm: Node) -> void:
 	_check_wander_ramp(gs, gm)

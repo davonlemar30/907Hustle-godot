@@ -130,6 +130,64 @@ static func build_hire(job: Dictionary, manager: Dictionary) -> VBoxContainer:
 	content.add_child(_dismiss_button("FIRST SHIFT" if manager.has("name") and not str(manager.get("name", "")).is_empty() else "GET IN"))
 	return content
 
+## BR-D3: the interview. Three questions, two answers each, the manager
+## reacting to every answer, then the door. The score rides the final
+## Dismiss button into `finish_interview`; the drain wires that button to
+## the sheet's exit like every other flow sheet.
+static func build_interview(job: Dictionary, manager: Dictionary, gm: Node) -> VBoxContainer:
+	var questions: Array = manager.get("questions", [])
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	content.add_child(_label("INTERVIEW", "Kicker", 10, MUTED))
+	content.add_child(_label("%s, %s" % [str(manager.get("name", "")), str(manager.get("title", ""))],
+		"CardTitle", 18, CREAM, true))
+	var question := _label("", "Muted", 14, CREAM, true, HORIZONTAL_ALIGNMENT_LEFT)
+	content.add_child(question)
+	var reaction := _label("", "Muted", 13, MUTED, true, HORIZONTAL_ALIGNMENT_LEFT)
+	content.add_child(reaction)
+	var answers := VBoxContainer.new()
+	answers.add_theme_constant_override("separation", 8)
+	content.add_child(answers)
+	var a := Button.new()
+	var b := Button.new()
+	for button in [a, b]:
+		button.custom_minimum_size = Vector2(0, 48)
+		button.focus_mode = Control.FOCUS_NONE
+		button.theme_type_variation = &"BtnSecondary"
+		button.add_theme_font_size_override("font_size", 13)
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		answers.add_child(button)
+	var done := _dismiss_button("LEAVE")
+	done.visible = false
+	content.add_child(done)
+	var state := {"index": 0, "score": 0}
+	var show := func() -> void:
+		if int(state["index"]) >= questions.size():
+			question.text = "\"That's all I need. I'll let you know.\""
+			answers.visible = false
+			done.visible = true
+			return
+		var row: Dictionary = questions[int(state["index"])]
+		question.text = str(row.get("q", ""))
+		a.text = str((row.get("a", {}) as Dictionary).get("text", ""))
+		b.text = str((row.get("b", {}) as Dictionary).get("text", ""))
+	var answer := func(option: String) -> void:
+		if int(state["index"]) >= questions.size():
+			return
+		var row: Dictionary = questions[int(state["index"])]
+		var picked: Dictionary = row.get(option, {})
+		state["score"] = int(state["score"]) + int(picked.get("score", 0))
+		reaction.text = str(picked.get("say", ""))
+		state["index"] = int(state["index"]) + 1
+		show.call()
+	a.pressed.connect(answer.bind("a"))
+	b.pressed.connect(answer.bind("b"))
+	done.pressed.connect(func() -> void:
+		if gm != null:
+			gm.dispatch("finish_interview", {"job_id": str(job.get("id", "")), "score": int(state["score"])}))
+	show.call()
+	return content
+
 ## WS-D4: being let go. One line, what they did, and the door.
 static func build_fired(job: Dictionary, manager: Dictionary) -> VBoxContainer:
 	var content := VBoxContainer.new()

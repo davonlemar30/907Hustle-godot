@@ -37,6 +37,11 @@ func _ready() -> void:
 	# state that carries the longest lines the game writes, and every visible
 	# control has to sit inside the viewport's width.
 	_stage_long_lines(gs)
+	# The width sweep measures against the PHONE, not the headless window:
+	# the design viewport is 375 wide, and a headless run opens wider than
+	# that, which would let a control 700 wide pass.
+	get_window().size = Vector2i(375, 812)
+	await get_tree().process_frame
 	var dir := DirAccess.open("res://ui/screens")
 	var names: Array = []
 	dir.list_dir_begin()

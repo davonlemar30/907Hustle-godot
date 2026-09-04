@@ -43,6 +43,32 @@ extends RefCounted
 ## hear back tomorrow afternoon.
 const APPLICATION_WAIT_SLOTS := 2
 
+## BR-D3 (0.9.0 PR 2): the rungs. XP still fills the bar (canon's ladder),
+## but the rung is earned only when the manager would give it: days in the
+## role, showing up in a row, rapport with whoever runs the place, and the
+## attribute the job actually uses. Index is the rung being reached.
+## Tuned against the economy sweep: the first cut (days 3/7, streak 3/5,
+## rapport 4/8, attribute 2/3) held a plain worker at the bottom rung for
+## the whole run and cut the job yardstick 28%. These reach the second
+## rung inside a week of showing up and the third with one point of the
+## job's attribute, which the floor buttons can earn.
+const TIER_MIN_DAYS := [0, 2, 6]
+const TIER_STREAK := [0, 2, 4]
+const TIER_RAPPORT := [0, 3, 6]
+const TIER_ATTRIBUTE := [0, 1, 2]
+## An interview offer that sits unanswered this long lapses.
+const INTERVIEW_LAPSE_SLOTS := 8
+## What a good interview is worth on the chance, per point of score.
+const INTERVIEW_SCORE_CHANCE := 0.08
+## Rapport at hire: this plus the interview score.
+const RAPPORT_AT_HIRE := 3
+## What the floor buttons are worth.
+const SOCIALIZE_CHARISMA := 0.34
+const LEARN_INTELLIGENCE := 0.25
+const BREAK_ROOM_HEALTH := 3
+const OVERHEAR_CHANCE := 0.5
+const MUTED := Color(0.608, 0.608, 0.608)
+
 ## Canon thresholds. Warnings at 1 and 2, gone at 3.
 const MISSED_FIRST_WARNING := 1
 const MISSED_FINAL_WARNING := 2
@@ -79,8 +105,58 @@ func _exposure() -> Node:
 func _curtis_node() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
 
+## BR-D3: what stands between this run and the next rung, in words the
+## Jobs screen can print. Empty when the next rung is open (or there is
+## none).
+func promotion_gaps(job_id: String) -> Array:
+	var rec: Dictionary = gs.job_records.get(job_id, {})
+	var rank: int = int(rec.get("rank", 0))
+	var tiers: Array = MANAGERS.tiers_for(job_id)
+	if tiers.is_empty() or rank >= tiers.size() - 1:
+		return []
+	var next: int = rank + 1
+	var gaps: Array = []
+	var xp_need: float = float(gs.JOB_RANK_THRESHOLDS[mini(next - 1, gs.JOB_RANK_THRESHOLDS.size() - 1)])
+	if float(rec.get("xp", 0.0)) < xp_need:
+		gaps.append("more shifts")
+	var days: int = int(gs.day) - int(rec.get("hired_day", gs.day))
+	if days < int(TIER_MIN_DAYS[next]):
+		gaps.append("%d more day%s" % [int(TIER_MIN_DAYS[next]) - days,
+			"" if int(TIER_MIN_DAYS[next]) - days == 1 else "s"])
+	if int(rec.get("streak", 0)) < int(TIER_STREAK[next]):
+		gaps.append("%d in a row" % int(TIER_STREAK[next]))
+	if int(rec.get("rapport", 0)) < int(TIER_RAPPORT[next]):
+		gaps.append("a word with %s" % str(MANAGERS.manager_for(job_id).get("name", "the boss")))
+	var attribute := str(MANAGERS.manager_for(job_id).get("performance_attribute", "charisma"))
+	if int(attributes.value(attribute)) < int(TIER_ATTRIBUTE[next]):
+		gaps.append("more %s" % attribute)
+	return gaps
+
+## BR-D3: the rung this record has earned -- the XP ladder's rung, held
+## back by whichever gate is not met. Never lower than the rung already
+## held: a promotion is not taken back for a slow week.
+func _earned_rank(job_id: String, rec: Dictionary) -> int:
+	var held: int = int(rec.get("rank", 0))
+	var by_xp: int = gs.job_rank_for_xp(float(rec.get("xp", 0.0)))
+	var tiers: Array = MANAGERS.tiers_for(job_id)
+	if tiers.is_empty():
+		return maxi(held, by_xp)
+	var ceiling: int = tiers.size() - 1
+	var rank: int = held
+	var attribute := str(MANAGERS.manager_for(job_id).get("performance_attribute", "charisma"))
+	# One rung per shift: a promotion is a moment, and two in one night is
+	# not two moments.
+	if rank < mini(by_xp, ceiling):
+		var next: int = rank + 1
+		var days: int = int(gs.day) - int(rec.get("hired_day", gs.day))
+		if days >= int(TIER_MIN_DAYS[next]) and int(rec.get("streak", 0)) >= int(TIER_STREAK[next]) \
+				and int(rec.get("rapport", 0)) >= int(TIER_RAPPORT[next]) \
+				and int(attributes.value(attribute)) >= int(TIER_ATTRIBUTE[next]):
+			rank = next
+	return rank
+
 func can_handle(action: String) -> bool:
-	return action in ["apply_job", "work_shift", "quit_job"]
+	return action in ["apply_job", "work_shift", "quit_job", "start_interview", "finish_interview"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
 	match action:
@@ -90,6 +166,10 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 			return _work(str(payload.get("approach", "work_hard")))
 		"quit_job":
 			return _quit()
+		"start_interview":
+			return _start_interview(str(payload.get("job_id", "")))
+		"finish_interview":
+			return _finish_interview(str(payload.get("job_id", "")), int(payload.get("score", 0)))
 	return {"ok": false, "reason": "Unknown job action."}
 
 ## Canon's interview chance. Charisma is read by the resolver, not by this
@@ -139,21 +219,49 @@ func resolve_applications() -> void:
 		var job_id := str(job_key)
 		var row: Dictionary = gs.job_applications[job_id]
 		var then: int = int(row.get("day", gs.day)) * 4 + int(row.get("slot", 0))
-		if now - then < APPLICATION_WAIT_SLOTS:
-			continue
 		var job: Dictionary = gs.job_by_id(job_id)
 		if job.is_empty():
 			gs.job_applications.erase(job_id)
 			continue
+		var manager: Dictionary = MANAGERS.manager_for(job_id)
+		var who := str(manager.get("name", ""))
+		var status := str(row.get("status", "pending"))
+		# BR-D3: a place with a manager interviews. Pending becomes an offer
+		# to come in (a text); the offer waits on the player and lapses if
+		# ignored; interviewed resolves a slot later with the score on it.
+		if status == "pending":
+			if now - then < APPLICATION_WAIT_SLOTS:
+				continue
+			if not MANAGERS.questions_for(job_id).is_empty() and not who.is_empty():
+				row["status"] = "interview"
+				row["day"] = int(gs.day)
+				row["slot"] = int(gs.time_slots_today)
+				gs.job_applications[job_id] = row
+				gs.log_activity("%s wants to see you. The interview is yours to go to." % who, AMBER)
+				if phone != null:
+					phone.push_text(who, str(manager.get("interview_text",
+						"Come in tomorrow and we'll talk.")), "manager_interview")
+				continue
+		elif status == "interview":
+			if now - then < INTERVIEW_LAPSE_SLOTS:
+				continue
+			gs.job_applications.erase(job_id)
+			gs.log_activity("You never went in to see %s. The offer lapses." % who, RED)
+			if phone != null and not who.is_empty():
+				phone.push_text(who, "You didn't come in. I filled it.", "manager_rejected")
+			continue
+		elif status == "interviewed":
+			if now - then < 1:
+				continue
+		var score: int = int(row.get("score", 0))
 		var key := "%d:%d:job_interview:%s" % [int(row.get("day", gs.day)),
 			int(row.get("slot", 0)), job_id]
+		var chance: float = clampf(interview_chance() + float(score) * INTERVIEW_SCORE_CHANCE, 0.2, 0.97)
 		var outcome: Dictionary = resolver.resolve_action(
-			"job_interview", interview_chance(), attributes.effective("charisma"), gs.run_seed, key)
+			"job_interview", chance, attributes.effective("charisma"), gs.run_seed, key)
 		var tier: String = str(outcome["tier"])
 		resolver.broadcast_outcome("job_interview", tier, gs.current_district_id)
 		gs.job_applications.erase(job_id)
-		var manager: Dictionary = MANAGERS.manager_for(job_id)
-		var who := str(manager.get("name", ""))
 		if not resolver.is_success_tier(tier):
 			gs.log_activity("%s passed. Nothing stops you applying again." % job["name"], RED)
 			if phone != null and not who.is_empty():
@@ -161,9 +269,37 @@ func resolve_applications() -> void:
 					"We went with somebody else. Good luck out there.")), "manager_rejected")
 			continue
 		_hire(job_id, tier)
+		gs.job_records[job_id]["rapport"] = RAPPORT_AT_HIRE + score
 		if phone != null and not who.is_empty():
 			phone.push_text(who, str(manager.get("hire_text", "You're on. Come in tomorrow.")),
 				"manager_hired")
+
+## BR-D3: the player goes in. The interview is a sheet (three questions, two
+## answers each, the manager reacting to each); this only opens it.
+func _start_interview(job_id: String) -> Dictionary:
+	var row: Dictionary = gs.job_applications.get(job_id, {})
+	if str(row.get("status", "")) != "interview":
+		return {"ok": false, "reason": "Nobody is waiting to see you there."}
+	if gs.current_district_id != "north_star_lot":
+		return {"ok": false, "reason": "The interview is in Spenard."}
+	var nav: Node = _screen_manager()
+	if nav != null:
+		nav.enqueue_flow_sheet({"kind": "interview", "job_id": job_id})
+	return {"ok": true, "job_id": job_id}
+
+## The sheet hands back the score. Resolves on the next advance.
+func _finish_interview(job_id: String, score: int) -> Dictionary:
+	var row: Dictionary = gs.job_applications.get(job_id, {})
+	if str(row.get("status", "")) != "interview":
+		return {"ok": false, "reason": "There is no interview to finish."}
+	row["status"] = "interviewed"
+	row["score"] = clampi(score, -3, 3)
+	row["day"] = int(gs.day)
+	row["slot"] = int(gs.time_slots_today)
+	gs.job_applications[job_id] = row
+	var who := str(MANAGERS.manager_for(job_id).get("name", "They"))
+	gs.log_activity("%s walks you out. \"I'll let you know.\"" % who, AMBER)
+	return {"ok": true, "score": row["score"]}
 
 ## The hire itself: the record, the ladder reset, the feed, the sheet.
 func _hire(job_id: String, tier: String) -> Dictionary:
@@ -261,9 +397,32 @@ func _work(approach_id: String) -> Dictionary:
 	var rec: Dictionary = gs.job_records[job_id]
 	rec["xp"] = float(rec.get("xp", 0.0)) + float(approach["xp"])
 	var old_rank: int = int(rec.get("rank", 0))
-	rec["rank"] = gs.job_rank_for_xp(float(rec["xp"]))
 	rec["last_worked_day"] = gs.day
 	rec["shifts"] = int(rec.get("shifts", 0)) + 1
+	# BR-D3: the floor buttons do something you can see. SOCIALIZE is a
+	# coworker and a point with the boss and a little charisma; BREAK ROOM
+	# is health and half a chance to overhear something; LEARN THE JOB is a
+	# little intelligence; WORK HARD is the pay it always was, and the boss
+	# notices that too.
+	var floor_line := ""
+	match approach_id:
+		"socialize":
+			rec["rapport"] = int(rec.get("rapport", 0)) + 1
+			attributes.improve("charisma", SOCIALIZE_CHARISMA)
+			floor_line = _floor_line(job_id, "social", int(rec["shifts"]))
+		"take_it_easy":
+			gs.health = clampi(gs.health + BREAK_ROOM_HEALTH, 1, gs.health_max)
+			if rng.seeded_int_range(gs.run_seed, "%d:%d:break_room" % [gs.day, gs.time_slots_today], 0, 99) \
+					< int(OVERHEAR_CHANCE * 100.0):
+				floor_line = _overhear_line(job_id, int(rec["shifts"]))
+		"learn_job":
+			attributes.improve("intelligence", LEARN_INTELLIGENCE)
+		"work_hard":
+			if int(rec["shifts"]) % 3 == 0:
+				rec["rapport"] = int(rec.get("rapport", 0)) + 1
+	if not floor_line.is_empty():
+		gs.log_activity(floor_line, MUTED)
+	rec["rank"] = _earned_rank(job_id, rec)
 	# Working resets the attendance ladder, whatever rung it was on.
 	gs.job_missed[job_id] = 0
 
@@ -305,11 +464,44 @@ func _work(approach_id: String) -> Dictionary:
 		})
 	var ranked_up: bool = int(rec["rank"]) > old_rank
 	if ranked_up:
-		gs.log_activity("%s moved you up to rank %d." % [job["name"], int(rec["rank"])], GREEN)
+		# BR-D3: a promotion is a moment -- the manager's line, and a text.
+		var lines: Array = manager.get("promotion_lines", [])
+		var title := MANAGERS.title_for(job_id, int(rec["rank"]))
+		if not lines.is_empty():
+			gs.log_activity(str(lines[clampi(int(rec["rank"]) - 1, 0, lines.size() - 1)]), GREEN)
+		else:
+			gs.log_activity("%s moved you up to rank %d." % [job["name"], int(rec["rank"])], GREEN)
+		var phone: Object = gm.system("phone") if gm != null else null
+		if phone != null and manager.has("name") and not title.is_empty():
+			phone.push_text(str(manager["name"]), "%s. It's yours. Don't make me regret it." % title,
+				"manager_promoted")
 
 	# A shift is a slot, the same as any other district action.
 	time_system.handle("advance_time", {})
 	return {"ok": true, "payout": payout, "ranked_up": ranked_up, "micro_event": micro}
+
+## BR-D3: a coworker line, seeded on the shift count so a run replays it.
+func _floor_line(job_id: String, key: String, shifts: int) -> String:
+	var lines: Array = MANAGERS.manager_for(job_id).get(key, [])
+	if lines.is_empty():
+		return ""
+	return str(lines[shifts % lines.size()])
+
+## BR-D3: what the break room overhears. Half the time it is the block
+## (authored); the other half it is the board, live -- the best route the
+## economy knows about right now, in a coworker's mouth.
+func _overhear_line(job_id: String, shifts: int) -> String:
+	if shifts % 2 == 0:
+		return _floor_line(job_id, "overhear", shifts / 2)
+	var economy: Object = gm.system("economy") if gm != null else null
+	if economy != null and bool(gs.phone_active):
+		var routes: Array = economy.known_routes()
+		if not routes.is_empty():
+			var route: Dictionary = routes[0]
+			return "Somebody in the break room says %s is paying $%d over on %s. Somebody else says that was last week." \
+				% [str(route.get("product_name", route.get("product_id", "it"))).to_lower(),
+					int(route.get("edge", 0)), str(route.get("name", "the other side of town"))]
+	return _floor_line(job_id, "overhear", shifts)
 
 ## Attendance settles when a day ends. Canon runs this inside the day-end
 ## settlement, counting the day that just finished.
@@ -330,6 +522,9 @@ func settle_night(ended_day: int) -> void:
 		return
 	var rec: Dictionary = gs.job_records.get(job_id, {})
 	if int(rec.get("last_worked_day", -1)) == ended_day:
+		# BR-D3: a day worked is a day in a row.
+		rec["streak"] = int(rec.get("streak", 0)) + 1
+		gs.job_records[job_id] = rec
 		return
 	# Grace on the day you were hired.
 	if int(rec.get("hired_day", -1)) == ended_day:
@@ -337,6 +532,10 @@ func settle_night(ended_day: int) -> void:
 
 	var missed: int = int(gs.job_missed.get(job_id, 0)) + 1
 	gs.job_missed[job_id] = missed
+	# BR-D3: a miss breaks the streak and costs a point with the boss.
+	rec["streak"] = 0
+	rec["rapport"] = maxi(0, int(rec.get("rapport", 0)) - 2)
+	gs.job_records[job_id] = rec
 
 	var manager: Dictionary = MANAGERS.manager_for(job_id)
 	var phone: Object = gm.system("phone") if gm != null else null

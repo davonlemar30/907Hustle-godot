@@ -19,6 +19,34 @@ extends RefCounted
 
 const MANAGERS := {
 	"wash_go": {
+		"performance_attribute": "charisma",
+		"tiers": ["Attendant", "Keyholder", "Closer"],
+		"interview_text": "Baby come by tomorrow and let me look at you. Bring your hands.",
+		"questions": [
+			{"q": "\"Yalonda's people. Ok. Why here, baby? It's a laundromat.\"",
+			 "a": {"text": "Because it's yours, and she said you're fair.", "score": 1, "say": "\"Mm. She talks too much. Sit down.\""},
+			 "b": {"text": "Because I need the money.", "score": 0, "say": "\"Honest. Ok. Everybody does.\""}},
+			{"q": "\"Man comes in drunk at two in the morning and wants his quarters back. What do you do?\"",
+			 "a": {"text": "Give him his quarters and walk him out.", "score": 1, "say": "\"That's right. Quarters are cheaper than police.\""},
+			 "b": {"text": "Tell him the machine's not mine.", "score": -1, "say": "\"Baby everything in here is mine.\""}},
+			{"q": "\"Can you be here when you say you'll be here?\"",
+			 "a": {"text": "Every time.", "score": 1, "say": "\"We'll see. Everybody says that.\""},
+			 "b": {"text": "Most of the time.", "score": 0, "say": "\"At least you're honest, baby.\""}},
+		],
+		"promotion_lines": [
+			"Lani puts a key on the counter and slides it across. \"Keyholder. Don't make me take it back, baby.\"",
+			"Lani hands you the deposit bag. \"You close. I go home. That's the whole promotion.\"",
+		],
+		"social": [
+			"Miss Pat, who has done her washing here every Tuesday since before you were born, tells you your shirt is wrong. She is right.",
+			"A man named Junior teaches you the trick with the change machine. Lani pretends not to see.",
+			"Lani's grandson does homework on the folding table and asks if you know any rappers. You do not.",
+		],
+		"overhear": [
+			"Two women folding towels: somebody's cousin got picked up on Northern Lights. Somebody else says the cops are sitting on Spenard Road this week.",
+			"A man on the phone by the dryers: Ship Creek is hiring again and paying cash on Fridays.",
+			"Somebody says Goodie raised his prices. Somebody else says Goodie always says that.",
+		],
 		"name": "Lani", "title": "runs the Wash & Go",
 		"hire": [
 			"Lani looks you up and down over the counter, then past you at the door.",
@@ -40,6 +68,34 @@ const MANAGERS := {
 		"fired_text": "Took you off the board. Come see me when you get it together. Not before.",
 	},
 	"spenard_chevron": {
+		"performance_attribute": "intelligence",
+		"tiers": ["Clerk", "Night Clerk", "Assistant Manager"],
+		"interview_text": "Come by the station tonight after ten. Ask for Marcus.",
+		"questions": [
+			{"q": "\"Why nights?\"",
+			 "a": {"text": "Nights pay more and I don't sleep anyway.", "score": 1, "say": "\"Neither do I.\""},
+			 "b": {"text": "Days were full.", "score": 0, "say": "\"They usually are.\""}},
+			{"q": "\"Kid walks out with a case of beer. You chase him?\"",
+			 "a": {"text": "No. I write down what he looks like.", "score": 1, "say": "\"Right answer. Beer's insured. You're not.\""},
+			 "b": {"text": "Yeah. Nobody steals from me.", "score": -1, "say": "\"It's not from you. That's the thing you have to learn.\""}},
+			{"q": "\"Register's short twenty at the end of the shift. Whose fault?\"",
+			 "a": {"text": "Mine, until I can show you it isn't.", "score": 1, "say": "\"Ok.\""},
+			 "b": {"text": "Depends who was on before me.", "score": 0, "say": "\"That's what they all say. Sometimes they're right.\""}},
+		],
+		"promotion_lines": [
+			"Marcus hands you the night keys without looking up. \"Night clerk. Same job. More keys.\"",
+			"Marcus: \"They want an assistant manager. I told them you. Don't make me a liar.\"",
+		],
+		"social": [
+			"A trucker from the Valley talks to you for forty minutes about a moose. Marcus lets you.",
+			"The regular who buys one scratcher every night at eleven wins forty dollars and gives you five of it.",
+			"Marcus tells you, in the fewest words possible, about the year he did on the slope.",
+		],
+		"overhear": [
+			"Two guys at the pumps: somebody is moving weight through Muldoon and the price downtown dropped because of it.",
+			"A cop buys coffee and says to his partner that they're doubling the Spenard Road patrol this weekend.",
+			"A kid on the phone: Curtis's people were asking about somebody new. He doesn't say who.",
+		],
 		"name": "Marcus", "title": "night manager",
 		"night_bonus": 12,
 		"hire": [
@@ -62,6 +118,34 @@ const MANAGERS := {
 		"fired_text": "Don't come back. Nothing personal. That's the count.",
 	},
 	"rebel_convenience": {
+		"performance_attribute": "intelligence",
+		"tiers": ["Counter", "Keyholder", "Manager"],
+		"interview_text": "come by tomorrow. bring ID. sonny",
+		"questions": [
+			{"q": "Sonny counts your hands. \"You ever run a register?\"",
+			 "a": {"text": "Yes. Two years at a Fred Meyer outside.", "score": 1, "say": "\"Outside. Ok. Here is smaller and worse.\""},
+			 "b": {"text": "No, but I count fast.", "score": 0, "say": "\"We'll see how fast.\""}},
+			{"q": "\"Guys smoke by the door. You say what?\"",
+			 "a": {"text": "Not here, fellas. Then I mean it.", "score": 1, "say": "\"Good. Mean it every time.\""},
+			 "b": {"text": "Nothing. It's cold out.", "score": -1, "say": "\"Then they smoke by my door forever.\""}},
+			{"q": "\"Register is short, you're short. You understand that?\"",
+			 "a": {"text": "I understand it. I won't be short.", "score": 1, "say": "\"Ok ok.\""},
+			 "b": {"text": "What if it's the machine?", "score": 0, "say": "\"The machine has never once been short.\""}},
+		],
+		"promotion_lines": [
+			"Sonny gives you a key and a warning in the same breath. \"Keyholder. My nephew is mad. Good.\"",
+			"Sonny: \"You run it Sundays now. I'm going fishing. Don't burn it down.\"",
+		],
+		"social": [
+			"Sonny's daughter beats you at cards on the counter and takes your last dollar with great seriousness.",
+			"A regular tells you the Rebel used to be a video store, and before that a bar, and before that nothing.",
+			"Sonny shows you a photo of the store the day he bought it. He does not say anything. He does not need to.",
+		],
+		"overhear": [
+			"Two men by the coolers: pills are up because a pharmacy on Northern Lights got strict.",
+			"A woman on her phone says the police have a car sitting on the lot at the Chevron every night now.",
+			"Somebody says a guy named Dre is fronting money to anybody who asks, and somebody else says that's the problem.",
+		],
 		"name": "Sonny", "title": "owns the Rebel",
 		"hire": [
 			"Sonny counts your hands before he looks at your face.",
@@ -81,6 +165,34 @@ const MANAGERS := {
 		"fired_text": "gave the shift to my nephew. good luck",
 	},
 	"northern_value": {
+		"performance_attribute": "intelligence",
+		"tiers": ["Floor", "Lead", "Department Lead"],
+		"interview_text": "Interview tomorrow at 9. Ask for Denise at customer service. Wear closed shoes.",
+		"questions": [
+			{"q": "\"Corporate asks me to ask: why Northern Value?\"",
+			 "a": {"text": "Because it's steady, and I need steady.", "score": 1, "say": "\"That's the answer. Nobody says it.\""},
+			 "b": {"text": "Because you're hiring.", "score": 0, "say": "\"Fair.\""}},
+			{"q": "\"A pallet comes off the truck wrong. Your coworker is under it. What's first?\"",
+			 "a": {"text": "The coworker.", "score": 1, "say": "\"Yes. Then the paperwork.\""},
+			 "b": {"text": "Stop the truck.", "score": 0, "say": "\"The truck already stopped.\""}},
+			{"q": "\"Break is fifteen minutes. I count. That a problem?\"",
+			 "a": {"text": "No. Fifteen is fifteen.", "score": 1, "say": "\"Good.\""},
+			 "b": {"text": "Depends how the day's going.", "score": -1, "say": "\"It's fifteen regardless of the day.\""}},
+		],
+		"promotion_lines": [
+			"Denise hands you a different vest. This one fits. \"Lead. It's fifty cents an hour and everybody's problems.\"",
+			"Denise: \"Department lead. Corporate signed it. I signed it first.\"",
+		],
+		"social": [
+			"The woman who runs the fitting rooms has worked here nineteen years and knows everybody in Spenard by their pants size.",
+			"A coworker named Tavita shows you a picture of his church's choir. He's the tall one. They're all the tall one.",
+			"Denise eats lunch alone in her car. You knock. She lets you in. Neither of you says much.",
+		],
+		"overhear": [
+			"Two cashiers: somebody's brother got stopped at a checkpoint on the road to the airport and they took everything.",
+			"A customer says the dispensary on Spenard Road is undercutting everybody and weed on the street is down.",
+			"A kid stocking shelves says Curtis's people are hiring, and the kid next to him tells him to shut up.",
+		],
 		"name": "Denise", "title": "floor lead",
 		"hire": [
 			"Denise hands you a vest that fit somebody else.",
@@ -102,6 +214,34 @@ const MANAGERS := {
 		"fired_text": "System terminated you this morning. Nothing I could do. Take care of yourself.",
 	},
 	"night_owl": {
+		"performance_attribute": "charisma",
+		"tiers": ["Counter", "Regular", "Closer"],
+		"interview_text": "come by tonight before close. no interview. i just want to see you work a rush",
+		"questions": [
+			{"q": "Mina slides you an apron. \"Rush is in ten minutes. What do you do when three people order at once?\"",
+			 "a": {"text": "Take all three, make them in order, keep talking.", "score": 1, "say": "\"ok. show me.\""},
+			 "b": {"text": "Ask you.", "score": 0, "say": "\"ill be busy.\""}},
+			{"q": "\"A regular tells you something he shouldn't. What do you do with it?\"",
+			 "a": {"text": "Nothing. It stays at the counter.", "score": 1, "say": "\"good.\""},
+			 "b": {"text": "Tell you.", "score": 0, "say": "\"maybe. depends what it is.\""}},
+			{"q": "\"Why do you want to work next to me?\"",
+			 "a": {"text": "Because you don't waste words and neither do I.", "score": 1, "say": "\"we'll see about the second part.\""},
+			 "b": {"text": "Because it's evenings.", "score": 0, "say": "\"ok.\""}},
+		],
+		"promotion_lines": [
+			"Mina stops telling you which regulars pay. You already know. \"youre a regular now. it means something here.\"",
+			"Mina hands you the closing key and does not say anything, which from Mina is a speech.",
+		],
+		"social": [
+			"A regular named Old Pete tells you about Anchorage in 1964, the earthquake, and the bar that fell into the inlet.",
+			"Mina lets you pick the music for an hour. You pick wrong. She lets it play.",
+			"A girl at the counter asks if Mina is single. Mina, from the back, without looking up: \"no.\"",
+		],
+		"overhear": [
+			"Two men at the counter, quiet: Curtis is moving something through Ship Creek Thursday. They stop when Mina looks up.",
+			"A woman says the police sat on the Chevron lot all night and nobody came.",
+			"A regular says pills are cheap on the east side this week, then says he heard that from somebody.",
+		],
 		"name": "Mina", "title": "the counter",
 		"regular_after": 4, "regular_bonus": 5,
 		"hire": [
@@ -124,6 +264,34 @@ const MANAGERS := {
 		"fired_text": "i took you off the schedule. its ok. come by when youre ready. as a customer",
 	},
 	"juan_warehouse": {
+		"performance_attribute": "intelligence",
+		"tiers": ["Dock", "Lead Hand", "Foreman's Second"],
+		"interview_text": "Juan says you're solid. Dock, six a.m., tomorrow. I'll ask you three things and watch you lift one.",
+		"questions": [
+			{"q": "\"You ever thrown out your back?\"",
+			 "a": {"text": "No. I lift with my legs.", "score": 1, "say": "\"Everybody says that until they don't.\""},
+			 "b": {"text": "Once. Learned from it.", "score": 0, "say": "\"Ok. Then you know.\""}},
+			{"q": "\"Driver from the Valley says your count is wrong. It isn't.\"",
+			 "a": {"text": "Show him the sheet. Twice if he needs it.", "score": 1, "say": "\"That's the job.\""},
+			 "b": {"text": "Tell him to take it up with you.", "score": -1, "say": "\"Then I'm doing your job.\""}},
+			{"q": "\"Juan vouched. That means if you don't show, it's on him. You good with that?\"",
+			 "a": {"text": "I'll show.", "score": 1, "say": "\"Six a.m.\""},
+			 "b": {"text": "That's a lot to put on Juan.", "score": 0, "say": "\"It is. He did it anyway.\""}},
+		],
+		"promotion_lines": [
+			"Ray hands you a radio. \"Lead hand. When I'm not here, you are.\"",
+			"Ray, without ceremony: \"When I go up to the slope in March, the dock is yours. Don't lose anybody.\"",
+		],
+		"social": [
+			"A forklift driver named Bear has a rule about coffee and teaches it to you like scripture.",
+			"Juan works four bays down and neither of you mentions the apartment for eight hours. It's nice.",
+			"Ray tells you about the year the port shut. Half the dock went to Prudhoe. \"The other half went to jail.\"",
+		],
+		"overhear": [
+			"Two drivers: a container came in short and the guy who signed for it is not around anymore.",
+			"A railroad man says the price of coke downtown jumped because a package didn't make the Seattle flight.",
+			"Somebody says Curtis has a guy at the port, and somebody else says Curtis has a guy everywhere.",
+		],
 		"name": "Ray", "title": "dock foreman",
 		"hire": [
 			"Ray shakes your hand like he's testing it.",
@@ -145,6 +313,34 @@ const MANAGERS := {
 		"fired_text": "You're off the dock. I'm sorry to do it. Juan will hear about it from me, not you.",
 	},
 	"ship_creek": {
+		"performance_attribute": "intelligence",
+		"tiers": ["Freight", "Route", "Lead"],
+		"interview_text": "Five a.m. Post Road gate. If you're late I already know what I need to know.",
+		"questions": [
+			{"q": "Big Mike checks the clipboard. \"You know what freight is?\"",
+			 "a": {"text": "Things that don't wait.", "score": 1, "say": "\"Huh. Ok.\""},
+			 "b": {"text": "Trucks.", "score": 0, "say": "\"Trucks. Sure.\""}},
+			{"q": "\"Wind's blowing forty off the inlet. Your hands don't work. What do you do?\"",
+			 "a": {"text": "Keep going till the truck's loaded, then feel it.", "score": 1, "say": "\"That's the job.\""},
+			 "b": {"text": "Warm up in the cab.", "score": -1, "say": "\"Cab's for drivers.\""}},
+			{"q": "\"On time every day for a month. Can you do that?\"",
+			 "a": {"text": "Every day.", "score": 1, "say": "\"We'll see.\""},
+			 "b": {"text": "Most days.", "score": -1, "say": "\"Most days the truck leaves without you.\""}},
+		],
+		"promotion_lines": [
+			"Big Mike puts you on the good route. It's the same route with a heater that works. \"Route. Don't get comfortable.\"",
+			"Big Mike crosses out a name on the clipboard and writes yours above it. \"Lead. The name I crossed out was mine.\"",
+		],
+		"social": [
+			"A guy named Tino has worked freight since before the port had a fence. He shows you where the fence is weak. Just information.",
+			"Big Mike brings a thermos of something that is not coffee and pours you one at four a.m. without asking.",
+			"Two Samoan brothers from Mountain View load beside you and sing the whole shift. Nobody tells them to stop.",
+		],
+		"overhear": [
+			"Two drivers: a manifest didn't match and the container is sitting in Curtis's lot, not the port's.",
+			"Somebody says the checkpoint on the airport road is every night now.",
+			"A railroad man says Mountain View is where the pills go, and the Gate is where they come from.",
+		],
 		"name": "Big Mike", "title": "freight",
 		"hire": [
 			"Big Mike checks a clipboard with your name spelled wrong on it.",
@@ -175,6 +371,20 @@ const MANAGERS := {
 		"micro": [],
 	},
 }
+
+## BR-D3 (0.9.0 PR 2): the rungs. Each job has three titles; a rung is
+## earned when every gate on it is met, not when the XP bar fills.
+static func tiers_for(job_id: String) -> Array:
+	return manager_for(job_id).get("tiers", [])
+
+static func title_for(job_id: String, rank: int) -> String:
+	var tiers: Array = tiers_for(job_id)
+	if tiers.is_empty():
+		return ""
+	return str(tiers[clampi(rank, 0, tiers.size() - 1)])
+
+static func questions_for(job_id: String) -> Array:
+	return manager_for(job_id).get("questions", [])
 
 static func manager_for(job_id: String) -> Dictionary:
 	return MANAGERS.get(job_id, {})

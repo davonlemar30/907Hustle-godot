@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `1.0.0`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `1.1.0`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,62 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 1.1.0 — Somebody Shows You Around: the first ten minutes, the beater, Mina, the house (2026-09-04)
+
+The 1.0.0 assessment's own list (`docs/ONE_GOOD_RUN_REVIEW.md`) and the
+open ClickUp tickets, taken together: the first ten minutes taught by
+feed line, the car with nothing happening on the street, Mina with a
+voice and no trust, a landlord with no opinions. Five deliverables, each
+green before the next. Rulings are D-29 (SA-D1..D4).
+
+### PR 1 — The first ten minutes (`#153`)
+
+- **The morning after** (`FlowSheets.build_first_morning`): Juan says how
+  a day goes -- four parts, one thing each, the phone, the rent (the real
+  number), the Wash & Go, the block. Changes nothing.
+- **Help rewritten** to the game that exists: the day, the house, the
+  name, how it ends. The canon cards described Week Zero.
+- **The title's saved run** carries the rank, derived from the saved
+  ledgers. **The reckoning** says what there was: the name against six,
+  corners against the board, districts against the city.
+- Name entry says what the head start is. Dre waits outside the Night
+  Owl.
+
+### PR 2 — The beater on the street (`#154`)
+
+- Facts `has_vehicle`, `trunk_loaded`; `on_the_road` reads true with a
+  car.
+- `wander_plates_read` (Curtis's ledger grows), `wander_juan_jumps_it`,
+  `wander_beater_breakin` (FIGHT / BLUFF / SURRENDER, the trunk as the
+  stake; answers back). `trunk_fraction` in the loop's effects.
+- **The weapon's sentence in the room**: one line per beat per weapon
+  after the situation; hands add nothing.
+
+### PR 3 — Mina Vale (`#155`)
+
+- **Trust off her ledger**: the counter line per band, the price (free
+  from trusted), one true thing about the block from warm, a text at
+  bonded (`mina_lead`).
+- **The Vales at the counter**: once, Spenard evenings, gated on
+  `mina_warm`. FIGHT she reads at minus four; TALK at plus four; COMPLY
+  is guaranteed.
+
+### PR 4 — The house talks back (`#156`)
+
+- `systems/household.gd`, `DAY_START:household`: every third morning
+  Yalonda or Juan puts one true line in the feed from an ordered table
+  (sixteen lines); the police one is also a text from her. Nothing moves.
+
+### PR 5 — Close-out
+
+- Version `1.1.0`, D-29, this entry, `docs/BUILD_LOG.md`, `docs/DESIGN.md`'s
+  absent list corrected, the README's What's new for 1.0.0 and 1.1.0.
+
+### Measured across the build
+
+Parity 13,979 → 14,162; confrontation 3,628 → 3,946; smoke width 2,783 →
+2,786, panel 98 → 112. No schema bump.
 
 ## 1.0.0 — One Good Run: the run has an end (2026-09-04)
 

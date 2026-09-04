@@ -132,20 +132,15 @@ every time someone asks "is this game balanced."
 
 ## What is deliberately absent
 
-- **An ending.** D-2, open. Nothing in the current state shape forecloses one.
-- **Contested takeovers, Curtis pressure on Territory, soldier attrition,
-  police raids on staffed corners, block manager assignment.** All named as
-  "not ported" in `territory.gd`'s own header since the system shipped in
-  Phase 3e. `starting_owner` (FS-002.3) seeds the DATA a future takeover
-  mechanic needs without building the mechanic itself — see D-6,
-  `docs/DECISIONS.md`.
+- **Soldier attrition, police raids on staffed corners, block manager
+  assignment.** Named as "not ported" in `territory.gd`'s own header since
+  Phase 3e and still not built. (An ending shipped in 1.0.0, D-28; contested
+  takeovers and Curtis's nightly probes shipped in 1.0.0 PR 6, D-28 OG-D6.)
 - **A debt/consequence system for Territory's own upkeep.** D-1's upkeep is a
   best-effort immediate deduction (pay what the wallet holds, no debt) rather
   than a due-date-and-penalty system like rent, the phone bill, or crew wages.
   A deliberate scope decision recorded in D-1, not an oversight — a future
   ruling can build a real consequence on top without this choice foreclosing
   it.
-- **A win condition, a difficulty curve, seed/character selection.** The run
-  is one character, one seed per playthrough, and success is read entirely off
-  the economy measurement in `HANDOFF.md`'s orientation table — there is no
-  in-game scoring or completion state.
+- **A difficulty curve, seed/character selection.** The run is one character,
+  one seed per playthrough. (The win condition is the way out, 1.0.0, D-28.)

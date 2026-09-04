@@ -2052,6 +2052,65 @@ with shipped code).
 
 ---
 
+## D-29 — Somebody Shows You Around: the first ten minutes, the beater, Mina, the house
+
+**Decided** 2026-09-04 · **Ships in** 1.1.0, five PRs (`#153` the first ten
+minutes, `#154` the beater on the street, `#155` Mina Vale, `#156` the house
+talks back, the close-out) · **Source:** `docs/ONE_GOOD_RUN_REVIEW.md` and
+the open ClickUp queue, reconciled after 1.0.0
+
+### The question
+
+1.0.0 finished the systems and the assessment said what a stranger would
+notice first: nothing tells a new player what the four parts of a day are;
+the car changes the ledger and never the street; Mina has a voice and no
+trust; the landlord has a ledger and no opinions. The tickets said the same
+thing in older words. The build takes the code-and-copy half of that list
+and leaves the assets (images, sound) to the asset pass.
+
+### The rulings
+
+**SA-D1 — the first ten minutes are two sheets and a help screen.** Juan's
+morning-after sheet reads the run's real numbers and changes nothing (the
+same claim the Yalonda intro makes, asserted the same way). Help is
+rewritten to the game that exists: a help screen that is wrong about the
+game is worse than none. The title's saved run derives the rank from the
+saved ledgers rather than persisting it. The reckoning adds the road not
+taken as three counts. Rejected: an interactive tutorial (the game
+teaches by doing; the sheet only names the parts).
+
+**SA-D2 — the car is on the street.** Three cards gated on `has_vehicle`,
+a `trunk_fraction` effect on the confrontation loop's existing applier,
+and `on_the_road` reading true with a car. The break-in answers back
+because a thief who does not scare comes over. The weapon's sentence in
+the room is one line per beat per weapon appended after the authored
+situation; hands append nothing, so every existing room assertion holds
+as authored. Rejected: plates as a mechanic beyond the ledger (Curtis's
+awareness already reads growth; a separate plates state is a second
+scale).
+
+**SA-D3 — Mina's trust is her ledger.** No new field: the band the People
+screen shows is the tier. It buys the counter line, the price, one true
+read of the block, and at bonded a text. The family hook is one encounter
+card, once, gated on warm, whose roads are observations she reads at the
+weights she already has. Rejected: a Mina-specific trust stat (the
+ledger is the trust), and cross-vendor discounts (nothing in the build
+prices by NPC; that is a Market ruling, not a Mina one).
+
+**SA-D4 — the house notices, and nothing moves.** A `household` system
+with two ordered tables, one morning in three, first true condition
+speaks. The police line is also a text from Yalonda. No observation, no
+money, no gate: the ticket asked for flavour and the parity arm asserts
+that is all it is. Rejected: a "Talk" action on Home (a button that
+produces a line is a worse version of a line that arrives).
+
+### Recommended next
+
+The assets (`docs/ASSET_CHECKLIST.md`), then sound; the QA pass
+(`86bbamkta`) against real hands; the contested economy on live fronts
+(FS-002.8); the cuts the 0.9.0 review asked for (the 907List's execution
+modes, soldiers into crew).
+
 ## D-28 — One Good Run: the run has an end
 
 **Decided** 2026-09-04 · **Ships in** 1.0.0, seven PRs (`#146` the rent

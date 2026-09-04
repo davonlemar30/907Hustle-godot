@@ -530,10 +530,11 @@ var jobs: Array = [
 
 ## How a shift is worked. Canon JOB_APPROACHES (src/data/jobs.js).
 var job_approaches: Array = [
-	{"id": "work_hard", "label": "WORK HARD", "pay_mult": 1.10, "xp": 2.0, "health": -2, "desc": "+10% pay · 2 XP · -2 Health"},
-	{"id": "socialize", "label": "SOCIALIZE", "pay_mult": 1.0, "xp": 1.0, "health": 0, "desc": "+1 relationship · 1 XP"},
-	{"id": "take_it_easy", "label": "TAKE IT EASY", "pay_mult": 1.0, "xp": 0.0, "health": 1, "desc": "+1 Health · no XP"},
-	{"id": "learn_job", "label": "LEARN THE JOB", "pay_mult": 1.0, "xp": 1.5, "health": 0, "desc": "1.5 XP · learn the room"},
+	# BR-D3 (0.9.0): each one does something you can see on the shift.
+	{"id": "work_hard", "label": "WORK HARD", "pay_mult": 1.10, "xp": 2.0, "health": -2, "desc": "More pay. The boss notices. It costs you."},
+	{"id": "socialize", "label": "SOCIALIZE", "pay_mult": 1.0, "xp": 1.0, "health": 0, "desc": "A coworker. A point with the boss. A little charisma."},
+	{"id": "take_it_easy", "label": "BREAK ROOM", "pay_mult": 1.0, "xp": 0.0, "health": 1, "desc": "Rest. Half a chance to overhear something."},
+	{"id": "learn_job", "label": "LEARN THE JOB", "pay_mult": 1.0, "xp": 1.5, "health": 0, "desc": "Faster up the ladder. A little intelligence."},
 ]
 
 ## Canon JOB_RANK_THRESHOLDS — XP needed for rank 1, 2, 3.

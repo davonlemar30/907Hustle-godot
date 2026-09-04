@@ -288,6 +288,13 @@ func _build_flow_sheet_content(spec: Dictionary) -> Control:
 			return null if card.is_empty() else FlowSheets.build_discovery(card)
 		"intro":
 			return FlowSheets.build_intro(gs)
+		"interview":
+			var job: Dictionary = gs.job_by_id(str(spec.get("job_id", "")))
+			var jobs_system: Object = get_node("/root/GameManager").system("jobs")
+			if job.is_empty() or jobs_system == null:
+				return null
+			return FlowSheets.build_interview(job, jobs_system.manager_for(str(spec.get("job_id", ""))),
+				get_node("/root/GameManager"))
 		"hire", "fired":
 			var job: Dictionary = gs.job_by_id(str(spec.get("job_id", "")))
 			var jobs_system: Object = get_node("/root/GameManager").system("jobs")

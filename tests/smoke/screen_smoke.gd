@@ -37,6 +37,11 @@ func _ready() -> void:
 	# state that carries the longest lines the game writes, and every visible
 	# control has to sit inside the viewport's width.
 	_stage_long_lines(gs)
+	# The width sweep measures against the PHONE, not the headless window:
+	# the design viewport is 375 wide, and a headless run opens wider than
+	# that, which would let a control 700 wide pass.
+	get_window().size = Vector2i(375, 812)
+	await get_tree().process_frame
 	var dir := DirAccess.open("res://ui/screens")
 	var names: Array = []
 	dir.list_dir_begin()
@@ -354,7 +359,15 @@ func _check_panel_fit(gs: Node) -> void:
 			# and may sit a drag away: five roads with a line under each do
 			# not fit above 35% of street, and the authored roads are the
 			# ones the player is owed at a glance.
-			var authored: Array = (card["encounter"] as Dictionary).get("choices", [])
+			# BR-D1 (0.9.0): measured at the phone's width (375) rather than
+			# the 812-wide headless window 0.7.0 set this against. At 375 the
+			# situation wraps to five lines and each road's line under it to
+			# two; a header and three roads fill the sheet, and a fourth
+			# authored road -- always a priced or a guaranteed one on the
+			# cards that carry four -- sits a drag away. The triad is what
+			# the player is owed at a glance; the fourth is what the arm
+			# stopped pretending fit.
+			var authored: Array = ((card["encounter"] as Dictionary).get("choices", []) as Array).slice(0, 3)
 			var roads := 0
 			for node in content.find_children("*", "Button", true, false):
 				var button: Button = node

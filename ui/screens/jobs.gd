@@ -52,9 +52,20 @@ func _build_current() -> void:
 	v.add_child(_label(str(job["name"]), "CardTitle", 15, CREAM))
 	var rank: int = int(rec.get("rank", 0))
 	var meta := "$%d–%d a shift  ·  %s" % [int(band["min"]), int(band["max"]), _slots_text(job)]
-	if rank > 0:
+	# BR-D3: the rung has a name, and the next one says what it wants.
+	var jobs_system: Object = _gm.system("jobs")
+	var title := ""
+	if jobs_system != null:
+		title = str(jobs_system.MANAGERS.title_for(gs.active_job_id, rank))
+	if not title.is_empty():
+		meta += "  ·  %s" % title.to_upper()
+	elif rank > 0:
 		meta += "  ·  RANK %d" % rank
 	v.add_child(_label(meta, "Muted", 11, MUTED))
+	if jobs_system != null:
+		var gaps: Array = jobs_system.promotion_gaps(gs.active_job_id)
+		if not gaps.is_empty():
+			v.add_child(_label("Next rung: %s." % ", ".join(gaps), "Muted", 11, MUTED, true))
 	# WS-D4: who runs it, and what that gets you.
 	var manager: Dictionary = _manager_for(gs.active_job_id)
 	if not manager.is_empty():
@@ -175,8 +186,21 @@ func _board_row(job: Dictionary) -> Control:
 	apply.text = "APPLY"
 	apply.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	# BR-D2: the tap is a state. Applied reads on the card and the button
-	# cannot be spammed; the answer comes by text.
-	if gs.job_applications.has(str(job["id"])):
+	# cannot be spammed; the answer comes by text. BR-D3: an interview
+	# offer is a button of its own.
+	var application: Dictionary = gs.job_applications.get(str(job["id"]), {})
+	var status := str(application.get("status", ""))
+	if status == "interview":
+		apply.text = "INTERVIEW"
+		apply.theme_type_variation = &"BtnPrimary"
+		left.add_child(_label("%s wants to see you." % str(_manager_for(str(job["id"])).get("name", "They")),
+			"Muted", 11, MUTED))
+		tap_connect(apply, func() -> void: _gm.dispatch("start_interview", {"job_id": str(job["id"])}))
+	elif status == "interviewed":
+		apply.text = "WAITING"
+		apply.disabled = true
+		left.add_child(_label("They'll let you know.", "Muted", 11, MUTED))
+	elif not application.is_empty():
 		apply.text = "APPLIED"
 		apply.disabled = true
 		left.add_child(_label("Waiting to hear back.", "Muted", 11, MUTED))

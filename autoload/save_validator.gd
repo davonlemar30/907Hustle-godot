@@ -754,6 +754,8 @@ func _validate_job_applications(state: Dictionary, repairs: Array[String]) -> vo
 		_int(fixed, "day", 1, "job_applications[%s].day" % str(job_id), repairs)
 		_int(fixed, "slot", 0, "job_applications[%s].slot" % str(job_id), repairs)
 		_string(fixed, "status", "pending", "job_applications[%s].status" % str(job_id), repairs)
+		if fixed.has("score"):
+			_int(fixed, "score", 0, "job_applications[%s].score" % str(job_id), repairs)
 		cleaned[str(job_id)] = fixed
 	state["job_applications"] = cleaned
 

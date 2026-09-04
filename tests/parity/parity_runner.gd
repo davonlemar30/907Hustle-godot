@@ -2067,7 +2067,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
 	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
 	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
-	_expect_int("save version is 30", saves.SAVE_VERSION, 30)
+	_expect_int("save version is 31", saves.SAVE_VERSION, 31)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -5409,7 +5409,7 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# v0.1.0's declared POST_SETTLE work. The HOT escape lever pays back the
 	# Pressure the day's CLEAN outcomes earned, after every gain from those same
 	# actions has landed and before the clock moves.
-	"POST_SETTLE:pressure_clean_recovery",
+	"POST_SETTLE:pressure_clean_recovery", "POST_SETTLE:way_out",
 	"INCREMENT",
 	# FS-003.9's post-increment lifecycle, TI-003 §9. Two of these six positions
 	# are regressions in their own right: #25 is the Financial Pressure fold
@@ -5450,7 +5450,7 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# Word of Mouth (0.1.2) appends `tips` and reorders nothing above it: a
 	# tip is a claim about today's board, so it goes last, after every other
 	# step that could still change what today's board is.
-	"DAY_START:tips", "DAY_START:ghosts", "DAY_START:mentions", "DAY_START:crew_ideas", "DAY_START:beater",
+	"DAY_START:tips", "DAY_START:ghosts", "DAY_START:mentions", "DAY_START:crew_ideas", "DAY_START:beater", "DAY_START:curtis_doorstep",
 	# Dre Lending & Loan-Shark Progression PR B appends `dre_intro` after
 	# `tips` for the same reason: Juan's mention reads the fully-settled day.
 	"DAY_START:dre_intro",
@@ -13811,7 +13811,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v30", saves.SAVE_VERSION, 30)
+	_expect_int("the schema is v31", saves.SAVE_VERSION, 31)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -15424,7 +15424,7 @@ func _check_clean_pressure_recovery(gs: Node, gm: Node) -> void:
 	# And the lifecycle runs it, in the declared place.
 	var lifecycle: RefCounted = gm.system("day_lifecycle") as RefCounted
 	_expect_str("POST_SETTLE declares the clean-recovery step",
-		str(lifecycle.POST_SETTLE_ORDER), str(["pressure_clean_recovery"]))
+		str(lifecycle.POST_SETTLE_ORDER), str(["pressure_clean_recovery", "way_out"]))
 
 # --- Task 5: the phone's dismiss control ------------------------------------
 #
@@ -16226,7 +16226,14 @@ const ECON_CORRIDORS: Dictionary = {
 	# both still measure unchanged. It is a capped-Pressure side effect on
 	# an inherently marginal, single-strategy profile, named here rather
 	# than hidden behind a quieter floor.
-	"stickup": {"floor": 2, "ceiling": 15},
+	# OG-D4 (1.0.0): a run that sticks people up every slot and never puts
+	# anybody around itself has Curtis maxed by day six and meets him at the
+	# door on the eighth morning. The corridor reads what is in the pocket
+	# when the run ends against a MONTH of the day job, so a run that ends
+	# at day eight with a week of takes reads high, not rich. Measured 46%
+	# the morning the door landed; ceiling raised to the measured number's
+	# margin rather than the door moved. The floor still holds.
+	"stickup": {"floor": 2, "ceiling": 60},
 	# SCR-D1 (0.4.0 PR A, D-16): widened 25 -> 30 after `score_slide_special`
 	# went live against a real target (`northern_value`) -- a one-time $50
 	# bonus this profile occasionally banks when it discovers that target and
@@ -16246,10 +16253,15 @@ const ECON_CORRIDORS: Dictionary = {
 	# now -- three house warnings, one every three days -- instead of after
 	# two missed weeks. Measured 2% the day the escalation landed; the floor
 	# records that a run that ignores Yalonda ends, which is the point.
-	"everyday_criminal": {"floor": 0, "ceiling": 20},
+	# OG-D4 (1.0.0): same door as `stickup`, same reading -- an eight-day
+	# run's pocket against a month of shifts. Measured 53%.
+	"everyday_criminal": {"floor": 0, "ceiling": 60},
 	# STK-D1 (0.3.0): measured at 5%, the same fix as `stickup` above reaching
 	# the same target pool.
-	"stickup_crew": {"floor": 2, "ceiling": 15},
+	# OG-D4 (1.0.0): the crew keeps the door shut only while it is paid.
+	# This profile never pays Tone, so he leaves, and Curtis comes on the
+	# twelfth morning. Measured 29%, same reading as `stickup`.
+	"stickup_crew": {"floor": 2, "ceiling": 40},
 	# BB-D9 (0.7.0): the street shows up for a clean player now -- the wander
 	# gate's floor went from 0.03 to 0.10 with a cold streak cap of eight and
 	# a first encounter forced by the fourth walk -- and this is the profile
@@ -19679,6 +19691,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_rent_escalation(gs, gm)
 	_check_earn_your_name(gs, gm)
 	_check_the_kit(gs, gm)
+	_check_one_good_run(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -20563,6 +20576,97 @@ func _wander_card_eligible(gs: Node, gm: Node, card_id: String) -> bool:
 			return true
 	return false
 
+## OG-D4 (1.0.0 PR 4): one good run. The way out wants a boss's name and
+## clean money that scales with what you built, and closes the day you
+## chose; the third serious booking is a sentence; Curtis comes to the door
+## when Exposure is maxed and nobody stands with you; every ending is the
+## one reckoning, with a line for everyone who remembers you.
+func _check_one_good_run(gs: Node, gm: Node) -> void:
+	var ending: Object = gm.system("ending")
+	_expect_true("the ending is a system", ending != null)
+	if ending == null:
+		return
+	gs.reset_to_new_game()
+	gs.npc_ledgers = {}
+	_expect_int("leaving clean costs the base with nothing built", int(ending.way_out_threshold()), ending.WAY_OUT_BASE)
+	gs.territory_nodes = {"spenard_rec_lot": {"soldiers": 1}}
+	gs.crew_records["eli"] = {"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	_expect_int("...and more for what you built", int(ending.way_out_threshold()),
+		ending.WAY_OUT_BASE + ending.WAY_OUT_PER_CORNER + ending.WAY_OUT_PER_CREW)
+	gs.clean_cash = 99999
+	gs.cash = 99999
+	_expect_true("clean money without the name is not the way out",
+		str(ending.leave_blocker()).contains("boss"))
+	_stage_rank(gs, "boss")
+	gs.clean_cash = 100
+	_expect_true("the name without the money is not either", str(ending.leave_blocker()).contains("clean"))
+	gs.clean_cash = 99999
+	_expect_str("both is the door", str(ending.leave_blocker()), "")
+	_expect_true("you decide", gm.dispatch("leave_city", {}))
+	_expect_true("...tonight", bool(gs.leaving))
+	_expect_true("...and can stay", gm.dispatch("stay", {}))
+	gm.dispatch("leave_city", {})
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	_expect_true("the day closes on the run", bool(gs.game_over))
+	_expect_str("...and you made it out", str(gs.game_over_kind), "out")
+	var r: Dictionary = ending.reckoning()
+	_expect_str("the reckoning says so", str(r.get("head", "")), "YOU MADE IT OUT")
+	_expect_true("...and names the corner", (r.get("corners", []) as Array).size() == 1)
+	_expect_true("...and everyone met has a line", (r.get("people", []) as Array).size() >= 2)
+	_expect_true("...and the crew", (r.get("crew", []) as Array).size() == 1)
+
+	# The sentence.
+	gs.reset_to_new_game()
+	ending.note_booking("stick_t2")
+	ending.note_booking("boost_t1")
+	ending.note_booking("stick_t3")
+	_expect_int("two serious bookings, one petty", int(gs.arrest_record.get("serious", 0)), 2)
+	_expect_true("...is not a sentence yet", not gs.game_over)
+	ending.note_booking("boost_t2")
+	_expect_true("the third is", bool(gs.game_over))
+	_expect_str("...and it is the sentence", str(gs.game_over_kind), "sentence")
+
+	# Curtis at the door.
+	gs.reset_to_new_game()
+	gs.curtis_awareness = int(gs.AWARENESS_MAX)
+	gs.phone_inbox = []
+	ending.day_start_curtis(20)
+	_expect_true("maxed and alone: the first morning is a text, not the door", not gs.game_over)
+	_expect_int("...and the count starts", int(gs.curtis_doorstep), 1)
+	var doorstep_text := false
+	for msg in gs.phone_inbox:
+		if str((msg as Dictionary).get("from", "")) == "Curtis":
+			doorstep_text = true
+	_expect_true("...from Curtis himself", doorstep_text)
+	ending.day_start_curtis(21)
+	_expect_true("the second morning is his car", not gs.game_over)
+	ending.day_start_curtis(22)
+	_expect_str("the third is Curtis", str(gs.game_over_kind), "curtis")
+	gs.reset_to_new_game()
+	gs.curtis_awareness = int(gs.AWARENESS_MAX)
+	ending.day_start_curtis(20)
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	ending.day_start_curtis(21)
+	_expect_true("...but not with somebody standing with you", not gs.game_over)
+	_expect_int("...and standing with you resets the count", int(gs.curtis_doorstep), 0)
+
+	# Every ending reads as itself.
+	for kind in ["out", "evicted", "sentence", "curtis"]:
+		gs.reset_to_new_game()
+		gs.game_over = true
+		gs.game_over_kind = kind
+		_expect_true("%s has its own head" % kind, not str(ending.reckoning()["head"]).is_empty())
+	# Every person has a line in every band.
+	for npc_id in ending.NPC_LINES.keys():
+		for band in ["cold", "neutral", "warm", "trusted", "bonded"]:
+			_expect_true("%s remembers you when %s" % [str(npc_id), band],
+				not str((ending.NPC_LINES[npc_id] as Dictionary).get(band, "")).is_empty())
+	gs.reset_to_new_game()
+
 func _check_door_to_work(gs: Node, gm: Node) -> void:
 	var access: Node = get_node_or_null("/root/SurfaceVisibility")
 	var nav: Node = get_node("/root/ScreenManager")
@@ -21150,7 +21254,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13876
+const MIN_CHECKS := 13941
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -21945,7 +22049,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v30", int(saves.SAVE_VERSION), 30)
+	_expect_int("the schema is v31", int(saves.SAVE_VERSION), 31)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -22391,7 +22495,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v30 for Heat's teeth", int(saves.SAVE_VERSION), 30)
+	_expect_int("the schema is v31 for Heat's teeth", int(saves.SAVE_VERSION), 31)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -22864,7 +22968,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v30 for Wander", int(saves.SAVE_VERSION), 30)
+	_expect_int("the schema is v31 for Wander", int(saves.SAVE_VERSION), 31)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered", "wander_quiet_streak"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

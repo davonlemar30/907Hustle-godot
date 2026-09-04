@@ -58,6 +58,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_phone_reply_history(state, repairs)
 	_validate_job_applications(state, repairs)
 	_validate_kit(state, repairs)
+	_validate_ending(state, repairs)
 	_validate_boost_bribes_used(state, repairs)
 	_validate_tip_effects(state, repairs)
 	_validate_tip_misses(state, repairs)
@@ -735,6 +736,27 @@ func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> voi
 			continue
 		cleaned.append(str(entry))
 	state["boost_targets_discovered"] = cleaned
+
+## v31 (OG-D4). A kind the ending knows, a bool, a dictionary of ints.
+func _validate_ending(state: Dictionary, repairs: Array[String]) -> void:
+	if state.has("game_over_kind") and not str(state["game_over_kind"]) in ["", "out", "evicted", "sentence", "curtis"]:
+		state["game_over_kind"] = ""
+		_repair(repairs, "game_over_kind", "unknown; cleared")
+	if state.has("leaving"):
+		_bool(state, "leaving", false, "leaving", repairs)
+	if state.has("curtis_doorstep"):
+		_int(state, "curtis_doorstep", 0, "curtis_doorstep", repairs)
+		state["curtis_doorstep"] = clampi(int(state["curtis_doorstep"]), 0, 3)
+	if state.has("run_earnings"):
+		if not state["run_earnings"] is Dictionary:
+			state["run_earnings"] = {}
+			_repair(repairs, "run_earnings", "wrong type; defaulted")
+		else:
+			for key in (state["run_earnings"] as Dictionary).keys().duplicate():
+				var v: Variant = (state["run_earnings"] as Dictionary)[key]
+				if not (v is int or v is float):
+					(state["run_earnings"] as Dictionary).erase(key)
+					_repair(repairs, "run_earnings[%s]" % str(key), "not a number; dropped")
 
 ## v30 (OG-D3). A weapon the table knows, a vehicle the table knows, a
 ## trunk of ints.

@@ -249,6 +249,7 @@ func record_earning(source: String, amount: int) -> void:
 	if amount <= 0:
 		return
 	todays_earnings[source] = int(todays_earnings.get(source, 0)) + amount
+	run_earnings[source] = int(run_earnings.get(source, 0)) + amount
 
 ## Today's aggregate earnings. Derived, never stored separately.
 func todays_take() -> int:
@@ -496,6 +497,10 @@ func reset_to_new_game() -> void:
 	recovery_introduced = false
 	game_over = false
 	game_over_reason = ""
+	game_over_kind = ""
+	leaving = false
+	curtis_doorstep = 0
+	run_earnings = {}
 	stick_tier = 1
 	stick_daily_count = 0
 	stick_rep = 0
@@ -820,6 +825,16 @@ const WANDER_EVENTS := preload("res://data/wander_events.gd")
 
 var game_over: bool = false
 var game_over_reason: String = ""
+## OG-D4 (1.0.0, v31): which ending -- "out", "evicted", "sentence",
+## "curtis" -- and whether the player has chosen tonight as the last night.
+var game_over_kind: String = ""
+var leaving: bool = false
+## Mornings in a row Curtis has been maxed and nobody stood with you. The
+## door is the third. Reset the morning either stops being true.
+var curtis_doorstep: int = 0
+## Earnings over the whole run, by source, for the reckoning. `record_earning`
+## adds to both this and today's.
+var run_earnings: Dictionary = {}
 
 ## Prepend a feed entry. Home shows the newest three, so new events go on top.
 ## `time` is the slot rather than a clock reading — the run has no wall clock.

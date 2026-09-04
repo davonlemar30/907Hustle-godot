@@ -142,6 +142,8 @@ const ROLLOVER_ORDER: Array[String] = [
 ## on it, so the quiet rule correctly declines to fire on top of this.
 const POST_SETTLE_ORDER: Array[String] = [
 	"pressure_clean_recovery",
+	# OG-D4: the day you chose closes.
+	"way_out",
 ]
 
 ## TI-003 §9 step 6's day-start lifecycle. Expiry before activation, and the
@@ -202,6 +204,8 @@ const DAY_START_ORDER: Array[String] = [
 	"crew_ideas",
 	# OG-D3: the cold, the beater, and Sonny's nephew.
 	"beater",
+	# OG-D4: Curtis at the door, when nobody is standing with you.
+	"curtis_doorstep",
 	# Dre Lending & Loan-Shark Progression, PR B (DRE-D1). After `tips` for
 	# the same reason `tips` is after everything else: Juan's mention reads
 	# `gs.cash`/`gs.rent_due_day` against the fully-settled day, not a
@@ -382,6 +386,10 @@ func run_night_transition(ended_day: int) -> void:
 ## null-guarding as `_run_rollover_step`, and for the same reasons.
 func _run_post_settle_step(step: String, ended_day: int) -> void:
 	match step:
+		"way_out":
+			var ending: Object = gm.system("ending") if gm != null else null
+			if ending != null:
+				ending.settle_way_out(ended_day)
 		"pressure_clean_recovery":
 			var engine: Object = gm.system("consequence") if gm != null else null
 			if engine != null:
@@ -480,6 +488,11 @@ func _run_day_start_step(step: String, today: int) -> void:
 		var phone: Object = gm.system("phone") if gm != null else null
 		if phone != null:
 			phone.settle_ghosts(today)
+		return
+	if step == "curtis_doorstep":
+		var ending: Object = gm.system("ending") if gm != null else null
+		if ending != null:
+			ending.day_start_curtis(today)
 		return
 	if step == "beater":
 		var travel: Object = gm.system("travel") if gm != null else null

@@ -209,6 +209,41 @@ func _ledger_for_write(npc_id: String) -> Array:
 		gs.npc_ledgers[npc_id] = []
 	return gs.npc_ledgers[npc_id]
 
+# --- OG-D2 (1.0.0): rank, derived from the ledgers ------------------------
+const RANK := preload("res://data/rank.gd")
+
+func rank_score() -> int:
+	return RANK.score_of(gs.npc_ledgers)
+
+func rank() -> Dictionary:
+	return RANK.tier_for(rank_score())
+
+func rank_id() -> String:
+	return str(rank()["id"])
+
+func rank_index() -> int:
+	return RANK.index_of(rank_id())
+
+## True when the run's name is at least `tier_id`.
+func has_rank(tier_id: String) -> bool:
+	return rank_index() >= RANK.index_of(tier_id)
+
+## The moment: a rank reached is a feed line and a text from somebody who
+## noticed. Read off the score before and after a write, so it fires once,
+## at the write, and never again on a reload.
+func _notice_rank(before_index: int) -> void:
+	var after_index := rank_index()
+	if after_index <= before_index:
+		return
+	var tier: Dictionary = RANK.by_index(after_index)
+	gs.log_activity(str(tier["line"]), Color(0.882, 0.651, 0.227))
+	var notice: Dictionary = RANK.NOTICES.get(str(tier["id"]), {})
+	if notice.is_empty() or game_manager == null:
+		return
+	var phone: Object = game_manager.system("phone")
+	if phone != null:
+		phone.push_text(str(notice["from"]), str(notice["text"]), "rank_notice")
+
 func _key(spec: Dictionary) -> String:
 	return "%s|%s|%s" % [str(spec.get("type", "")), str(spec.get("event", "")), str(spec.get("location", ""))]
 
@@ -225,9 +260,11 @@ func record_observation(npc_id: String, spec: Dictionary) -> void:
 		return
 	var ledger: Array = _ledger_for_write(npc_id)
 	var key := _key(spec)
+	var rank_before := rank_index()
 	for row in ledger:
 		if str(row["key"]) == key:
 			row["count"] = int(row["count"]) + int(spec.get("count", 1))
+			_notice_rank(rank_before)
 			return
 	if ledger.size() >= MAX_LEDGER_ROWS:
 		return
@@ -240,6 +277,7 @@ func record_observation(npc_id: String, spec: Dictionary) -> void:
 		"count": int(spec.get("count", 1)),
 		"day": gs.day,
 	})
+	_notice_rank(rank_before)
 
 ## Something the world learns. Routed to whoever listens on that channel, and
 ## delayed by however long the channel takes to carry it.

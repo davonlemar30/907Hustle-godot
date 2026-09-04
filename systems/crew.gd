@@ -83,6 +83,10 @@ func recruit_blocker(id: String) -> String:
 		return "They already walked."
 	# Through crew_capacity(), not the const: base upgrades extend it later and
 	# every caller should already be asking rather than reading.
+	# OG-D2: a crew is not bought, it is joined. Nobody joins a nobody.
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure != null and not exposure.has_rank("known"):
+		return "Nobody knows your name yet. Get known first."
 	var capacity: int = gs.crew_capacity()
 	if gs.recruited_crew().size() >= capacity:
 		return "No room. %d is all you can carry." % capacity

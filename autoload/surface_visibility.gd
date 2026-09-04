@@ -374,6 +374,7 @@ func facts() -> Dictionary:
 		"time_slots_today": gs.time_slots_today,
 		"crew_count": gs.recruited_crew().size(),
 		"districts_unlocked": gs.districts_unlocked,
+		"rank_index": int(get_node("/root/Exposure").rank_index()),
 		"list_flips": gs.list_flips,
 		"job_contacts": gs.job_contacts,
 		# Walks taken this RUN. The Hustle ladder's effort axis — see GATES.

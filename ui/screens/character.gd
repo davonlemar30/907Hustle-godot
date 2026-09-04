@@ -82,6 +82,18 @@ func _identity_card(attrs: Object) -> Control:
 	head.add_child(label(str(profile["label"]).to_upper(), "Mono", 11, AMBER))
 
 	v.add_child(label(str(profile["description"]), "Muted", 12, MUTED, true))
+	# OG-D2: the name the city has for you, what it is made of, and what the
+	# next one takes.
+	var exposure: Node = get_node_or_null("/root/Exposure")
+	if exposure != null:
+		var score: int = int(exposure.rank_score())
+		var tier: Dictionary = exposure.rank()
+		var next: Dictionary = exposure.RANK.next_after(score)
+		var line := "%s  ·  %d in the ledgers" % [str(tier["name"]), score]
+		if not next.is_empty():
+			line += "  ·  %s at %d" % [str(next["name"]), int(next["floor"])]
+		v.add_child(label(line, "Mono", 11, AMBER))
+		v.add_child(label("Your rank is what people have seen you do. Crew join a Known name; corners need a Player behind them; the Board answers a Known one.", "Muted", 11, MUTED, true))
 	return c
 
 ## One attribute: its name, its LABEL (never its value), and what it is for.

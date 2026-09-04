@@ -234,6 +234,12 @@ func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dicti
 			var recruited: float = _num(facts.get("crew_count"))
 			return _result(req, recruited >= min_value, recruited, min_value)
 
+		"rank_min":
+			# OG-D2: the run's name, as an index into `data/rank.gd::TIERS`.
+			var have: float = _num(facts.get("rank_index"))
+			var need: int = preload("res://data/rank.gd").index_of(str(req.get("rank", "nobody")))
+			return _result(req, have >= float(need), have, need)
+
 		"district_discovered":
 			# Membership, not a threshold. `current` reports the boolean so a
 			# caller can render "not yet" without knowing what a district is.

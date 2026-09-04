@@ -684,9 +684,14 @@ func choice_guarantee(choice_id: String) -> String:
 
 func _update_tier() -> void:
 	var was: int = gs.list_tier
-	if gs.list_flips >= gs.BROKER_FLIP_REQUIREMENT:
+	# OG-D2: the board's tiers want a name as well as the flips -- a Broker
+	# is somebody people answer, not somebody who has flipped ten things.
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	var known: bool = exposure == null or exposure.has_rank("known")
+	var player: bool = exposure == null or exposure.has_rank("player")
+	if gs.list_flips >= gs.BROKER_FLIP_REQUIREMENT and player:
 		gs.list_tier = 3
-	elif gs.list_flips >= gs.FLIPPER_FLIP_REQUIREMENT:
+	elif gs.list_flips >= gs.FLIPPER_FLIP_REQUIREMENT and known:
 		gs.list_tier = maxi(gs.list_tier, 2)
 	if gs.list_tier > was:
 		gs.log_activity("The board opens up. People answer your listings now. You're a %s." % str(gs.market_tier()["name"]).capitalize(), GREEN)

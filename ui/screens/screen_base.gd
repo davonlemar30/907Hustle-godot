@@ -595,7 +595,9 @@ func _fill_chrome() -> void:
 		if gs.debt > 0:
 			due.text = "DUE IN %d DAYS" % gs.debt_due_days
 	_set_text("Shell/Hud/HudRow/C3/V", "%d/%d" % [gs.cargo_used(), gs.cargo_max])
-	_set_text("Shell/Hud/HudRow/C4/V", str(gs.respect))
+	# OG-D2: the chip reads the name the city has for you, not a number.
+	var exposure: Node = get_node_or_null("/root/Exposure")
+	_set_text("Shell/Hud/HudRow/C4/V", str(exposure.rank()["name"]) if exposure != null else "")
 	_set_text("Shell/Hud/HudRow/C5/V", str(gs.crew_power))
 
 func _set_text(path: String, text: String) -> void:

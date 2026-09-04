@@ -208,7 +208,7 @@ const PERSIST_FIELDS: Array[String] = [
 	# Markets + the stream cursor (v2)
 	"markets", "rng_state",
 	# Player stats
-	"cash", "heat", "health", "respect", "crew_power",
+	"cash", "heat", "health", "crew_power",
 	"inventory",
 	# Attributes (v4)
 	"attributes", "attribute_progress",

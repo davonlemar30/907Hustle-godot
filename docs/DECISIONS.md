@@ -2052,6 +2052,91 @@ with shipped code).
 
 ---
 
+## D-27 — The Block Remembers: the screen holds, the city gets a fourth district, and the crew has ideas
+
+**Decided** 2026-09-03 · **Ships in** 0.9.0, six PRs (`#139` the screen
+holds, `#140` clock in move up, `#141` your corners their corners, `#142`
+Mountain View, they have their own ideas, the close-out) · **Source:**
+`907Hustle_Build_Prompt_v3.md`, the creative director's 0.8.0 playtest
+
+### The question
+
+The 0.8.0 playtest said the words and the replies landed and named what
+did not: a screen that stretched after a few walks, a job tap that looked
+dead, a talker who could hit you with no answer, a crew whose reach
+("Spenard only?") nobody could tell, jobs still thin, and a crew that never
+had an idea. The prompt drew the lines: parity holds or rises, the
+schema moves only for new persisted state, the stretch bug ships before
+any content, and nothing rebuilds the chassis, the economy or the save.
+
+### The rulings
+
+**BR-D1 — the screen holds, and the suite measures the phone.** The
+stretch was one unwrapped label: a control whose minimum width exceeds
+the viewport grows the shell rather than wrapping. Every screen is now
+instantiated at 375 wide over the longest lines the game writes and every
+visible control must sit inside the viewport (`_check_width_fit`). The
+tighter window re-measured the panel: at 375 a header and three roads
+fill the sheet, so the arm holds the triad to the glance and lets a
+fourth authored road sit a drag away, and eighteen road lines on the
+four-road cards were shortened to one line. Rejected: a taller sheet
+(the 35% street floor from BB-D6 stands).
+
+**BR-D2 — applying is a state.** `job_applications` (v28): pending on the
+tap, answered on the clock. The interview key stays canon's
+(`day:slot:job_interview:job`) and is rolled at resolution rather than on
+the tap. Day labor is the walk-in exception.
+
+**BR-D3 — the rung is earned, not filled.** XP still fills canon's bar;
+the manager grants the rung when the gates are met (days 2/6, streak 2/4,
+rapport 3/6, the job's attribute 1/2), one rung a shift. The first cut
+(3/7, 3/5, 4/8, 2/3) held a plain worker at the bottom for a whole run and
+cut the job yardstick 28%; the eased cut costs the yardstick 20%
+(1,932 → 1,539 over 31 days) and every corridor holds against it with the
+economy driver's worker mixing the floor. Recorded rather than hidden:
+promotions being earned is the point, and the yardstick is the
+measurement of it.
+
+**BR-D1 (the fight) — he swung first.** A non-fight road whose rolled
+tier hurts opens a room generated from the card's own odds
+(`answer_room`), with the fistfight's own roads. The hit lands at the
+door under its own receipt; what else the door's tier would have taken
+lands at the stalemate, so answering back is a chance to keep it, not a
+way never to lose it. Grants on a clean SWING were cut from $25/$35 to
+$10/$15 after two profiles crossed their corridors. Police cards opt out
+by name; a card with an authored room keeps it.
+
+**BR-D4 — the board per district.** Every node carries `district` and
+`kind`; ids stay global. Claim requires the district known and the player
+standing in it. Ship Creek's value is `supply_discount`, summed over held
+lots and capped at 25%, applied through the one buy price
+(`Economy.buy_unit_price`) the Market screen also previews. Heat lands
+per district. Curtis's ownership stays classification (FS-002.3's
+position); contested takeover is still the Godfather doc's 5.2.
+
+**BR-D5 — Mountain View, off the oracle stream.** A district flagged
+`oracle: false` walks its market on a stream seeded from the run and the
+day, so the three canon markets pin to the fixtures draw for draw. It
+opens at day start on day seven or by the bus-shelter card, not in
+`_reconcile_progression_latches` (which runs on load and must round-trip
+a fixture exactly). Biases tempered once (pills 1.24 → 1.16) at
+arbitrage 403%; the hustler ceiling lifted 1100 → 1150 at 1115%.
+
+**BR-D6 — they have their own ideas.** Two adapters on the existing
+substrate (`scout_adapter`, `enforcer_adapter`); proposals are derived
+from state (pressure, routes, holdings, unvisited districts), never
+rolled into existence, with the seed deciding only the morning. A
+proposal is a text whose yes carries `on_accept`; the phone assigns it
+inside the reply's own dispatch. Refused (window closed, member busy) is
+a reply from the member, not an error.
+
+### Recommended next, from the review
+
+`docs/BLOCK_REMEMBERS_REVIEW.md`: the player's kit (a weapon, a car, a
+stash) is the biggest gap; Boost → 907List is a build of its own;
+Mountain View needs its lens; Curtis's blocks need a contest; cut the
+907List's execution modes and fold soldiers into crew.
+
 ## D-26 — The World Speaks: the city reveals itself, and everybody in it has a voice
 
 **Decided** 2026-09-03 · **Ships in** 0.8.0, five PRs (`#134` the city

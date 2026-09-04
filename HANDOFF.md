@@ -1,6 +1,6 @@
 # 907Hustle — Godot Port: Session Handoff
 
-_Last updated: 2026-09-03 (0.8.0). Living doc — update as screens land._
+_Last updated: 2026-09-03 (0.9.0). Living doc — update as screens land._
 
 > **Floors are the RUNNER CONSTANTS, not this table.** This row set drifted
 > once already (parity read 12,751 here against `MIN_CHECKS := 12763` in the
@@ -35,21 +35,21 @@ One place to orient before reading anything else below.
 
 | | |
 | --- | --- |
-| Build version | `0.8.0` — The World Speaks: the city reveals itself, and everybody in it has a voice (`autoload/version.gd`) |
-| Save schema | **v27**. 0.8.0 bumped twice, both additive: v26 `hustles_discovered` (WS-D1, derived for v25 saves from the gates they had open) and v27 `phone_reply_history` (WS-D3, empty for every earlier save). Unchanged by 0.6.0 and 0.7.0 at v25. |
-| Parity | **13,556 checks, 0 failures**, floor `MIN_CHECKS := 13556` (`tests/parity/parity_runner.gd`). Set from a fresh run at every 0.8.0 PR. |
+| Build version | `0.9.0` — The Block Remembers: the screen holds, the city gets a fourth district, and the crew has ideas (`autoload/version.gd`) |
+| Save schema | **v28**. 0.9.0 bumped once, additive: `job_applications` (BR-D2). v26 `hustles_discovered` and v27 `phone_reply_history` from 0.8.0. |
+| Parity | **13,782 checks, 0 failures**, floor `MIN_CHECKS := 13782` (`tests/parity/parity_runner.gd`). Set from a fresh run at every 0.9.0 PR. |
 | Territory suite | **170 checks, 0 failures**, floor `MIN_CHECKS := 170` (`tests/territory/territory_runner.gd`) — unchanged in 0.6.0 |
-| Confrontation suite | **3,445 checks, 0 failures**, floor `MIN_CHECKS := 3445` (`tests/confrontation/confrontation_runner.gd`) — up from 2,994 in 0.8.0: every road on every card and script swept for a universal verb and a non-empty line under it (WS-D2), the meeting cards, the five priced roads. |
+| Confrontation suite | **3,614 checks, 0 failures**, floor `MIN_CHECKS := 3614` (`tests/confrontation/confrontation_runner.gd`) — up from 3,445 in 0.9.0: the fence-line room, the block's roads, the answer rooms. |
 | Tips suite | **93 checks, 0 failures**, floor `MIN_CHECKS := 93` (`tests/tips/tips_runner.gd`) — unchanged in 0.6.0 |
 | Dre suite | **427 checks, 0 failures**, floor `MIN_CHECKS := 427` (`tests/dre/dre_runner.gd`) — up from 404 in 0.8.0 for the phone exchange, the ghost and the crew loyalty point (WS-D3). |
-| Save validation | **257 checks, 0 failures** (`tests/save_validation/`, floor `MIN_CHECKS := 257`). +6 in 0.8.0 for v26 `hustles_discovered` and v27 `phone_reply_history`. |
-| Screen smoke | 23/23 screens instantiate with their scripts attached, all touch checks, 54/54 component checks, and **96/96 panel checks** (0.8.0: every authored street card, meeting card and phase card measured on the sheet). |
+| Save validation | **261 checks, 0 failures** (`tests/save_validation/`, floor `MIN_CHECKS := 261`). +4 in 0.9.0 for v28 `job_applications`. |
+| Screen smoke | Every screen instantiated **at the phone's width (375)** over the longest lines the game writes: all touch checks, 54/54 component checks, **98/98 panel checks** (the triad fits the glance at 375; a fourth authored road may sit a drag away), and **2,788/2,788 width checks** — no visible control outside the viewport (BR-D1, the stretch bug's regression test). |
 | Glyph coverage | ok across `ui`, `autoload`, `systems`, `data` |
 | Screens | 23, unchanged in 0.6.0 — and this is the build where that stops being the whole story. Decision and result stages render through `ui/components/encounter_sheet.gd` into a `ModalSheet` over whatever screen the player was on; only booking and release still reach `consequence.tscn` |
-| Systems | **37** registered in `GameManager` (0.6.0 PR D added `corner`) |
-| Discovery axes | **3** — `jobs_discovered` (WORK walks; the run starts knowing only `wash_go`), `boost_targets_discovered` (DEAL walks), and `hustles_discovered` (0.8.0 WS-D1: `market`, `boost`, `stickup`, `list`, each latched by an authored moment). |
-| Wander encounter pool | **40 cards** (0.8.0): 13 encounters, 16 ambients, 4 meetings (Goodie, the rack, the broke afternoon, the witness), 5 reads, 2 opportunities. `day_min`/`day_max` key the encounters and ambients to Week Zero, Getting Known, Reputation and Weight; the mistaken-identity filler was cut. Every encounter declares the SQ-D6 roles and every road reads as one of seven verbs. |
+| Systems | **39** registered in `GameManager` (0.9.0 PR 5 added `scout_adapter` and `enforcer_adapter`) |
+| Discovery axes | **3** — `jobs_discovered`, `boost_targets_discovered`, `hustles_discovered`. Districts: Downtown at one corner, Ship Creek at two, **Mountain View at day seven or by the bus-shelter card** (0.9.0). |
+| Wander encounter pool | **45 cards** (0.9.0): 0.8.0's 40 plus Mountain View's four and the Spenard card that names it. Every non-fight road whose tier hurts on a civilian card answers back in a generated room (BR-D1). |
 | Territory operating cost | **$20/soldier/night** on the full roster (Batch 18 PR 4, D-1) |
 | Branches | Stale remote branches accumulate; every merged PR's branch is deleted at merge time as of Batch 18 (see the feedback note on stacked-PR merges — never delete a branch another open PR is based on). |
 | Android artifact | `.github/workflows/android-apk.yml` uploads `android-debug-apk` (arm64, debug-signed) on every push to `main` and on `workflow_dispatch`. Additive to the Web pipeline — `web-deploy.yml` and `export_presets.cfg`'s `preset.0` are untouched. On-device checklist: `docs/ANDROID_SMOKE.md` |
-| Latest PRs | **0.8.0** — five PRs off `907Hustle_Build_Prompt_v2.md`, stacked: the city reveals itself (WS-D1, `#134`), every card earns its slot (WS-D2, `#135`), the player speaks (WS-D3, `#136`), the managers have names (WS-D4, `#137`), the writing pass and close-out (WS-D5, with PR `#107` folded in). Before that: 0.7.0 Blow by Blow (`#127`–`#131`, `#133`). See `docs/WORLD_SPEAKS_REVIEW.md` for the six-question assessment. |
+| Latest PRs | **0.9.0** — six PRs off `907Hustle_Build_Prompt_v3.md`, stacked: the screen holds (BR-D1/D2, `#139`), clock in move up (BR-D3, `#140`), your corners their corners (BR-D4, `#141`), Mountain View (BR-D5, `#142`), they have their own ideas (BR-D6), the close-out. Before that: 0.8.0 The World Speaks (`#133`–`#138`). See `docs/BLOCK_REMEMBERS_REVIEW.md` for the eight-question assessment. |

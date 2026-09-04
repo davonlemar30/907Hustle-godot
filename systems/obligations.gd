@@ -64,7 +64,7 @@ func _pay_rent() -> Dictionary:
 	# Paying rolls the due day forward a full period, which is what makes the
 	# nightly check go quiet.
 	gs.rent_due_day = _current_rent_due() + RENT_PERIOD_DAYS
-	gs.log_activity("Rent paid: -$%d." % gs.WEEKLY_RENT, BLUE)
+	gs.log_activity("Rent, $%d, in the envelope on the table. Yalonda doesn't count it in front of you." % gs.WEEKLY_RENT, BLUE)
 	# Yalonda's lens gives rent_paid its own event weight of 3.0, well above the
 	# financial category — paying her is the single loudest good thing she sees.
 	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
@@ -111,7 +111,7 @@ func _pay_phone(payload: Dictionary) -> Dictionary:
 	gs.phone_days_past_due = 0
 	if not gs.phone_active:
 		gs.phone_reactivate_at_slot = phone.now_slot_number()
-	gs.log_activity("Phone bill paid: -$%d." % gs.PHONE_BILL, BLUE)
+	gs.log_activity("Phone bill, $%d. The line stays on." % gs.PHONE_BILL, BLUE)
 	return {"ok": true, "surface": str(payload.get("surface", "phone"))}
 
 ## Why the Pay button is dead, in canon's own words (the `reason` strings on
@@ -176,9 +176,9 @@ func _settle_phone(ended_day: int) -> void:
 	gs.phone_days_past_due += 1
 	if gs.phone_days_past_due > PHONE_GRACE_DAYS and gs.phone_active:
 		gs.phone_active = false
-		gs.log_activity("The signal bars vanish. Calls and texts stop leaving.", RED)
+		gs.log_activity("The bars go. Everything you typed today is sitting in the phone, not sent.", RED)
 	elif gs.phone_days_past_due == 1:
-		gs.log_activity("Phone bill overdue: $%d." % gs.PHONE_BILL, AMBER)
+		gs.log_activity("$%d phone bill, overdue. The carrier texts you about it, which is funny for one more day." % gs.PHONE_BILL, AMBER)
 
 func _settle_rent(ended_day: int) -> void:
 	if ended_day < gs.rent_due_day:
@@ -186,7 +186,7 @@ func _settle_rent(ended_day: int) -> void:
 	gs.rent_missed += 1
 	# Roll the due day so the next period is what gets checked from here.
 	gs.rent_due_day = _current_rent_due() + RENT_PERIOD_DAYS
-	gs.log_activity("Yalonda leaves the rent envelope on the table, still empty.", RED)
+	gs.log_activity("The rent envelope is on the table where you left it. Yalonda moved it two inches closer to your door.", RED)
 	# Canon's ESCALATING_EVENT: the weight is negative and the count grows
 	# linearly, so each additional miss hurts more than the last. Yalonda is the
 	# one who sees it, first-hand, in her own house.

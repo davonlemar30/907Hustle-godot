@@ -82,4 +82,10 @@ func _on_begin() -> void:
 	# happens once, and CONTINUE RUN on the title screen calls go_to_game()
 	# directly and never enqueues it.
 	nav.enqueue_flow_sheet({"kind": "intro"})
+	# WS-D5: the terms, in writing, on the phone -- the first text of the
+	# run, and the first thing on it you can answer.
+	var phone: Object = _gm.system("phone")
+	if phone != null:
+		phone.push_text("Yalonda", "Rent is $%d a week. Due day %d. I don't do reminders." \
+			% [int(gs.WEEKLY_RENT), int(gs.rent_due_day)], "yalonda_rent")
 	nav.go_to_game()

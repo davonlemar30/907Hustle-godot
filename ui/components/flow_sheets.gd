@@ -79,15 +79,14 @@ static func _intro_copy(gs: Node) -> String:
 		due = "due tomorrow"
 	else:
 		due = "due in %d days" % days
-	return ("So you're the one. %s. Your sister said you'd be coming — she " \
-		+ "didn't say Alaska would be this much of a surprise to you.\n\n" \
-		+ "Look. The room is yours. First week's free because I like her, " \
-		+ "not because I'm running a charity. After that it's $%d a week, " \
-		+ "%s, and I don't ask twice.\n\n" \
+	# WS-D5 (0.8.0): four lines. She has said this before, to other people,
+	# and she is not going to say it twice to you. The numbers go to your
+	# phone, where she can point at them later.
+	return ("So you're the one. %s. Your sister said you'd be coming.\n\n" \
+		+ "The room is yours. First week's free because I like her. After " \
+		+ "that it's $%d a week, %s, and I don't ask twice.\n\n" \
 		+ "The Wash & Go on the corner is short a pair of hands. Lani runs " \
-		+ "it. Tell her I sent you. That's the honest way, and I'd start " \
-		+ "there. Whatever other way this city shows you -- that's between " \
-		+ "you and it.\n\n" \
+		+ "it. Tell her I sent you.\n\n" \
 		+ "Eat something. Lock up when you come in.") \
 		% [str(gs.street_name), int(gs.WEEKLY_RENT), due]
 

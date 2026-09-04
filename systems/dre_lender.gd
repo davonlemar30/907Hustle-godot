@@ -136,8 +136,8 @@ func push_intro_offer(today: int) -> void:
 	var phone: Object = _phone()
 	if phone != null:
 		phone.push_text("Juan",
-			"you should talk to Dre. he fronts people money when they need it. " \
-			+ "ask around Spenard, everybody knows where to find him.", "juan_dre_mention")
+			"if you're short, talk to Dre. he fronts money to people who keep " \
+			+ "their word. ask around Spenard. you'll find him.", "juan_dre_mention")
 
 ## "" if the player can go meet Dre right now, the reason otherwise.
 func seek_out_blocker() -> String:
@@ -182,7 +182,7 @@ func _do_penance() -> Dictionary:
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked}
 	gs.dre_pending_penance = false
-	gs.log_activity("You tell Dre it won't happen again. He hears it.", AMBER)
+	gs.log_activity("You give Dre your word. He doesn't forgive you; he decides to keep doing business.", AMBER)
 	return {"ok": true}
 
 # --- borrow ------------------------------------------------------------------
@@ -220,7 +220,7 @@ func _borrow() -> Dictionary:
 	if exposure != null:
 		exposure.record_observation("dre", {"type": "financial", "event": "accepted_terms",
 			"source": "direct"})
-	gs.log_activity("Dre puts $%d in your hand. He wants $%d back by Day %d." % [
+	gs.log_activity("Dre puts $%d in your hand. $%d comes back by Day %d; your word rides with it." % [
 		FIRST_LOAN_PRINCIPAL, FIRST_LOAN_PRINCIPAL + FIRST_LOAN_INTEREST,
 		gs.day + FIRST_LOAN_TERM_DAYS], AMBER)
 	return {"ok": true, "due_day": gs.day + FIRST_LOAN_TERM_DAYS}
@@ -267,14 +267,15 @@ func _repay() -> Dictionary:
 		if exposure != null:
 			exposure.record_observation("dre", {"type": "financial",
 				"event": "debt_repaid_late", "source": "direct"})
-		gs.log_activity("You settle up with Dre. Late, but settled.", AMBER)
+		gs.log_activity("You pay Dre in full. The money is square; the lateness stays on your name.", AMBER)
 	else:
 		history["repaid_on_time"] = int(history.get("repaid_on_time", 0)) + 1
 		if exposure != null:
 			exposure.record_observation("dre", {"type": "financial",
 				"event": "debt_repaid_early" if early else "debt_repaid",
 				"source": "direct"})
-		gs.log_activity("You pay Dre back in full%s." % (" — early" if early else ""), GREEN)
+		gs.log_activity("You put Dre's money back in his hand%s." \
+			% (" before he has to ask" if early else " on time"), GREEN)
 	gs.dre_account_history = history
 	gs.dre_account = {
 		"status": "clear", "principal": 0, "interest": 0, "fee": 0,
@@ -315,7 +316,7 @@ func _request_extension() -> Dictionary:
 	if exposure != null:
 		exposure.record_observation("dre", {"type": "honesty",
 			"event": "asked_before_due", "source": "direct"})
-	gs.log_activity("Dre gives you two more days. That's $%d more, not a favor." \
+	gs.log_activity("Dre sells you two more days for $%d. Time costs more when it belongs to somebody else." \
 		% EXTENSION_FEE, AMBER)
 	return {"ok": true, "due_day": int(account["due_day"])}
 
@@ -337,21 +338,21 @@ func settle_night(ended_day: int) -> void:
 	match status:
 		"active", "extended":
 			if ended_day + 2 == due_day and phone != null:
-				phone.push_text("Dre", "Due tomorrow. You know where to find me.",
+				phone.push_text("Dre", "Due tomorrow. I shouldn't have to ask twice.",
 					"dre_due_tomorrow", {"kind": "dre_debt"})
 			if ended_day + 1 >= due_day:
 				account["status"] = "due"
 				gs.dre_account = account
 				if phone != null:
-					phone.push_text("Dre", "Today's the day. I'll be expecting it.",
+					phone.push_text("Dre", "Today's the day. Bring me what we agreed.",
 						"dre_due_today", {"kind": "dre_debt"})
 		"due":
 			account["status"] = "overdue"
 			gs.dre_account = account
-			gs.log_activity("Dre's money didn't come. That's a different conversation now.", RED)
+			gs.log_activity("Dre's money didn't show. From here, the debt is about respect.", RED)
 			if phone != null:
 				phone.push_text("Dre",
-					"We should talk before this becomes a different conversation.",
+					"You missed the day. Call me before I decide what that means.",
 					"dre_missed", {"kind": "dre_debt"})
 		"overdue":
 			# Triggering moved to `systems/doorstep.gd` (0.5.0 PR D, DOOR-D2)

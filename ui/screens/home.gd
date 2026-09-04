@@ -439,11 +439,26 @@ func _bind_snapshot() -> void:
 		if nm:
 			nm.text = p.name
 			nm.add_theme_color_override("font_color", col)
-		_set_text(base + "/I/Sub", "Own %s · %s" % [p.get("owned", "0"), p.get("route", "")])
+		# WS-D5: the authored `route` string on the product table was a claim
+		# from the mockup ("+$127 Downtown") that the economy never honoured.
+		# The line reads the live best route now, or says there isn't one.
+		_set_text(base + "/I/Sub", "Own %s · %s" % [p.get("owned", "0"), _route_text(id)])
 		var pr := get_node_or_null(base + "/P") as Label
 		if pr:
 			pr.text = "$%d" % p.price
 			pr.add_theme_color_override("font_color", col)
+
+## What the board elsewhere pays over this one, from the one function the
+## Market screen and the sale itself read. Never a number the game will not
+## honour.
+func _route_text(product_id: String) -> String:
+	if not bool(gs.phone_active):
+		return "no word"
+	var economy: Object = _gm.system("economy") if _gm != null else null
+	var route: Dictionary = economy.best_route(product_id) if economy != null else {}
+	if route.is_empty():
+		return "no route"
+	return "+$%d %s" % [int(route.get("edge", 0)), str(route.get("name", ""))]
 
 func _bind_turf() -> void:
 	_set_text("Shell/Scroll/Pad/Content/Columns/Turf/V/Blocks/N", str(gs.territory_nodes.size()))

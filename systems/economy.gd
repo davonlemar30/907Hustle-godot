@@ -389,6 +389,7 @@ func _carry_line(report: Dictionary) -> String:
 
 const AMBER := Color(0.882, 0.651, 0.227)
 const RED := Color(0.827, 0.161, 0.125)
+const GREEN := Color(0.451, 0.722, 0.404)
 
 # --- actions ----------------------------------------------------------------
 
@@ -512,3 +513,46 @@ func evolve() -> void:
 		market["updated_at"] = absolute
 	gs.rng_state = stream.state
 	sync_display_prices(gs)
+	explain_moves()
+
+const CAUSES := preload("res://data/market_causes.gd")
+var _last_cause_day: int = -1
+
+## WS-D5 (0.8.0): when the board under the player's feet moves hard, the
+## feed says why. Flavor over a roll the walk already made -- it never
+## moves a price. The biggest mover in the current district, one line a
+## day, only past `MOVE_THRESHOLD`. Seeded on the day and the product, so
+## a run replays its own rumors.
+func explain_moves() -> void:
+	if _last_cause_day == int(gs.day):
+		return
+	var market: Dictionary = gs.markets.get(gs.current_district_id, {})
+	if market.is_empty():
+		return
+	var history: Dictionary = market.get("history", {})
+	var best_id := ""
+	var best_move := 0.0
+	var best_direction := "flat"
+	for prod in gs.products:
+		var pid := str(prod["id"])
+		if bool(prod.get("locked", false)):
+			continue
+		var series: Variant = history.get(pid)
+		if not (series is Array) or (series as Array).size() < 2:
+			continue
+		var rows: Array = series
+		var previous: float = float(rows[rows.size() - 2])
+		var last: float = float(rows[rows.size() - 1])
+		if previous <= 0.0:
+			continue
+		var move: float = (last - previous) / previous
+		if absf(move) > absf(best_move):
+			best_move = move
+			best_id = pid
+			best_direction = "up" if move > 0.0 else "down"
+	if best_id.is_empty() or absf(best_move) < CAUSES.MOVE_THRESHOLD:
+		return
+	_last_cause_day = int(gs.day)
+	var line := CAUSES.line_for(best_id, best_direction, int(gs.day) * 31 + best_id.hash())
+	if not line.is_empty():
+		gs.log_activity(line, AMBER if best_direction == "down" else GREEN)

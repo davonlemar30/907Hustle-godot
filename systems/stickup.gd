@@ -174,7 +174,7 @@ func _update_tier() -> void:
 	if gs.stick_rep >= gs.STICK_TIER3_REP and has_crew:
 		gs.stick_tier = maxi(gs.stick_tier, 3)
 	if gs.stick_tier > was:
-		gs.log_activity("Word gets around. Bigger rooms will take your call now.", GREEN)
+		gs.log_activity("Word gets around. The rooms that didn't take your call last week are calling you.", GREEN)
 
 ## Why this target can't be hit right now, or "" if it can. Canon's reasons,
 ## verbatim where they still apply.
@@ -655,7 +655,7 @@ func _resolve_caught(chain: Dictionary, choice_id: String) -> Dictionary:
 
 func _caught_feed_line(choice_id: String, tier_name: String, result: Dictionary) -> void:
 	if choice_id == "yield":
-		gs.log_activity("You put your hands up before it went any further.", AMBER)
+		gs.log_activity("Hands up before he asked twice. Cold pavement, and the cuffs are colder.", AMBER)
 		return
 	var arrested: bool = bool(result.get("arrested", false))
 	var verb: String = str({"fight": "went at", "run": "ran from", "talk": "talked to"}
@@ -965,7 +965,7 @@ func _room_stage(chain: Dictionary, loop: Dictionary, t: Dictionary,
 		chain["time"] = time_block
 		var engine: Object = _engine()
 		engine.clear_chain()
-		gs.log_activity("You look at %s for a while and keep walking." % str(t["name"]), AMBER)
+		gs.log_activity("You watch %s for a while. Not tonight. Your feet decide before you do." % str(t["name"]), AMBER)
 		return {"ok": true, "walked": true}
 
 	# The first committed action is when the attempt becomes real: the counter
@@ -1262,9 +1262,9 @@ func _room_feed_line(t: Dictionary, resolution: String, credited: int,
 			else:
 				# Watched, banked nothing, left — an hour of casing that never
 				# became a robbery, and the room still noticed somebody was in it.
-				gs.log_activity("You read %s for a while and let it be." % name, AMBER)
+				gs.log_activity("%s. You read the room and the room reads back. You let it be." % name, AMBER)
 		SCRIPTS.RESOLUTION_SURRENDERED:
-			gs.log_activity("You drop the take at %s and buy the door." % name, AMBER)
+			gs.log_activity("You leave the take on the floor at %s and buy the door with it." % name, AMBER)
 		_:
 			gs.log_activity("%s comes apart. Heat +%.1f, -%d health, nothing kept."
 				% [name, applied, damage], RED)

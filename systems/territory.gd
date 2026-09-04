@@ -104,7 +104,7 @@ func _claim(block_id: String) -> Dictionary:
 	# second was written once and read never (86bbjxtjb's PR 1 audit found it
 	# unreferenced everywhere but a save fixture).
 	gs.territory_nodes[block_id] = {"soldiers": 1}
-	gs.log_activity("%s is yours." % str(b["name"]), GREEN)
+	gs.log_activity("%s is yours. Nobody hands you a key. You just stop getting asked to leave." % str(b["name"]), GREEN)
 	return {"ok": true}
 
 func _abandon(block_id: String) -> Dictionary:
@@ -114,7 +114,7 @@ func _abandon(block_id: String) -> Dictionary:
 	# The soldiers come back; the claim cost does not.
 	gs.soldiers_idle += int(rec.get("soldiers", 0))
 	gs.territory_nodes.erase(block_id)
-	gs.log_activity("Walked away from %s." % _block_name(block_id), AMBER)
+	gs.log_activity("You walk off %s and somebody else is standing there by dark." % _block_name(block_id), AMBER)
 	# Giving up a corner takes 2 off the cap with it, and the roster does not
 	# get to stay above the cap because the corner it was sized for is gone
 	# (86bbjxtb6). Hold 3, recruit to 8, abandon all 3 and the old code left 8
@@ -163,7 +163,7 @@ func _recruit_soldier() -> Dictionary:
 	_wallet().spend(gs.SOLDIER_RECRUIT_COST, _wallet().ROUTINE_DIRTY_FIRST,
 		{"source_id": "territory_soldier"})
 	gs.soldiers_idle += 1
-	gs.log_activity("Another soldier goes on the payroll.", GREEN)
+	gs.log_activity("Another one on the payroll. Another one who knows your name.", GREEN)
 	return {"ok": true}
 
 func post_blocker(block_id: String) -> String:
@@ -281,7 +281,7 @@ func settle_night(_ended_day: int) -> void:
 			# Territory income once its payout caller migrates". This is that caller.
 			_wallet().credit(income, _wallet().DIRTY, {"source_id": "territory_income"})
 			gs.record_earning("territory", income)
-			gs.log_activity("The corners brought in $%d." % income, GREEN)
+			gs.log_activity("The corners bring in $%d. It comes in twenties, it comes in ones, it comes." % income, GREEN)
 
 		# Deshawn damps this the same way he damps a stickup — it is heat the
 		# operation generates, and it routes through the same multiplier. HeatSystem
@@ -301,7 +301,7 @@ func settle_night(_ended_day: int) -> void:
 			if int(gs.territory_nodes[id].get("soldiers", 0)) <= 0:
 				unstaffed.append(_block_name(str(id)))
 		if not unstaffed.is_empty():
-			gs.log_activity("%s sat empty. Still yours, still noticed." % ", ".join(unstaffed), RED)
+			gs.log_activity("%s sat empty all night. Still yours. Somebody noticed it was." % ", ".join(unstaffed), RED)
 
 	_settle_upkeep()
 
@@ -325,7 +325,7 @@ func _settle_upkeep() -> void:
 	var owed: int = nightly_upkeep()
 	var paid: int = mini(owed, int(gs.cash))
 	if paid <= 0:
-		gs.log_activity("Nothing left for %d soldiers' upkeep tonight." % soldiers, RED)
+		gs.log_activity("%d soldiers and nothing to pay them with. They know before you tell them." % soldiers, RED)
 		return
 	_wallet().spend(paid, _wallet().ROUTINE_DIRTY_FIRST, {"source_id": "territory_upkeep"})
 	if paid < owed:

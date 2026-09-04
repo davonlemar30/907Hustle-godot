@@ -607,7 +607,7 @@ func _discover(job_id: String) -> Dictionary:
 	for job in gs.jobs:
 		if str(job["id"]) == job_id:
 			name = str(job["name"])
-	gs.log_activity("Word of work: %s. Somebody will vouch if you turn up." % name, GREEN)
+	gs.log_activity("%s is hiring. Somebody said your name would do." % name, GREEN)
 	var phone: Object = gm.system("phone") if gm != null else null
 	if phone != null:
 		phone.push_message("Around town",
@@ -625,7 +625,7 @@ func _discover_boost_target(target_id: String) -> Dictionary:
 	gs.wander_misses = 0
 	var target: Dictionary = gs.boost_target_by_id(target_id)
 	var place: String = str(target.get("name", target_id))
-	gs.log_activity("You clock a spot: %s. Worth remembering." % place, GREEN)
+	gs.log_activity("%s. You walk past it twice and the second time you're counting cameras." % place, GREEN)
 	var phone: Object = gm.system("phone") if gm != null else null
 	if phone != null:
 		phone.push_message("Around town",
@@ -640,7 +640,7 @@ func _discover_market() -> Dictionary:
 	gs.market_discovered = true
 	gs.discover_hustle("market")
 	gs.wander_misses = 0
-	gs.log_activity("You know where the corner is now, and who runs it.", GREEN)
+	gs.log_activity("Goodie's corner. You know the price now, and the face.", GREEN)
 	return {"ok": true, "kind": "discovery", "card_id": "", "discovered_market": true}
 
 ## WS-D1: one hustle onto the board, once. The market keeps its own latch
@@ -655,11 +655,11 @@ func _discover_hustle(hustle_id: String, target_id: String = "") -> void:
 		gs.wander_misses = 0
 		match hustle_id:
 			"boost":
-				gs.log_activity("You saw how loose a rack can be. That is a thing you know now.", GREEN)
+				gs.log_activity("A rack with nobody watching it. You're not going to unknow that.", GREEN)
 			"stickup":
-				gs.log_activity("You know how fast it happens now, and how nobody runs.", GREEN)
+				gs.log_activity("Eight seconds, start to finish. Nobody ran. You keep thinking about that.", GREEN)
 			"list":
-				gs.log_activity("Somebody trusted you with the board.", GREEN)
+				gs.log_activity("The board. Somebody trusted you with it, which means somebody's watching what you do with it.", GREEN)
 	if not target_id.is_empty() and not target_id in gs.boost_targets_discovered \
 			and not gs.boost_target_by_id(target_id).is_empty():
 		gs.boost_targets_discovered.append(target_id)
@@ -808,7 +808,7 @@ func _play_opportunity(card: Dictionary, key: String, spent: float) -> Dictionar
 			# Found money is nobody's payroll. It goes in dirty, which is what
 			# the wallet calls money with no story attached to it.
 			wallet.credit(amount, wallet.DIRTY, {"source_id": "wander_found"})
-		gs.log_activity("Picked up $%d." % amount, GREEN)
+		gs.log_activity("$%d, folded small, in your pocket before anybody saw it." % amount, GREEN)
 		report["cash"] = amount
 
 	if bool(grant.get("intel", false)):
@@ -931,9 +931,9 @@ func _resolve_crew_call(chain: Dictionary, call_id: String) -> Dictionary:
 
 	var resolution := str(call.get("resolution", SCRIPTS.RESOLUTION_WON))
 	if resolution == SCRIPTS.RESOLUTION_WON:
-		gs.log_activity("Tone gets there before it goes anywhere. Nobody argues with that.", GREEN)
+		gs.log_activity("Tone is there before you finish the sentence. It ends. Nobody argues with Tone.", GREEN)
 	else:
-		gs.log_activity("Deshawn talks it down to nothing. Everybody walks.", GREEN)
+		gs.log_activity("Deshawn talks. Somebody laughs. Everybody walks. That's what he does.", GREEN)
 
 	# The loop is over however it was called, so the call is stamped on it —
 	# a reload mid-chain must not offer a call that has already been spent.
@@ -1107,7 +1107,7 @@ func _play_read(card: Dictionary) -> Dictionary:
 			told = _read_crew()
 	if told.is_empty():
 		# Nothing to say is still an hour spent. Never silent.
-		gs.log_activity("Quiet, as far as you can tell.", MUTED)
+		gs.log_activity("Quiet. The kind you don't trust yet.", MUTED)
 	for line in told:
 		gs.log_activity(str(line), BLUE)
 	return {"ok": true, "kind": "read", "card_id": str(card["id"]), "told": told}
@@ -1444,7 +1444,7 @@ func _resolve_pay(chain: Dictionary, choice_id: String) -> Dictionary:
 	if float(row.get("heat", 0.0)) > 0.0 \
 			and engine.record_receipt(cause_id, "wander_encounter:paid_heat"):
 		heat_gain = LOOP.apply_heat(gs, gm, float(row["heat"]), "wander_encounter")
-	gs.log_activity("You pay, and it stops being a conversation.", AMBER)
+	gs.log_activity("You pay. It stops being a conversation and starts being a price.", AMBER)
 	_record_encounter_observation(chain, choice_id, "deterministic")
 	var result := {
 		"choice_id": choice_id, "tier": "deterministic", "arrested": false, "banned": false,
@@ -1512,17 +1512,17 @@ func _stash_it_tier(chain: Dictionary, choice_id: String) -> String:
 func _feed_line_for(choice_id: String, tier: String) -> void:
 	match tier:
 		"deterministic":
-			gs.log_activity("You give it up and keep walking.", AMBER)
+			gs.log_activity("You hand it over and keep walking, and your hands don't stop shaking till the corner.", AMBER)
 		"clean":
-			gs.log_activity("It comes to nothing. They decide you are not worth it.", GREEN)
+			gs.log_activity("They look at you, then at each other, and decide you're not worth it. You'll take that.", GREEN)
 		"messy":
-			gs.log_activity("It gets loud before it gets finished. You walk away sore.", AMBER)
+			gs.log_activity("Loud, then over. You walk away with your jaw clicking.", AMBER)
 		"failure":
-			gs.log_activity("It does not go your way.", AMBER)
+			gs.log_activity("It doesn't go your way. You feel it in your ribs for a week.", AMBER)
 		_:
-			gs.log_activity("It goes badly, and you are carrying less than you were.", AMBER)
+			gs.log_activity("Your pockets are lighter and so is your face. Nobody asks.", AMBER)
 	if choice_id == "stash_it" and tier in ["failure", "catastrophic"]:
-		gs.log_activity("They watched you try. That is its own kind of trouble.", AMBER)
+		gs.log_activity("They watched you try. Somebody's going to tell that story, and it won't be you.", AMBER)
 
 ## PR-A-era fallback, unchanged, for a card that ships with no `effects`
 ## table of its own — see `resolve_consequence`'s own header.
@@ -1628,7 +1628,7 @@ func _open_shakedown_room(chain: Dictionary, choice_id: String,
 		"left": int(_beat_at(card_id, 0).get("left", 0)),
 		"banked": 0,
 	}
-	gs.log_activity("They do not scatter. This is a fight now.", AMBER)
+	gs.log_activity("They don't scatter. Somebody's hood comes off. This is a fight now.", AMBER)
 	# BB-D4: the door's own round ends in a result the player reads -- it did
 	# not go their way, and here is what that means -- before the first beat
 	# is on the table. `pending` is the beat CONTINUE presents.

@@ -156,7 +156,7 @@ func _quit() -> Dictionary:
 		return {"ok": false, "reason": "You don't have a job."}
 	var name: String = gs.active_job().get("name", "the job")
 	gs.active_job_id = ""
-	gs.log_activity("Quit %s." % name, AMBER)
+	gs.log_activity("You quit %s. Nobody tries to talk you out of it." % name, AMBER)
 	return {"ok": true}
 
 ## Why a shift can't be worked right now, or "" if it can. Shared by the system
@@ -220,7 +220,7 @@ func _work(approach_id: String) -> Dictionary:
 	# Working resets the attendance ladder, whatever rung it was on.
 	gs.job_missed[job_id] = 0
 
-	gs.log_activity("%s shift: +$%d." % [job["name"], payout], GREEN)
+	gs.log_activity("Shift at %s. $%d, and your feet hurt in the honest way." % [job["name"], payout], GREEN)
 	# WS-D4: every three or four shifts something small happens on the
 	# floor. A line, sometimes a few dollars or a little health; never a
 	# decision. Seeded on the shift count, so a run replays its own floor.
@@ -313,7 +313,7 @@ func settle_night(ended_day: int) -> void:
 			rec["rank"] = 0
 			rec["hired_day"] = -1
 			gs.job_missed.erase(job_id)
-			gs.log_activity("%s let you go for not showing up." % job["name"], RED)
+			gs.log_activity("%s is done with you. Three days and nobody heard from you." % job["name"], RED)
 			# Canon broadcasts this on BOTH channels the block hears — losing a
 			# job is household news and street news at the same time.
 			var exposure: Node = _exposure()

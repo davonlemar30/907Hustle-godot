@@ -196,6 +196,13 @@ func _ready() -> void:
 	var fixer_adapter = preload("res://systems/fixer_adapter.gd").new()
 	fixer_adapter.setup(_gs, self, crew_operations)
 	register_system("fixer_adapter", fixer_adapter)
+	# BR-D6 (0.9.0 PR 5): two more operations on the same substrate.
+	var scout_adapter = preload("res://systems/scout_adapter.gd").new()
+	scout_adapter.setup(_gs, self, crew_operations)
+	register_system("scout_adapter", scout_adapter)
+	var enforcer_adapter = preload("res://systems/enforcer_adapter.gd").new()
+	enforcer_adapter.setup(_gs, self, crew_operations)
+	register_system("enforcer_adapter", enforcer_adapter)
 
 	# The venue interiors. Built after time because both of its actions spend a
 	# slot, and after attributes because both of them train one — though it

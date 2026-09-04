@@ -197,6 +197,9 @@ const DAY_START_ORDER: Array[String] = [
 	# a ghost, and the people who notice, notice at the start of the next.
 	"ghosts",
 	"mentions",
+	# BR-D6: they have their own ideas. After the block's mentions, a
+	# trusted crew member may text a proposal for the day.
+	"crew_ideas",
 	# Dre Lending & Loan-Shark Progression, PR B (DRE-D1). After `tips` for
 	# the same reason `tips` is after everything else: Juan's mention reads
 	# `gs.cash`/`gs.rent_due_day` against the fully-settled day, not a
@@ -475,6 +478,11 @@ func _run_day_start_step(step: String, today: int) -> void:
 		var phone: Object = gm.system("phone") if gm != null else null
 		if phone != null:
 			phone.settle_ghosts(today)
+		return
+	if step == "crew_ideas":
+		var ops: Object = gm.system("crew_operations") if gm != null else null
+		if ops != null:
+			ops.day_start_ideas(today)
 		return
 	if step == "mentions":
 		# BR-D5: Mountain View opens a week in, at day start.

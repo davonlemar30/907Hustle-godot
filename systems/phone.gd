@@ -107,7 +107,19 @@ func push_text(from: String, text: String, context: String = "",
 			history["owed_ghost"] = false
 			gs.phone_reply_history[npc_id] = history
 	var action: Dictionary = extra_action.duplicate(true)
-	if not replies.is_empty():
+	# BR-D6: a text can carry its own two answers (a crew member's
+	# proposal), and what saying yes does.
+	if action.has("reply_override") and action["reply_override"] is Dictionary:
+		var override: Dictionary = action["reply_override"]
+		action.erase("reply_override")
+		action["reply"] = {
+			"npc": str(override.get("npc", npc_id)),
+			"a": (override.get("a", {}) as Dictionary).duplicate(),
+			"b": (override.get("b", {}) as Dictionary).duplicate(),
+			"replied": "",
+			"on_accept": (override.get("on_accept", {}) as Dictionary).duplicate(true),
+		}
+	elif not replies.is_empty():
 		action["kind"] = str(action.get("kind", "reply"))
 		action["reply"] = {
 			"npc": npc_id,
@@ -141,6 +153,18 @@ func _reply(id: String, option: String) -> Dictionary:
 	var npc_id := str(reply.get("npc", ""))
 	var chosen: Dictionary = reply[option]
 	_hear(npc_id, "answered" if option == "a" else "distanced")
+	# BR-D6: yes to a crew member's idea is the assignment. Refused (the
+	# window closed, the member got busy), the reply stands and the member
+	# says so instead of their yes line.
+	var on_accept: Dictionary = reply.get("on_accept", {})
+	if option == "a" and not on_accept.is_empty() and str(on_accept.get("kind", "")) == "crew_assign":
+		var manager: Node = Engine.get_main_loop().root.get_node_or_null("/root/GameManager")
+		var ops: Object = manager.system("crew_operations") if manager != null else null
+		var assigned: Dictionary = ops.accept_idea(on_accept) if ops != null else {"ok": false}
+		if not bool(assigned.get("ok", false)):
+			push_message(str(message.get("from", "")), "too late. %s" % str(assigned.get("reason", "it passed.")).to_lower(),
+				{"kind": "reaction"})
+			return {"ok": true, "npc": npc_id, "option": option, "assigned": false}
 	# The NPC answers back once, in their own voice, and carries no reply of
 	# its own -- an exchange, not a tree.
 	var reaction := str(chosen.get("reaction", ""))

@@ -129,6 +129,16 @@ const DISCOVERY_REQUIREMENTS := {
 		{"type": "crew_active", "crew_id": "deshawn"},
 		{"type": "crew_loyalty_min", "crew_id": "deshawn", "min": 5},
 	],
+	# BR-D6 (0.9.0): scouting is Eli's from the day he trusts you enough to
+	# leave the bag; putting it down is Tone's from the day he is sure.
+	"scout_district": [
+		{"type": "crew_active", "crew_id": "eli"},
+		{"type": "crew_loyalty_min", "crew_id": "eli", "min": 4},
+	],
+	"put_it_down": [
+		{"type": "crew_active", "crew_id": "tone"},
+		{"type": "crew_loyalty_min", "crew_id": "tone", "min": 5},
+	],
 }
 
 ## What has to be true to CLAIM somebody's day for it, this morning.
@@ -163,6 +173,20 @@ const ASSIGNMENT_REQUIREMENTS := {
 		{"type": "crew_unassigned_today", "crew_id": "deshawn"},
 		{"type": "planning_window_open"},
 	],
+	"scout_district": [
+		{"type": "crew_active", "crew_id": "eli"},
+		{"type": "crew_loyalty_min", "crew_id": "eli", "min": 4},
+		{"type": "payroll_not_delinquent", "crew_id": "eli"},
+		{"type": "crew_unassigned_today", "crew_id": "eli"},
+		{"type": "planning_window_open"},
+	],
+	"put_it_down": [
+		{"type": "crew_active", "crew_id": "tone"},
+		{"type": "crew_loyalty_min", "crew_id": "tone", "min": 5},
+		{"type": "payroll_not_delinquent", "crew_id": "tone"},
+		{"type": "crew_unassigned_today", "crew_id": "tone"},
+		{"type": "planning_window_open"},
+	],
 }
 
 ## Which crew member each operation belongs to. A capability is a person's, not
@@ -172,7 +196,28 @@ const OPERATION_CAPABILITY := {
 	"907list_run_board": {"crew_id": "pherris", "capability_id": "907list_run_board"},
 	"run_the_bag": {"crew_id": "eli", "capability_id": "run_the_bag"},
 	"smooth_it_over": {"crew_id": "deshawn", "capability_id": "smooth_it_over"},
+	"scout_district": {"crew_id": "eli", "capability_id": "scout_district"},
+	"put_it_down": {"crew_id": "tone", "capability_id": "put_it_down"},
 }
+
+## BR-D6: what the Crew screen calls each operation, and whether it needs a
+## district named.
+const OPERATION_LABELS := {
+	"907list_run_board": "WORK THE BOARD",
+	"run_the_bag": "RUN THE BAG",
+	"smooth_it_over": "SMOOTH IT OVER",
+	"scout_district": "SCOUT",
+	"put_it_down": "PUT IT DOWN",
+}
+const OPERATION_TAKES_DISTRICT := ["scout_district", "put_it_down", "smooth_it_over"]
+
+## BR-D6: they have their own ideas. Once a member is sure of you (loyalty
+## at `PROPOSAL_LOYALTY`), every few mornings one of them texts a proposal
+## that fits what is going on -- a problem on a block for Deshawn or Tone,
+## a route for Eli, a board for Pherris -- and the reply is the assignment.
+const PROPOSAL_LOYALTY := 6
+const PROPOSAL_COOLDOWN_DAYS := 3
+const PROPOSAL_CHANCE := 0.45
 
 var gs: Node
 var gm: Node
@@ -545,6 +590,7 @@ func _assign(crew_id: String, operation_id: String, payload: Dictionary = {}) ->
 		# selection there would have it overwritten at midnight, losing the
 		# purchase record and the stop reason the summary reports.
 		"selection": null,
+		"assigned_district_id": str(gs.current_district_id),
 	}
 	gs.crew_assignments[crew_id] = assignment
 
@@ -754,5 +800,113 @@ func _selection_field(assignment: Dictionary, field: String) -> Variant:
 	return (selection as Dictionary).get(field) if selection is Dictionary else null
 
 ## Every operation this build knows how to run, discovered or not.
+# --- BR-D6: they have their own ideas ------------------------------------------
+
+## Day start. One proposal a morning at most, from the first trusted member
+## with something to propose, on a cooldown per member, seeded on the day.
+func day_start_ideas(today: int) -> void:
+	if gs.game_over:
+		return
+	var phone: Object = _phone()
+	if phone == null:
+		return
+	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
+	for operation_id in ["put_it_down", "smooth_it_over", "run_the_bag", "907list_run_board", "scout_district"]:
+		var crew_id := str((OPERATION_CAPABILITY[operation_id] as Dictionary).get("crew_id", ""))
+		if not gs.is_recruited(crew_id):
+			continue
+		var record: Dictionary = gs.crew_record(crew_id)
+		if int(record.get("loyalty", 0)) < PROPOSAL_LOYALTY:
+			continue
+		if not is_discovered(operation_id):
+			continue
+		if today - int(record.get("last_proposal_day", -99)) < PROPOSAL_COOLDOWN_DAYS:
+			continue
+		if assignment_blocker(operation_id) != null:
+			continue
+		var proposal: Dictionary = _proposal_for(operation_id, crew_id)
+		if proposal.is_empty():
+			continue
+		if rng != null and rng.seeded_int_range(gs.run_seed, "%d:%s:idea" % [today, crew_id], 0, 99) \
+				>= int(PROPOSAL_CHANCE * 100.0):
+			continue
+		record["last_proposal_day"] = today
+		gs.crew_records[crew_id] = record
+		phone.push_text(_sender_for(operation_id), str(proposal["text"]), "", {
+			"kind": "crew_idea",
+			"reply_override": {
+				"npc": crew_id,
+				"a": {"text": str(proposal["yes"]), "reaction": str(proposal["went"])},
+				"b": {"text": str(proposal["no"]), "reaction": str(proposal["stayed"])},
+				"on_accept": {"kind": "crew_assign", "crew_id": crew_id,
+					"operation_id": operation_id, "params": proposal.get("params", {})},
+			},
+		})
+		return
+
+## What a member would propose today, or {} when nothing fits. The text is
+## the member's own voice; the params are the situation.
+func _proposal_for(operation_id: String, crew_id: String) -> Dictionary:
+	var engine: Object = gm.system("consequence") if gm != null else null
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	match operation_id:
+		"put_it_down", "smooth_it_over":
+			var worst := ""
+			var worst_score := 0.0
+			for district_id in (gs.districts_unlocked as Array):
+				for family in rules.PRESSURE_FAMILIES:
+					var score: float = float(engine.pressure_score(str(district_id), str(family))) if engine != null else 0.0
+					if score > worst_score:
+						worst_score = score
+						worst = str(district_id)
+			if worst.is_empty() or worst_score < 2.0:
+				return {}
+			var name := str(gs.district_by_id(worst).get("name", worst)).capitalize()
+			if operation_id == "put_it_down":
+				return {"text": "Problem in %s. I can handle it. Say the word." % name,
+					"yes": "handle it", "no": "not yet", "went": "Done by tonight.",
+					"stayed": "Your call.", "params": {"district_id": worst}}
+			return {"text": "people in %s talking about you wrong. give me the day and ill turn it down. you want that?" % name.to_lower(),
+				"yes": "do it. appreciate you", "no": "let it ride for now", "went": "say less. ill be out there",
+				"stayed": "aight. it aint going anywhere tho", "params": {"district_id": worst}}
+		"run_the_bag":
+			var economy: Object = gm.system("economy") if gm != null else null
+			var routes: Array = economy.known_routes() if economy != null else []
+			if routes.is_empty() or gs.inventory.is_empty():
+				return {}
+			var route: Dictionary = routes[0]
+			return {"text": "heard %s is paying over on %s. i can run the bag while you do you. want me to?" % [
+					str(route.get("product_name", route.get("product_id", "it"))).to_lower(),
+					str(route.get("name", "the other side"))],
+				"yes": "run it", "no": "hold the bag", "went": "on it. dont text me till tonight",
+				"stayed": "ok. it was a good one tho"}
+		"907list_run_board":
+			if gs.list_holdings.is_empty():
+				return {}
+			return {"text": "you got stuff sitting on the list. let me work the board today, I know who's buying",
+				"yes": "work it", "no": "ill handle it", "went": "thats why I text you first",
+				"stayed": "somebody else will then"}
+		"scout_district":
+			var unseen := ""
+			for district_id in (gs.districts_unlocked as Array):
+				if str(district_id) != str(gs.current_district_id) and int(gs.wander_seen.get("arrival:%s" % str(district_id), 0)) == 0:
+					unseen = str(district_id)
+					break
+			if unseen.is_empty():
+				return {}
+			var name := str(gs.district_by_id(unseen).get("name", unseen)).capitalize()
+			return {"text": "you aint been to %s yet. i can go look around for a day and tell you whats what" % name.to_lower(),
+				"yes": "go look", "no": "not today", "went": "bet. eyes open",
+				"stayed": "later the road wont be quiet", "params": {"district_id": unseen}}
+	return {}
+
+## BR-D6: the reply said yes. Assign it, inside the dispatch the reply
+## already is. Returns the assignment result so the phone can say why not.
+func accept_idea(spec: Dictionary) -> Dictionary:
+	var crew_id := str(spec.get("crew_id", ""))
+	var operation_id := str(spec.get("operation_id", ""))
+	var params: Dictionary = spec.get("params", {}) if spec.get("params") is Dictionary else {}
+	return _assign(crew_id, operation_id, {"params": params})
+
 func operation_ids() -> Array:
 	return OPERATION_CAPABILITY.keys()

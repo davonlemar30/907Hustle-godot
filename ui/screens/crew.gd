@@ -107,6 +107,32 @@ func _member_row(sys: Object, person: Dictionary, hired: bool) -> Control:
 		var duty := _duty_line(ops, id)
 		if not duty.is_empty():
 			v.add_child(label(duty, "Mono", 11, AMBER))
+		# BR-D6: the missions. One button per operation this member knows,
+		# named; the ones that take a district offer the districts you know.
+		for operation_id in ops.operation_ids():
+			var summary: Dictionary = ops.operation_summary(str(operation_id))
+			if str(summary["crew_id"]) != id or not bool(summary["discovered"]):
+				continue
+			var name := str(ops.OPERATION_LABELS.get(str(operation_id), str(operation_id).to_upper()))
+			var available: bool = bool(summary["available"])
+			if str(operation_id) in ops.OPERATION_TAKES_DISTRICT:
+				var picks := HBoxContainer.new()
+				picks.add_theme_constant_override("separation", 4)
+				for district_id in (gs.districts_unlocked as Array):
+					var district: Dictionary = gs.district_by_id(str(district_id))
+					var b := button("%s %s" % [name, str(district.get("name", district_id)).left(8)], false,
+						_on_mission.bind(id, str(operation_id), str(district_id)), 44)
+					b.add_theme_font_size_override("font_size", 10)
+					b.clip_text = true
+					b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+					b.disabled = not available
+					picks.add_child(b)
+				v.add_child(picks)
+			else:
+				var b := button(name, false, _on_mission.bind(id, str(operation_id), ""), 44)
+				b.add_theme_font_size_override("font_size", 11)
+				b.disabled = not available
+				v.add_child(b)
 
 	var promo_blocked: String = sys.promote_blocker(id)
 	if not sys.at_top_rank(id):
@@ -154,6 +180,13 @@ func _blocker_short(code: String) -> String:
 		"planning_window_open": return "morning decision"
 		"crew_active": return "not on the crew"
 	return "not available"
+
+func _on_mission(crew_id: String, operation_id: String, district_id: String) -> void:
+	var payload := {"crew_id": crew_id, "operation_id": operation_id}
+	if not district_id.is_empty():
+		payload["params"] = {"district_id": district_id}
+	if _gm.dispatch("assign_crew_operation", payload):
+		refresh()
 
 func _on_recruit(id: String) -> void:
 	if _gm.dispatch("recruit_crew", {"crew_id": id}):

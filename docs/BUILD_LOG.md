@@ -28,6 +28,61 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 1.0.0 — One Good Run: seven PRs (added 2026-09-04)
+
+Source: `907Hustle_Build_Prompt_v4.md`. Rulings: `D-28` (OG-D1..D6). Seven
+PRs, `#146` through `#151` and the close-out. Assessment:
+`docs/ONE_GOOD_RUN_REVIEW.md`.
+
+### What this build actually was
+
+The build that gave the run an end. The prompt's order was the fix
+first (bills, rent, the unmet hidden), then the name (rank derived from
+the ledgers, gating crew, corners, the board and the door), then the kit
+(a weapon, a car, a trunk, and every face, banner and interior the game
+will ever look for), then the ending itself (a way out priced by what
+you built, three losses that warn first, one reckoning), then the two
+systems the 0.9.0 review named as free money and labels (the Lift
+fenced through the board; Curtis's blocks as fights and nightly tests).
+The close-out is the version, the asset list and the nine answers.
+
+### What it cost, and what was measured
+
+Four schema bumps (v29 `rent_arrears_day`; v30 `weapon`, `vehicle`,
+`trunk`; v31 `game_over_kind`, `leaving`, `run_earnings`,
+`curtis_doorstep`; v32 `hot_goods`). Parity 13,782 → 13,979;
+confrontation 3,614 → 3,628; save-validation 261 → 273. The economy
+driver moved in three places and every move has a note at the corridor:
+the stickup profiles now end at Curtis's door by the eighth to twelfth
+morning, so their corridors read an eight-day pocket against a month of
+shifts; the boost profile's take did not move ($707 across four seeds)
+but what came back through the fence did (29% → 3%), which was the
+review's point; the boost_finder ceiling records a measured 33% on a
+profile whose denominator is a few hundred dollars.
+
+### Gotchas worth the next reader's time
+
+- A loss that fires on a state test with no countdown ends the economy
+  driver's runs on the first morning and every corridor reads it as a
+  windfall (an eight-day pocket against a month). Make the loss a
+  countdown with a warning the player can read, then re-set the corridor
+  with a note; do not move the door.
+- "The money moved" was the boost sweep's success predicate in five
+  places. When a success stops paying cash, every probe that reads cash
+  reads a miss. `_boost_gain` (cash, or a new item at its value) is the
+  seam.
+- A PAY road resolves through `_resolve_pay`, which did not apply the
+  card's grants. A purchase that grants a thing needs both.
+- A meeting card without `discovers` breaks the confrontation runner's
+  meeting sweeps; the sweeps skip cards without it.
+- The territory suite claims Curtis's dearest corner as its fixture. When
+  a claim on his block became a fight, the fixture became a roll. The
+  suite takes the block by hand through the same seam the win resolves
+  through, and parity asserts the fight.
+- `gm.system("nine07list")` is registered as `"list"`.
+- Adding a source adapter moves the boot-time adapter list literal in
+  parity.
+
 ## 0.9.0 — The Block Remembers: six PRs (added 2026-09-03)
 
 Source: `907Hustle_Build_Prompt_v3.md`. Rulings: `D-27` (BR-D1..D6). Six PRs,

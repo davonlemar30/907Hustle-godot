@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `0.9.0`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `1.0.0`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,105 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 1.0.0 — One Good Run: the run has an end (2026-09-04)
+
+The creative director's 0.9.0 playtest (`907Hustle_Build_Prompt_v4.md`):
+the game had a beginning and a middle and no end, respect was a number
+nobody earned, the player had no kit, the Lift and the board were free
+money, and Curtis's blocks were labels. Seven deliverables, each green
+before the next started. Rulings are D-28 (OG-D1..D6). The assessment is
+`docs/ONE_GOOD_RUN_REVIEW.md`; the images the build looks for are
+`docs/ASSET_CHECKLIST.md`.
+
+### PR 1 — The rent day (`#146`)
+
+- **People hides the unmet.** A name appears once its ledger has a row.
+- **Bills surface.** PHONE on the nav carries a badge (amber due, red
+  overdue); the Phone opens on Bills when one is.
+- **Rent escalates in Yalonda's voice** (`rent_arrears_day`, save v29): a
+  text the night it is due; a feed line and a `missed_obligation` mark a
+  day late; her second text and Juan's the day after; a house warning
+  every third day; the third is the eviction. Paid late: "You got it.
+  Don't make this a habit."
+- **The phone bill goes quiet**, then cuts you off.
+
+### PR 2 — Earn your name (`#147`)
+
+- **Respect is gone; Rank is derived.** `data/rank.gd` reads every NPC's
+  observation ledger, weighted by type and capped at three per type:
+  Nobody 0, New Face 3, Known 8, Player 15, Connected 25, Boss 40. Never
+  persisted.
+- **Gates:** crew needs Known; a corner needs Player; the 907List's tiers
+  need Known; the way out needs Boss. The HUD chip and the Character
+  screen show it; crossing a line is a feed line and a text.
+
+### PR 3 — The player's kit, the faces, the places, and the ride (`#148`)
+
+- **A weapon slot** (save v30): hands; a knife (+0.10 FIGHT, +0.5 heat when
+  it comes out) from a man at the Chevron's ice machine a week in; a piece
+  (+0.22, +2.5 heat, +3 and a line if the police find it) from Dre's
+  cousin once you are a Player. Both are wander meetings with roads.
+- **The beater**: Sonny texts the offer at $1,400 (day 5+); gas instead of
+  fare, cargo +4, a trunk the checkpoint cannot count, a 10% cold morning,
+  a 15% Downtown window, `uninsured_car` on Yalonda's ledger, `has_a_car`
+  on Curtis's.
+- **Faces, banners, interiors** (`data/portraits.gd`): every NPC on People
+  (64px), the Phone (48px), the encounter sheet (64px) and the hire and
+  interview sheets (96px); every district's banner on Home and the ride;
+  the Night Owl and the gym. Every slot renders as nothing until the file
+  exists.
+- **The ride is a card**, per district and per mode; every screen wears the
+  district's accent and says what kind of place it is.
+
+### PR 4 — One good run has an end (`#149`)
+
+- **The way out** (`systems/ending.gd`, save v31): $3,000 clean + $400 a
+  corner + $300 a crew member, at Boss. The card is on Home from
+  Connected; LEAVE AT DAY'S CLOSE ends the run at settle.
+- **Three losses**: Yalonda's third warning; the third serious booking
+  (stick T2/T3, boost T2); Curtis maxed with nobody standing with you --
+  a one-way text, his car, then the door on the third morning. Crew keeps
+  the door shut while they are paid.
+- **One reckoning screen**: head and kicker per ending, earnings by
+  source, corners, and a line from every person you met in the band you
+  left them in.
+
+### PR 5 — Stolen goods have a name (`#150`)
+
+- **The Lift walks out with a thing** (save v32, `hot_goods`): kind, name,
+  value (the same keyed take roll), heat, where it came from. Tier 3 is
+  still merchandise for Slide.
+- **The 907List is the fence**: UNDER YOUR COAT rows, FENCE IT; a hot
+  listing waits a day; the meet is a seeded roll -- cop (4% + 1.5%/heat,
+  +8% at three hot), tag (10%), unsold (15%), clean (60% of value, dirty).
+  Pherris at loyalty 5 halves cop and tag.
+
+### PR 6 — His blocks fight back (`#151`)
+
+- **A Curtis block is a fight**: TAKE IT opens the confrontation with the
+  odds shown (block value, his awareness, crew, kit). RUN is guaranteed
+  and remembered. Lose: no block, awareness up. Win: yours, a live front,
+  retaliation queued.
+- **Nightly probes**: undefended 15%, defended 5%, live front 50%. A block
+  that fails is his by morning; the crew texts you.
+
+### PR 7 — Close-out
+
+- Version `1.0.0` (MAJOR: the run has a shape). `docs/ASSET_CHECKLIST.md`,
+  `docs/ONE_GOOD_RUN_REVIEW.md`, D-28.
+
+### Measured across the build
+
+Parity 13,782 → 13,979; confrontation 3,614 → 3,628; save-validation
+261 → 273; smoke width 2,779 → 2,783 at the phone's width. Four schema
+bumps (v29–v32). Corridors re-set with notes: `everyday_criminal` floor
+0 (a run that ignores Yalonda ends); `stickup`, `everyday_criminal` and
+`stickup_crew` ceilings 60/60/40 (they end at Curtis's door by the
+eighth to twelfth morning, and the corridor reads an eight-day pocket
+against a month of shifts); `boost` floor 5 → 0 (the free money is
+gone; what walked out did not move, what came back did); `boost_finder`
+ceiling 40.
 
 ## 0.9.0 — The Block Remembers: the screen holds, the city gets a fourth district, and the crew has ideas (2026-09-03)
 

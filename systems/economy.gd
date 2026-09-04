@@ -135,6 +135,17 @@ const RULES := preload("res://data/consequence_rules.gd")
 ##
 ## Floors at $1. A corner that pays nothing is a corner nobody would stand on,
 ## and a zero would make the sell button a button that takes your product.
+## BR-D4: what a unit costs to BUY here, right now. The board price less the
+## supply cut the run's Ship Creek lots earn it. THE ONE function for the
+## buy side, as `sell_unit_price` is for the sell side.
+func buy_unit_price(district_id: String, product_id: String) -> int:
+	var market: Dictionary = gs.markets.get(district_id, {})
+	var board: int = int((market.get("prices", {}) as Dictionary).get(product_id, 0)) \
+		if not market.is_empty() else int(gs.product_by_id(product_id).get("price", 0))
+	var territory: Object = gm.system("territory") if gm != null else null
+	var discount: float = float(territory.supply_discount()) if territory != null else 0.0
+	return maxi(1, int(round(float(board) * (1.0 - discount))))
+
 func sell_unit_price(district_id: String, product_id: String) -> int:
 	var market: Dictionary = gs.markets.get(district_id, {})
 	var board: int = int((market.get("prices", {}) as Dictionary).get(product_id, 0)) \
@@ -410,7 +421,9 @@ func _buy(p: Dictionary) -> Dictionary:
 	var available: int = int(market.get("availability", {}).get(id, 0)) if not market.is_empty() else 0
 	if qty > available:
 		return {"ok": false, "reason": "Not enough supply."}
-	var cost: int = int(prod.price) * qty
+	# BR-D4: the one buy price. Board price less what held Ship Creek lots
+	# cut off it; the Market screen previews from the same function.
+	var cost: int = buy_unit_price(gs.current_district_id, id) * qty
 	if gs.cash < cost:
 		return {"ok": false, "reason": "Not enough cash."}
 	if gs.cargo_used() + qty > gs.cargo_max:

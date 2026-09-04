@@ -148,10 +148,13 @@ func _test_claim() -> void:
 	# Canon's neutral-claim cost ordering: every authored corner's claim cost
 	# tracks its earning. Derived from the table, so re-authoring a row keeps
 	# this honest rather than breaking it.
+	# BR-D4 (0.9.0): per district -- Ship Creek's lots deliberately earn less
+	# than Spenard's corners, because they are supply, not income.
 	var rising := true
-	for i in range(1, DEFS.NODES.size()):
-		var prev: Dictionary = DEFS.NODES[i - 1]
-		var cur: Dictionary = DEFS.NODES[i]
+	var spenard: Array = DEFS.nodes_in("north_star_lot")
+	for i in range(1, spenard.size()):
+		var prev: Dictionary = spenard[i - 1]
+		var cur: Dictionary = spenard[i]
 		if int(cur["claim_cost"]) <= int(prev["claim_cost"]) \
 				or int(cur["earning"]) <= int(prev["earning"]):
 			rising = false
@@ -694,8 +697,8 @@ func _test_screen_reads() -> void:
 	a.eq_int("Turf's free count", int(gs.soldiers_idle), 3)
 
 	# turf.gd:16 — the row list walks the authored table.
-	a.eq_int("Turf renders a row per authored corner",
-		DEFS.NODES.size(), 6)
+	a.eq_int("Turf renders a row per authored Spenard corner",
+		(DEFS.nodes_in("north_star_lot") as Array).size(), 6)
 
 	# home.gd:437 — the mini-map derives a cell from every held corner, and a
 	# canonical node with no `cell` makes the map go dark. Nothing else asserts
@@ -854,8 +857,8 @@ func _test_v16_migration_capacity_hazard() -> void:
 	_fresh(100000, 0)
 	a.eq_int("capacity with nothing held is the base, not the board size",
 		gs.soldier_capacity(), int(gs.SOLDIER_BASE_CAPACITY))
-	a.check("the authored board is six nodes, so a size()-based bug would show",
-		DEFS.NODES.size() == 6)
+	a.check("the authored Spenard board is six nodes, so a size()-based bug would show",
+		(DEFS.nodes_in("north_star_lot") as Array).size() == 6)
 
 	# The exact hazard scenario: a save with all four Curtis-secure fronts
 	# entries present (from a prior migration) and NOTHING actually held.

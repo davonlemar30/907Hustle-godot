@@ -219,9 +219,13 @@ func _affordable_units(unit_price: int) -> int:
 	return int(gs.cash / unit_price)
 
 func _unit_price(pid: String, direction: String) -> int:
+	var economy: Object = _gm.system("economy") if _gm else null
 	if direction == "sell":
-		var economy: Object = _gm.system("economy") if _gm else null
 		return int(economy.sell_unit_price(gs.current_district_id, pid)) if economy != null else 0
+	# BR-D4: the buy side reads the one function too, so a Ship Creek lot's
+	# cut shows on the sheet before it lands in the wallet.
+	if economy != null:
+		return int(economy.buy_unit_price(gs.current_district_id, pid))
 	return int(gs.product_by_id(pid).get("price", 0))
 
 func _show_quantity_sheet(pid: String, direction: String) -> void:

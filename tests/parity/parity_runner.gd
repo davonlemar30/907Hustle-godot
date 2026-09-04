@@ -19628,6 +19628,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_answer_back(gs, gm)
 	_check_job_applications(gs, gm)
 	_check_clock_in_move_up(gs, gm)
+	_check_your_corners_their_corners(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -20008,6 +20009,69 @@ func _check_clock_in_move_up(gs: Node, gm: Node) -> void:
 	gm.dispatch("advance_time", {})
 	_expect_int("a miss breaks the streak", int((gs.job_records["wash_go"] as Dictionary).get("streak", -1)), 0)
 	_expect_int("...and costs two with the boss", int((gs.job_records["wash_go"] as Dictionary).get("rapport", -1)), 3)
+	gs.reset_to_new_game()
+
+## BR-D4 (0.9.0 PR 3): your corners, their corners. Every block belongs to
+## a district; Downtown and Ship Creek have boards of their own; a block is
+## claimed where it stands and only once the district is known; a held Ship
+## Creek lot cuts every buy; heat lands where the block is.
+func _check_your_corners_their_corners(gs: Node, gm: Node) -> void:
+	var territory: Object = gm.system("territory")
+	var economy: Object = gm.system("economy")
+	for node in B18_TERRITORY.NODES:
+		_expect_true("%s belongs to a district" % str(node["id"]),
+			str(node.get("district", "")) in B18_TERRITORY.DISTRICT_ORDER)
+	_expect_int("Spenard keeps its six corners", (B18_TERRITORY.nodes_in("north_star_lot") as Array).size(), 6)
+	_expect_true("Downtown has a board of venues", (B18_TERRITORY.nodes_in("downtown") as Array).size() >= 4)
+	_expect_true("Ship Creek has a board of lots", (B18_TERRITORY.nodes_in("airport_industrial") as Array).size() >= 3)
+	var downtown_min := 999
+	var spenard_max := 0
+	for node in B18_TERRITORY.nodes_in("downtown"):
+		downtown_min = mini(downtown_min, int(node["earning"]))
+	for node in B18_TERRITORY.nodes_in("north_star_lot"):
+		spenard_max = maxi(spenard_max, int(node["earning"]))
+	_expect_true("Downtown's floor out-earns most of Spenard (%d vs %d)" % [downtown_min, spenard_max],
+		downtown_min >= 80)
+	for node in B18_TERRITORY.nodes_in("airport_industrial"):
+		_expect_true("%s is supply, not income" % str(node["id"]),
+			float(node.get("supply_discount", 0.0)) > 0.0 and int(node["earning"]) <= 40)
+
+	# Claimed where it stands, once the district is known.
+	gs.reset_to_new_game()
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 5000
+	gs.soldiers_idle = 4
+	_expect_true("Downtown is closed on day one",
+		not str(territory.claim_blocker("downtown_transit_center")).is_empty())
+	_expect_true("Downtown's tab says what opens it",
+		str(territory.district_blocker("downtown")).contains("one corner"))
+	gm.dispatch("claim_block", {"block_id": "spenard_rec_lot"})
+	gs._reconcile_progression_latches()
+	_expect_true("one corner opens Downtown", "downtown" in gs.districts_unlocked)
+	_expect_str("...but you claim from where you stand",
+		str(territory.claim_blocker("downtown_transit_center")), "You have to be standing there.")
+	gs.current_district_id = "downtown"
+	_expect_true("standing Downtown, the venue is claimable",
+		gm.dispatch("claim_block", {"block_id": "downtown_transit_center"}))
+	_expect_int("...and counts on Downtown's board", int(territory.held_in("downtown")), 1)
+	_expect_int("...not Spenard's", int(territory.held_in("north_star_lot")), 1)
+
+	# A Ship Creek lot cuts every buy, anywhere.
+	gs._reconcile_progression_latches()
+	_expect_true("two corners open Ship Creek", "airport_industrial" in gs.districts_unlocked)
+	gs.current_district_id = "airport_industrial"
+	var before: int = int(economy.buy_unit_price("north_star_lot", "weed"))
+	_expect_true("the lot is claimable from the yard",
+		gm.dispatch("claim_block", {"block_id": "shipcreek_post_road_lot"}))
+	_expect_true("a held lot is a cut on the buy (%.2f)" % float(territory.supply_discount()),
+		is_equal_approx(float(territory.supply_discount()), 0.06))
+	var after: int = int(economy.buy_unit_price("north_star_lot", "weed"))
+	_expect_true("...and Spenard's weed is cheaper for it (%d -> %d)" % [before, after], after < before)
+	gs.current_district_id = "north_star_lot"
+	var cash_before: int = int(gs.cash)
+	gs.markets["north_star_lot"]["availability"]["weed"] = 5
+	_expect_true("the buy goes through at the cut price", gm.dispatch("market_buy", {"product_id": "weed", "quantity": 1}))
+	_expect_int("...charging exactly the one function's price", cash_before - int(gs.cash), after)
 	gs.reset_to_new_game()
 
 func _check_door_to_work(gs: Node, gm: Node) -> void:
@@ -20589,7 +20653,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13649
+const MIN_CHECKS := 13683
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

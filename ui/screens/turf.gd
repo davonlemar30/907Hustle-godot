@@ -197,7 +197,13 @@ func _block_row(sys: Object, b: Dictionary) -> Control:
 	else:
 		v.add_child(label("$%d per soldier a night  ·  +%d heat a night once yours" % [int(b["earning"]), int(b["heat_exposure"])], "Muted", 11, MUTED))
 		var blocked: String = sys.claim_blocker(id)
-		var btn := button("CLAIM  $%d" % int(b["claim_cost"]) if blocked.is_empty() else blocked.to_upper(), blocked.is_empty(), _on_claim.bind(id), 46)
+		# OG-D6: his blocks fight back. The button says so, and what the fight
+		# is worth on the odds.
+		var curtis_owned: bool = str(b.get("starting_owner", "")) == TERRITORY_DEFS.OWNER_CURTIS
+		if curtis_owned:
+			v.add_child(label("Curtis's. Taking it is a fight: your crew and your kit against his people. %d%% on the odds, and he will come back for it." % int(round(float(sys.contest_chance(id)) * 100.0)), "Muted", 11, RED, true))
+		var verb := "TAKE IT" if curtis_owned else "CLAIM"
+		var btn := button("%s  $%d" % [verb, int(b["claim_cost"])] if blocked.is_empty() else blocked.to_upper(), blocked.is_empty(), _on_claim.bind(id), 46)
 		btn.disabled = not blocked.is_empty()
 		v.add_child(btn)
 	return c

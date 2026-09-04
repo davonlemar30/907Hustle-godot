@@ -102,10 +102,219 @@ func _wallet() -> Object:
 func _heat() -> Object:
 	return gm.system("heat")
 
+# --- OG-D6 (1.0.0 PR 6): his blocks fight back ----------------------------------
+#
+# A block that starts as Curtis's is not claimed, it is taken. The tap
+# opens a confrontation on the engine's own chassis: one contested road
+# (FIGHT: your crew, your kit, his people) and one guaranteed out (RUN).
+# Winning is the claim, plus a night Curtis's people come back for it.
+# Losing is no block, a hospital bill, and Curtis knowing your name a
+# little better. And every night, Curtis probes: an undefended corner in a
+# district he has people in can be lost; a defended one can lose a
+# soldier; a corner taken from him last night is contested at even odds.
+
+const CONTEST_BASE := 0.35
+const CONTEST_PER_CREW := 0.08
+const CONTEST_PER_SOLDIER := 0.04
+const CONTEST_BLOCK_HEAT := 0.05
+const CONTEST_AWARENESS := 0.02
+const CONTEST_WIN_AWARENESS := 2
+const CONTEST_LOSS_AWARENESS := 3
+const CONTEST_LOSS_HEALTH := 8
+const PROBE_UNDEFENDED := 0.15
+const PROBE_DEFENDED := 0.05
+const PROBE_CONTESTED := 0.5
+
+func _is_curtis_block(block_id: String) -> bool:
+	return str(gs.block_by_id(block_id).get("starting_owner", "")) == gs.TERRITORY_DEFS.OWNER_CURTIS
+
+## What taking a Curtis block is worth, on the odds.
+func contest_chance(block_id: String) -> float:
+	var b: Dictionary = gs.block_by_id(block_id)
+	var chance: float = CONTEST_BASE
+	chance += CONTEST_PER_CREW * float(gs.recruited_crew().size())
+	chance += CONTEST_PER_SOLDIER * float(gs.soldiers_idle)
+	chance += float(gs.weapon_def().get("fight_bonus", 0.0))
+	chance -= CONTEST_BLOCK_HEAT * float(b.get("heat_exposure", 0))
+	chance -= CONTEST_AWARENESS * float(gs.curtis_awareness)
+	return clampf(chance, 0.10, 0.85)
+
+func _open_contest(block_id: String) -> Dictionary:
+	var engine: Object = gm.system("consequence")
+	var b: Dictionary = gs.block_by_id(block_id)
+	var name := str(b.get("name", block_id))
+	gs.log_activity("%s is Curtis's. His people are standing on it, and they were told you might come." % name, AMBER)
+	return engine.open_chain(engine.KIND_CONFRONTATION, {
+		"district_id": gs.current_district_id,
+		"return_route": "HOME",
+		"source": {"family": "territory", "kind": "block_contest", "action_id": "territory",
+			"target_id": block_id, "target_name": name,
+			"opponent": "Curtis's people on %s" % name},
+		"decision": {
+			"allowed_choices": ["take_it", "back_off"],
+			"deterministic_choices": ["back_off"],
+			"shown_probabilities": {"take_it": contest_chance(block_id)},
+		},
+	})
+
+## The engine's seam: the committed road resolves here.
+func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
+	var engine: Object = gm.system("consequence")
+	var decision: Dictionary = chain.get("decision", {})
+	var source: Dictionary = chain.get("source", {})
+	var block_id := str(source.get("target_id", ""))
+	var b: Dictionary = gs.block_by_id(block_id)
+	var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
+	var tier := "deterministic"
+	var health := 0
+	if choice_id == "take_it":
+		var resolver: Object = gm.system("outcome_resolver")
+		var attributes: Object = gm.system("attributes")
+		var key := "%d:%d:contest:%s" % [gs.day, gs.time_slots_today, block_id]
+		tier = "failure"
+		if resolver != null:
+			tier = str((resolver.resolve_action("confrontation", contest_chance(block_id),
+				int(attributes.effective("combat")) if attributes != null else 1,
+				gs.run_seed, key) as Dictionary)["tier"])
+		if tier in ["clean", "messy"]:
+			_take_from_curtis(block_id)
+			if curtis != null:
+				curtis.raise_awareness(CONTEST_WIN_AWARENESS)
+			if tier == "messy":
+				health = CONTEST_LOSS_HEALTH / 2
+		else:
+			if curtis != null:
+				curtis.raise_awareness(CONTEST_LOSS_AWARENESS)
+			health = CONTEST_LOSS_HEALTH if tier == "failure" else CONTEST_LOSS_HEALTH * 2
+			gs.log_activity("You do not take %s. His people make sure you remember trying." % str(b.get("name", "")), RED)
+	else:
+		if curtis != null:
+			curtis.raise_awareness(1)
+		gs.log_activity("You look at %s for a while and walk. They watched you do it." % str(b.get("name", "")), AMBER)
+	if health > 0:
+		var crew: Object = gm.system("crew")
+		if crew != null:
+			health = int(crew.absorbed_damage(health))
+		gs.health = clampi(gs.health - health, 1, gs.health_max)
+	decision["resolved_tier"] = tier
+	decision["result"] = {"choice_id": choice_id, "tier": tier, "arrested": false, "banned": false,
+		"cash": 0, "goods": 0, "health": -health, "heat": 0.0, "pressure": 0, "take_disposition": "keep"}
+	chain["decision"] = decision
+	engine.advance_stage(engine.STAGE_RESULT)
+	return {"ok": true, "tier": tier, "arrested": false}
+
+## The claim, once the fight is won: the cost, the soldier, and a front
+## Curtis will come back for.
+func _take_from_curtis(block_id: String) -> void:
+	var b: Dictionary = gs.block_by_id(block_id)
+	_wallet().spend(mini(int(b["claim_cost"]), int(gs.cash)), _wallet().ROUTINE_DIRTY_FIRST,
+		{"source_id": "territory_claim"})
+	gs.soldiers_idle = maxi(0, int(gs.soldiers_idle) - 1)
+	gs.territory_nodes[block_id] = {"soldiers": 1}
+	gs.territory_fronts[block_id] = {"capture_reward_consumed": false, "conflict_active": true}
+	gs.log_activity("%s is yours, and it was his. His people leave slowly, so you know they will be back." % str(b.get("name", block_id)), GREEN)
+
+func choice_label(choice_id: String) -> String:
+	return {"take_it": "FIGHT", "back_off": "RUN"}.get(choice_id, choice_id.capitalize())
+
+func choice_copy(choice_id: String) -> String:
+	return {
+		"take_it": "Take it. Your crew, your kit, against whoever he left standing on it.",
+		"back_off": "Not today. They watched you look at it.",
+	}.get(choice_id, "")
+
+func choice_guarantee(choice_id: String) -> String:
+	if choice_id == "back_off":
+		return "Guaranteed: nobody swings. Curtis hears you were looking."
+	return ""
+
+func result_headline(choice_id: String, tier: String, _effects: Dictionary) -> String:
+	if choice_id == "back_off":
+		return "YOU WALK"
+	match tier:
+		"clean": return "IT'S YOURS"
+		"messy": return "IT'S YOURS, BARELY"
+		"failure": return "NOT TODAY"
+	return "HIS PEOPLE"
+
+func result_body(choice_id: String, tier: String, _effects: Dictionary) -> String:
+	if choice_id == "back_off":
+		return "You look at the corner and walk. His people watch you do it, and one of them makes a call."
+	match tier:
+		"clean": return "They leave. Not fast, and not all at once, but they leave, and the corner is yours before dark. Curtis will hear how."
+		"messy": return "It costs you, and it takes longer than it should, but by dark it is yours. Somebody will be back for it."
+		"failure": return "There were more of them than you saw. You leave the corner where it was, and a piece of yourself on it."
+	return "It goes badly, all the way through. His people put you on the ground in front of the block, and the block remembers that better than it remembers anything you held."
+
+# --- Curtis probes -----------------------------------------------------------
+
+## The chance a block gets tested tonight, by its state. Pure, so the suite
+## can pin it.
+func probe_chance(block_id: String) -> float:
+	var district_id: String = str(gs.TERRITORY_DEFS.district_of(block_id))
+	var rival: int = int(gs.district_by_id(district_id).get("rival", 0))
+	if rival <= 0:
+		return 0.0
+	if bool((gs.territory_fronts.get(block_id, {}) as Dictionary).get("conflict_active", false)):
+		return PROBE_CONTESTED
+	var soldiers: int = int((gs.territory_nodes.get(block_id, {}) as Dictionary).get("soldiers", 0))
+	return PROBE_UNDEFENDED if soldiers <= 0 else PROBE_DEFENDED
+
+## Nightly: every held block in a district Curtis has people in.
+func _curtis_probes(ended_day: int) -> void:
+	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
+	if rng == null:
+		return
+	for id in gs.territory_nodes.keys().duplicate():
+		var block_id := str(id)
+		var chance: float = probe_chance(block_id)
+		var contested: bool = bool((gs.territory_fronts.get(block_id, {}) as Dictionary).get("conflict_active", false))
+		if contested:
+			var front: Dictionary = gs.territory_fronts[block_id]
+			front["conflict_active"] = false
+			gs.territory_fronts[block_id] = front
+		if chance <= 0.0:
+			continue
+		var roll: int = rng.seeded_int_range(gs.run_seed, "%d:probe:%s" % [ended_day, block_id], 0, 99)
+		if roll >= int(chance * 100.0):
+			continue
+		var soldiers: int = int((gs.territory_nodes[block_id] as Dictionary).get("soldiers", 0))
+		if soldiers <= 0:
+			_lose_block(block_id, "Nobody was standing on it.")
+		else:
+			var rec: Dictionary = gs.territory_nodes[block_id]
+			rec["soldiers"] = soldiers - 1
+			gs.territory_nodes[block_id] = rec
+			_probe_text("Curtis's people tested %s last night. One of yours walked. The corner held." % _block_name(block_id))
+			gs.log_activity("Curtis's people tested %s. One soldier walked off it rather than find out. It held." % _block_name(block_id), AMBER)
+
+## A block Curtis takes back.
+func _lose_block(block_id: String, why: String) -> void:
+	var name: String = _block_name(block_id)
+	gs.territory_nodes.erase(block_id)
+	gs.territory_fronts.erase(block_id)
+	_discharge_over_capacity()
+	gs.log_activity("%s is Curtis's again. %s By morning his people are on it like they never left." % [name, why], RED)
+	_probe_text("Curtis took %s back last night. %s" % [name, why])
+
+## Somebody on the crew says it, if there is somebody; the feed says it
+## either way.
+func _probe_text(text: String) -> void:
+	var phone: Object = gm.system("phone") if gm != null else null
+	if phone == null:
+		return
+	for id in ["deshawn", "eli", "tone", "pherris"]:
+		if gs.is_recruited(id):
+			phone.push_text(str(gs.crew_member_by_id(id).get("name", id)).split(" ")[0], text.to_lower() if id != "tone" else text, "")
+			return
+
 func _claim(block_id: String) -> Dictionary:
 	var blocked := claim_blocker(block_id)
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked}
+	# OG-D6: his blocks fight back.
+	if _is_curtis_block(block_id):
+		return _open_contest(block_id)
 	var b: Dictionary = gs.block_by_id(block_id)
 	_wallet().spend(int(b["claim_cost"]), _wallet().ROUTINE_DIRTY_FIRST,
 		{"source_id": "territory_claim"})
@@ -377,6 +586,8 @@ func settle_night(_ended_day: int) -> void:
 				unstaffed.append(_block_name(str(id)))
 		if not unstaffed.is_empty():
 			gs.log_activity("%s sat empty all night. Still yours. Somebody noticed it was." % ", ".join(unstaffed), RED)
+		# OG-D6: and Curtis noticed.
+		_curtis_probes(_ended_day)
 
 	_settle_upkeep()
 

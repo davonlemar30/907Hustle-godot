@@ -129,6 +129,23 @@ func _block(id: String) -> Dictionary:
 func _terr() -> Object:
 	return gm.system("territory")
 
+## OG-D6 (1.0.0): his blocks fight back. A claim on a Curtis block opens a
+## confrontation now, and the fight is a roll. This suite is about what a
+## held corner DOES -- soldiers, income, heat, the cap -- so when a claim
+## opens the fight, the fight is won here by hand: the same `_take_from_curtis`
+## the FIGHT road's win resolves through, with the chain cleared as state
+## cleanup. The fight itself, both ways, is asserted in parity's
+## `_check_his_blocks_fight_back`.
+func _claim_block(block_id: String) -> bool:
+	var ok: bool = gm.dispatch("claim_block", {"block_id": block_id})
+	if not ok:
+		return false
+	var chain: Dictionary = gs.active_consequence
+	if not chain.is_empty() and str((chain.get("source", {}) as Dictionary).get("action_id", "")) == "territory":
+		gs.active_consequence = {}
+		_terr()._take_from_curtis(block_id)
+	return true
+
 # --- claiming ---------------------------------------------------------------
 
 func _test_claim() -> void:
@@ -136,7 +153,7 @@ func _test_claim() -> void:
 	# corner as it is taken, and this is the arm sabotage #2 deletes.
 	_fresh(5000, 0)
 	a.eq_bool("a claim with no free soldier is refused",
-		gm.dispatch("claim_block", {"block_id": CHEAPEST}), false)
+		_claim_block(CHEAPEST), false)
 	a.eq_bool("and the corner is not held", gs.holds_block(CHEAPEST), false)
 	a.check("the blocker says why",
 		_terr().claim_blocker(CHEAPEST).contains("soldier"))
@@ -145,11 +162,11 @@ func _test_claim() -> void:
 	var cost: int = int(_block(CHEAPEST)["claim_cost"])
 	_fresh(cost - 1, 1)
 	a.eq_bool("a claim one dollar short is refused",
-		gm.dispatch("claim_block", {"block_id": CHEAPEST}), false)
+		_claim_block(CHEAPEST), false)
 
 	_fresh(cost, 1)
 	a.eq_bool("a claim with exactly the cost and a free soldier lands",
-		gm.dispatch("claim_block", {"block_id": CHEAPEST}), true)
+		_claim_block(CHEAPEST), true)
 	a.eq_int("and it cost exactly the authored claim cost", int(gs.cash), 0)
 	a.eq_bool("and the corner is held", gs.holds_block(CHEAPEST), true)
 	# The claiming soldier goes ONTO the corner — it is not a fee paid in
@@ -159,9 +176,9 @@ func _test_claim() -> void:
 	a.eq_int("and no longer idle", int(gs.soldiers_idle), 0)
 
 	a.eq_bool("claiming the same corner twice is refused",
-		gm.dispatch("claim_block", {"block_id": CHEAPEST}), false)
+		_claim_block(CHEAPEST), false)
 	a.eq_bool("claiming a corner that does not exist is refused",
-		gm.dispatch("claim_block", {"block_id": "no_such_corner"}), false)
+		_claim_block("no_such_corner"), false)
 
 	# Canon's neutral-claim cost ordering: every authored corner's claim cost
 	# tracks its earning. Derived from the table, so re-authoring a row keeps
@@ -182,7 +199,7 @@ func _test_claim() -> void:
 
 func _test_abandon() -> void:
 	_fresh(5000, 1)
-	gm.dispatch("claim_block", {"block_id": CHEAPEST})
+	_claim_block(CHEAPEST)
 	var cash_after_claim: int = int(gs.cash)
 
 	a.eq_bool("abandoning a corner you do not hold is refused",
@@ -201,8 +218,8 @@ func _test_abandon() -> void:
 	# Two corners held, so giving one back still leaves a cap of 4 for a roster
 	# of 4 and the return is not confounded by the discharge rule below.
 	_fresh(100000, 4)
-	gm.dispatch("claim_block", {"block_id": CHEAPEST})
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(CHEAPEST)
+	_claim_block(DEAREST)
 	gm.dispatch("post_soldier", {"block_id": DEAREST})
 	gm.dispatch("post_soldier", {"block_id": DEAREST})
 	a.eq_int("three posted on the dear corner",
@@ -231,7 +248,7 @@ func _test_post_and_pull() -> void:
 	a.eq_bool("posting to a corner you do not hold is refused",
 		gm.dispatch("post_soldier", {"block_id": CHEAPEST}), false)
 
-	gm.dispatch("claim_block", {"block_id": CHEAPEST})
+	_claim_block(CHEAPEST)
 	a.eq_int("the claim consumed one of the two", int(gs.soldiers_idle), 1)
 
 	a.eq_bool("posting a free soldier lands",
@@ -281,7 +298,7 @@ func _test_recruit_and_capacity() -> void:
 	a.eq_str("and the blocker explains the cap, not the money",
 		_terr().recruit_soldier_blocker(), "No room for another. Hold more corners first.")
 
-	gm.dispatch("claim_block", {"block_id": CHEAPEST})
+	_claim_block(CHEAPEST)
 	a.eq_int("one corner raises the cap by the authored per-block amount",
 		gs.soldier_capacity(),
 		int(gs.SOLDIER_BASE_CAPACITY) + int(gs.SOLDIER_CAPACITY_PER_BLOCK))
@@ -312,7 +329,7 @@ func _test_income_curve() -> void:
 		_fresh(100000, 0)
 		# Capacity is 2 + 2 per block, so three on one corner needs the room.
 		gs.soldiers_idle = 8
-		gm.dispatch("claim_block", {"block_id": DEAREST})
+		_claim_block(DEAREST)
 		for _i in range(n - 1 if n > 0 else 0):
 			gm.dispatch("post_soldier", {"block_id": DEAREST})
 		if n == 0:
@@ -371,8 +388,8 @@ func _test_income_curve() -> void:
 	# `nightly_income()` is the sum over every held corner.
 	_fresh(100000, 0)
 	gs.soldiers_idle = 8
-	gm.dispatch("claim_block", {"block_id": CHEAPEST})
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(CHEAPEST)
+	_claim_block(DEAREST)
 	gm.dispatch("post_soldier", {"block_id": DEAREST})
 	a.eq_int("nightly income sums every held corner",
 		int(_terr().nightly_income()),
@@ -393,13 +410,13 @@ func _test_nightly_heat() -> void:
 	# the arm sabotage #4 removes.
 	_fresh(100000, 0)
 	gs.soldiers_idle = 4
-	gm.dispatch("claim_block", {"block_id": CHEAPEST})
+	_claim_block(CHEAPEST)
 	gm.dispatch("pull_soldier", {"block_id": CHEAPEST})
 	a.eq_int("the corner is empty", int((gs.territory_nodes[CHEAPEST] as Dictionary)["soldiers"]), 0)
 	a.near("an empty held corner still costs its authored heat",
 		_terr().nightly_heat(), float(_block(CHEAPEST)["heat_exposure"]))
 
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(DEAREST)
 	a.near("and nightly heat is the sum over every held corner, staffed or not",
 		_terr().nightly_heat(),
 		float(_block(CHEAPEST)["heat_exposure"]) + float(_block(DEAREST)["heat_exposure"]))
@@ -410,7 +427,7 @@ func _test_nightly_heat() -> void:
 	# And that settlement actually applies it.
 	_fresh(100000, 0)
 	gs.soldiers_idle = 2
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(DEAREST)
 	gs.heat = 0.0
 	var expected_heat: float = _terr().nightly_heat()
 	_terr().settle_night(int(gs.day))
@@ -425,7 +442,7 @@ func _test_deshawn_multiplier() -> void:
 	for rank in [1, 2, 3]:
 		_fresh(100000, 0)
 		gs.soldiers_idle = 2
-		gm.dispatch("claim_block", {"block_id": DEAREST})
+		_claim_block(DEAREST)
 		gs.crew_records["deshawn"] = {"recruited": true, "status": "active",
 			"tier": rank, "loyalty": 5, "wage_due": 0}
 		gs.heat = 0.0
@@ -439,7 +456,7 @@ func _test_deshawn_multiplier() -> void:
 	# Without him, the raw figure lands unscaled.
 	_fresh(100000, 0)
 	gs.soldiers_idle = 2
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(DEAREST)
 	gs.heat = 0.0
 	var raw_only: float = _terr().nightly_heat()
 	_terr().settle_night(int(gs.day))
@@ -457,7 +474,7 @@ func _test_soldier_conservation() -> void:
 	a.eq_int("the roster under test", roster, 4)
 	a.soldiers_conserved("a fresh roster", gs, roster)
 
-	gm.dispatch("claim_block", {"block_id": CHEAPEST})
+	_claim_block(CHEAPEST)
 	a.soldiers_conserved("a claim moves a soldier, it does not spend one", gs, roster)
 
 	gm.dispatch("post_soldier", {"block_id": CHEAPEST})
@@ -466,7 +483,7 @@ func _test_soldier_conservation() -> void:
 	gm.dispatch("pull_soldier", {"block_id": CHEAPEST})
 	a.soldiers_conserved("pulling moves it back", gs, roster)
 
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(DEAREST)
 	gm.dispatch("post_soldier", {"block_id": DEAREST})
 	a.soldiers_conserved("across two corners", gs, roster)
 	a.capacity_respected("two corners carry this roster", gs)
@@ -480,7 +497,7 @@ func _test_soldier_conservation() -> void:
 	# Recruiting is the one action that legitimately changes the total, and it
 	# needs the room: one corner held is a cap of 4 against a roster of 4, so
 	# make room first by holding a second.
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(DEAREST)
 	var before: int = gs.soldiers_total()
 	a.eq_bool("there is room to recruit", gm.dispatch("recruit_soldier", {}), true)
 	a.soldiers_conserved("recruiting adds exactly one", gs, before + 1)
@@ -490,7 +507,7 @@ func _test_capacity_invariant() -> void:
 	# three back. The cap falls by 6 and the roster must fall with it.
 	_fresh(100000, 3)
 	for id in [CHEAPEST, "wash_and_go_lot", "minnesota_offramp"]:
-		gm.dispatch("claim_block", {"block_id": id})
+		_claim_block(id)
 	while gm.dispatch("recruit_soldier", {}):
 		pass
 	a.capacity_respected("at the cap with three corners", gs)
@@ -515,7 +532,7 @@ func _test_market_cursor_untouched() -> void:
 	_fresh(100000, 0)
 	gs.soldiers_idle = 6
 	a.market_cursor_unchanged("claiming does not move the market stream", gs,
-		func() -> void: gm.dispatch("claim_block", {"block_id": DEAREST}))
+		func() -> void: _claim_block(DEAREST))
 	a.market_cursor_unchanged("posting does not move the market stream", gs,
 		func() -> void: gm.dispatch("post_soldier", {"block_id": DEAREST}))
 	a.market_cursor_unchanged("pulling does not move the market stream", gs,
@@ -546,7 +563,7 @@ func _test_settlement_order_reason() -> void:
 	# this would be impossible.
 	_fresh(100000, 0)
 	gs.soldiers_idle = 4
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(DEAREST)
 	gm.dispatch("post_soldier", {"block_id": DEAREST})
 	gs.crew_power = 0
 	var at_zero: int = int(_terr().nightly_income())
@@ -611,13 +628,13 @@ func _terr_raw_heat_for_order_test() -> float:
 func _heat_with_order(order: Array) -> float:
 	_fresh(100000, 0)
 	gs.soldiers_idle = 2
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(DEAREST)
 	# Far enough into the run that `wage_missed_since` can be a real past day.
 	# A NEGATIVE one reads as "unset" at `crew.gd:335` and is overwritten with
 	# tonight, which resets the grace window and means he never departs — which
 	# is how the first version of this check quietly measured nothing.
 	gs.day = 10
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(DEAREST)
 	# On the floor and already past the grace window, so tonight's unpaid wage
 	# is the one that takes him.
 	gs.crew_records["deshawn"] = {"recruited": true, "status": "active",
@@ -648,8 +665,8 @@ func _test_save_round_trip() -> void:
 	# here BEFORE the migration exists rather than alongside it.
 	_fresh(100000, 0)
 	gs.soldiers_idle = 5
-	gm.dispatch("claim_block", {"block_id": CHEAPEST})
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(CHEAPEST)
+	_claim_block(DEAREST)
 	gm.dispatch("post_soldier", {"block_id": DEAREST})
 
 	var held_before: int = gs.territory_nodes.size()
@@ -701,8 +718,8 @@ func _test_screen_reads() -> void:
 	# fails when it moves the state.
 	_fresh(100000, 0)
 	gs.soldiers_idle = 6
-	gm.dispatch("claim_block", {"block_id": CHEAPEST})
-	gm.dispatch("claim_block", {"block_id": DEAREST})
+	_claim_block(CHEAPEST)
+	_claim_block(DEAREST)
 	gm.dispatch("post_soldier", {"block_id": DEAREST})
 
 	# turf.gd:25 — the status card.
@@ -914,7 +931,7 @@ func _test_upkeep() -> void:
 	# Charged on the FULL roster — idle and posted together — the same as a
 	# crew wage is charged whether or not that member worked today.
 	_fresh(100000, 4)
-	gm.dispatch("claim_block", {"block_id": CHEAPEST})
+	_claim_block(CHEAPEST)
 	gm.dispatch("post_soldier", {"block_id": CHEAPEST})
 	# 4 recruited: 2 posted on the corner, 2 idle.
 	a.eq_int("the roster under test", gs.soldiers_total(), 4)

@@ -287,6 +287,8 @@ func _ready() -> void:
 	# same way dre_collector's two encounters already are: by
 	# chain.source.kind, not by a second action_id.
 	consequence_engine.register_source_adapter("doorstep", doorstep)
+	# OG-D6 (1.0.0 PR 6): taking a Curtis block is a confrontation.
+	consequence_engine.register_source_adapter("territory", territory)
 	# Both corner scripts share one adapter -- see `systems/corner.gd`'s header
 	# on why two action ids would be two places for the round rules to drift.
 	consequence_engine.register_source_adapter("corner", corner)

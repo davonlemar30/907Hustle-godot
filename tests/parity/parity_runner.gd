@@ -7901,7 +7901,7 @@ func _check_engine_adapters(gs: Node, gm: Node, engine: RefCounted) -> void:
 	_expect_str("the source adapters registered at boot",
 		str(engine.registered_adapter_ids()),
 		str(["boost", "corner", "doorstep", "dre_collection", "list_meetup",
-			"retaliation", "stickup", "travel", "wander"]))
+			"retaliation", "stickup", "territory", "travel", "wander"]))
 	_expect_true("the boost adapter resolves to a system",
 		engine.source_adapter("boost") != null)
 	_expect_true("the boost adapter is the boost system",
@@ -19747,6 +19747,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_the_kit(gs, gm)
 	_check_one_good_run(gs, gm)
 	_check_stolen_goods_have_a_name(gs, gm)
+	_check_his_blocks_fight_back(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -20766,6 +20767,72 @@ func _check_stolen_goods_have_a_name(gs: Node, gm: Node) -> void:
 		_expect_int("cash is the fence's rate", int(gs.cash) - cash_before, int(round(80 * gs.FENCE_RATE)))
 	gs.reset_to_new_game()
 
+## OG-D6 (1.0.0 PR 6): his blocks fight back. A Curtis block is taken, not
+## claimed: the tap opens a confrontation with FIGHT and RUN; RUN walks;
+## FIGHT ends held or hurt, and Curtis knows either way. Nightly, Curtis
+## probes what you hold in his districts.
+func _check_his_blocks_fight_back(gs: Node, gm: Node) -> void:
+	var territory: Object = gm.system("territory")
+	var engine: Object = gm.system("consequence")
+	_stage_rank(gs, "player")
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 5000
+	gs.soldiers_idle = 3
+	gs.active_consequence = {}
+	_expect_true("a neutral corner is still a claim", gm.dispatch("claim_block", {"block_id": "spenard_rec_lot"}))
+	_expect_true("...and no fight", gs.active_consequence.is_empty())
+	_expect_true("a Curtis block opens a fight", gm.dispatch("claim_block", {"block_id": "minnesota_offramp"}))
+	_expect_true("...on the loop", not gs.active_consequence.is_empty())
+	_expect_true("...not held yet", not gs.holds_block("minnesota_offramp"))
+	var labels: Array = []
+	for row in engine.choice_summaries():
+		labels.append(str((row as Dictionary).get("label", "")))
+	_expect_true("...with FIGHT and RUN (%s)" % str(labels), "FIGHT" in labels and "RUN" in labels)
+	var awareness_before: int = int(gs.curtis_awareness)
+	_expect_true("RUN walks", gm.dispatch("resolve_consequence_choice", {"choice_id": "back_off"}))
+	gm.dispatch("consequence_continue", {})
+	_expect_true("...and nothing is held", not gs.holds_block("minnesota_offramp"))
+	_expect_true("...and Curtis heard", int(gs.curtis_awareness) > awareness_before)
+	# The odds read the kit and the crew.
+	var bare: float = float(territory.contest_chance("minnesota_offramp"))
+	gs.weapon = "piece"
+	_expect_true("a piece moves the odds", float(territory.contest_chance("minnesota_offramp")) > bare)
+	gs.weapon = "hands"
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	_expect_true("so does the crew", float(territory.contest_chance("minnesota_offramp")) > bare)
+	# FIGHT ends one of two ways, and Curtis knows either way.
+	gs.active_consequence = {}
+	awareness_before = int(gs.curtis_awareness)
+	var health_before: int = int(gs.health)
+	gm.dispatch("claim_block", {"block_id": "minnesota_offramp"})
+	_expect_true("FIGHT commits", gm.dispatch("resolve_consequence_choice", {"choice_id": "take_it"}))
+	gm.dispatch("consequence_continue", {})
+	var held: bool = gs.holds_block("minnesota_offramp")
+	_expect_true("...held with a front to defend, or hurt and not (held=%s)" % held,
+		(held and bool((gs.territory_fronts.get("minnesota_offramp", {}) as Dictionary).get("conflict_active", false)))
+		or (not held and int(gs.health) < health_before))
+	_expect_true("...and Curtis knows either way", int(gs.curtis_awareness) > awareness_before)
+	# The probes: pure chances, and a block lost.
+	gs.territory_nodes = {"spenard_rec_lot": {"soldiers": 0}, "wash_and_go_lot": {"soldiers": 2}}
+	gs.territory_fronts = {}
+	_expect_true("a Spenard corner is never probed (nobody's block)", is_zero_approx(float(territory.probe_chance("spenard_rec_lot"))))
+	gs.territory_nodes["downtown_transit_center"] = {"soldiers": 0}
+	gs.territory_nodes["downtown_snow_city_corner"] = {"soldiers": 1}
+	_expect_true("an undefended Downtown venue is probed", is_equal_approx(float(territory.probe_chance("downtown_transit_center")), territory.PROBE_UNDEFENDED))
+	_expect_true("a defended one less", is_equal_approx(float(territory.probe_chance("downtown_snow_city_corner")), territory.PROBE_DEFENDED))
+	gs.territory_fronts["downtown_snow_city_corner"] = {"capture_reward_consumed": false, "conflict_active": true}
+	_expect_true("one taken from him last night, at even odds", is_equal_approx(float(territory.probe_chance("downtown_snow_city_corner")), territory.PROBE_CONTESTED))
+	gs.phone_inbox = []
+	territory._lose_block("downtown_transit_center", "Nobody was standing on it.")
+	_expect_true("a lost block is gone", not gs.holds_block("downtown_transit_center"))
+	var told := false
+	for m in gs.phone_inbox:
+		if str((m as Dictionary).get("text", "")).contains("took"):
+			told = true
+	_expect_true("...and somebody on the crew says so", told)
+	gs.reset_to_new_game()
+
 func _check_door_to_work(gs: Node, gm: Node) -> void:
 	var access: Node = get_node_or_null("/root/SurfaceVisibility")
 	var nav: Node = get_node("/root/ScreenManager")
@@ -21353,7 +21420,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13959
+const MIN_CHECKS := 13979
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

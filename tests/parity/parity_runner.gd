@@ -761,6 +761,12 @@ func _check_phone_clock(gs: Node, gm: Node, clock: Dictionary) -> void:
 		_fail("phone clock", "no frames")
 		return
 	gs.reset_to_new_game()
+	# OG-D1 (1.0.0): the rent escalation texts Yalonda and Juan now send on
+	# a due day that passes unpaid would land in canon's phone-clock frames,
+	# which model the line's own clock and nothing else. The fixture keeps
+	# the rent far off the days it walks.
+	gs.rent_due_day = 999
+	gs.rent_arrears_day = -1
 	# Dre Lending & Loan-Shark Progression, PR B: this fixture is oracle-minted
 	# and predates Dre, so its frames assume the inbox never fills itself on
 	# time passing alone. A fresh run left broke long enough now earns Juan's
@@ -2061,7 +2067,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
 	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
 	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
-	_expect_int("save version is 28", saves.SAVE_VERSION, 28)
+	_expect_int("save version is 29", saves.SAVE_VERSION, 29)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -13802,7 +13808,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v28", saves.SAVE_VERSION, 28)
+	_expect_int("the schema is v29", saves.SAVE_VERSION, 29)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -16221,7 +16227,11 @@ const ECON_CORRIDORS: Dictionary = {
 	# shape for a profile spending its slots on crime rather than the market
 	# or a shift. The floor moved with STK-D1's own stickup-side fix, same
 	# reasoning as that corridor's.
-	"everyday_criminal": {"floor": 3, "ceiling": 20},
+	# OG-D1 (1.0.0): a profile that never pays rent is evicted nine days late
+	# now -- three house warnings, one every three days -- instead of after
+	# two missed weeks. Measured 2% the day the escalation landed; the floor
+	# records that a run that ignores Yalonda ends, which is the point.
+	"everyday_criminal": {"floor": 0, "ceiling": 20},
 	# STK-D1 (0.3.0): measured at 5%, the same fix as `stickup` above reaching
 	# the same target pool.
 	"stickup_crew": {"floor": 2, "ceiling": 15},
@@ -19640,6 +19650,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_your_corners_their_corners(gs, gm)
 	_check_mountain_view(gs, gm)
 	_check_their_own_ideas(gs, gm)
+	_check_rent_escalation(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -20253,6 +20264,106 @@ func _check_their_own_ideas(gs: Node, gm: Node) -> void:
 	_expect_true("Eli's report names the board (%s)" % report.left(40), report.contains("open") and report.contains("cops"))
 	gs.reset_to_new_game()
 
+## OG-D1 (1.0.0 PR 1): the rent day does not come and go. Due night: a
+## text. A day late: a line and a point with Yalonda. Two: a second text
+## and Juan. Three: the house warning. Paying late is accepted and
+## remembered. And People only shows who you have met.
+func _check_rent_escalation(gs: Node, gm: Node) -> void:
+	var exposure: Node = get_node("/root/Exposure")
+	_lifecycle_ready(gs)
+	gs.cash = 20
+	gs.phone_inbox = []
+	gs.npc_ledgers = {}
+	gs.rent_due_day = int(gs.day)
+	gs.rent_missed = 0
+	gs.household_warnings = 0
+	gs.rent_arrears_day = -1
+	# The phone bill is its own clock; a line that dies mid-arm would hold
+	# the very texts the arm counts.
+	gs.phone_due_day = 999
+	gs.phone_days_past_due = 0
+	gs.phone_active = true
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	_expect_true("the due night starts the arrears clock", int(gs.rent_arrears_day) >= 0)
+	var yalonda_texts := 0
+	for m in gs.phone_inbox:
+		if str((m as Dictionary).get("from", "")) == "Yalonda":
+			yalonda_texts += 1
+	_expect_int("...and Yalonda texts, firm", yalonda_texts, 1)
+	var before: float = float(exposure.disposition("yalonda"))
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	_expect_true("a day late costs a point with her", float(exposure.disposition("yalonda")) < before)
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	var juan_texts := 0
+	yalonda_texts = 0
+	for m in gs.phone_inbox:
+		var from := str((m as Dictionary).get("from", ""))
+		if from == "Yalonda":
+			yalonda_texts += 1
+		elif from == "Juan" and str((m as Dictionary).get("text", "")).contains("yalonda asked"):
+			juan_texts += 1
+	_expect_int("two days late is a second text, angrier", yalonda_texts, 2)
+	_expect_int("...and Juan mentions it", juan_texts, 1)
+	var warnings_before: int = int(gs.household_warnings)
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("advance_time", {})
+	_expect_int("three days late is the house warning", int(gs.household_warnings), warnings_before + 1)
+	# Paying late: accepted, remembered.
+	gs.cash = 400
+	gs.phone_inbox = []
+	var paid_before: float = float(exposure.disposition("yalonda"))
+	_expect_true("late rent can still be paid", gm.dispatch("pay_rent", {}))
+	_expect_int("...and the clock clears", int(gs.rent_arrears_day), -1)
+	_expect_true("...she takes it (%.2f -> %.2f)" % [paid_before, float(exposure.disposition("yalonda"))],
+		float(exposure.disposition("yalonda")) > paid_before)
+	var habit := false
+	for m in gs.phone_inbox:
+		if str((m as Dictionary).get("text", "")).contains("habit"):
+			habit = true
+	_expect_true("...and says not to make a habit of it", habit)
+	var late_rows := 0
+	for row in (gs.npc_ledgers.get("yalonda", []) as Array):
+		if str((row as Dictionary).get("event", "")) == "rent_late":
+			late_rows += 1
+	_expect_int("...and remembers it was late", late_rows, 1)
+
+	# People shows only who you have met.
+	gs.reset_to_new_game()
+	gs.npc_ledgers = {}
+	var packed: PackedScene = load("res://ui/screens/people.tscn")
+	var screen: Node = packed.instantiate()
+	add_child(screen)
+	if screen.has_method("refresh"):
+		screen.refresh()
+	var names := _visible_names(screen)
+	_expect_true("day one People is the household (%s)" % str(names),
+		"Yalonda" in names and "Juan" in names and not "Mina" in names and not "Dre Smooth" in names)
+	gs.dre_introduced = true
+	screen.refresh()
+	names = _visible_names(screen)
+	_expect_true("Dre appears once Juan has said his name", "Dre Smooth" in names)
+	# `free()`, not `queue_free()`: the suite runs in one frame, and a screen
+	# left in the tree refreshes on every dispatch of the economy sweep
+	# until the message queue overflows (33 MB, 1.37M deferred calls).
+	remove_child(screen)
+	screen.free()
+	gs.reset_to_new_game()
+
+func _visible_names(screen: Node) -> Array:
+	var out: Array = []
+	for label in screen.find_children("*", "Label", true, false):
+		var text := str((label as Label).text)
+		if text in ["Yalonda", "Juan", "Mina", "Curtis Foyer", "Dre Smooth"]:
+			out.append(text)
+	return out
+
 func _check_door_to_work(gs: Node, gm: Node) -> void:
 	var access: Node = get_node_or_null("/root/SurfaceVisibility")
 	var nav: Node = get_node("/root/ScreenManager")
@@ -20832,7 +20943,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13782
+const MIN_CHECKS := 13797
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -21627,7 +21738,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v28", int(saves.SAVE_VERSION), 28)
+	_expect_int("the schema is v29", int(saves.SAVE_VERSION), 29)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -22073,7 +22184,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v28 for Heat's teeth", int(saves.SAVE_VERSION), 28)
+	_expect_int("the schema is v29 for Heat's teeth", int(saves.SAVE_VERSION), 29)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -22546,7 +22657,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v28 for Wander", int(saves.SAVE_VERSION), 28)
+	_expect_int("the schema is v29 for Wander", int(saves.SAVE_VERSION), 29)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered", "wander_quiet_streak"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

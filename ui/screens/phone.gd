@@ -448,6 +448,10 @@ func _build_bills() -> void:
 			any_bad = true
 	# Canon's badge: the count, coloured danger if anything is actually late.
 	var meta: String = "%d DUE" % due_soon if due_soon > 0 else ""
+	# OG-D1: a bill that is due opens its own section the first time the
+	# screen is seen with it due, so PAY is one tap from the nav.
+	if due_soon > 0 and not _open.has("bills"):
+		_open["bills"] = true
 	_accordion("bills", "Bills", meta, RED if any_bad else AMBER)
 	if not _is_open("bills"):
 		return

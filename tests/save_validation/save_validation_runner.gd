@@ -35,6 +35,7 @@ func _ready() -> void:
 	_test_v26_hustles_discovered()
 	_test_v27_phone_reply_history()
 	_test_v28_job_applications()
+	_test_v29_rent_arrears()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
 	_test_load_pipeline()
@@ -1030,6 +1031,16 @@ func _test_v28_job_applications() -> void:
 	var migrated: Dictionary = saves._migrate({"save_version": 27, "state": {"day": 2, "cash": 10, "street_name": "L"}})
 	_check("a v27 save arrives with nothing pending",
 		not migrated.has("job_applications") or (migrated.get("job_applications", {}) as Dictionary).is_empty())
+
+## v29 (OG-D1): the arrears clock rides the save; a v28 save arrives not
+## in arrears.
+func _test_v29_rent_arrears() -> void:
+	var valid := _fixed(_state("rent_arrears_day", 12))
+	_check("an arrears day survives", int(valid["rent_arrears_day"]) == 12)
+	var saves := get_node("/root/SaveSystem")
+	var migrated: Dictionary = saves._migrate({"save_version": 28, "state": {"day": 2, "cash": 10, "street_name": "L"}})
+	_check("a v28 save arrives not in arrears",
+		not migrated.has("rent_arrears_day") or int(migrated.get("rent_arrears_day", -1)) == -1)
 
 func _test_v24_dre_pending_penance() -> void:
 	# Same shape as _validate_dre_intro_offered -- manual wrong-type check,

@@ -23,8 +23,33 @@ func _build_body() -> void:
 	var E: Node = get_node_or_null("/root/Exposure")
 	if E == null:
 		return
+	var shown := 0
 	for entry in E.everyone():
+		# OG-D1 (1.0.0): only people you have actually met. Mina and Dre used
+		# to sit on this screen from day one with a score and a role.
+		if not _met(str(entry["id"]), E):
+			continue
 		body.add_child(_person_row(E, entry))
+		shown += 1
+	if shown == 0:
+		body.add_child(note("Nobody knows you yet. That changes the first time you say your name."))
+
+## Met: the household from day one; Mina once you have stood at her counter;
+## Dre once Juan has said his name; Curtis once he has shown himself. Anyone
+## with a line in the ledger counts, because a ledger row is a meeting.
+func _met(id: String, E: Node) -> bool:
+	if not (E.ledger_of(id) as Array).is_empty():
+		return true
+	match id:
+		"yalonda", "juan":
+			return true
+		"mina":
+			return "night_owl" in (gs.venues_entered as Array) or "night_owl" in (gs.jobs_discovered as Array)
+		"dre":
+			return bool(gs.dre_introduced)
+		"curtis":
+			return str(gs.curtis_phase) != "invisible"
+	return true
 
 func _band_colour(band: String, inverted: bool) -> Color:
 	# On an inverted lens the good end is the quiet end, so the colours flip too.

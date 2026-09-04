@@ -481,6 +481,7 @@ func reset_to_new_game() -> void:
 	job_applications = {}
 	rent_due_day = 7
 	rent_missed = 0
+	rent_arrears_day = -1
 	household_warnings = 0
 	phone_due_day = 7
 	phone_days_past_due = 0
@@ -653,6 +654,10 @@ const PHONE_BILL := 75
 
 var rent_due_day: int = 7
 var rent_missed: int = 0
+## OG-D1 (1.0.0, v29): the due day that passed unpaid and has not been paid
+## since, or -1. The escalation clock reads days late off it; paying
+## clears it. `rent_missed` keeps counting misses for the doorstep.
+var rent_arrears_day: int = -1
 ## Canon: household.warnings; 3 means evicted.
 var household_warnings: int = 0
 const HOUSEHOLD_WARNING_LIMIT := 3

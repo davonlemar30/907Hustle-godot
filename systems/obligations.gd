@@ -64,12 +64,19 @@ func _pay_rent() -> Dictionary:
 	# Paying rolls the due day forward a full period, which is what makes the
 	# nightly check go quiet.
 	gs.rent_due_day = _current_rent_due() + RENT_PERIOD_DAYS
+	var was_late: bool = int(gs.rent_arrears_day) >= 0
+	gs.rent_arrears_day = -1
 	gs.log_activity("Rent, $%d, in the envelope on the table. Yalonda doesn't count it in front of you." % gs.WEEKLY_RENT, BLUE)
 	# Yalonda's lens gives rent_paid its own event weight of 3.0, well above the
 	# financial category — paying her is the single loudest good thing she sees.
 	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
 	if exposure != null:
 		exposure.record_observation("yalonda", {"type": "financial", "event": "rent_paid", "source": "household"})
+		# OG-D1: late is accepted, and remembered.
+		if was_late:
+			exposure.record_observation("yalonda", {"type": "financial", "event": "rent_late", "source": "household"})
+	if was_late and phone != null:
+		phone.push_text("Yalonda", "You got it. Don't make this a habit.", "yalonda_rent_paid_late")
 	return {"ok": true}
 
 ## Canon PAY_PHONE_BILL (game-core.js:7846). Three things the first pass of this
@@ -180,13 +187,27 @@ func _settle_phone(ended_day: int) -> void:
 	elif gs.phone_days_past_due == 1:
 		gs.log_activity("$%d phone bill, overdue. The carrier texts you about it, which is funny for one more day." % gs.PHONE_BILL, AMBER)
 
+## OG-D1 (1.0.0): the rent day does not come and go. The night it passes
+## unpaid Yalonda texts, firm; a day late is a feed line and a point with
+## her; two days is a second text, angrier, and Juan mentions it; three is
+## the house warning, and every three after. Paying late is accepted and
+## remembered. `rent_arrears_day` is the clock; paying clears it.
+const ARREARS_WARNING_EVERY := 3
+
 func _settle_rent(ended_day: int) -> void:
 	if ended_day < gs.rent_due_day:
+		_settle_arrears(ended_day)
 		return
 	gs.rent_missed += 1
+	if int(gs.rent_arrears_day) < 0:
+		gs.rent_arrears_day = int(gs.rent_due_day)
 	# Roll the due day so the next period is what gets checked from here.
 	gs.rent_due_day = _current_rent_due() + RENT_PERIOD_DAYS
 	gs.log_activity("The rent envelope is on the table where you left it. Yalonda moved it two inches closer to your door.", RED)
+	var phone_now: Object = phone
+	if phone_now != null:
+		phone_now.push_text("Yalonda", "Rent was due today. I haven't seen it. I'll see it tomorrow.",
+			"yalonda_rent_due")
 	# Canon's ESCALATING_EVENT: the weight is negative and the count grows
 	# linearly, so each additional miss hurts more than the last. Yalonda is the
 	# one who sees it, first-hand, in her own house.
@@ -196,6 +217,27 @@ func _settle_rent(ended_day: int) -> void:
 	# Canon: two unpaid weeks is what makes the house warning explicit.
 	if gs.rent_missed >= 2:
 		_household_warning("Two rent weeks pass unpaid. Yalonda makes the house warning explicit.")
+
+## The days after the due day, while it stays unpaid.
+func _settle_arrears(ended_day: int) -> void:
+	if int(gs.rent_arrears_day) < 0:
+		return
+	var late: int = ended_day - int(gs.rent_arrears_day)
+	if late < 1:
+		return
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if late == 1:
+		gs.log_activity("A day late on the rent. Yalonda hasn't said anything, which is how you know she noticed.", RED)
+		if exposure != null:
+			exposure.record_observation("yalonda", {"type": "financial", "event": "missed_obligation", "source": "household"})
+		return
+	if late == 2:
+		if phone != null:
+			phone.push_text("Yalonda", "Two days. I don't chase people for money. I change locks.", "yalonda_rent_late")
+			phone.push_text("Juan", "yalonda asked me if youre good for it. i said yeah. dont make me a liar", "juan_rent")
+		return
+	if late % ARREARS_WARNING_EVERY == 0:
+		_household_warning("%d days late on the rent. Yalonda says the next conversation is about the room." % late)
 
 func _household_warning(reason: String) -> void:
 	gs.household_warnings += 1

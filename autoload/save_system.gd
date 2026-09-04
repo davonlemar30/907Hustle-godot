@@ -191,7 +191,10 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## v28: `job_applications` (The Block Remembers PR 1, BR-D2) -- applications
 ## in flight. Additive: no earlier save ever had one pending, because the
 ## interview resolved on the tap.
-const SAVE_VERSION := 28
+## v29: `rent_arrears_day` (One Good Run PR 1, OG-D1) -- the rent
+## escalation clock. Additive: -1 for every earlier save, which is "not in
+## arrears", and a save that was would have rolled its due day already.
+const SAVE_VERSION := 29
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -274,6 +277,8 @@ const PERSIST_FIELDS: Array[String] = [
 	"phone_reply_history",
 	# Applications in flight (v28, BR-D2).
 	"job_applications",
+	# The rent escalation clock (v29, OG-D1).
+	"rent_arrears_day",
 	# The interruption gate's quiet streak (v25, STR-D2). Same reasoning as
 	# wander_misses above: the run's own history of a mechanic that reads it.
 	"wander_quiet_streak",
@@ -923,6 +928,9 @@ func _migrate(payload: Dictionary) -> Dictionary:
 			24:
 				# v24 -> v25: wander_quiet_streak. Purely additive -- see this
 				# arm's own paragraph by SAVE_VERSION.
+				pass
+			28:
+				# v28 -> v29: rent_arrears_day. Additive; see SAVE_VERSION.
 				pass
 			27:
 				# v27 -> v28: job_applications. Additive; see SAVE_VERSION.

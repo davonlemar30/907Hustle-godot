@@ -25,7 +25,7 @@ func _ready() -> void:
 ## Connected once in _ready, never in _bind_content — that re-runs on every
 ## state change and would stack duplicate connections.
 func _wire_taps() -> void:
-	for i in range(3):
+	for i in range(DISTRICT_SLOTS):
 		var d: Dictionary = gs.districts[i] if i < gs.districts.size() else {}
 		if d.is_empty():
 			continue
@@ -52,6 +52,9 @@ func _on_district(district_id: String) -> void:
 ## rows have no ids. A venue with no row here still toasts, which is the honest
 ## answer for the two that are not built: The Nile needs a gambling system this
 ## build does not have, and a Home interior would duplicate the Home nav tab.
+## BR-D5: the scene carries four district cards (Dist0..Dist3).
+const DISTRICT_SLOTS := 4
+
 const VENUE_ROUTES := {
 	"Spenard Gym": "res://ui/screens/spenard_gym.tscn",
 	"Night Owl": "res://ui/screens/night_owl.tscn",
@@ -91,6 +94,7 @@ const ACCESS := preload("res://autoload/surface_visibility.gd")
 const DISTRICT_SURFACES := {
 	"downtown": ACCESS.STREET_DOWNTOWN,
 	"airport_industrial": ACCESS.STREET_SHIP_CREEK,
+	"mountain_view": ACCESS.STREET_MOUNTAIN_VIEW,
 }
 
 func _bind_content() -> void:
@@ -104,7 +108,7 @@ func _bind_content() -> void:
 ## what they have not reached yet, which is the whole difference between LOCKED
 ## and HIDDEN — so the card is filled first and then dimmed.
 func _bind_gates() -> void:
-	for i in range(3):
+	for i in range(DISTRICT_SLOTS):
 		var district: Dictionary = gs.districts[i] if i < gs.districts.size() else {}
 		var surface_id: Variant = DISTRICT_SURFACES.get(str(district.get("id", "")))
 		if surface_id == null:
@@ -115,7 +119,7 @@ func _bind_gates() -> void:
 	gate_surface(ACCESS.MENU_CREW, "Shell/Scroll/Pad/Content/People")
 
 func _fill_districts() -> void:
-	for i in range(3):
+	for i in range(DISTRICT_SLOTS):
 		var d: Dictionary = gs.districts[i] if i < gs.districts.size() else {}
 		if d.is_empty():
 			continue

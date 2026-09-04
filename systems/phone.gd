@@ -41,6 +41,7 @@ const AREA_PROSE_NAMES := {
 	"north_star_lot": "Spenard",
 	"downtown": "Downtown",
 	"airport_industrial": "Ship Creek",
+	"mountain_view": "Mountain View",
 }
 
 ## How many routes Word Around Town carries. Enough to see a choice, few enough

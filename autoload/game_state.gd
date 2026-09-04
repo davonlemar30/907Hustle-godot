@@ -131,6 +131,27 @@ var districts: Array = [
 		"market_role": "Outer",
 		"bias": {"weed": 1.12, "shrooms": 1.18, "cocaine": 1.32, "meth": 1.62},
 		"availability": {"weed": 0.72, "shrooms": 0.7, "pills": 0.7, "lean": 0.74, "coke": 0.78, "molly": 0.72, "cocaine": 0.7, "meth": 0.86}},
+	# BR-D5 (0.9.0 PR 4): Mountain View. The community district, per the
+	# World Bible: forty languages, the most diverse census tract in the
+	# country, JBER's fence on one side and the freight yards on the other.
+	# Pills and lean are the mid-tier product and the military pipeline
+	# pays a premium on them; weed has its own channels here; the club
+	# drugs want Downtown. Reputation is the whole game: the block talks
+	# fast (`rival: 2` -- Curtis has people here; `police: 2`), and the
+	# stickup family carries the heaviest multiplier in the city
+	# (`systems/heat.gd`), because robbing somebody here is robbing a
+	# family everybody knows.
+	# `oracle: false`: the three canon districts walk on the run's one RNG
+	# stream in canon's order, and the oracle fixtures (`_check_market_walks`)
+	# pin every draw. A fourth district on that stream would shift every
+	# canon draw after it, so a non-oracle district walks on its own stream,
+	# seeded from the run and the day -- deterministic, replayable, and
+	# invisible to canon.
+	{"id": "mountain_view", "name": "MOUNTAIN VIEW", "role": "THE BLOCK", "risk": 3, "police": 2, "rival": 2, "accent": Color(0.93, 0.62, 0.27), "blurb": "Forty languages and one set of eyes. Pills move. Trust moves first.",
+		"oracle": false,
+		"market_role": "Community",
+		"bias": {"weed": 0.9, "shrooms": 0.95, "pills": 1.16, "lean": 1.12, "coke": 0.88, "molly": 0.82, "cocaine": 0.96, "meth": 1.0},
+		"availability": {"weed": 0.6, "shrooms": 0.55, "pills": 0.85, "lean": 0.8, "coke": 0.5, "molly": 0.45, "cocaine": 0.5, "meth": 0.4}},
 ]
 
 # --- Per-area markets (canon: state.world.markets) -------------------------
@@ -152,6 +173,12 @@ func init_markets() -> void:
 	var stream = get_node("/root/RngManager").make_stream(run_seed)
 	markets = {}
 	for d in districts:
+		# BR-D5: a non-oracle district walks on its own stream (see the
+		# district table).
+		if not bool(d.get("oracle", true)):
+			markets[d["id"]] = economy_script.walk_initial_area(d, products,
+				get_node("/root/RngManager").make_stream(hash("%d:initial:%s" % [int(run_seed), str(d["id"])])))
+			continue
 		markets[d["id"]] = economy_script.walk_initial_area(d, products, stream)
 	rng_state = stream.state
 	economy_script.sync_display_prices(self)
@@ -704,6 +731,10 @@ func _reconcile_progression_latches() -> void:
 		districts_unlocked.append("downtown")
 	if corners >= 2 and not "airport_industrial" in districts_unlocked:
 		districts_unlocked.append("airport_industrial")
+	# BR-D5: Mountain View opens at day start (`day_lifecycle.gd`), a week
+	# in, or earlier through somebody on the block naming it
+	# (`data/wander_events.gd::mv_word_of_the_block`) -- not here, because
+	# this reconcile also runs on load and a fixture must round-trip exactly.
 
 	# A way IN to work. Two of them, and batch 16 added the second because the
 	# first was not reachable on the run that needs it.
@@ -772,6 +803,8 @@ var stick_targets: Array = [
 	{"id": "spenard_diner_regular", "name": "Diner regular off Spenard Road", "area": "north_star_lot", "tier": 1, "take": [95, 160], "slots": [], "resistance": 0, "heat": 2, "desc": "Same booth, same tip roll, cash before the card machine even boots up."},
 	{"id": "fourth_ave_crawler", "name": "Fourth Avenue bar crawler", "area": "downtown", "tier": 1, "take": [50, 100], "slots": [2, 3], "resistance": 0, "heat": 2, "desc": "Bar to bar on 4th with a fresh ATM stop in between."},
 	{"id": "c_street_atm", "name": "C Street ATM run", "area": "downtown", "tier": 1, "take": [60, 100], "slots": [2], "resistance": 1, "heat": 2, "desc": "Office types pull dinner cash on C Street. Heads down, cards out."},
+	{"id": "mv_overpass_walker", "name": "Somebody under the Glenn overpass", "area": "mountain_view", "tier": 1, "take": [40, 80], "slots": [2, 3], "resistance": 0, "heat": 3, "desc": "Walking home from the Red Apple with a PFD envelope. Under the Glenn there are no lights and everybody's cousin is a witness."},
+	{"id": "mv_fence_buyer", "name": "Off-duty soldier by the JBER fence", "area": "mountain_view", "tier": 2, "take": [110, 190], "slots": [3], "resistance": 2, "heat": 3, "desc": "Payday, out of uniform, buying something he can't have on a drug test. He will not call it in. He will fight."},
 	{"id": "lot_hauler", "name": "Long-haul driver at the truck lot", "area": "airport_industrial", "tier": 1, "take": [40, 90], "slots": [0, 1], "resistance": 0, "heat": 2, "desc": "Overnighting off International with the cab curtains drawn."},
 	{"id": "spenard_fuel_till", "name": "Spenard Chevron night till", "area": "north_star_lot", "tier": 2, "take": [100, 180], "slots": [3], "resistance": 1, "heat": 3, "desc": "One clerk after midnight, and a till that fattens until morning."},
 	{"id": "downtown_fuel_till", "name": "Holiday register on C Street", "area": "downtown", "tier": 2, "take": [100, 200], "slots": [], "resistance": 1, "heat": 3, "desc": "The register sits open between customers. One clerk, no partition."},
@@ -1006,6 +1039,8 @@ var boost_targets: Array = [
 	{"id": "spenard_fuel", "name": "Spenard Chevron", "area": "north_star_lot", "tier": 1, "take": [15, 40], "window": -1, "desc": "Two pumps and a cooler aisle. The clerk watches the lot, never the shelves."},
 	{"id": "fourth_ave_market", "name": "Rebel Convenience on 4th", "area": "downtown", "tier": 1, "take": [15, 40], "window": -1, "desc": "One camera, aimed at the register, exactly like the sticker on the door promises."},
 	{"id": "downtown_fuel", "name": "Holiday on C Street", "area": "downtown", "tier": 1, "take": [15, 40], "window": -1, "desc": "The snack aisle sits behind a pillar the security mirror cannot see around."},
+	{"id": "mv_red_apple", "name": "Red Apple Market", "area": "mountain_view", "tier": 1, "take": [15, 40], "window": -1, "desc": "The neighborhood's grocery. One camera, and every third customer knows the owner by name."},
+	{"id": "mv_drive_pharmacy", "name": "Mountain View Drive pharmacy", "area": "mountain_view", "tier": 2, "take": [60, 150], "window": 2, "desc": "The pickup line snakes past the vitamins. Behind the counter is the thing the fence pays for."},
 	{"id": "service_stop", "name": "Denali Express", "area": "airport_industrial", "tier": 1, "take": [15, 40], "window": -1, "desc": "A truck-stop shop off Old Seward. Everything is bolted down except what you came in for."},
 	{"id": "airport_fuel", "name": "Shell on International", "area": "airport_industrial", "tier": 1, "take": [15, 40], "window": -1, "desc": "Half the customers are on the clock and all of them are on their phones."},
 	{"id": "northern_value", "name": "Northern Value", "area": "north_star_lot", "tier": 2, "take": [60, 150], "window": 1, "desc": "The Spenard thrift barn. Racks too dense to police, tags too cheap to chase."},
@@ -1496,6 +1531,8 @@ var pressure_bleed_pending: Array = []
 ## persisted array here is: `SaveSystem._apply` overlays a decoded Variant onto
 ## the field, and a typed array rejects the untyped one it gets back.
 var districts_unlocked: Array = ["north_star_lot"]
+## BR-D5: the day Mountain View opens on its own.
+const MOUNTAIN_VIEW_DAY := 7
 
 ## How many named contacts capable of putting WORK in front of the player have
 ## been met. Gates the Jobs surface.

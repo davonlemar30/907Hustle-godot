@@ -105,6 +105,10 @@ const DISTRICT_FAMILY_MULTIPLIERS := {
 	"north_star_lot": {FAMILY_MARKET: 0.8, FAMILY_BOOST: 0.9, FAMILY_STICK: 1.3},
 	"downtown": {FAMILY_MARKET: 1.2, FAMILY_BOOST: 1.1, FAMILY_STICK: 1.0},
 	"airport_industrial": {FAMILY_MARKET: 1.1, FAMILY_BOOST: 1.2, FAMILY_STICK: 1.2},
+	# BR-D5: Mountain View. The block talks fast: robbing somebody here is
+	# robbing a family everybody knows, so the stickup family carries the
+	# heaviest multiplier in the city.
+	"mountain_view": {FAMILY_MARKET: 1.0, FAMILY_BOOST: 1.1, FAMILY_STICK: 1.5},
 }
 
 const NEUTRAL_MULTIPLIER := 1.0

@@ -290,6 +290,7 @@ const KIND_READ := "read"
 const SPENARD := "north_star_lot"
 const DOWNTOWN := "downtown"
 const SHIP_CREEK := "airport_industrial"
+const MOUNTAIN_VIEW := "mountain_view"
 
 ## Slot indices, matching `TimeSystem.SLOTS`. Named so a card reads as a time of
 ## day rather than as an integer somebody has to go and look up.
@@ -1200,6 +1201,82 @@ const CARDS: Array[Dictionary] = [
 		},
 	},
 
+	# --- BR-D5 (0.9.0 PR 4): Mountain View ---------------------------------------
+	#
+	# The community district. Ambients that say what the block is; one
+	# encounter that says what it wants from you, which is a name; and a
+	# Spenard card that opens it early through somebody who lives there.
+
+	{
+		"id": "mv_word_of_the_block", "kind": KIND_AMBIENT, "weight": 6,
+		"intents": [], "gate_bias": "",
+		"districts": [SPENARD], "slots": [], "once": true,
+		# Days four to six: after that the block opens on its own.
+		"requirements": [{"type": "day_min", "day": 4}, {"type": "day_max", "day": 6}],
+		"discovers_district": MOUNTAIN_VIEW,
+		"line": "Two Samoan brothers at the bus shelter, going home to Mountain View. One of them says pills go for real money over there because of the base, and the other one tells him to stop talking to strangers. They both laugh. Now you know where it is.",
+	},
+	{
+		"id": "mv_the_courts", "kind": KIND_AMBIENT, "weight": 9,
+		"intents": [], "gate_bias": "",
+		"districts": [MOUNTAIN_VIEW], "slots": [], "once": false,
+		"requirements": [],
+		"line": "The courts behind Clark at dusk. A full-court game in three languages, and everybody on the fence knows everybody on the floor. They look at you exactly once. That once is the whole message.",
+	},
+	{
+		"id": "mv_juba_market", "kind": KIND_AMBIENT, "weight": 8,
+		"intents": [], "gate_bias": "",
+		"districts": [MOUNTAIN_VIEW], "slots": [], "once": false,
+		"requirements": [],
+		"line": "Juba Market. Ahmed behind the counter greets four people by name before he gets to you. He does not get to you. He watches you pick a drink, and that is the whole transaction, and it is fair.",
+	},
+	{
+		"id": "mv_church_lot", "kind": KIND_AMBIENT, "weight": 7,
+		"intents": [], "gate_bias": "",
+		"districts": [MOUNTAIN_VIEW], "slots": [2, 3], "once": false,
+		"requirements": [],
+		"line": "A Samoan church letting out on a Wednesday night. Two hundred people, more food than that, and an uncle in a lavalava who asks whose family you're with. You don't have an answer he likes. He feeds you anyway.",
+	},
+	{
+		"id": "mv_who_are_you", "kind": KIND_ENCOUNTER, "weight": 9,
+		"intents": [], "gate_bias": "",
+		"districts": [MOUNTAIN_VIEW], "slots": [], "once": false,
+		"requirements": [],
+		"line": "Three men outside the barbershop on Mountain View Drive. The one with the name on the door, Reggie, asks who you're with. It is a real question, and the block is waiting on the answer.",
+		"encounter": {
+			"definition_id": "mv_who_are_you",
+			"opponent": "Reggie, and the block",
+			"shape": "negotiation",
+			"choices": ["say_your_name", "keep_walking_mv", "come_correct"],
+			"roles": {"say_your_name": ROLE_FIGHT, "keep_walking_mv": ROLE_RUN,
+				"come_correct": ROLE_SURRENDER},
+			"admits_crew": false,
+			"deterministic": ["come_correct"],
+			"base": {"say_your_name": 0.55, "keep_walking_mv": 0.5},
+			# Nobody swings here. The cost of the wrong answer is the block:
+			# pressure, and the product you were carrying walking off with a
+			# kid who was told to take it.
+			"observations": {},
+			"effects": {
+				"say_your_name": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "heat": 1.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.5, "heat": 2.0},
+					"catastrophic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 1.0, "heat": 3.0},
+				},
+				"keep_walking_mv": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "heat": 1.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.5, "heat": 2.5},
+					"catastrophic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 1.0, "heat": 3.5},
+				},
+				"come_correct": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.25, "heat": 0.0},
+				},
+			},
+		},
+	},
+
 	# --- hostile addicts ------------------------------------------------------
 	#
 	# VOX-D1's hard case, and the register holds: these are not comedy and they
@@ -1866,6 +1943,8 @@ const CARDS: Array[Dictionary] = [
 ## engine's own table is Boost's vocabulary (fight / run / talk / yield) and was
 ## never going to cover a different chain's.
 const CHOICE_LABELS := {
+	# BR-D5: Mountain View.
+	"say_your_name": "TALK", "keep_walking_mv": "RUN", "come_correct": "COMPLY",
 	"stand": "FIGHT",
 	"walk": "RUN",
 	"hand_over": "SURRENDER",
@@ -1951,6 +2030,10 @@ const CHOICE_LABELS := {
 }
 
 const CHOICE_COPY := {
+	# BR-D5: Mountain View.
+	"say_your_name": "Say your name, and whose. Let the block decide what it's worth.",
+	"keep_walking_mv": "It wasn't a question you have to answer. Yet.",
+	"come_correct": "Tell him you're nobody yet. Pay the tax. Get invited back.",
 	"stand": "Do not move. Let them decide what the bag is worth.",
 	"walk": "Keep the bag, keep your pace, around the corner.",
 	"hand_over": "Hand it over and walk away whole.",
@@ -2033,6 +2116,8 @@ const CHOICE_COPY := {
 ## Heat on the card. A player is owed that price BEFORE they commit, and
 ## "CERTAIN" beside an odds band is not a price.
 const CHOICE_GUARANTEE := {
+	# BR-D5: Mountain View.
+	"come_correct": "Guaranteed: nobody touches you. A quarter of what you carry, and an invitation.",
 	"hand_over": "Guaranteed: you walk away whole. Everything you are carrying is theirs.",
 	"hands_out": "Guaranteed: nobody is hurt. The search happens, and it finds what is on you.",
 	"cross_the_street": "Guaranteed: nothing happens to you. The block will remember that it did not.",
@@ -2415,7 +2500,8 @@ static func result_copy(card_id: String, choice_id: String, tier: String,
 	if CREW_RESULT_COPY.has(choice_id):
 		return CREW_RESULT_COPY[choice_id]
 	var card_table: Dictionary = RESULT_COPY.get(card_id,
-		MEETING_RESULT_COPY.get(card_id, PHASE_RESULT_COPY.get(card_id, {})))
+		MEETING_RESULT_COPY.get(card_id, PHASE_RESULT_COPY.get(card_id,
+			MV_RESULT_COPY.get(card_id, {}))))
 	var table: Dictionary = card_table.get("room", {}) if in_room else card_table
 	var road: Dictionary = table.get(choice_id, {})
 	if road.has(tier):
@@ -2449,6 +2535,27 @@ static func pay_price(card: Dictionary, choice_id: String) -> int:
 # Police cards opt out (`answers_back: false`): a cop's hands on you is not
 # a fight the game lets you win, and their FIGHT-role road is TALK anyway.
 # A card with an authored room opens that room instead of a generated one.
+
+## BR-D5: the block's own result copy. `PHASE_RESULT_COPY` shape.
+const MV_RESULT_COPY := {
+	"mv_who_are_you": {
+		"say_your_name": {
+			"clean": ["HE NODS", "You say your name and who put you up in Spenard. Reggie nods once. Somebody inside the shop laughs, not at you. You are known on the block now, which is worth more than anything you were carrying."],
+			"messy": ["HE LETS IT GO", "He hears the name and does not love it. \"Spenard.\" Like it is a diagnosis. He lets you pass. The block heard it too."],
+			"failure": ["WRONG ANSWER", "The name means nothing here and you can see it mean nothing. A kid you did not notice walks off with half of what you had, and nobody outside the barbershop saw a thing."],
+			"catastrophic": ["THE BLOCK DECIDES", "Reggie does not move. Three other people do. Everything you were carrying leaves in three directions, and the whole street watches it go without watching."],
+		},
+		"keep_walking_mv": {
+			"clean": ["YOU WALK", "You keep walking and nobody follows. The question is still open, and it will be open next time."],
+			"messy": ["NOTICED", "You walk and they let you, and the barbershop's whole window turns to watch you go. That is not nothing on this block."],
+			"failure": ["CUT OFF", "A kid on a bike cuts you off at the corner, polite as anything, and leaves with half of what you had. Reggie never moved."],
+			"catastrophic": ["THE BLOCK CLOSES", "You walk into a wall of cousins. Everything you were carrying is gone before you are back on the Drive, and every door on it is closed to you tonight."],
+		},
+		"come_correct": {
+			"deterministic": ["YOU COME CORRECT", "You tell him you are nobody yet and you are not here to be somebody at his expense. He takes a little off the top -- \"tax\" -- and tells you to come see him before you sell anything on his Drive again. That is an invitation."],
+		},
+	},
+}
 
 const ANSWER_LINES := {
 	"wander_desperate_approach": {

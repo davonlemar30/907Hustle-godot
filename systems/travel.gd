@@ -14,6 +14,42 @@ extends RefCounted
 
 ## game-core.js:2850 — "Need $5 fare."
 const FARE := 5
+const ARRIVAL_AMBER := Color(0.882, 0.651, 0.227)
+
+## BR-D5: the first time the bus lets you off somewhere, the place says
+## what it is. A sheet, once per district, tracked in the wander ledger
+## under the arrival's own id so it rides the save without a new field.
+const ARRIVALS := {
+	"mountain_view": {
+		"title": "MOUNTAIN VIEW",
+		"line": "The People Mover lets you off on Mountain View Drive and the air changes. Samoan out of one car, Somali out of a doorway, Hmong from the grocery, a kid on a bike yelling in three of them. Red Apple on the corner, Juba Market past it, the rec center and the courts behind. Everybody here is somebody's cousin, and every one of them just looked at you.",
+	},
+	"downtown": {
+		"title": "DOWNTOWN",
+		"line": "Fourth Avenue at the hour the suits leave and the bar crowd hasn't come. Cameras on every corner, a bike cop at the light, and money walking around looking for somewhere to go.",
+	},
+	"airport_industrial": {
+		"title": "SHIP CREEK",
+		"line": "Post Road. Diesel, wind off the inlet, containers stacked four high and nobody on foot but you. The streetlights stop at the railyard.",
+	},
+}
+
+func _first_arrival(district_id: String) -> void:
+	if not ARRIVALS.has(district_id):
+		return
+	var key := "arrival:%s" % district_id
+	if int(gs.wander_seen.get(key, 0)) > 0:
+		return
+	gs.wander_seen[key] = 1
+	var arrival: Dictionary = ARRIVALS[district_id]
+	gs.log_activity(str(arrival["line"]), ARRIVAL_AMBER)
+	var loop: MainLoop = Engine.get_main_loop()
+	if loop == null or not loop is SceneTree:
+		return
+	var nav: Node = (loop as SceneTree).root.get_node_or_null("/root/ScreenManager")
+	if nav != null:
+		nav.enqueue_flow_sheet({"kind": "arrival", "title": str(arrival["title"]),
+			"line": str(arrival["line"])})
 
 const AMBER := Color(0.882, 0.651, 0.227)
 
@@ -114,6 +150,7 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 	var engine: Object = gm.system("consequence")
 	if engine != null and not gs.game_over:
 		engine.try_surface_delayed(int(gs.day), gs.current_district_id)
+	_first_arrival(target)
 	return {"ok": true, "arrived": district.get("name", ""), "watcher": watcher,
 		"carry": carry, "checkpointed": checkpointed}
 

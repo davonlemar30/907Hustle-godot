@@ -393,12 +393,26 @@ func _room_round(chain: Dictionary, choice_id: String) -> Dictionary:
 	LOOP.append_log(loop, _room_round_line(choice_id, tier, round_num))
 	if round_num >= ROOM_ROUND_CAP:
 		return _room_exit(chain, loop, family, "%s_messy" % choice_id)
-	loop["round"] = round_num + 1
-	loop["stage"] = round_num
-	loop["left"] = ROOM_ROUND_CAP - (round_num + 1)
+	# BB-D4 (0.7.0): the round ends in a result the player reads; CONTINUE
+	# presents the next one through `present_next_round`.
+	return LOOP.present_interim(engine, gs, chain, loop, choice_id, tier,
+		"escalate", {}, round_num + 1)
+
+## BB-D4: the next round of the enforcement room, from the loop's own note.
+func present_next_round(chain: Dictionary) -> Dictionary:
+	var loop: Dictionary = LOOP.loop_of(chain)
+	var pending: Variant = LOOP.take_pending(loop)
+	if loop.is_empty() or pending == null:
+		return {"ok": false, "reason": "Nothing to move on to."}
+	var family := str((chain.get("source", {}) as Dictionary).get("family", ""))
+	var base: Dictionary = ROOM_BASE.get(family, {"fight": 0.45, "talk": 0.50})
+	var next_round: int = int(pending)
+	loop["round"] = next_round
+	loop["stage"] = next_round - 1
+	loop["left"] = ROOM_ROUND_CAP - next_round
 	var next_shown: Dictionary = {
-		"fight": clampf(float(base["fight"]) + ROOM_ROUND_PENALTY * float(round_num + 1), 0.10, 0.95),
-		"talk": clampf(float(base["talk"]) + ROOM_ROUND_PENALTY * float(round_num + 1), 0.10, 0.95),
+		"fight": clampf(float(base["fight"]) + ROOM_ROUND_PENALTY * float(next_round), 0.10, 0.95),
+		"talk": clampf(float(base["talk"]) + ROOM_ROUND_PENALTY * float(next_round), 0.10, 0.95),
 	}
 	var calls: Array = _crew_calls(loop)
 	LOOP.present_round(chain, loop, ["fight", "talk", "yield"] + calls,
@@ -628,6 +642,7 @@ const RESULT_COPY := {
 		"ignore": ["NOT TODAY", "You let it sit. It will not sit much longer, and next time it does not knock."],
 	},
 	"dre": {
+		"escalate": ["NOBODY BACKS OFF", "They did not come to be talked out of it in one round, and you did not fold in one either. It goes again."],
 		"yield": ["YOU PAY WHAT YOU HAVE", "Everything on you goes into a hand that does not count it. That settles it for now, and for now is the word Dre uses."],
 		"fight_clean": ["THEY LEAVE EMPTY-HANDED", "You make it not worth their time. Dre will hear that too, and he will hear it as a number."],
 		"talk_clean": ["A NUMBER YOU CAN COVER", "You talk it down to something real and pay it. Dre gets less than he asked for and more than he expected."],
@@ -639,6 +654,7 @@ const RESULT_COPY := {
 		"talk_catastrophic": ["DRE'S PEOPLE MAKE THEIR POINT", "They did not come to collect. They came so that next time you would pay before they had to."],
 	},
 	"book": {
+		"escalate": ["HE IS STILL TALKING", "He has not paid and he has not left. Whatever he is going to do, he has not decided it yet."],
 		"yield": ["YOU LET THE NOTE GO", "It is not worth what collecting it costs. Everybody on the book heard you say that."],
 		"fight_clean": ["YOU COLLECT", "He pays because the alternative was standing in front of you longer."],
 		"talk_clean": ["HE FINDS THE MONEY", "It turns out he had it. They usually do."],
@@ -650,6 +666,7 @@ const RESULT_COPY := {
 		"talk_catastrophic": ["IT COMES APART", "Collecting a debt became a fight, and the fight became a story. You lost both."],
 	},
 	"rent": {
+		"escalate": ["HE IS STILL ON THE PORCH", "He did not get what he came for and he is not leaving without something. It goes again."],
 		"yield": ["YOU PAY WHAT YOU HAVE", "Everything on you goes toward the back rent. Yalonda's cousin counts it on the porch and does not say whether it is enough."],
 		"fight_clean": ["HE GOES BACK DOWN THE STAIRS", "You make it not worth his time. Yalonda will not send him twice, and she will not forget she had to send him once."],
 		"talk_clean": ["A NUMBER YALONDA CAN LIVE WITH", "You talk him down to what you can actually cover and hand it over. The porch goes quiet."],
@@ -667,7 +684,8 @@ const RESULT_COPY := {
 func result_copy(choice_id: String, effects: Dictionary) -> Array:
 	var source: Dictionary = gs.active_consequence.get("source", {})
 	var kind := str(source.get("kind", ""))
-	var road := str(effects.get("resolution", choice_id))
+	var road := "escalate" if bool(effects.get("interim", false)) \
+		else str(effects.get("resolution", choice_id))
 	var table: Dictionary = {}
 	if RESULT_COPY.has(kind):
 		table = RESULT_COPY[kind]

@@ -525,10 +525,21 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	if tier == "failure" and index + 1 < mini(int(script["cap"]),
 			(script["beats"] as Array).size()):
 		LOOP.burn(loop, choice_id)
-		_present_meetup(chain, loop, index + 1)
-		gs.active_consequence = chain
-		return {"ok": true, "tier": "continued"}
+		# BB-D4 (0.7.0): the round ends in a result; CONTINUE presents the
+		# next beat through `present_next_round`.
+		return LOOP.present_interim(gm.system("consequence"), gs, chain, loop,
+			choice_id, tier, "escalate", {}, index + 1)
 	return _exit_meetup(chain, loop, choice_id, tier)
+
+## BB-D4: the next authored beat, from the loop's own note.
+func present_next_round(chain: Dictionary) -> Dictionary:
+	var loop: Dictionary = LOOP.loop_of(chain)
+	var pending: Variant = LOOP.take_pending(loop)
+	if loop.is_empty() or pending == null:
+		return {"ok": false, "reason": "Nothing to move on to."}
+	_present_meetup(chain, loop, int(pending))
+	gs.active_consequence = chain
+	return {"ok": true, "tier": "continued"}
 
 ## Every exit. The money is already in the wallet, so what an exit does is
 ## decide how much of it LEAVES again — clean, because that is where a 907List
@@ -629,25 +640,30 @@ const MEETUP_RESULT_COPY := {
 		"surrendered": ["YOU GIVE IT BACK", "You count it back into his hand and take the box. Somebody with fewer friends will want it tomorrow."],
 	},
 	"read_it": {
+		"escalate": ["YOU MISSED IT", "The friend is between you and the lot now, and the buyer has stopped looking at you."],
 		"won": ["YOU SAW IT COMING", "A beat before it started, you were already moving. Everything leaves with you."],
 		"escaped": ["MOST OF IT", "You get out of the lot with most of the money and none of the argument."],
 		"beaten": ["THE FRIEND WAS THE POINT", "You read it wrong. The money stays in the lot, and so does some of you."],
 	},
 	"stay_commercial": {
+		"escalate": ["IT STOPS BEING COMMERCIAL", "The buyer is not talking about the price anymore. His friend is."],
 		"won": ["EVERYBODY'S DAY CONTINUES", "Receipts, handshakes, nobody raises a voice. The money is yours."],
 		"escaped": ["THE PRICE CHANGES HANDS TWICE", "One more time than it should have. You keep half of it and all of the lot."],
 		"beaten": ["NOBODY WAS BUYING A CAMERA", "It stops being a conversation. The money goes back across the lot the hard way."],
 	},
 }
 
+func _meetup_result_row(choice_id: String, effects: Dictionary) -> Array:
+	var key := "escalate" if bool(effects.get("interim", false)) \
+		else str(effects.get("resolution", ""))
+	return ((MEETUP_RESULT_COPY.get(choice_id, {}) as Dictionary).get(key, []) as Array)
+
 func result_headline(choice_id: String, _tier: String, effects: Dictionary) -> String:
-	var row: Array = ((MEETUP_RESULT_COPY.get(choice_id, {}) as Dictionary)
-		.get(str(effects.get("resolution", "")), []) as Array)
+	var row: Array = _meetup_result_row(choice_id, effects)
 	return str(row[0]) if row.size() == 2 else ""
 
 func result_body(choice_id: String, _tier: String, effects: Dictionary) -> String:
-	var row: Array = ((MEETUP_RESULT_COPY.get(choice_id, {}) as Dictionary)
-		.get(str(effects.get("resolution", "")), []) as Array)
+	var row: Array = _meetup_result_row(choice_id, effects)
 	return str(row[1]) if row.size() == 2 else ""
 
 func choice_label(choice_id: String) -> String:

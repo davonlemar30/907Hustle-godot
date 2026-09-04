@@ -157,7 +157,8 @@ func _roll_checkpoint(target: String) -> bool:
 	# same way this file already reaches Curtis, rather than widening every
 	# `setup()` call site in `game_manager.gd` for one seeded roll.
 	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
-	if rng == null or rng.seeded_random(gs.run_seed, key) >= EVENTS.gate_chance(steps):
+	if rng == null or rng.seeded_random(gs.run_seed, key) \
+			>= EVENTS.gate_chance_from(TRAVEL_EVENTS.CHECKPOINT_BASE_CHANCE, steps):
 		return false
 	_open_checkpoint(target, key)
 	return true

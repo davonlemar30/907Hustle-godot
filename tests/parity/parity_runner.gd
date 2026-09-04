@@ -7613,6 +7613,18 @@ func _check_engine_stage_machine(gs: Node, engine: RefCounted) -> void:
 				"advanced" if should_pass else "unchanged"],
 				engine.active_stage(), str(to_stage) if should_pass else str(from_stage))
 
+	# BB-D4 (0.7.0): the one exception to the matrix above, and it is gated
+	# on the result itself. An INTERIM result -- a round's own ending inside
+	# a loop that goes on -- may reopen its decision; a final result still
+	# may not, which the matrix already pinned.
+	_engine_ready(gs)
+	engine.open_chain(engine.KIND_BOOST_CAUGHT, _caught_spec())
+	gs.active_consequence["stage"] = engine.STAGE_RESULT
+	(gs.active_consequence["decision"] as Dictionary)["result"] = {"interim": true}
+	_expect_true("an interim result may reopen its decision",
+		bool((engine.advance_stage(engine.STAGE_DECISION) as Dictionary)["ok"]))
+	_expect_str("...and the stage moves", engine.active_stage(), engine.STAGE_DECISION)
+
 	# With nothing open there is nothing to advance.
 	_engine_ready(gs)
 	_expect_true("advancing with no chain is refused",
@@ -10344,7 +10356,7 @@ func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
 				gm.dispatch("stickup", {"target_id": target_id}))
 			if tier >= 2:
 				# The catastrophe lands on the first press — no fork exists.
-				gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+				_room_press(gm)
 			elif tier == 1:
 				# ENC-D1: catastrophic opens the caught decision too. Yield is
 				# the deterministic road to a booked outcome.
@@ -10378,7 +10390,7 @@ func _check_stick_arrest_gate(gs: Node, gm: Node, engine: RefCounted,
 				gs.day = day_take
 				_expect_true("tier %d room dispatches at high heat" % tier,
 					gm.dispatch("stickup", {"target_id": target_id}))
-				gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+				_room_press(gm)
 				gm.dispatch("resolve_consequence_choice", {"choice_id": "take_and_go"})
 				_expect_true("tier %d banked exit never books, even at heat 14" % tier,
 					not _stick_outcome_arrested(gs))
@@ -10407,8 +10419,27 @@ func _stick_outcome_arrested(gs: Node) -> bool:
 ## Walk an open room to its beaten-failure exit: the slipped first stage, then
 ## the failed run. The finder already proved both rolls land there.
 func _drive_room_to_failure(gm: Node) -> void:
-	gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+	_room_press(gm)
 	gm.dispatch("resolve_consequence_choice", {"choice_id": "run_with_it"})
+
+## BB-D4 (0.7.0): a stage that banks, a watch, and a slip all end in an
+## INTERIM result now -- a round's own ending the player reads before the
+## next stage is on the table -- and CONTINUE is what presents that next
+## stage. Every room drive in this file presses through this helper so the
+## interim is stepped over the way a player steps over it, and a press that
+## ended the room (a win, a catastrophe) is left exactly where it landed.
+func _room_press(gm: Node) -> void:
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+	_continue_if_interim(gm)
+
+func _continue_if_interim(gm: Node) -> void:
+	var state: Node = get_node("/root/GameState")
+	var chain: Dictionary = state.active_consequence
+	if chain.is_empty() or str(chain.get("stage", "")) != "result":
+		return
+	if bool(((chain.get("decision", {}) as Dictionary).get("result", {}) as Dictionary)
+			.get("interim", false)):
+		gm.dispatch("consequence_continue", {})
 
 ## The Cause sequence this section pins its lifts to.
 ##
@@ -12181,7 +12212,7 @@ func _check_retaliation_schedule(gs: Node, gm: Node, engine: RefCounted,
 	# proved every stage of this day presses clean — the all-clean won exit,
 	# which is the "clean" the 1.00 row answers.
 	for _stage in range(3):
-		gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+		_room_press(gm)
 	_expect_int("a guaranteed schedule queues one row", gs.consequence_queue.size(), 1)
 	var row: Dictionary = gs.consequence_queue[0]
 	_expect_str("the row names its actor", str(row["actor_id"]), "goodie")
@@ -12651,7 +12682,7 @@ func _check_retaliation_arrest_suppression(gs: Node, gm: Node,
 		gm.dispatch("stickup", {"target_id": "goodie_stash"}))
 	# The stash is a room: the catastrophe lands on the first press, and the
 	# schedule and the booking both land at the exit rather than the door.
-	gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+	_room_press(gm)
 	_expect_int("the robbery queued its retaliation", gs.consequence_queue.size(), 1)
 	_expect_true("and it also booked",
 		_stick_outcome_arrested(gs))
@@ -13168,6 +13199,15 @@ func _free_screen(screen: Node) -> void:
 		remove_child(screen)
 	screen.free()
 
+## Every Button's text under `node`, for the arms that ask what a stage offers.
+func _button_texts(node: Node) -> Array:
+	var buttons: Array = []
+	_collect_buttons(node, buttons)
+	var out: Array = []
+	for entry in buttons:
+		out.append(str((entry as Button).text))
+	return out
+
 func _collect_buttons(node: Node, out: Array) -> void:
 	var pressable := node as Button
 	if pressable != null:
@@ -13200,8 +13240,11 @@ func _check_consequence_scene(gs: Node, gm: Node, engine: RefCounted) -> void:
 	_expect_true("the decision stage's kicker is the kind's phrase", "CAUGHT" in labels)
 	_expect_true("the decision stage headlines who is in front of you", "CLERK" in labels)
 	_expect_true("the engine's own name never reaches the player", not "CONSEQUENCE" in labels)
+	# BB-D6 (0.7.0): a road is its button now -- the label rides the Button's
+	# own text, not a Label above it.
+	var offered: Array = _button_texts(screen)
 	_expect_true("the decision stage offers the four responses",
-		"FIGHT" in labels and "RUN" in labels and "TALK" in labels and "YIELD" in labels)
+		"FIGHT" in offered and "RUN" in offered and "TALK" in offered and "YIELD" in offered)
 	# The audit. The percentage rule is FS-003.11's and is unchanged; what
 	# moved is everything underneath it.
 	_expect_true("no rendered label shows a raw percentage", not joined.contains("%"))
@@ -13340,9 +13383,11 @@ func _check_consequence_scene(gs: Node, gm: Node, engine: RefCounted) -> void:
 		joined = "\n".join(labels)
 		_expect_true("the retaliation names the situation",
 			joined.contains("THEY WERE WAITING"))
+		var retaliation_offered: Array = _button_texts(screen)
 		_expect_true("it offers fight, run and yield",
-			"FIGHT" in labels and "RUN" in labels and "YIELD" in labels)
-		_expect_true("and offers no talk lane", not ("TALK" in labels))
+			"FIGHT" in retaliation_offered and "RUN" in retaliation_offered
+				and "YIELD" in retaliation_offered)
+		_expect_true("and offers no talk lane", not ("TALK" in retaliation_offered))
 		_expect_true("the retaliation stage shows no percentage", not joined.contains("%"))
 		_free_screen(screen)
 		gs.active_consequence = {}
@@ -13590,7 +13635,7 @@ func _check_ti003_scenarios(gs: Node, gm: Node, engine: RefCounted) -> void:
 		# clean — then hand the chain back, so the nights below can surface
 		# the answer into a slot that is actually free.
 		for _stage in range(3):
-			gm.dispatch("resolve_consequence_choice", {"choice_id": "press"})
+			_room_press(gm)
 		_expect_int("scenario: the hit queued a retaliation", gs.consequence_queue.size(), 1)
 		_expect_true("scenario: the room hands back",
 			gm.dispatch("consequence_continue", {}))
@@ -14552,7 +14597,7 @@ func _check_version_stamp(gs: Node) -> void:
 	if version == null:
 		_fail("version", "no Version autoload registered")
 		return
-	_expect_str("the build is stamped 0.6.0", str(version.VERSION), "0.6.0")
+	_expect_str("the build is stamped 0.7.0", str(version.VERSION), "0.7.0")
 
 	# Shape, not value: this half survives every future bump, so the convention
 	# README documents stays enforced rather than merely written down.
@@ -14561,9 +14606,9 @@ func _check_version_stamp(gs: Node) -> void:
 	for part in parts:
 		_expect_true("version part '%s' is numeric" % part, str(part).is_valid_int())
 	_expect_int("MAJOR reads back", version.major(), 0)
-	_expect_int("MINOR reads back", version.minor(), 6)
+	_expect_int("MINOR reads back", version.minor(), 7)
 	_expect_int("PATCH reads back", version.patch(), 0)
-	_expect_str("the display form prefixes a v", version.display(), "v0.6.0")
+	_expect_str("the display form prefixes a v", version.display(), "v0.7.0")
 
 	# The title screen renders it, from the singleton rather than from the
 	# scene's editor-time preview.
@@ -16145,14 +16190,24 @@ const ECON_CORRIDORS: Dictionary = {
 	# STK-D1 (0.3.0): measured at 5%, the same fix as `stickup` above reaching
 	# the same target pool.
 	"stickup_crew": {"floor": 2, "ceiling": 15},
-	"worker_wanders": {"floor": 220, "ceiling": 350},
+	# BB-D9 (0.7.0): the street shows up for a clean player now -- the wander
+	# gate's floor went from 0.03 to 0.10 with a cold streak cap of eight and
+	# a first encounter forced by the fourth walk -- and this is the profile
+	# built out of walks. Measured 217% on this build's own sweep (was 220-350
+	# before it); floor lowered to the measured number's own margin rather
+	# than the gate tuned back, on 0.5.0's arbitrage precedent: still well
+	# clear of the day job, materially riskier, which is the point.
+	"worker_wanders": {"floor": 200, "ceiling": 350},
 	"wanderer": {"floor": 0, "ceiling": 15},
 	"boost_finder": {"floor": 0, "ceiling": 20},
 	"newcomer": {"floor": 330, "ceiling": 520},
 	# D-1 (Batch 18 PR 4): 636% before this PR's upkeep, 409% after — the
 	# corridor is centred on the POST-D-1 number, which is the one this build
 	# ships. The old 636% is not a floor to defend; it was the bug.
-	"settler": {"floor": 300, "ceiling": 520},
+	# BB-D9 (0.7.0): same cause as `worker_wanders` -- this profile walks to
+	# find its corners and the street answers more often now. Measured 284%
+	# (was 300-520); floor lowered, disclosed, not tuned back.
+	"settler": {"floor": 270, "ceiling": 520},
 	# PR E: measured at 91% of the day job (5 Dre loans taken, 21 Book loans
 	# funded, averaged over the 4 seeds) — leverage roughly breaks even
 	# against steady work once Dre's cut and the arc's own time cost are
@@ -18389,9 +18444,23 @@ func _check_market_discovery(gs: Node, gm: Node) -> void:
 		gs.market_discovered = false
 		gs.activity_log = []
 		gs.wander_misses = SEEDED_MISSES
+		var jobs_before: int = gs.jobs_discovered.size()
+		var targets_before: int = gs.boost_targets_discovered.size()
 		if not gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ}):
 			continue
+		# BB-D9 (0.7.0): a walk the street interrupted is neither a find nor
+		# a miss -- the walk WAS the encounter. Answer it and try the next day.
+		if bool((gm.system("consequence") as Object).has_active()):
+			_close_gate_encounter(gs, gm)
+			continue
 		if not bool(gs.market_discovered):
+			# A READ walk draws from every pool: one that found a job or a
+			# target reset the ramp on ITS find, and is not the miss this
+			# assertion is about. Which day is the first clean miss moved
+			# when the gate got louder; the assertion never depended on it.
+			if gs.jobs_discovered.size() != jobs_before \
+					or gs.boost_targets_discovered.size() != targets_before:
+				continue
 			if not missed_market:
 				missed_market = true
 				_expect_int("a missed market walk climbs the same drought",
@@ -18490,9 +18559,17 @@ func _check_deal_discovery(gs: Node, gm: Node) -> void:
 		gs.boost_targets_discovered = []
 		gs.activity_log = []
 		gs.wander_misses = SEEDED_MISSES
+		var market_before: bool = bool(gs.market_discovered)
 		if not gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_DEAL}):
 			continue
+		if bool((gm.system("consequence") as Object).has_active()):
+			_close_gate_encounter(gs, gm)
+			continue
 		if gs.boost_targets_discovered.is_empty():
+			# The market roll fires on any intent (asserted below); a DEAL
+			# walk that found the corner reset the ramp on that find.
+			if bool(gs.market_discovered) != market_before:
+				continue
 			if not missed_on_deal:
 				missed_on_deal = true
 				_expect_int("a missed deal walk climbs the same drought",
@@ -19159,6 +19236,10 @@ func _check_unlock_announcements(gs: Node, gm: Node) -> void:
 	for _attempt in 20:
 		gs.activity_log = []
 		gm.dispatch("wander", {"intent": "read"})
+		# BB-D9 (0.7.0): the gate can open on any walk now, and a blocking
+		# chain would jam the retry. Answer it and walk again.
+		if bool((gm.system("consequence") as Object).has_active()):
+			_close_gate_encounter(gs, gm)
 		if access.is_unlocked("hustle.market"):
 			discovered_on_walk = true
 			break
@@ -19376,7 +19457,13 @@ func _check_door_to_work(gs: Node, gm: Node) -> void:
 	for day in range(1, 60):
 		gs.day = day
 		if not gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_WORK}):
+			# BB-D9 (0.7.0): a walk refused because the street is in front
+			# of you is answered, not skipped.
+			if bool((gm.system("consequence") as Object).has_active()):
+				_close_gate_encounter(gs, gm)
 			continue
+		if bool((gm.system("consequence") as Object).has_active()):
+			_close_gate_encounter(gs, gm)
 		if gs.jobs_discovered.size() > 5:
 			found = true
 			break
@@ -19897,7 +19984,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 13282
+const MIN_CHECKS := 13346
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -21944,13 +22031,17 @@ func _check_street_interruption_gate(gs: Node, gm: Node) -> void:
 ## cap: reading a value back out of the module under test would make this
 ## agree with whatever it says rather than with what was authored.
 func _check_gate_arithmetic() -> void:
+	# BB-D9 (0.7.0): the floor is a dime, not three cents, and a cold player
+	# has a cap of their own.
 	_expect_float("zero steps sits at the authored floor",
-		B10_EVENTS.gate_chance(0), 0.03)
+		B10_EVENTS.gate_chance(0), 0.10)
 	_expect_float("one step is a nickel above the floor",
-		B10_EVENTS.gate_chance(1), 0.08)
+		B10_EVENTS.gate_chance(1), 0.15)
 	_expect_float("the chance never exceeds its authored ceiling",
 		B10_EVENTS.gate_chance(999), 0.60)
-	_expect_int("zero steps carries no streak cap", B10_EVENTS.quiet_streak_cap(0), -1)
+	_expect_int("zero steps carries the cold cap", B10_EVENTS.quiet_streak_cap(0), 8)
+	_expect_int("and the first encounter is owed by the fourth walk",
+		B10_EVENTS.FIRST_ENCOUNTER_BY_WALK, 4)
 	_expect_int("one step is the widest cap", B10_EVENTS.quiet_streak_cap(1), 5)
 	_expect_int("three steps tightens it", B10_EVENTS.quiet_streak_cap(3), 3)
 	_expect_int("six steps is the tightest authored row",
@@ -21960,18 +22051,34 @@ func _check_gate_arithmetic() -> void:
 ## cards it happened to be — the FIRST authored choice always resolves
 ## something, and which tier it rolls into is not this helper's concern.
 func _close_gate_encounter(gs: Node, gm: Node) -> void:
-	var decision: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
-	var choices: Array = decision.get("allowed_choices", [])
-	if choices.is_empty():
-		return
-	gm.dispatch("resolve_consequence_choice", {"choice_id": str(choices[0])})
+	_drain_chain(gs, gm)
+
+## BB-D4 (0.7.0): answer whatever chain is open until it is gone -- the
+## guaranteed out where one is offered, so a room ends in one round rather
+## than escalating, and CONTINUE past every result including an interim one.
+## The 0.6.0 shape (first choice, one continue) left a room open mid-fight,
+## and every gate arm that counted `has_active()` after the NEXT dispatch was
+## counting the same open chain twice. Booking is left where it is: no gate
+## arm expects an arrest, and walking into one would hide the mistake.
+func _drain_chain(gs: Node, gm: Node) -> void:
 	var engine: Object = gm.system("consequence")
-	if engine != null and bool(engine.has_active()):
-		# A resolved choice lands the chain at STAGE_RESULT, not closed — the
-		# screen's own Continue button is `consequence_continue`, the action
-		# that actually clears `has_active()` and pays whatever slot the
-		# source still owes (ENC-D9).
-		gm.dispatch("consequence_continue", {})
+	var guard := 0
+	while engine != null and bool(engine.has_active()) and guard < 12:
+		guard += 1
+		var stage := str(engine.active_stage())
+		if stage == "decision":
+			var decision: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
+			var deterministic: Array = decision.get("deterministic_choices", [])
+			var choices: Array = decision.get("allowed_choices", [])
+			if choices.is_empty():
+				return
+			var pick := str(deterministic[0]) if not deterministic.is_empty() else str(choices[0])
+			if not gm.dispatch("resolve_consequence_choice", {"choice_id": pick}):
+				return
+		elif stage in ["result", "release"]:
+			gm.dispatch("consequence_continue", {})
+		else:
+			return
 
 ## STR-D2: below every authored threshold, the gate stays near-silent and the
 ## streak runs uncapped — early-game wandering keeps its current gentleness.
@@ -22004,10 +22111,51 @@ func _check_gate_cold_profile(gs: Node, gm: Node) -> void:
 		if bool((gm.system("consequence") as Object).has_active()):
 			opens += 1
 			_close_gate_encounter(gs, gm)
-	_expect_true("a cold profile's gate stays near-silent (%d/30 opened)" % opens,
-		opens <= 6)
-	_expect_true("and the streak was free to climb past every authored cap",
-		max_streak_seen > 5)
+	# BB-D9 (0.7.0): near-silent became "shows up". Four to nine of thirty,
+	# and the streak can no longer climb past the cold row's own cap.
+	_expect_true("a cold profile meets the street 4-9 times in 30 walks (%d/30 opened)" % opens,
+		opens >= 4 and opens <= 9)
+	_expect_true("and the streak never climbs past the cold cap (%d)" % max_streak_seen,
+		max_streak_seen <= 8)
+	gs.reset_to_new_game()
+
+	# The same band across six seeds, because one seed is one seed.
+	var seeds: Array = ["907hustle", "cold-a", "cold-b", "cold-c", "cold-d", "cold-e"]
+	var total_opens: int = 0
+	for seed_name in seeds:
+		gs.reset_to_new_game()
+		gs.run_seed = str(seed_name)
+		gs.current_district_id = "north_star_lot"
+		gs.cash = 2000
+		gs.inventory = {"weed": 5}
+		var seed_opens := 0
+		for _walk in range(30):
+			gm.dispatch("wander", {})
+			if bool((gm.system("consequence") as Object).has_active()):
+				seed_opens += 1
+				_close_gate_encounter(gs, gm)
+		_expect_true("seed %s: a cold profile opens 4-9 of 30 (%d)" % [str(seed_name), seed_opens],
+			seed_opens >= 4 and seed_opens <= 9)
+		total_opens += seed_opens
+	_expect_true("across six seeds the cold rate averages inside the band (%d/180)" % total_opens,
+		total_opens >= 24 and total_opens <= 54)
+	gs.reset_to_new_game()
+
+	# BB-D9: the first encounter of a run comes no later than the fourth walk.
+	for seed_name in seeds:
+		gs.reset_to_new_game()
+		gs.run_seed = str(seed_name)
+		gs.current_district_id = "north_star_lot"
+		gs.cash = 500
+		var first_walk := -1
+		for walk in range(1, 5):
+			gm.dispatch("wander", {})
+			if bool((gm.system("consequence") as Object).has_active()):
+				first_walk = walk
+				_close_gate_encounter(gs, gm)
+				break
+		_expect_true("seed %s: the street shows up by walk four (walk %d)" % [str(seed_name), first_walk],
+			first_walk >= 1 and first_walk <= 4)
 	gs.reset_to_new_game()
 
 ## STR-D2's actual guarantee: a player already loud enough to matter cannot
@@ -22275,8 +22423,12 @@ func _check_roster_shakedown_room(gs: Node, gm: Node) -> void:
 		var probe_key := "test:roster:shakedown:room_search:%d" % i
 		wander_sys._play_encounter(events.card_by_id("wander_shakedown"), probe_key)
 		gm.dispatch("resolve_consequence_choice", {"choice_id": "stand"})
+		# BB-D4 (0.7.0): an escalation is an INTERIM result now -- still
+		# active, at `result`, with the first beat pending behind CONTINUE.
 		var escalated: bool = bool((engine as Object).has_active()) \
-			and str(gs.active_consequence.get("stage", "")) == "decision"
+			and (str(gs.active_consequence.get("stage", "")) == "decision"
+				or bool(((gs.active_consequence.get("decision", {}) as Dictionary)
+					.get("result", {}) as Dictionary).get("interim", false)))
 		if not escalated and bool((engine as Object).has_active()):
 			gm.dispatch("consequence_continue", {})
 		gs.reset_to_new_game()
@@ -22301,6 +22453,14 @@ func _check_roster_shakedown_room(gs: Node, gm: Node) -> void:
 	var beats: Array = room["beats"]
 	wander_sys._play_encounter(card, messy_key)
 	gm.dispatch("resolve_consequence_choice", {"choice_id": "stand"})
+	# BB-D4 (0.7.0): the door's own round ends in an interim result first;
+	# CONTINUE is what puts the first beat on the table.
+	_expect_str("a non-clean STAND ends the door's round in a result",
+		str(gs.active_consequence.get("stage", "")), "result")
+	_expect_true("...and it is an interim one",
+		bool(((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("result", {}) as Dictionary).get("interim", false)))
+	_continue_if_interim(gm)
 	var decision: Dictionary = gs.active_consequence.get("decision", {})
 	var loop: Dictionary = decision.get("loop", {})
 	_expect_true("a non-clean STAND opens the room", not loop.is_empty())
@@ -22371,6 +22531,7 @@ func _check_roster_shakedown_room(gs: Node, gm: Node) -> void:
 	wander_sys._play_encounter(events.card_by_id("wander_shakedown"),
 		"test:roster:shakedown:cap")
 	gm.dispatch("resolve_consequence_choice", {"choice_id": "stand"})
+	_continue_if_interim(gm)
 	var rigged_loop: Dictionary = (gs.active_consequence.get("decision", {}) as Dictionary) \
 		.get("loop", {})
 	if not rigged_loop.is_empty():
@@ -22406,12 +22567,15 @@ func _check_roster_stopped_on_foot(gs: Node, gm: Node) -> void:
 	# It is part of the card, not a conditional extra, so it is here whether
 	# or not anything is being carried — that is the whole point of a
 	# structural surrender road.
-	_expect_str("empty-handed, the stop is the triad and nothing else",
+	# BB-D8 (0.7.0): the stop carries a priced road now -- SLIP HIM SOMETHING
+	# -- authored on the card, so it is here empty-handed too.
+	_expect_str("empty-handed, the stop is the triad plus its price and nothing else",
 		str((gs.active_consequence.get("decision", {}) as Dictionary)
-			.get("allowed_choices", [])), str(["talk", "keep_walking", "hands_out"]))
-	_expect_true("and HANDS OUT is the deterministic one of the three",
+			.get("allowed_choices", [])),
+		str(["talk", "keep_walking", "slip_him_something", "hands_out"]))
+	_expect_true("and the price and HANDS OUT are the deterministic two of the four",
 		(gs.active_consequence.get("decision", {}) as Dictionary)
-			.get("deterministic_choices", []) == ["hands_out"])
+			.get("deterministic_choices", []) == ["slip_him_something", "hands_out"])
 	gm.dispatch("resolve_consequence_choice", {"choice_id": "talk"})
 	gm.dispatch("consequence_continue", {})
 
@@ -22423,8 +22587,8 @@ func _check_roster_stopped_on_foot(gs: Node, gm: Node) -> void:
 		"test:roster:stop:carrying")
 	var choices: Array = (gs.active_consequence.get("decision", {}) as Dictionary) \
 		.get("allowed_choices", [])
-	_expect_true("carrying product adds STASH IT beyond the triad",
-		"stash_it" in choices and choices.size() == 4)
+	_expect_true("carrying product adds STASH IT beyond the authored four",
+		"stash_it" in choices and choices.size() == 5)
 	var inputs: Dictionary = (gs.active_consequence.get("decision", {}) as Dictionary) \
 		.get("resolver_inputs", {})
 	_expect_str("STASH IT rolls its own attribute, not the stop's",
@@ -22642,7 +22806,10 @@ func _check_roster_every_road(gs: Node, gm: Node) -> void:
 
 			var decision: Dictionary = gs.active_consequence.get("decision", {})
 			var tier := str(decision.get("resolved_tier", ""))
-			var escalated: bool = str(gs.active_consequence.get("stage", "")) == "decision"
+			# BB-D4 (0.7.0): an escalating road ends its round in an INTERIM
+			# result rather than landing straight on the next decision.
+			var escalated: bool = str(gs.active_consequence.get("stage", "")) == "decision" \
+				or bool((decision.get("result", {}) as Dictionary).get("interim", false))
 			if escalated:
 				# The road opened a room instead of resolving. The room has its
 				# own arms; what this one asserts is that an escalating road
@@ -22822,8 +22989,18 @@ func _check_gate_rate_independent_of_pool(gs: Node, gm: Node) -> void:
 		gs.wander_count = walk
 		if not (wander_sys._roll_gate() as Dictionary).is_empty():
 			cold_opens += 1
-	_expect_true("a cold profile stays near-silent with the roster tripled "
-		+ "(%d/30 opened)" % cold_opens, cold_opens <= 6)
+	# BB-D9 (0.7.0): the floor moved on purpose -- "near-silent" became
+	# "shows up" -- and the band is the same one `_check_gate_cold_profile`
+	# holds the driven walk to. What this arm still proves is that the POOL's
+	# size did not move the rate: the gate reads two inputs and the roster is
+	# not one of them.
+	# This arm rolls thirty gates on ONE day and slot with only the walk
+	# counter varying, which is a narrower draw than the six-seed driven walk
+	# `_check_gate_cold_profile` holds to 4-9; its floor is the forced opens
+	# alone (the first-walk guarantee plus two cold-cap forces in thirty),
+	# which is three, and that is what it asserts.
+	_expect_true("a cold profile meets the street 3-9 times in 30 with the roster tripled "
+		+ "(%d/30 opened)" % cold_opens, cold_opens >= 3 and cold_opens <= 9)
 
 	# The one thing the pool DOES decide is whether the gate can open at all --
 	# and the honest finding is that in shipped content it never blocks:
@@ -22888,14 +23065,13 @@ func _checkpoint_other_district(gs: Node) -> String:
 ## `_close_gate_encounter`, against `travel`'s own chain rather than
 ## Wander's.
 func _close_checkpoint(gs: Node, gm: Node) -> void:
-	var decision: Dictionary = (gs.active_consequence as Dictionary).get("decision", {})
-	var choices: Array = decision.get("allowed_choices", [])
-	if choices.is_empty():
-		return
-	gm.dispatch("resolve_consequence_choice", {"choice_id": str(choices[0])})
-	var engine: Object = gm.system("consequence")
-	if engine != null and bool(engine.has_active()):
-		gm.dispatch("consequence_continue", {})
+	_drain_chain(gs, gm)
+
+## Whether the chain on the board is the one an arm is counting. A day-cross
+## inside a gate loop can open a doorstep visit instead, and a refused travel
+## or wander dispatch leaves THAT chain active for `has_active()` to see.
+func _active_kind_is(gs: Node, kind: String) -> bool:
+	return str((gs.active_consequence as Dictionary).get("chain_kind", "")) == kind
 
 ## Cold-player protection: a clean, paid-up player crossing districts stays
 ## near-silent, the same bar STR-D2 sets for a wander.
@@ -22906,7 +23082,8 @@ func _check_checkpoint_cold_profile(gs: Node, gm: Node) -> void:
 	for _trip in range(30):
 		gm.dispatch("travel", {"district_id": _checkpoint_other_district(gs)})
 		if bool((engine as Object).has_active()):
-			opens += 1
+			if _active_kind_is(gs, "travel_stop"):
+				opens += 1
 			_close_checkpoint(gs, gm)
 	_expect_true("a cold profile's checkpoint stays near-silent (%d/30 crossings)" % opens,
 		opens <= 6)
@@ -22931,10 +23108,22 @@ func _check_checkpoint_hot_profile(gs: Node, gm: Node) -> void:
 			"cause:checkpoint_test:hot:b:%d" % i)
 		gm.dispatch("travel", {"district_id": _checkpoint_other_district(gs)})
 		if bool((engine as Object).has_active()):
-			opens += 1
+			if _active_kind_is(gs, "travel_stop"):
+				opens += 1
 			_close_checkpoint(gs, gm)
+	# The gate this profile rolls against, re-derived from its own inputs:
+	# the checkpoint keeps its 0.03 floor (BB-D9) and climbs a nickel a step,
+	# and a profile pinned this hot sits near the ceiling of the curve.
+	var hot_steps: int = int((gm.system("wander") as Object).attention_steps())
+	var travel_events: RefCounted = preload("res://data/travel_events.gd").new()
+	_expect_true("a maximally hot profile's checkpoint chance reads near the ceiling",
+		B10_EVENTS.gate_chance_from(travel_events.CHECKPOINT_BASE_CHANCE, hot_steps) >= 0.45)
+	# Five of twenty is the statistical floor at that chance (under one in
+	# three hundred to miss it). The old bar of eight was met by counting
+	# doorstep visits a day-cross opened as if they were checkpoints -- the
+	# count is by kind now, and the bar is what the gate actually promises.
 	_expect_true("a maximally hot, indebted profile's checkpoint fires often (%d/20 crossings)" % opens,
-		opens >= 8)
+		opens >= 5)
 	gs.reset_to_new_game()
 
 ## Determinism under reload, the same release-blocker property PR A's own
@@ -23474,6 +23663,11 @@ func _check_wander_intents(gs: Node, gm: Node) -> void:
 		gs.time_slots_today = 0
 		gs.wanders_today = 0
 		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_READ})
+		# BB-D9 (0.7.0): the street shows up inside the first day now, and a
+		# walk that opened an encounter found no work. Answer it and keep
+		# walking, the way a player does.
+		if bool((gm.system("consequence") as Object).has_active()):
+			_close_gate_encounter(gs, gm)
 		if (sys.undiscovered() as Array).size() < 2:
 			found_reading = true
 	_expect_true("a walk that names no intent in particular can still find work",
@@ -23498,6 +23692,9 @@ func _check_wander_intents(gs: Node, gm: Node) -> void:
 		gs.time_slots_today = 0
 		gs.wanders_today = 0
 		gm.dispatch("wander", {"intent": B10_EVENTS.INTENT_WORK})
+		# BB-D9 (0.7.0): answer the street when it shows up, and walk on.
+		if bool((gm.system("consequence") as Object).has_active()):
+			_close_gate_encounter(gs, gm)
 		if (sys.undiscovered() as Array).size() < 2:
 			found_working = true
 	_expect_true("and a walk that did find work, does", found_working)

@@ -2052,6 +2052,75 @@ with shipped code).
 
 ---
 
+## D-25 — Blow by Blow: the hit lands, the words fit, the street shows up
+
+**Decided** 2026-09-03 · **Ships in** 0.7.0, five PRs (`#127` the words fit,
+`#128` the hit lands, the panel, the street shows up, the close-out) ·
+**Source:** `BUILD_BLOW_BY_BLOW_PROMPT.md`, the owner's Full Game Vision
+document, ClickUp `86bbnk6en`
+
+### The question
+
+After 0.6.0 the confrontation chassis was complete and the owner's playtest
+verdict was that the popups were still not the fun part. A live probe walked
+a shakedown to its end and found six things, every one of them verified at a
+line: every street result fell through to the boost-caught copy ("The take
+is gone and the room remembers your face" after a fistfight with no take);
+the card's opening line went to a feed the sheet was covering; beat damage
+was a deferred bill paid at the exit so the bar sat still for three rounds;
+there was no result between rounds at all; the strip printed BANKED $0 on a
+fight; and the surrender road promised "everything you are carrying" on a
+profile whose cash the seizure rule could not reach. A seventh was frequency:
+a clean player met the street 2.83 times in 30 walks, at one walk per daily
+slot.
+
+### The ruling
+
+| ID | Ruling |
+|---|---|
+| BB-D1 | **Every chain kind owns its result copy.** The engine gains `result_headline`/`result_body` on the adapter-copy seam (`_adapter_copy`'s pattern), asked first; the sheet's own arms are fallbacks and the boost-caught rungs are reachable only by a boost chain. Every adapter that opens a chain authors its endings: the twelve wander cards road by road and tier by tier (`RESULT_COPY`), the shakedown room's own roads, crew calls, the checkpoint, the doorstep's three families, Dre's collection and ultimatum, both corner scripts, the meetup, and the stickup rooms reading their own tables through the seam. The confrontation suite renders every road and refuses the fallback strings on any non-boost chain. |
+| BB-D2 | **The card's line is the situation, and the opponent is the title.** `_play_encounter` writes the card's `line` into the chain as `source.opener`; `situation_body` renders it at round zero, a live beat still outranks it. The kind's phrase (SOMEBODY STOPS YOU, CAUGHT, CHECKPOINT) moves to the kicker; "CONSEQUENCE", the engine's name for itself, no longer renders anywhere. The context line never repeats the headline. |
+| BB-D3 | **The hit lands at the beat.** A beat's `banked` health is applied when that beat escalates, through `apply_effects`, under a `room_beat:<index>` receipt; `banked_health` is the record of what landed, not a bill. Exit tables no longer add it back, so every path's total is what it was in 0.6.0 — proven by a driven walk in the suite. Stickup rooms are unchanged (their stages bank money, which already moved per stage). |
+| BB-D4 | **A round has a result.** `ConfrontationLoop.present_interim` writes a `STAGE_RESULT` carrying `interim: true`, an `interim_kind`, the round's deltas and `loop.pending`; `_continue` hands an interim chain to the adapter's `present_next_round` instead of clearing it, receipted per round (`<kind>:interim_continue:round:<n>`), and only then clears the result. `STAGE_TRANSITIONS` gains `result -> decision`, and `advance_stage` refuses it for any result that is not interim. Wander, stickup, doorstep, corner and meetup rooms all step through the one seam and author their own interim copy. |
+| BB-D5 | **The strip prints money only when it is money.** `loop_summary` derives `banks_cash` (a `take_total`, or banked above zero); the sheet prints BANKED only then. The count of people leads the strip. |
+| BB-D6 | **The panel.** A road is a button and the line under it — label on the button, what it is for beneath, the guaranteed price or arrest warning beneath that. The guaranteed road takes the quieter tone. No section label over the roads. The sheet is 58% of the viewport, the scrollbar track is hidden (it wrapped a guarantee line and pushed a fourth road under the fold on the live build while the headless measurement said it fit), and the smoke suite reads the numbers on every authored card: at least 35% of the viewport uncovered above the card, every AUTHORED road's button inside the visible scroll rect. A road the situation adds on top — STASH IT while carrying, a crew call while somebody is around — is offered after the authored ones and may sit a drag away; five roads with a line under each do not fit above 35% of street, and the authored roads are what the player is owed at a glance. Road buttons keep the 44px minimum (PX-003 §16). |
+| BB-D7 | **Honest prices.** A wander guarantee line is the authored line plus a computed clause: the dirty cash and carried product the seizure rule can actually reach, read the same way `lose_cargo` will read them ("Right now that is $160 in hand and 3 units of product"; "nothing" when there is nothing). The dirty-only seizure rule is untouched. |
+| BB-D8 | **PAY as a fourth road, where money is the point.** `ROLE_PAY` is optional per card, deterministic (a price is not a roll), never the guaranteed out, blocked through `choice_blocked` when the wallet cannot cover it in either bucket, spent through `WalletSystem` dirty-first, receipted, and observed. Four cards carry it: the shakedown (PAY THEM, $60, door only), the on-foot stop (SLIP HIM SOMETHING, $80 plus Heat — a cop who takes money remembers who paid), the lot (PAY THEM OFF, $30), the territorial beef (SETTLE IT HERE, $50, into Curtis's ledger as a tax paid). Curtis's own PAY IT stays the tax card's surrender road: it is both, and the triad is the rule. |
+| BB-D9 | **The street shows up for a clean player.** `GATE_BASE_CHANCE` 0.03 → 0.10; `QUIET_STREAK_CAPS` gains a cold row (`min_steps 0, cap 8`) so a clean player's streak is bounded for the first time; a run's first encounter is forced open no later than its fourth walk (`FIRST_ENCOUNTER_BY_WALK`, read in `_roll_gate` off `wander_count` and the quiet streak, nothing persisted). Nothing else about the gate moved — and the CHECKPOINT keeps the old floor: `travel_events.gd::CHECKPOINT_BASE_CHANCE` stays at 0.03 through `gate_chance_from`, because a district crossing is not a walk, and the first parity run with a shared floor cut `arbitrage` from 158% of the day job to 47%. Measured band: a cold profile opens 4–9 of 30 walks, asserted per seed across six seeds and on the untouched hot profile's own guarantee. The economy profiles that walk pay for the louder street and their corridors move to the measured numbers on 0.5.0's own precedent, disclosed in the corridor table rather than tuned back. |
+| VOX-D1 | **Menace as business — the *Power* register**, carried forward and applied to roughly two hundred new lines. A result line is what happened; it never prints a tier name, a percentage, or the engine's vocabulary. |
+| MEAS-D1 | **Measured, never vibed**, carried forward: every PR body carries its suite deltas, the panel's uncovered fraction and rect fits, the cold rate per seed. |
+| VER-D1 | **Version → `0.7.0`, MINOR.** Interim results and the priced road are new player-facing behaviour; the gate floor rides alongside. `export_presets.cfg`'s `version/name`, which 0.6.0 left at `0.5.0`, moves with it. |
+
+### Real bugs caught
+
+1. **The parity floor was a document, not a constant.** `HANDOFF.md` and the
+   0.6.0 changelog both said the floor was 13,281; `parity_runner.gd` said
+   12,836, and a fresh run on `main` counted 13,281. The constant had never
+   been raised. Raised to the real count in PR A, per the standing rule that
+   the constant is right and the row is not — which this time was backwards.
+2. **The guard refused its own path.** BB-D4's `advance_stage` guard reads
+   `result.interim`; the first cut of `_continue` cleared the result before
+   advancing, so every interim continue was refused with "A finished round
+   does not reopen." Found by parity's room drives, not by the confrontation
+   suite, which had been run before the guard was added. Advance first, then
+   clear.
+3. **Headless said it fit; the phone said it did not.** The smoke suite's new
+   panel arm measured every road inside the visible scroll rect at 58% of
+   the viewport. The live build showed the fourth road of the police stop
+   twenty pixels under the fold: a visible scrollbar track ate twelve pixels
+   of width, wrapped the guarantee line onto a third row, and the extra row
+   was the difference. A live `get_global_rect()` read caught it; the fix is
+   `SCROLL_MODE_SHOW_NEVER` on a sheet that scrolls by drag anyway.
+4. **The door's interim said IN YOUR WAY 0.** The room's `left` was seeded at
+   zero until the first beat presented; the door's interim result rendered
+   before that. Seeded from the first beat's own count.
+5. **A stray `ui/screens/opening.tscn`** — untracked, referencing a script
+   deleted in 0.1.2 — kept reappearing in the working tree and failed the
+   smoke suite locally on baseline. Not in the repository, not in CI; moved
+   aside each time it returned. Whatever is regenerating it is outside this
+   build's remit and is named here so the next session does not diagnose it
+   again.
+
 ## Escalations open as of Batch 18 PR 0
 
 Two items filed as defects turned out to be design rulings. Neither was guessed

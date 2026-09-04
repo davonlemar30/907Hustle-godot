@@ -77,7 +77,7 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## range, plus the two things that deliberately survive (the arrest warning and
 ## the guaranteed road's price) and the proof that the ENGINE still projects
 ## odds it no longer shows.
-const MIN_CHECKS := 2756
+const MIN_CHECKS := 2994
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -114,6 +114,8 @@ func _ready() -> void:
 	_check_meetup()
 	_check_no_odds_hints()
 	_check_result_voice()
+	_check_interim_results()
+	_check_pay_roads()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -187,6 +189,16 @@ func _engine() -> Object:
 
 func _commit(choice_id: String) -> bool:
 	return gm.dispatch("resolve_consequence_choice", {"choice_id": choice_id})
+
+## BB-D4 (0.7.0): step over an interim result the way a player does -- by
+## pressing CONTINUE -- and say whether there was one. A commit that ended the
+## room is left where it landed.
+func _continue_interim() -> bool:
+	if str(_engine().active_stage()) != "result":
+		return false
+	if not LOOP.is_interim(gs.active_consequence):
+		return false
+	return gm.dispatch("consequence_continue", {})
 
 ## Continue past a settled room without letting the retaliation the exit just
 ## scheduled surface into the next check's assertions — the queue is cleared
@@ -343,6 +355,15 @@ func _check_full_win_t2() -> void:
 		int(loop.get("take_total", 0)), expected_take)
 
 	a.check("stage 1 press commits", _commit("press"))
+	# BB-D4: the banked stage is a result the player reads first.
+	a.eq_str("a banked stage ends its round at result", str(_engine().active_stage()), "result")
+	a.eq_bool("...and the result is interim", LOOP.is_interim(gs.active_consequence), true)
+	a.eq_str("...headlined as banked",
+		str(_engine().result_headline("")), str(SCRIPTS.STICK_INTERIM_HEADLINES["banked"]))
+	a.check("...with the bank line as its body",
+		str(_engine().result_body("")).contains("banked"))
+	a.check("continue presents the next stage", _continue_interim())
+	a.eq_str("...at decision", str(_engine().active_stage()), "decision")
 	loop = LOOP.loop_of(gs.active_consequence)
 	a.eq_int("first commit starts the attempt", gs.stick_attempts, 1)
 	a.eq_int("first commit spends the daily cap", gs.stick_daily_count, 1)
@@ -392,6 +413,7 @@ func _check_take_and_go() -> void:
 	var heat_before: float = gs.heat
 	gm.dispatch("stickup", {"target_id": T2_TARGET})
 	_commit("press")
+	_continue_interim()
 	var loop: Dictionary = LOOP.loop_of(gs.active_consequence)
 	var banked: int = int(loop.get("banked", 0))
 	var take: int = int(loop.get("take_total", 1))
@@ -421,6 +443,12 @@ func _check_fork_and_drop() -> void:
 	var heat_before: float = gs.heat
 	gm.dispatch("stickup", {"target_id": T2_TARGET})
 	_commit("press")
+	# BB-D4: the slip is a result before the fork is on the table.
+	a.eq_bool("a slipped stage ends its round in an interim result",
+		LOOP.is_interim(gs.active_consequence), true)
+	a.eq_str("...headlined as the slip",
+		str(_engine().result_headline("")), str(SCRIPTS.STICK_INTERIM_HEADLINES["slipped"]))
+	a.check("continue presents the fork", _continue_interim())
 
 	var decision: Dictionary = gs.active_consequence["decision"]
 	var loop: Dictionary = LOOP.loop_of(gs.active_consequence)
@@ -501,6 +529,9 @@ func _check_watch_and_talk() -> void:
 	a.check("watch is on offer before the last stage",
 		"watch" in ((gs.active_consequence["decision"] as Dictionary)["allowed_choices"] as Array))
 	_commit("watch")
+	a.eq_str("watching ends its round at an interim result",
+		str(_engine().result_headline("")), str(SCRIPTS.STICK_INTERIM_HEADLINES["watched"]))
+	_continue_interim()
 	loop = LOOP.loop_of(gs.active_consequence)
 	a.eq_int("watch advances the stage", int(loop.get("stage", -1)), 1)
 	a.eq_int("watch banks nothing", int(loop.get("banked", -1)), 0)
@@ -531,6 +562,7 @@ func _check_reload_shape() -> void:
 	gs.day = day
 	gm.dispatch("stickup", {"target_id": T2_TARGET})
 	_commit("press")
+	_continue_interim()
 
 	# Round-trip the chain through the validator the way a load would: the
 	# loop's own keys are not in the validator's coercion list, and the
@@ -1434,6 +1466,7 @@ func _check_crew_calls() -> void:
 	wander._play_encounter(EVENTS.card_by_id("wander_shakedown"), "test:crew:room")
 	var chain: Dictionary = gs.active_consequence
 	wander._open_shakedown_room(chain, "stand")
+	_continue_interim()
 	var room_choices: Array = (gs.active_consequence.get("decision", {}) as Dictionary) \
 		.get("allowed_choices", [])
 	a.eq_bool("a call is offered inside the room too",
@@ -1904,7 +1937,9 @@ func _check_corner_push_ledger() -> void:
 			gm.dispatch("resolve_consequence_choice", {
 				"consequence_id": str(probe.get("consequence_id", "")),
 				"cause_id": str(probe.get("cause_id", "")), "choice_id": choice_id})
-			if engine.has_active() and str(engine.active_stage()) == "result":
+			# BB-D4: an interim result is beat two waiting, not a resolution.
+			if engine.has_active() and str(engine.active_stage()) == "result" \
+					and not LOOP.is_interim(gs.active_consequence):
 				resolved = true
 				break
 			# Otherwise it escalated to beat two; clear and try the next day.
@@ -2060,9 +2095,15 @@ func _check_meetup_roads() -> void:
 			list._try_open_meetup_scene(held, item, "catastrophic", payout, false), true)
 
 		var rounds := 0
-		while engine.has_active() and str(engine.active_stage()) == "decision" \
-				and rounds < 4:
+		while engine.has_active() and rounds < 6 \
+				and (str(engine.active_stage()) == "decision"
+					or LOOP.is_interim(gs.active_consequence)):
 			rounds += 1
+			# BB-D4: a burned first beat ends in an interim result; CONTINUE
+			# is what puts the second beat on the table.
+			if LOOP.is_interim(gs.active_consequence):
+				_continue_interim()
+				continue
 			var summary: Dictionary = engine.active_summary()
 			var offered: Array = (gs.active_consequence.get("decision", {}) as Dictionary) \
 				.get("allowed_choices", [])
@@ -2293,6 +2334,12 @@ func _check_result_voice() -> void:
 		var room: Dictionary = spec.get("room", {})
 		if not room.is_empty():
 			wander._open_shakedown_room(gs.active_consequence, "stand")
+			# BB-D4: the door's escalation is an interim result with its own
+			# words; the room's own roads read after CONTINUE.
+			_assert_voiced("%s door/escalate" % card_id,
+				str(wander.result_headline("stand", "messy", {"interim": true})),
+				str(wander.result_body("stand", "messy", {"interim": true})))
+			_continue_interim()
 			for beat in (room.get("beats", []) as Array):
 				var beat_effects: Dictionary = (beat as Dictionary).get("effects", {})
 				for choice_id in beat_effects.keys():
@@ -2437,3 +2484,301 @@ func _check_result_voice() -> void:
 			str(SCRIPTS.STICK_RESULT_HEADLINES[resolution]))
 
 const TRAVEL_EVENTS_CONST := preload("res://data/travel_events.gd")
+
+# --- check block 20: BB-D3/D4, the hit lands (0.7.0 PR B) --------------------
+#
+# Two things the live probe found: beat damage was a deferred bill paid at the
+# exit, so the bar sat still through three rounds; and an escalating round
+# handed the player the next decision with nothing in between. Every round now
+# ends in a result -- interim when the loop goes on -- and the beat's damage
+# lands when the beat resolves, under its own receipt.
+
+func _check_interim_results() -> void:
+	var wander: Object = gm.system("wander")
+	var engine: Object = _engine()
+	var card: Dictionary = EVENTS.card_by_id("wander_shakedown")
+	var beats: Array = (card["encounter"] as Dictionary)["room"]["beats"]
+
+	# --- the door's escalation is an interim result, and CONTINUE is the only
+	# way past it -------------------------------------------------------------
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.inventory = {"weed": 6}
+	wander._play_encounter(card, "test:interim:door")
+	var cause_id := str(gs.active_consequence.get("cause_id", ""))
+	# The engine stamps the committed choice on a real commit; this arm opens
+	# the room by hand, so it stamps it the same way first.
+	(gs.active_consequence["decision"] as Dictionary)["committed_choice"] = "stand"
+	wander._open_shakedown_room(gs.active_consequence, "stand", "failure")
+	a.eq_str("the door's escalation lands at result", str(engine.active_stage()), "result")
+	a.eq_bool("...as an interim result", LOOP.is_interim(gs.active_consequence), true)
+	a.eq_str("...headlined in the card's own words",
+		str(engine.result_headline("")), "IT DOES NOT END THERE")
+	a.eq_int("...with the first beat noted as pending",
+		int(LOOP.loop_of(gs.active_consequence).get("pending", -1)), 0)
+	a.eq_bool("a commit is refused at an interim result",
+		_commit("swing"), false)
+	# The sheet renders it like any result: one CONTINUE, no BANKED.
+	var built: Control = ENCOUNTER_SHEET.build_sheet(engine, gs, Callable())
+	a.check("the interim result builds a sheet", built != null)
+	if built != null:
+		var text: Array = _sheet_text(built)
+		a.check("...carrying its headline", "IT DOES NOT END THERE" in text)
+		a.check("...and a CONTINUE", "CONTINUE" in text)
+		for line in text:
+			a.check("...and no BANKED on a street room", not str(line).contains("BANKED"))
+		built.free()
+	# The validator round-trip: an interim result survives a reload intact.
+	var validator: RefCounted = preload("res://autoload/save_validator.gd").new()
+	var verdict: Dictionary = validator.validate_state(
+		{"active_consequence": gs.active_consequence.duplicate(true)})
+	var validated: Dictionary = (verdict.get("state", {}) as Dictionary).get("active_consequence", {})
+	a.eq_bool("an interim result survives validation",
+		LOOP.is_interim(validated), true)
+	a.eq_int("...and so does the pending beat",
+		int(LOOP.loop_of(validated).get("pending", -1)), 0)
+
+	a.check("continue presents the first beat", _continue_interim())
+	a.eq_str("...at decision", str(engine.active_stage()), "decision")
+	var decision: Dictionary = gs.active_consequence["decision"]
+	a.eq_str("...on the first beat's own copy",
+		str(LOOP.loop_of(gs.active_consequence).get("beat", "")),
+		str((beats[0] as Dictionary)["beat"]))
+	a.eq_str("...offering the first beat's own roads",
+		str(decision.get("allowed_choices", [])), str((beats[0] as Dictionary)["choices"]))
+	a.eq_int("...as a new round", int(decision.get("round", -1)), 1)
+	a.check("...with the previous result cleared",
+		(decision.get("result", {}) as Dictionary).is_empty())
+	a.eq_bool("the continue is receipted per round",
+		engine.has_receipt(cause_id, "wander_encounter:interim_continue:round:0"), true)
+	a.eq_bool("a second continue at decision is refused",
+		gm.dispatch("consequence_continue", {}), false)
+	gs.active_consequence = {}
+
+	# --- the hit lands at the beat, once, and the room's totals hold --------
+	#
+	# Driven for real: scan days until SWING on beat 0 escalates, then read
+	# health after every step. What is asserted is the accounting -- the beat's
+	# own `banked` lands when the beat escalates, is receipted, and the exit
+	# never adds it back.
+	var found_escalation := false
+	for day in range(1, 120):
+		_reset_probe()
+		gs.day = day
+		gs.active_consequence = {}
+		gs.inventory = {"weed": 6}
+		gs.health = 100
+		wander._play_encounter(card, "test:interim:beat:%d" % day)
+		var this_cause := str(gs.active_consequence.get("cause_id", ""))
+		wander._open_shakedown_room(gs.active_consequence, "stand", "messy")
+		_continue_interim()
+		var before: int = int(gs.health)
+		_commit("swing")
+		if not LOOP.is_interim(gs.active_consequence):
+			gs.active_consequence = {}
+			continue
+		found_escalation = true
+		var beat_damage: int = int((beats[0] as Dictionary).get("banked", 0))
+		a.eq_int("beat 0's damage lands when beat 0 escalates",
+			before - int(gs.health), beat_damage)
+		a.eq_int("...and the interim result reports it",
+			int(((gs.active_consequence["decision"] as Dictionary)["result"] as Dictionary)
+				.get("health", 0)), -beat_damage)
+		a.eq_bool("...under the beat's own receipt",
+			engine.has_receipt(this_cause, "room_beat:0"), true)
+		a.eq_int("...and the loop records what landed",
+			int(LOOP.loop_of(gs.active_consequence).get("banked_health", -1)), beat_damage)
+		# A reload replayed onto the same round cannot land it twice: the
+		# receipt is claimed, so a second pass applies nothing.
+		var health_at_interim: int = int(gs.health)
+		wander._room_round(gs.active_consequence, "swing")
+		a.eq_int("a replayed round never lands the same beat twice",
+			int(gs.health), health_at_interim)
+		# Walk it to the end and hold the total to the authored sum.
+		var landed_total: int = 100 - int(gs.health)
+		var guard := 0
+		while engine.has_active() and guard < 8:
+			guard += 1
+			if LOOP.is_interim(gs.active_consequence):
+				_continue_interim()
+				continue
+			if str(engine.active_stage()) == "decision":
+				var index: int = int(LOOP.loop_of(gs.active_consequence).get("beat_index", 0))
+				var roads: Array = (gs.active_consequence["decision"] as Dictionary)["allowed_choices"]
+				var road := "swing" if "swing" in roads else str(roads[0])
+				var h_before: int = int(gs.health)
+				_commit(road)
+				var res: Dictionary = (gs.active_consequence["decision"] as Dictionary).get("result", {})
+				if LOOP.is_interim(gs.active_consequence):
+					a.eq_int("beat %d's damage is exactly its authored number" % index,
+						h_before - int(gs.health), int((beats[index] as Dictionary).get("banked", 0)))
+				else:
+					var tier := str((gs.active_consequence["decision"] as Dictionary).get("resolved_tier", ""))
+					var exit_row: Dictionary = (((beats[index] as Dictionary).get("effects", {}) as Dictionary)
+						.get(road, {}) as Dictionary).get(tier, {})
+					var expected_exit: int = int(exit_row.get("health", 4 if exit_row.is_empty() else 0))
+					a.eq_int("the exit charges only its own row, never the beats again",
+						h_before - int(gs.health), expected_exit)
+					a.eq_int("...and the result says so", int(res.get("health", 0)), -expected_exit)
+				continue
+			break
+		gs.active_consequence = {}
+		break
+	a.check("a swing that escalates was found inside the scan window", found_escalation)
+	gs.active_consequence = {}
+
+	# --- the doorstep, the corner and the meetup step through the same seam --
+	var doorstep: Object = gm.system("doorstep")
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.dre_account = {"status": "overdue", "principal": 200, "due_day": 1}
+	gs.debt = 200
+	doorstep._open_enforcement("dre", {"family": "dre", "stage": 2})
+	var door_loop: Dictionary = LOOP.loop_of(gs.active_consequence)
+	LOOP.present_interim(engine, gs, gs.active_consequence, door_loop, "fight", "messy",
+		"escalate", {}, 2)
+	a.eq_str("the enforcement room's interim reads its family's own line",
+		str(engine.result_headline("")), "NOBODY BACKS OFF")
+	a.check("continue presents the enforcement room's next round", _continue_interim())
+	a.eq_int("...as round two", int(LOOP.loop_of(gs.active_consequence).get("round", -1)), 2)
+	a.eq_int("...with one round left", int(LOOP.loop_of(gs.active_consequence).get("left", -1)),
+		int(doorstep.ROOM_ROUND_CAP) - 2)
+	gs.active_consequence = {}
+
+	var corner: Object = gm.system("corner")
+	_reset_probe()
+	gs.active_consequence = {}
+	corner._open("corner_stiff", "north_star_lot",
+		{"rng_key": "test:interim:corner", "shorted": 30, "product_id": "weed", "revenue": 60})
+	var corner_loop: Dictionary = LOOP.loop_of(gs.active_consequence)
+	(gs.active_consequence["decision"] as Dictionary)["committed_choice"] = "count_again"
+	LOOP.present_interim(engine, gs, gs.active_consequence, corner_loop, "count_again",
+		"failure", "escalate", {}, 1)
+	a.eq_str("the corner's interim reads its own line",
+		str(engine.result_headline("")), "HE DOES NOT BUDGE")
+	a.check("continue presents the corner's second beat", _continue_interim())
+	a.eq_int("...on beat index one",
+		int(LOOP.loop_of(gs.active_consequence).get("beat_index", -1)), 1)
+	gs.active_consequence = {}
+
+# --- check block 21: BB-D8, the priced road (0.7.0 PR D) ---------------------
+#
+# PAY is optional per card, deterministic, never the guaranteed out, blocked
+# when the wallet cannot cover it, spent dirty-first from EITHER bucket, and
+# observed. Four cards carry it; the structural triad arm above is untouched
+# because the triad is still the rule and this is a road a card may add.
+
+const PAY_CARDS := {
+	"wander_shakedown": "pay_them",
+	"wander_stopped_on_foot": "slip_him_something",
+	"wander_lot_side": "pay_them_off",
+	"wander_territorial_beef": "settle_it_here",
+}
+
+func _check_pay_roads() -> void:
+	var wander: Object = gm.system("wander")
+	var engine: Object = _engine()
+	var wallet: Object = gm.system("wallet")
+	var exposure: Node = get_node_or_null("/root/Exposure")
+
+	# Structural: exactly the four, priced, deterministic, not the out.
+	var carriers: Array = []
+	for entry in EVENTS.CARDS:
+		var card: Dictionary = entry
+		if str(card["kind"]) != EVENTS.KIND_ENCOUNTER:
+			continue
+		var pay_road := str(EVENTS.choice_for_role(card, EVENTS.ROLE_PAY))
+		if pay_road.is_empty():
+			continue
+		carriers.append(str(card["id"]))
+		var encounter: Dictionary = card["encounter"]
+		a.check("%s's pay road is one of its choices" % card["id"],
+			pay_road in (encounter["choices"] as Array))
+		a.check("%s's pay road is deterministic" % card["id"],
+			pay_road in (encounter.get("deterministic", []) as Array))
+		a.check("%s's pay road is not its surrender road" % card["id"],
+			pay_road != str(EVENTS.choice_for_role(card, EVENTS.ROLE_SURRENDER)))
+		a.check("%s's pay road has a price" % card["id"],
+			EVENTS.pay_price(card, pay_road) > 0)
+		a.check("%s's pay road has a label" % card["id"],
+			EVENTS.CHOICE_LABELS.has(pay_road))
+		a.check("%s's pay road states its price" % card["id"],
+			str(EVENTS.CHOICE_GUARANTEE.get(pay_road, "")).contains("$%d" % EVENTS.pay_price(card, pay_road)))
+	a.eq_int("four cards carry a priced road", carriers.size(), PAY_CARDS.size())
+	for card_id in PAY_CARDS.keys():
+		a.check("%s carries %s" % [card_id, PAY_CARDS[card_id]],
+			str(EVENTS.choice_for_role(EVENTS.card_by_id(str(card_id)), EVENTS.ROLE_PAY))
+				== str(PAY_CARDS[card_id]))
+
+	# Driven: blocked when broke, paid dirty-first from both pockets when not.
+	var card: Dictionary = EVENTS.card_by_id("wander_shakedown")
+	var price: int = EVENTS.pay_price(card, "pay_them")
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.inventory = {"weed": 2}
+	gs.cash = 20
+	gs.dirty_cash = 20
+	gs.clean_cash = 0
+	wander._play_encounter(card, "test:pay:broke")
+	a.check("a road you cannot afford says so",
+		str(engine.choice_blocked("pay_them")).contains("$%d" % price))
+	a.eq_bool("...and refuses the commit", _commit("pay_them"), false)
+	a.eq_str("...leaving the chain at decision", str(engine.active_stage()), "decision")
+	var rows: Array = engine.choice_summaries()
+	for row in rows:
+		if str((row as Dictionary)["choice_id"]) == "pay_them":
+			a.eq_bool("...and the sheet's row is disabled with the reason",
+				bool((row as Dictionary)["disabled"]), true)
+	gs.active_consequence = {}
+
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.npc_ledgers = {}
+	gs.inventory = {"weed": 2}
+	gs.cash = 140
+	gs.dirty_cash = 40
+	gs.clean_cash = 100
+	wander._play_encounter(card, "test:pay:paid")
+	var cause_id := str(gs.active_consequence.get("cause_id", ""))
+	a.check("a road you can afford is open", str(engine.choice_blocked("pay_them")).is_empty())
+	a.check("the priced road commits", _commit("pay_them"))
+	a.eq_str("...and resolves to result", str(engine.active_stage()), "result")
+	a.eq_int("the price leaves the wallet", int(gs.cash), 140 - price)
+	a.eq_int("...dirty first", int(wallet.dirty_balance()), 0)
+	a.eq_int("...then clean for the rest", int(wallet.clean_balance()), 100 - (price - 40))
+	a.eq_int("the goods are untouched", int(gs.inventory.get("weed", 0)), 2)
+	var result: Dictionary = (gs.active_consequence["decision"] as Dictionary)["result"]
+	a.eq_int("the result reports the price", int(result.get("cash", 0)), -price)
+	a.eq_str("the result reads as a transaction",
+		str(engine.result_headline("")), "YOU PAY THEM")
+	a.eq_bool("the payment is receipted",
+		engine.has_receipt(cause_id, "wander_encounter:paid"), true)
+	if exposure != null:
+		var ledger: Array = exposure.ledger_of(EVENTS.OBSERVATION_NPC)
+		a.eq_int("paying writes exactly one observation", ledger.size(), 1)
+		if not ledger.is_empty():
+			a.eq_str("...of the financial kind",
+				str((ledger[0] as Dictionary).get("type", "")), "financial")
+	# A replay cannot charge twice.
+	var after: int = int(gs.cash)
+	wander._resolve_pay(gs.active_consequence, "pay_them")
+	a.eq_int("a replayed payment charges nothing", int(gs.cash), after)
+	gm.dispatch("consequence_continue", {})
+	gs.active_consequence = {}
+
+	# The cop's price carries Heat, and only the cop's.
+	_reset_probe()
+	gs.active_consequence = {}
+	gs.inventory = {"weed": 2}
+	gs.cash = 200
+	gs.dirty_cash = 200
+	gs.clean_cash = 0
+	gs.heat = 0.0
+	wander._play_encounter(EVENTS.card_by_id("wander_stopped_on_foot"), "test:pay:cop")
+	a.check("the cop's price commits", _commit("slip_him_something"))
+	a.check("paying a cop costs Heat", float(gs.heat) > 0.0)
+	a.eq_int("...and the price", int(gs.cash), 200 - EVENTS.pay_price(
+		EVENTS.card_by_id("wander_stopped_on_foot"), "slip_him_something"))
+	gm.dispatch("consequence_continue", {})
+	gs.active_consequence = {}
+	gs.npc_ledgers = {}

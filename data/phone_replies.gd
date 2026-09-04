@@ -79,6 +79,23 @@ const CONTEXTS := {
 		"a": {"text": "say less", "reaction": "That's what I like to hear."},
 		"b": {"text": "not really my thing", "reaction": "Everything is your thing when the rent is due."},
 	},
+	# OG-D1: the rent, late (obligations.gd).
+	"yalonda_rent_due": {
+		"a": {"text": "ill have it tomorrow. im sorry", "reaction": "Tomorrow, then."},
+		"b": {"text": "i know", "reaction": "Knowing isn't paying."},
+	},
+	"yalonda_rent_late": {
+		"a": {"text": "please. two more days. i swear", "reaction": "I don't do swearing. I do Friday."},
+		"b": {"text": "im working on it", "reaction": "Work faster."},
+	},
+	"yalonda_rent_paid_late": {
+		"a": {"text": "it wont. thank you", "reaction": "Mm-hm."},
+		"b": {"text": "ok", "reaction": ""},
+	},
+	"juan_rent": {
+		"a": {"text": "im good for it. tell her", "reaction": "i did. thats the problem"},
+		"b": {"text": "stay out of it", "reaction": "bro i live here too"},
+	},
 	# Yalonda's first text: the terms (name_entry.gd).
 	"yalonda_rent": {
 		"a": {"text": "yes maam. thank you for the room", "reaction": "Mm-hm. Lock the door."},

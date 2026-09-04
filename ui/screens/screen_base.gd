@@ -90,7 +90,28 @@ func _wire_nav() -> void:
 		button.pressed.connect(nav.go_to.bind(route))
 
 ## Re-render the entire screen from GameState.
+## OG-D1 (1.0.0): the Phone cell on the nav carries the bill. Amber when
+## something is due today, red when it is late or the line is dead, so the
+## rent day cannot come and go unnoticed from any screen.
+func _bind_phone_badge() -> void:
+	var cell := get_node_or_null("Shell/NavBar/NavRow/Phone/V/L") as Label
+	if cell == null or gs == null:
+		return
+	var severity := 0
+	if not bool(gs.phone_active) or int(gs.phone_days_past_due) > 0 or int(gs.rent_arrears_day) >= 0:
+		severity = 2
+	elif int(gs.day) >= int(gs.rent_due_day) or int(gs.day) >= int(gs.phone_due_day):
+		severity = 1
+	cell.text = "PHONE" if severity == 0 else "PHONE •"
+	if severity == 2:
+		cell.add_theme_color_override("font_color", Color(0.827, 0.161, 0.125))
+	elif severity == 1:
+		cell.add_theme_color_override("font_color", Color(0.882, 0.651, 0.227))
+	else:
+		cell.remove_theme_color_override("font_color")
+
 func refresh() -> void:
+	_bind_phone_badge()
 	# One place catches the end of the run, and one place catches a consequence
 	# opening under whatever screen the player happened to be on. Every game
 	# screen extends this, so whichever one is open when it lands is the one

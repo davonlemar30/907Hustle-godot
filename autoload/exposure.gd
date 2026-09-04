@@ -107,7 +107,9 @@ const INVERTED_ARCHETYPES := ["THREAT"]
 ## An NPC picks an archetype and overrides a handful of entries. That is the
 ## whole authoring cost of a new character, which is the point.
 const NPC_LENSES := {
-	"yalonda": {"archetype": "CIVILIAN", "weights": {"heat_exposure": -3.0, "presence": 1.5}, "event_weights": {"rent_paid": 3.0}, "source_multipliers": {}},
+	# OG-D1 (1.0.0): a late rent is paid and remembered -- a point off the
+	# three that paying earns.
+	"yalonda": {"archetype": "CIVILIAN", "weights": {"heat_exposure": -3.0, "presence": 1.5}, "event_weights": {"rent_paid": 3.0, "rent_late": -1.0}, "source_multipliers": {}},
 	"juan": {"archetype": "CIVILIAN", "weights": {"violence": -1.0, "growth": 2.0, "discretion": 1.5}, "event_weights": {}, "source_multipliers": {}},
 	"mina": {"archetype": "ROMANTIC", "weights": {"violence": -4.0, "discretion": 4.0}, "event_weights": {}, "source_multipliers": {"network": 2.0}},
 	"curtis": {"archetype": "THREAT", "weights": {"growth": -3.0}, "event_weights": {}, "source_multipliers": {}},

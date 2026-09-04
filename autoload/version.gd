@@ -61,7 +61,7 @@ extends Node
 ## floor rises with a cold cap and a first-walk guarantee, and PAY is a fourth
 ## road on four cards (BB-D8/D9). New player-facing behaviour, squarely MINOR.
 ## No schema bump: interim results ride the persisted chain's own blocks.
-const VERSION := "0.8.0"
+const VERSION := "0.9.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

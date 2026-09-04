@@ -28,6 +28,46 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 0.9.0 — The Block Remembers: six PRs (added 2026-09-03)
+
+Source: `907Hustle_Build_Prompt_v3.md`. Rulings: `D-27` (BR-D1..D6). Six PRs,
+`#139` through `#142`, the crew's ideas, the close-out.
+
+### What this build actually was
+
+A playtest build. The creative director played 0.8.0 for ten minutes and
+wrote down what was wrong, and the six deliverables are that list in order:
+the stretch bug first because it degraded everything else, then the job tap,
+the dead widget, the talker who hit you with no answer; then jobs made a
+career; then the crew question answered with a row of tabs; then a fourth
+district; then a crew that texts you ideas.
+
+### What it cost, and what was measured
+
+One schema bump (v28, `job_applications`). Parity 13,556 → 13,782; confrontation
+3,445 → 3,614; save-validation 257 → 261; smoke +2,788 width checks. The
+job yardstick fell 20% because rungs are earned now, and four corridors
+moved with the measurement at the constant: leveraged_lender and
+repeat_contractor (PR 1: the application wait let their other branches
+run; the contractor had measured 0.0 contracts worked in every run before
+this), hustler (PR 4: a fourth market), and the arbitrage profile was held
+inside its corridor by tempering Mountain View's pill bias instead.
+
+### Gotchas worth the next reader's time
+
+- The headless window is 812 wide. Every layout measurement before this
+  build was taken against it. `get_window().size = Vector2i(375, 812)`
+  at the top of a suite is the phone.
+- A fourth district on the canon RNG stream shifts every draw after it;
+  `oracle: false` and a side stream are the seam.
+- `_reconcile_progression_latches` runs on load; anything it appends
+  breaks the round-trip fixtures. Unlock at day start instead.
+- Patching a GDScript table by regex on `"key": "..."` will hit the
+  LABELS table before the COPY table. Slice the table first.
+- Stacked PRs and a fix landing on a lower branch: rebase the chain with
+  `--onto`, then `git branch -f` the middle branch and force-push with
+  lease. The conflict, if any, is in the table both touched.
+
 ## 0.8.0 — The World Speaks: five PRs (added 2026-09-03)
 
 Source: `907Hustle_Build_Prompt_v2.md`; PR `#107` folded in. Rulings: `D-26`

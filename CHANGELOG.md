@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `0.8.0`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `0.9.0`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,96 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 0.9.0 — The Block Remembers: the screen holds, the city gets a fourth district, and the crew has ideas (2026-09-03)
+
+The creative director's playtest of 0.8.0 (`907Hustle_Build_Prompt_v3.md`):
+the writing landed and the replies landed; the screen stretched, the job
+tap looked dead, the talker could hit you with no answer, and the crew
+question ("Spenard only, or Anchorage?") should not need asking. Six
+deliverables, each green before the next started. Rulings are D-27
+(BR-D1..D6).
+
+### PR 1 — The screen holds (`#139`)
+
+- **The stretch bug, root-caused.** Home's activity feed rows had no wrap;
+  one long feed line set a minimum width past the phone and the shell grew
+  and centered, both edges cut off. The rows wrap. The smoke suite
+  instantiates every screen at the phone's width (375) over the longest
+  lines the game writes and refuses any control outside it; the unwrapped
+  Home fails it. The tighter sweep also caught two unwrapped notes (Boost,
+  the Gym) and re-measured the encounter panel: the triad fits the glance,
+  a fourth authored road sits a drag away.
+- **Applying is a state** (`job_applications`, save v28): APPLIED on the
+  card, answered by text two slots later. Day labor takes walk-ins.
+- **Cargo Value** and the unwired PLAN A ROUTE button are gone.
+- **Answering back.** A non-fight road whose tier hurts opens a fistfight
+  -- SWING / BREAK FOR IT / GIVE IT UP -- in a room generated from the
+  card's own odds; a clean SWING sends him off with a few dollars on the
+  ground. Police cards opt out.
+
+### PR 2 — Clock in, move up (`#140`)
+
+- **Interviews.** Two slots after applying, the manager texts to come in;
+  a sheet asks three questions in their voice, two answers each; the
+  score rides the chance and starts rapport. Ignored offers lapse.
+- **Rungs.** Three titles per job. XP fills the bar; the manager grants
+  the rung when days, streak, rapport and the job's attribute are met.
+  One rung a shift, a line and a text. The Jobs screen says what the next
+  rung still wants.
+- **The floor.** SOCIALIZE (a coworker, rapport, charisma), BREAK ROOM
+  (rest, half a chance to overhear the block or the board), LEARN THE JOB
+  (intelligence). A miss breaks the streak and costs two with the boss.
+
+### PR 3 — Your corners, their corners (`#141`)
+
+- **Every block belongs to a district.** Downtown: five venues, more
+  money, more heat, three Curtis's. Ship Creek: three lots that are
+  supply -- each cuts every buy, anywhere. Claimed where you stand once
+  the district is known; heat lands where the block is.
+- **Turf screen:** district tabs, held of total, YOURS / CURTIS'S / OPEN,
+  what a held block makes, where soldiers stand. One buy price
+  (`buy_unit_price`), previewed on the sheet.
+
+### PR 4 — Mountain View (`#142`)
+
+- **A fourth district** with its own bias (pills and lean pay; club drugs
+  want Downtown; weed has its own channels), heat (stickup ×1.5),
+  adjacency, Street card, Turf tab, four cards, two marks, two targets,
+  three corners. Opens a week in at day start, or when two brothers at a
+  Spenard bus shelter name it.
+- **Arrivals.** The first bus to any new district is a sheet.
+- **The oracle holds:** a non-oracle district walks its market on its own
+  RNG stream.
+
+### PR 5 — They have their own ideas
+
+- **Two operations** on the crew substrate: Eli scouts a district and
+  reports the board; Tone puts a problem down with force, at a cost in
+  heat. Mission buttons on the Crew screen for every operation a member
+  knows, with a district where one is needed.
+- **Proposals.** A member sure of you (loyalty 6) texts an idea that
+  fits the day -- a problem on a block, a route, a board, a district you
+  have not seen -- every few mornings. Yes is the assignment.
+
+### PR 6 — Close-out
+
+Version 0.9.0, D-27, docs, `docs/BLOCK_REMEMBERS_REVIEW.md` answering the
+prompt's eight questions (including the car).
+
+### Measured
+
+| Suite | 0.8.0 | 0.9.0 |
+|---|---|---|
+| parity | 13,556 | 13,782 |
+| confrontation | 3,445 | 3,614 |
+| save-validation | 257 | 261 |
+| smoke | 96 panel | 98 panel + 2,788 width |
+| dre / tips / territory | 427 / 93 / 170 | unchanged |
+
+Save schema v28 (one additive bump). The job yardstick earns less than it
+did (rungs are earned, not filled): four economy corridors moved with the
+measurement recorded at each constant.
 
 ## 0.8.0 — The World Speaks: the city reveals itself, and everybody in it has a voice (2026-09-03)
 

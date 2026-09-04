@@ -364,6 +364,12 @@ func _commit(payload: Dictionary) -> Dictionary:
 		priors_after = int(record.get("priors", 0)) + 1
 		record["priors"] = priors_after
 		record["last_arrest_day"] = int(gs.day)
+		# OG-D4: a serious booking counts toward a sentence; the third is
+		# the ending. Behind the same receipt, so a reload cannot count it
+		# twice.
+		var ending: Object = gm.system("ending") if gm != null else null
+		if ending != null:
+			ending.note_booking(str(booking.get("severity", "")))
 		# FS-003.13 Task 3's cooldown deadline, stamped where the rest of the
 		# record is written and behind the same receipt — so a reload mid-commit
 		# cannot arm it twice, and a run that never committed a booking never

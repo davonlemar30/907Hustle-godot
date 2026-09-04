@@ -197,7 +197,9 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## v30: `weapon`, `vehicle`, `trunk` (One Good Run PR 3, OG-D3) -- the
 ## player's kit. Additive: hands, no car, nothing in a trunk that does not
 ## exist.
-const SAVE_VERSION := 30
+## v31: `game_over_kind`, `leaving`, `run_earnings` (One Good Run PR 4,
+## OG-D4) -- the ending. Additive.
+const SAVE_VERSION := 31
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 
@@ -284,6 +286,8 @@ const PERSIST_FIELDS: Array[String] = [
 	"rent_arrears_day",
 	# The kit (v30, OG-D3).
 	"weapon", "vehicle", "trunk",
+	# The ending (v31, OG-D4).
+	"game_over_kind", "leaving", "run_earnings", "curtis_doorstep",
 	# The interruption gate's quiet streak (v25, STR-D2). Same reasoning as
 	# wander_misses above: the run's own history of a mechanic that reads it.
 	"wander_quiet_streak",
@@ -934,6 +938,11 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# v24 -> v25: wander_quiet_streak. Purely additive -- see this
 				# arm's own paragraph by SAVE_VERSION.
 				pass
+			30:
+				# v30 -> v31: game_over_kind, leaving, run_earnings. A v30 save
+				# that was already over was evicted, the only ending it had.
+				if bool(state.get("game_over", false)) and str(state.get("game_over_kind", "")).is_empty():
+					state["game_over_kind"] = "evicted"
 			29:
 				# v29 -> v30: weapon, vehicle, trunk. Additive; see SAVE_VERSION.
 				pass

@@ -203,6 +203,10 @@ func _ready() -> void:
 	var enforcer_adapter = preload("res://systems/enforcer_adapter.gd").new()
 	enforcer_adapter.setup(_gs, self, crew_operations)
 	register_system("enforcer_adapter", enforcer_adapter)
+	# OG-D4 (1.0.0 PR 4): the ending.
+	var ending = preload("res://systems/ending.gd").new()
+	ending.setup(_gs, self)
+	register_system("ending", ending)
 
 	# The venue interiors. Built after time because both of its actions spend a
 	# slot, and after attributes because both of them train one — though it

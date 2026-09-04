@@ -37,6 +37,7 @@ func _ready() -> void:
 	_test_v28_job_applications()
 	_test_v29_rent_arrears()
 	_test_v30_kit()
+	_test_v31_ending()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
 	_test_load_pipeline()
@@ -1056,6 +1057,17 @@ func _test_v30_kit() -> void:
 	var migrated: Dictionary = saves._migrate({"save_version": 29, "state": {"day": 2, "cash": 10, "street_name": "L"}})
 	_check("a v29 save arrives on foot with its hands",
 		not migrated.has("vehicle") or str(migrated.get("vehicle", "")) == "")
+
+## v31 (OG-D4): the ending's kind is one the game knows; an over v30 save
+## was evicted.
+func _test_v31_ending() -> void:
+	var junk := _fixed(_state("game_over_kind", "abducted"))
+	_check("an unknown ending is cleared", str(junk["game_over_kind"]) == "")
+	var far := _fixed(_state("curtis_doorstep", 9))
+	_check("a doorstep past the door is the door", int(far["curtis_doorstep"]) == 3)
+	var saves := get_node("/root/SaveSystem")
+	var migrated: Dictionary = saves._migrate({"save_version": 30, "state": {"day": 9, "cash": 10, "street_name": "L", "game_over": true}})
+	_check("an over v30 save was evicted", str(migrated.get("game_over_kind", "")) == "evicted")
 
 func _test_v24_dre_pending_penance() -> void:
 	# Same shape as _validate_dre_intro_offered -- manual wrong-type check,

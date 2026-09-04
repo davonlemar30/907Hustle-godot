@@ -229,6 +229,7 @@ func _bind_gates() -> void:
 
 func _bind_all() -> void:
 	_bind_hero()
+	_bind_way_out()
 	_bind_car()
 	_bind_wander()
 	_bind_actions()
@@ -245,6 +246,61 @@ func _bind_all() -> void:
 ## arithmetic — 30% base, +10% a miss, capped at 70% — and the player is told
 ## how the looking is going, which is the part that makes another walk feel
 ## worth a slot. Telling them 0.60 would be telling them to do arithmetic.
+## OG-D4: the way out, on Home once it is open. LEAVE AT DAY'S CLOSE is a
+## decision, and the card says what it costs to change your mind.
+func _bind_way_out() -> void:
+	var existing := get_node_or_null("Shell/Scroll/Pad/Content/WayOut")
+	if existing != null:
+		existing.queue_free()
+	var ending: Object = _gm.system("ending")
+	var exposure: Node = get_node_or_null("/root/Exposure")
+	if ending == null or exposure == null or gs.game_over:
+		return
+	# Shown from Connected up: the door is visible before it opens.
+	if not exposure.has_rank("connected"):
+		return
+	var content := get_node_or_null("Shell/Scroll/Pad/Content") as VBoxContainer
+	if content == null:
+		return
+	var card := PanelContainer.new()
+	card.name = "WayOut"
+	card.theme_type_variation = &"Card"
+	card.mouse_filter = Control.MOUSE_FILTER_PASS
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	card.add_child(v)
+	var kicker := Label.new()
+	kicker.text = "THE WAY OUT"
+	kicker.theme_type_variation = &"Kicker"
+	kicker.add_theme_font_size_override("font_size", 10)
+	v.add_child(kicker)
+	var body := Label.new()
+	body.theme_type_variation = &"Muted"
+	body.add_theme_font_size_override("font_size", 11)
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var need: int = int(ending.way_out_threshold())
+	body.text = ("Tonight. When the day closes you are gone with what is clean." if gs.leaving
+		else "$%s clean and a boss's name buys the last flight out. You have $%s clean. What is not clean stays." % [_commas(need), _commas(int(gs.clean_cash))])
+	v.add_child(body)
+	var blocked := str(ending.leave_blocker())
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(0, 48)
+	b.focus_mode = Control.FOCUS_NONE
+	b.theme_type_variation = &"BtnPrimary" if blocked.is_empty() else &"BtnSecondary"
+	b.add_theme_font_size_override("font_size", 13)
+	if gs.leaving:
+		b.text = "STAY"
+		tap_connect(b, func() -> void: _gm.dispatch("stay", {}))
+	else:
+		b.text = "LEAVE AT DAY'S CLOSE" if blocked.is_empty() else blocked.to_upper()
+		b.disabled = not blocked.is_empty()
+		tap_connect(b, func() -> void: _gm.dispatch("leave_city", {}))
+	v.add_child(b)
+	content.add_child(card)
+	var wander_card := get_node_or_null("Shell/Scroll/Pad/Content/Wander")
+	if wander_card != null:
+		content.move_child(card, wander_card.get_index())
+
 ## OG-D3: the beater, on Home once you have it: the trunk, and the day it
 ## would not start.
 func _bind_car() -> void:
@@ -621,3 +677,15 @@ func _bind_people() -> void:
 
 func _phone() -> RefCounted:
 	return _gm.system("phone") as RefCounted
+
+
+func _commas(n: int) -> String:
+	var text := str(n)
+	var out := ""
+	var count := 0
+	for i in range(text.length() - 1, -1, -1):
+		out = text[i] + out
+		count += 1
+		if count % 3 == 0 and i > 0:
+			out = "," + out
+	return out

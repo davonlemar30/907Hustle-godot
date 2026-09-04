@@ -244,6 +244,7 @@ func _household_warning(reason: String) -> void:
 	gs.log_activity("%s (warning %d/%d)" % [reason, gs.household_warnings, gs.HOUSEHOLD_WARNING_LIMIT], RED)
 	if gs.household_warnings >= gs.HOUSEHOLD_WARNING_LIMIT:
 		gs.game_over = true
+		gs.game_over_kind = "evicted"
 		# Canon names the specific obligation that broke, because that is what
 		# the player needs told.
 		gs.game_over_reason = reason

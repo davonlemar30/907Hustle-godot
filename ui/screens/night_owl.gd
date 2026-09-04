@@ -50,9 +50,8 @@ func _counter_card(sys: Object) -> Control:
 	c.add_child(v)
 	v.add_child(label("THE COUNTER", "CardTitle", 13, CREAM))
 	if sys.has_entered(sys.NIGHT_OWL):
-		v.add_child(label(
-			"Mina looks up, and goes back to what she was doing. That is as close "
-			+ "to a welcome as this place gets.", "Muted", 11, MUTED, true))
+		# SA-D3: her read of you, off her ledger.
+		v.add_child(label(str(sys.counter_line()), "Muted", 11, MUTED, true))
 	else:
 		v.add_child(label(
 			"Coffee, a counter, and the only person in Spenard who has never "
@@ -131,7 +130,8 @@ func _night_card(sys: Object) -> Control:
 	var t := label("STAY A WHILE", "CardTitle", 13, CREAM)
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
-	head.add_child(label("$%d" % int(sys.NIGHT_OWL_SOCIAL_COST), "Mono", 13, CREAM))
+	var price: int = int(sys.night_owl_price())
+	head.add_child(label("$%d" % price if price > 0 else "ON HER", "Mono", 13, CREAM))
 
 	var done: int = int(sys.sessions(sys.NIGHT_OWL_GROWTH))
 	v.add_child(label(

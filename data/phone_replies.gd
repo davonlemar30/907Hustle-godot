@@ -85,6 +85,11 @@ const CONTEXTS := {
 		"b": {"text": "keep it quiet", "reaction": ""},
 	},
 	# OG-D1: the rent, late (obligations.gd).
+	# SA-D3: Mina's lead (venues.gd).
+	"mina_lead": {
+		"a": {"text": "good look. i owe you one", "reaction": "you dont owe me. just dont bring it in here"},
+		"b": {"text": "noted", "reaction": "ok"},
+	},
 	"yalonda_rent_due": {
 		"a": {"text": "ill have it tomorrow. im sorry", "reaction": "Tomorrow, then."},
 		"b": {"text": "i know", "reaction": "Knowing isn't paying."},

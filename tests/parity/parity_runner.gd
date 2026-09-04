@@ -19806,6 +19806,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_earn_your_name(gs, gm)
 	_check_the_kit(gs, gm)
 	_check_the_beater_on_the_street(gs, gm)
+	_check_mina_vale(gs, gm)
 	_check_one_good_run(gs, gm)
 	_check_stolen_goods_have_a_name(gs, gm)
 	_check_his_blocks_fight_back(gs, gm)
@@ -20596,6 +20597,79 @@ func _stage_rank(gs: Node, tier_id: String, short_by: int = 0) -> void:
 	gs.npc_ledgers["juan"] = rows
 
 ## OG-D3 (1.0.0 PR 3): the kit, the faces, the places, the ride.
+## SA-D3 (1.1.0): Mina Vale. Her trust is her ledger, and it buys the
+## counter line, the price, one true thing, and a text -- and it gates the
+## evening her family shows up.
+func _stage_mina(gs: Node, discretion_rows: int, violence_rows: int = 0) -> void:
+	var rows: Array = []
+	for i in range(discretion_rows):
+		rows.append({"key": "stage:d:%d" % i, "type": "discretion", "event": "staged",
+			"location": "north_star_lot", "source": "direct", "count": 1, "day": 1})
+	for i in range(violence_rows):
+		rows.append({"key": "stage:v:%d" % i, "type": "violence", "event": "staged",
+			"location": "north_star_lot", "source": "direct", "count": 1, "day": 1})
+	gs.npc_ledgers["mina"] = rows
+
+func _check_mina_vale(gs: Node, gm: Node) -> void:
+	var venues: Object = gm.system("venues")
+	var wander_sys: Object = gm.system("wander")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_expect_str("a stranger is neutral", str(venues.mina_band()), "neutral")
+	_expect_int("...and pays for the coffee", int(venues.night_owl_price()), int(venues.NIGHT_OWL_SOCIAL_COST))
+	_expect_true("...and the card does not fire", not bool(wander_sys.facts().get("mina_warm", false)))
+	_stage_mina(gs, 1)
+	_expect_str("one quiet night is warm", str(venues.mina_band()), "warm")
+	_expect_true("...and she tells you something", not str(venues.mina_read()).is_empty())
+	_expect_true("...and her family can show up", bool(wander_sys.facts().get("mina_warm", false)))
+	_stage_mina(gs, 2)
+	_expect_str("two is trusted", str(venues.mina_band()), "trusted")
+	_expect_int("...and the coffee is on her", int(venues.night_owl_price()), 0)
+	_stage_mina(gs, 3)
+	_expect_str("three is bonded", str(venues.mina_band()), "bonded")
+	_stage_mina(gs, 3, 3)
+	_expect_true("...and a swing at her cousin takes it all back", str(venues.mina_band()) in ["neutral", "cold", "hostile"])
+
+	# Every band has its own counter line.
+	var seen: Array = []
+	for band in ["hostile", "cold", "neutral", "warm", "trusted", "bonded"]:
+		var line := str(venues.COUNTER_LINES.get(band, ""))
+		_expect_true("%s has a counter line" % band, not line.is_empty() and not line in seen)
+		seen.append(line)
+
+	# The read is about the block, not about nothing.
+	gs.reset_to_new_game()
+	_stage_mina(gs, 1)
+	gs.curtis_phase = "watching"
+	_expect_true("with Curtis looking, she says so", str(venues.mina_read()).contains("asking"))
+	gs.curtis_phase = "invisible"
+	_expect_true("with nothing on, she says it is quiet", str(venues.mina_read()).contains("Quiet"))
+
+	# A night at bonded lands on the phone.
+	gs.reset_to_new_game()
+	gs.cash = 500
+	gs.clean_cash = 500
+	gs.current_district_id = "north_star_lot"
+	_stage_mina(gs, 3)
+	gs.phone_inbox = []
+	_expect_true("the night dispatches", gm.dispatch("night_owl_social", {}))
+	var texted := false
+	for msg in gs.phone_inbox:
+		if str((msg as Dictionary).get("from", "")) == "Mina":
+			texted = true
+	_expect_true("...and bonded, it is a text", texted)
+	_expect_int("...and the money stayed in your pocket", int(gs.cash), 500)
+
+	# The card: once, in the evening, in Spenard, once she reads you warm.
+	gs.reset_to_new_game()
+	gs.day = 9
+	gs.current_district_id = "north_star_lot"
+	gs.time_slots_today = 2
+	_expect_true("neutral, no cousin", not _wander_card_eligible(gs, gm, "wander_vale_at_the_counter"))
+	_stage_mina(gs, 1)
+	_expect_true("warm, the cousin is at the counter", _wander_card_eligible(gs, gm, "wander_vale_at_the_counter"))
+	gs.reset_to_new_game()
+
 ## SA-D2 (1.1.0): the beater on the street. Three cards that only exist
 ## once there is a car, a trunk that can be lost, and the weapon's own
 ## sentence in the room.
@@ -21545,7 +21619,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14068
+const MIN_CHECKS := 14127
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

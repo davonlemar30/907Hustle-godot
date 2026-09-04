@@ -77,7 +77,7 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## range, plus the two things that deliberately survive (the arrest warning and
 ## the guaranteed road's price) and the proof that the ENGINE still projects
 ## odds it no longer shows.
-const MIN_CHECKS := 3445
+const MIN_CHECKS := 3946
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"

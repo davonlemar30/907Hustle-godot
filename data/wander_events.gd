@@ -1207,6 +1207,57 @@ const CARDS: Array[Dictionary] = [
 	# the Chevron a week in; a piece from Dre's cousin, later, once the run
 	# is a player. Each is a meeting card with a PAY road that grants it.
 
+	# --- SA-D3 (1.1.0): the Vales, at the counter ------------------------------
+	#
+	# Once, in the evening, once Mina reads you warm: a man with her last
+	# name at her counter, and her whole face gone still. What you do about
+	# it is the first thing her family learns about you. FIGHT is a mark on
+	# her ledger she reads at minus four; TALK is discretion she reads at
+	# plus four; COMPLY is watching from the end of the counter.
+	{
+		"id": "wander_vale_at_the_counter", "kind": KIND_ENCOUNTER, "weight": 9,
+		"intents": [INTENT_READ], "gate_bias": "",
+		"districts": [SPENARD], "slots": [EVENING], "once": true,
+		"requirements": [{"type": "fact_true", "fact": "mina_warm"}],
+		"line": "A man in a Carhartt is at the Night Owl counter with his voice low and Mina's whole face gone still. He says her last name like it is his. It is.",
+		"encounter": {
+			"definition_id": "wander_vale_at_the_counter",
+			"opponent": "Mina's cousin",
+			"shape": "negotiation",
+			"choices": ["vale_step_in", "vale_talk", "vale_stay"],
+			"roles": {"vale_step_in": ROLE_FIGHT, "vale_talk": ROLE_RUN, "vale_stay": ROLE_SURRENDER},
+			"admits_crew": false,
+			"deterministic": ["vale_stay"],
+			"base": {"vale_step_in": 0.45, "vale_talk": 0.60},
+			"observations": {
+				"vale_step_in": {"type": "violence", "event": "swung_on_minas_cousin"},
+				"vale_talk": {
+					"clean": {"type": "discretion", "event": "talked_the_cousin_down"},
+					"messy": {"type": "discretion", "event": "talked_the_cousin_down"},
+					"failure": {"type": "presence", "event": "made_it_worse_at_the_counter"},
+					"catastrophic": {"type": "presence", "event": "made_it_worse_at_the_counter"},
+				},
+				"vale_stay": {"type": "submission", "event": "stayed_out_of_it"},
+			},
+			"effects": {
+				"vale_step_in": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 8, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 14, "cash_fraction": 0.0, "goods_fraction": 0.0, "heat": 1.0},
+				},
+				"vale_talk": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 3, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 6, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+				"vale_stay": {
+					"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+				},
+			},
+		},
+	},
 	# --- SA-D2 (1.1.0): the beater on the street ------------------------------
 	#
 	# Three cards that only exist once there is a car. Two are ambient -- the
@@ -2112,6 +2163,10 @@ const CHOICE_LABELS := {
 	# "fight", "run" or "surrender". That is SQ-D6 working: the role is the
 	# structural position and the label is what this particular situation
 	# actually offers you.
+	# SA-D3: the Vales.
+	"vale_step_in": "FIGHT",
+	"vale_talk": "TALK",
+	"vale_stay": "COMPLY",
 	# SA-D2: the break-in.
 	"run_up": "FIGHT",
 	"shout": "BLUFF",
@@ -2192,6 +2247,9 @@ const CHOICE_COPY := {
 	"let_deshawn_talk": "His voice, not yours. Everybody walks.",
 	# VOX-D1: short declaratives, terms rather than threats, and the addict
 	# lines carry no comedy and no pity.
+	"vale_step_in": "Get between them. He is bigger than you and she did not ask.",
+	"vale_talk": "Sit down next to him like you belong there and ask about the drive up.",
+	"vale_stay": "Stay at the end of the counter. Watch. Be somebody she can look at.",
 	"run_up": "Cross the lot fast. He has a screwdriver and a decision to make.",
 	"shout": "From where you stand, loud enough for the building. Most of them run.",
 	"let_it_go": "Stand there. Let him have the trunk. Keep the car.",
@@ -2257,6 +2315,7 @@ const CHOICE_COPY := {
 ## "CERTAIN" beside an odds band is not a price.
 const CHOICE_GUARANTEE := {
 	"let_it_go": "Guaranteed: nobody swings. The trunk is his.",
+	"vale_stay": "Guaranteed: nobody swings. She saw you not leave.",
 	"knife_buy": "Guaranteed: $120, and the knife is yours.",
 	"knife_pass": "Guaranteed: nothing changes hands.",
 	"piece_buy": "Guaranteed: $600, and the piece is yours. Heat rides with it from here.",
@@ -2411,6 +2470,23 @@ const RESULT_COPY := {
 		},
 		"cross_the_street": {
 			"deterministic": ["YOU CROSS THE STREET", "Nothing happens to you. They watch it not happen, and they know what it means, and so does the block."],
+		},
+	},
+	"wander_vale_at_the_counter": {
+		"vale_step_in": {
+			"clean": ["HE BACKS OFF", "You are between them before you decided to be. He looks at you a long time, and then at her, and leaves. She does not thank you. She does not have to."],
+			"messy": ["ONE EACH", "He puts you into the cooler door and you put him into the floor. Mina says both your names in the voice that ends things."],
+			"failure": ["HE IS BIGGER", "He is bigger than you and has done this more. You are on the floor and he is still talking to her, softer now, which is worse."],
+			"catastrophic": ["THE COUNTER GOES OVER", "It ends with the register on the floor and a customer on the phone. He leaves. So does she, out the back, and she does not look at you on the way."],
+		},
+		"vale_talk": {
+			"clean": ["THE DRIVE UP", "You sit down next to him and ask about the roads. He talks about the roads. Whatever he came to say, he says it to you instead, and it is not the thing he came to say."],
+			"messy": ["HE KNOWS WHAT YOU ARE DOING", "He answers you, slowly, and then goes back to her. But softer, and shorter, and then he leaves. She wipes the same spot of counter for a while."],
+			"failure": ["WRONG THING TO SAY", "You say the wrong thing about the family and he stands up to say so. It is over fast. She does not look at either of you."],
+			"catastrophic": ["HE TAKES IT OUT ON YOU", "Whatever he could not say to her, he says with his hands. Out front, in the cold, with the door propped so she can hear."],
+		},
+		"vale_stay": {
+			"deterministic": ["YOU STAYED", "You stay at the end of the counter and drink the coffee. He leaves when he is done. She does not say anything about it, then or later, but she saw you not leave."],
 		},
 	},
 	"wander_beater_breakin": {

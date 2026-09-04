@@ -60,6 +60,25 @@ const GYM_ACTIVITIES := [
 ## being read well is a Charisma source (`night_owl_social`, 0.15). One row
 ## because there is one thing to do there.
 const NIGHT_OWL_SOCIAL_COST := 20
+
+## SA-D3 (1.1.0): what Mina's read of you buys. Her band is the same ledger
+## the People screen shows; nothing here is a second scale. Cold: the
+## counter, and nothing else. Neutral: the counter and a quiet night.
+## Warm: she tells you one true thing about the block. Trusted: the coffee
+## is on her, and she still tells you. Bonded: she texts you what she
+## heard, the kind of lead the phone bill is for.
+const COUNTER_LINES := {
+	"hostile": "Mina does not look up. Somebody else takes your money.",
+	"cold": "Mina looks up, and goes back to what she was doing. That is the whole conversation.",
+	"neutral": "Mina looks up, and goes back to what she was doing. That is as close to a welcome as this place gets.",
+	"warm": "Mina has the coffee poured before you sit. She has things to tell you and she will get to them.",
+	"trusted": "Mina waves the money off. \"Sit down.\" She has already heard something.",
+	"bonded": "Mina keeps the end of the counter for you now. Whatever she hears, you hear.",
+}
+const MINA_TIERS := {"hostile": 0, "cold": 0, "neutral": 1, "warm": 2, "trusted": 3, "bonded": 4}
+const MINA_FREE_AT := 3
+const MINA_READS_AT := 2
+const MINA_TEXTS_AT := 4
 const NIGHT_OWL_GROWTH := "night_owl_social"
 
 var gs: Node
@@ -118,9 +137,42 @@ func train_blocker(activity_id: String) -> String:
 func social_blocker() -> String:
 	if gs.game_over:
 		return "The run is over"
-	if gs.cash < NIGHT_OWL_SOCIAL_COST:
-		return "You need $%d" % NIGHT_OWL_SOCIAL_COST
+	if gs.cash < night_owl_price():
+		return "You need $%d" % night_owl_price()
 	return ""
+
+# --- SA-D3: Mina's trust, read off her ledger --------------------------------
+
+func _exposure() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+
+func mina_band() -> String:
+	var exposure: Node = _exposure()
+	return str(exposure.band_of("mina")) if exposure != null else "neutral"
+
+func mina_tier() -> int:
+	return int(MINA_TIERS.get(mina_band(), 1))
+
+func counter_line() -> String:
+	return str(COUNTER_LINES.get(mina_band(), COUNTER_LINES["neutral"]))
+
+## The coffee is on her from trusted up.
+func night_owl_price() -> int:
+	return 0 if mina_tier() >= MINA_FREE_AT else NIGHT_OWL_SOCIAL_COST
+
+## One true thing about the block, in her words. The first that applies:
+## somebody asking after you, the police out front, the corner running hot,
+## or who was in asking for hands. Pure: reads state, writes nothing.
+func mina_read() -> String:
+	if str(gs.curtis_phase) != "invisible":
+		return "Somebody was in asking what nights you come by. Didn't leave a name. Wasn't a cop."
+	var heat_sys: Object = gm.system("heat")
+	if heat_sys != null and str(heat_sys.band()) in ["WATCHED", "BURNING"]:
+		return "Two units sat out front last week for no reason I could see. Just saying."
+	var wander_sys: Object = gm.system("wander")
+	if wander_sys != null and bool(wander_sys.facts().get("market_pressure_visible", false)):
+		return "People keep saying the corner's expensive lately. That's usually right before it gets loud."
+	return "Quiet. Ray was in asking if anybody wanted dock hours. Nobody did."
 
 ## What the streak is doing, for the screen. `days` is how many in a row,
 ## `live` is whether it still counts, and `to_bonus` is how many more are
@@ -226,8 +278,10 @@ func _night() -> Dictionary:
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked + "."}
 	var wallet: Object = gm.system("wallet")
-	wallet.spend(NIGHT_OWL_SOCIAL_COST, wallet.ROUTINE_DIRTY_FIRST,
-		{"source_id": "night_owl_social"})
+	var price: int = night_owl_price()
+	if price > 0:
+		wallet.spend(price, wallet.ROUTINE_DIRTY_FIRST,
+			{"source_id": "night_owl_social"})
 
 	var before: int = sessions(NIGHT_OWL_GROWTH)
 	gs.attribute_sessions[NIGHT_OWL_GROWTH] = before + 1
@@ -244,8 +298,20 @@ func _night() -> Dictionary:
 			"type": "discretion", "event": "ordinary_night",
 			"source": "household", "location": str(gs.current_district_id),
 		})
-	gs.log_activity("A night at the Night Owl counter. $%d and nothing happened."
-		% NIGHT_OWL_SOCIAL_COST, GREEN)
+	if price > 0:
+		gs.log_activity("A night at the Night Owl counter. $%d and nothing happened." % price, GREEN)
+	else:
+		gs.log_activity("A night at the Night Owl counter. Mina would not take the money.", GREEN)
+	# SA-D3: what her trust buys. Warm and up, she tells you one true thing;
+	# bonded, it is on your phone too, where you can read it tomorrow.
+	var read := ""
+	if mina_tier() >= MINA_READS_AT:
+		read = mina_read()
+		gs.log_activity("Mina, low, wiping the counter: \"%s\"" % read, BLUE)
+		if mina_tier() >= MINA_TEXTS_AT:
+			var phone: Object = gm.system("phone")
+			if phone != null:
+				phone.push_text("Mina", read.to_lower().replace("didn't", "didnt").replace("wasn't", "wasnt"), "mina_lead")
 	time_system.handle("advance_time", {})
-	return {"ok": true, "improved": improved, "cost": NIGHT_OWL_SOCIAL_COST,
-		"sessions": before + 1}
+	return {"ok": true, "improved": improved, "cost": price,
+		"sessions": before + 1, "read": read}

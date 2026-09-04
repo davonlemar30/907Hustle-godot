@@ -207,6 +207,10 @@ func _ready() -> void:
 	var ending = preload("res://systems/ending.gd").new()
 	ending.setup(_gs, self)
 	register_system("ending", ending)
+	# SA-D4 (1.1.0 PR 4): the house talks back.
+	var household = preload("res://systems/household.gd").new()
+	household.setup(_gs, self)
+	register_system("household", household)
 
 	# The venue interiors. Built after time because both of its actions spend a
 	# slot, and after attributes because both of them train one — though it

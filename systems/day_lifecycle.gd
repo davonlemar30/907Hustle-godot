@@ -206,6 +206,9 @@ const DAY_START_ORDER: Array[String] = [
 	"beater",
 	# OG-D4: Curtis at the door, when nobody is standing with you.
 	"curtis_doorstep",
+	# SA-D4: the house, after everything the morning brought, so what it says
+	# is about today.
+	"household",
 	# Dre Lending & Loan-Shark Progression, PR B (DRE-D1). After `tips` for
 	# the same reason `tips` is after everything else: Juan's mention reads
 	# `gs.cash`/`gs.rent_due_day` against the fully-settled day, not a
@@ -493,6 +496,11 @@ func _run_day_start_step(step: String, today: int) -> void:
 		var ending: Object = gm.system("ending") if gm != null else null
 		if ending != null:
 			ending.day_start_curtis(today)
+		return
+	if step == "household":
+		var household: Object = gm.system("household") if gm != null else null
+		if household != null:
+			household.day_start(today)
 		return
 	if step == "beater":
 		var travel: Object = gm.system("travel") if gm != null else null

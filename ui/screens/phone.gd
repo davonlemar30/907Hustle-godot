@@ -469,7 +469,7 @@ func _message_card(message: Dictionary) -> Control:
 			outgoing.add_child(reply_box)
 			reply_box.add_child(label("YOU", "Kicker", 10, CYAN))
 			reply_box.add_child(label(str((reply[replied] as Dictionary).get("text", "")), "Muted", 16, CYAN, true))
-			var sent := label("SENT  ✓", "Kicker", 10, CYAN)
+			var sent := label("SENT", "Kicker", 10, CYAN)
 			sent.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 			reply_box.add_child(sent)
 			var outgoing_margin := MarginContainer.new()

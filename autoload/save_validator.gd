@@ -60,6 +60,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_kit(state, repairs)
 	_validate_ending(state, repairs)
 	_validate_hot_goods(state, repairs)
+	_validate_dismantled(state, repairs)
 	_validate_boost_bribes_used(state, repairs)
 	_validate_tip_effects(state, repairs)
 	_validate_tip_misses(state, repairs)
@@ -745,6 +746,37 @@ func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> voi
 	state["boost_targets_discovered"] = cleaned
 
 ## v32 (OG-D5). Every hot item is a name, a value and a heat; junk drops.
+## v33 (HS-D3). Districts the game knows, and a hold of 0..2 per district.
+func _validate_dismantled(state: Dictionary, repairs: Array[String]) -> void:
+	if state.has("curtis_dismantled"):
+		if not state["curtis_dismantled"] is Array:
+			state["curtis_dismantled"] = []
+			_repair(repairs, "curtis_dismantled", "wrong type; defaulted")
+		else:
+			var clean: Array = []
+			for entry in (state["curtis_dismantled"] as Array):
+				var id := str(entry)
+				if not id in TERRITORY_DEFS.DISTRICT_ORDER:
+					_repair(repairs, "curtis_dismantled", "unknown district dropped")
+					continue
+				if not id in clean:
+					clean.append(id)
+			state["curtis_dismantled"] = clean
+	if state.has("curtis_dismantle_hold"):
+		if not state["curtis_dismantle_hold"] is Dictionary:
+			state["curtis_dismantle_hold"] = {}
+			_repair(repairs, "curtis_dismantle_hold", "wrong type; defaulted")
+		else:
+			var clean_hold: Dictionary = {}
+			for key in (state["curtis_dismantle_hold"] as Dictionary).keys():
+				var id := str(key)
+				if not id in TERRITORY_DEFS.DISTRICT_ORDER:
+					_repair(repairs, "curtis_dismantle_hold", "unknown district dropped")
+					continue
+				var value: Variant = (state["curtis_dismantle_hold"] as Dictionary)[key]
+				clean_hold[id] = clampi(int(value) if (value is int or value is float) else 0, 0, 2)
+			state["curtis_dismantle_hold"] = clean_hold
+
 func _validate_hot_goods(state: Dictionary, repairs: Array[String]) -> void:
 	if not state.has("hot_goods"):
 		return

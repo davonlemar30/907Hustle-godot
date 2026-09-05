@@ -140,3 +140,27 @@ func _bind_curtis() -> void:
 	var curtis: Node = get_node_or_null("/root/Curtis")
 	var label: String = str(curtis.phase_label()) if curtis != null else "INVISIBLE"
 	_set_text("Shell/Scroll/Pad/Content/Rival/V/Head/A", "%s  %d/%d" % [label, gs.curtis_awareness, gs.AWARENESS_MAX])
+	# HS-D3: where he stands, district by district, in words.
+	var territory: Object = (get_node("/root/GameManager") as Node).system("territory")
+	if territory != null:
+		var lines: Array = []
+		for district_id in gs.TERRITORY_DEFS.DISTRICT_ORDER:
+			var district := str(district_id)
+			if not district in (gs.districts_unlocked as Array):
+				continue
+			var name := str(gs.district_by_id(district).get("name", district)).capitalize()
+			if bool(territory.is_dismantled(district)):
+				lines.append("%s: he is out." % name)
+				continue
+			var his: int = int(territory.his_hold(district))
+			var started: int = (territory.curtis_start_blocks(district) as Array).size()
+			if started <= 0:
+				continue
+			if his == started:
+				lines.append("%s: his blocks are his." % name)
+			elif his == 0:
+				lines.append("%s: every block he had is yours. Hold them and he stops coming." % name)
+			else:
+				lines.append("%s: %d of his %d still his." % [name, his, started])
+		_set_text("Shell/Scroll/Pad/Content/Rival/V/Body", "\n".join(lines) if not lines.is_empty()
+			else "Curtis Foyer runs the blocks you have not seen yet. Attention climbs with visible sales and rolling illegal revenue.")

@@ -85,6 +85,11 @@ const CONTEXTS := {
 		"b": {"text": "keep it quiet", "reaction": ""},
 	},
 	# OG-D1: the rent, late (obligations.gd).
+	# HS-D3: Goodie, on Curtis leaving a district (territory.gd).
+	"goodie_dismantled": {
+		"a": {"text": "he had it coming", "reaction": "he did. so do you now. thats how it works"},
+		"b": {"text": "keep it quiet", "reaction": "too late for that"},
+	},
 	# SA-D4: the house (household.gd).
 	"yalonda_house": {
 		"a": {"text": "i will. im sorry", "reaction": "Don't be sorry. Be careful."},

@@ -2067,7 +2067,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
 	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
 	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
-	_expect_int("save version is 32", saves.SAVE_VERSION, 32)
+	_expect_int("save version is 33", saves.SAVE_VERSION, 33)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -13827,7 +13827,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v32", saves.SAVE_VERSION, 32)
+	_expect_int("the schema is v33", saves.SAVE_VERSION, 33)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -19813,6 +19813,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_his_blocks_fight_back(gs, gm)
 	_check_a_front_is_a_bill(gs, gm)
 	_check_hold_it_down(gs, gm)
+	_check_he_comes_back(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -21039,6 +21040,115 @@ func _check_stolen_goods_have_a_name(gs: Node, gm: Node) -> void:
 ## claimed: the tap opens a confrontation with FIGHT and RUN; RUN walks;
 ## FIGHT ends held or hurt, and Curtis knows either way. Nightly, Curtis
 ## probes what you hold in his districts.
+## HS-D3 (1.2.0): he comes back, and then he does not. Recovery re-opens a
+## front on the weakest block you took from him; two clean nights with all
+## of his blocks yours and he is out of the district, for good.
+func _check_he_comes_back(gs: Node, gm: Node) -> void:
+	var territory: Object = gm.system("territory")
+	var saves: Node = get_node("/root/SaveSystem")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_stage_rank(gs, "player")
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	_expect_int("Downtown starts with three of his", int(territory.his_hold("downtown")), 3)
+	_expect_int("...and Spenard with four", int(territory.his_hold("north_star_lot")), 4)
+	_expect_true("nothing is dismantled on day one", not bool(territory.is_dismantled("downtown")))
+	# Recovery: the weakest block you took, back on the board, on schedule.
+	gs.territory_nodes = {"downtown_fourth_ave_bars": {"soldiers": 2}, "downtown_humpys_alley": {"soldiers": 0}}
+	gs.territory_fronts = {}
+	var reopened_on := -1
+	for day in range(1, 41):
+		if day % territory.RECOVERY_EVERY != 0:
+			continue
+		gs.territory_fronts = {}
+		territory._curtis_recovers(day)
+		if bool(territory.is_contested("downtown_humpys_alley")):
+			reopened_on = day
+			break
+	_expect_true("he comes back for the empty one", reopened_on > 0)
+	_expect_true("...on a fourth night", reopened_on % territory.RECOVERY_EVERY == 0)
+	_expect_true("...and not the one with people on it", not bool(territory.is_contested("downtown_fourth_ave_bars")))
+	_expect_int("...at zero quiet nights", int(territory.front_quiet("downtown_humpys_alley")), 0)
+	# Not while a front is open, not where somebody is standing, never on a night off schedule.
+	territory._curtis_recovers(reopened_on)
+	_expect_int("an open front holds him", (territory.contested_blocks() as Array).size(), 1)
+	gs.territory_fronts = {}
+	territory._curtis_recovers(reopened_on + 1)
+	_expect_true("off the fourth night, nothing", (territory.contested_blocks() as Array).is_empty())
+	gs.territory_nodes["downtown_humpys_alley"] = {"soldiers": 0, "watch_day": reopened_on}
+	gs.day = reopened_on
+	territory._curtis_recovers(reopened_on)
+	_expect_true("...and not with you standing on it", (territory.contested_blocks() as Array).is_empty())
+	# Spenard is home turf: he sends nobody there.
+	gs.territory_nodes = {"minnesota_offramp": {"soldiers": 0}}
+	gs.territory_fronts = {}
+	for day in range(4, 41, 4):
+		territory._curtis_recovers(day)
+	_expect_true("he does not come back to Spenard", (territory.contested_blocks() as Array).is_empty())
+	# Dismantling: two clean nights with every block he started with yours.
+	gs.reset_to_new_game()
+	_stage_rank(gs, "player")
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	gs.territory_nodes = {"downtown_fourth_ave_bars": {"soldiers": 1}, "downtown_humpys_alley": {"soldiers": 1}}
+	gs.territory_fronts = {}
+	_expect_true("two of three is not the condition", not bool(territory.dismantle_condition("downtown")))
+	territory._settle_dismantling()
+	_expect_int("...and the hold stays at zero", int(territory.dismantle_hold("downtown")), 0)
+	gs.territory_nodes["downtown_fifth_and_g"] = {"soldiers": 1}
+	gs.territory_fronts["downtown_fifth_and_g"] = {"capture_reward_consumed": false, "conflict_active": true, "quiet": 0}
+	_expect_true("three of three, one contested, is not either", not bool(territory.dismantle_condition("downtown")))
+	gs.territory_fronts = {}
+	_expect_true("three of three, none contested, is", bool(territory.dismantle_condition("downtown")))
+	territory._settle_dismantling()
+	_expect_int("the first clean night is hold one", int(territory.dismantle_hold("downtown")), 1)
+	_expect_true("...not out yet", not bool(territory.is_dismantled("downtown")))
+	gs.territory_fronts["downtown_fifth_and_g"] = {"capture_reward_consumed": false, "conflict_active": true, "quiet": 0}
+	territory._settle_dismantling()
+	_expect_int("a contested night resets the hold", int(territory.dismantle_hold("downtown")), 0)
+	gs.territory_fronts = {}
+	var quiet_income: int = int(territory.block_income("downtown_fourth_ave_bars"))
+	gs.phone_inbox = []
+	var rank_before: int = int((get_node("/root/Exposure") as Node).rank_score())
+	territory._settle_dismantling()
+	_expect_int("one clean night again", int(territory.dismantle_hold("downtown")), 1)
+	# The second lands inside a real night, so the observation it writes is
+	# written inside a dispatch. Downtown's rival is switched off for the one
+	# night so no probe can take a block first; the same dictionary is put
+	# back after.
+	var downtown: Dictionary = gs.district_by_id("downtown")
+	var rival_before: int = int(downtown.get("rival", 0))
+	downtown["rival"] = 0
+	gs.day = 5
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gs.cash = 5000
+	gs.clean_cash = 5000
+	gs.rent_due_day = 999
+	_expect_true("the night dispatches", gm.dispatch("advance_time", {}))
+	downtown["rival"] = rival_before
+	_expect_true("two clean nights and he is out of Downtown", bool(territory.is_dismantled("downtown")))
+	_expect_true("...for good", "downtown" in (gs.curtis_dismantled as Array))
+	_expect_true("...and the hold is spent", not (gs.curtis_dismantle_hold as Dictionary).has("downtown"))
+	_expect_true("...and nothing there is probed", is_zero_approx(float(territory.probe_chance("downtown_fourth_ave_bars"))))
+	_expect_int("...and the corners pay a quarter more", int(territory.block_income("downtown_fourth_ave_bars")), int(round(float(quiet_income) * 1.25)))
+	_expect_true("...and everybody heard", int((get_node("/root/Exposure") as Node).rank_score()) > rank_before)
+	var goodie := false
+	for msg in gs.phone_inbox:
+		if str((msg as Dictionary).get("from", "")) == "Goodie":
+			goodie = true
+	_expect_true("...Goodie first", goodie)
+	territory._settle_dismantling()
+	_expect_int("...and only once", (gs.curtis_dismantled as Array).size(), 1)
+	gs.territory_fronts = {}
+	territory._curtis_recovers(territory.RECOVERY_EVERY * 5)
+	_expect_true("...and he does not come back", (territory.contested_blocks() as Array).is_empty())
+	# Durable across a save.
+	var snapshot: Dictionary = saves.capture()
+	gs.curtis_dismantled = []
+	saves._apply(snapshot)
+	_expect_true("a save remembers he is out", bool(territory.is_dismantled("downtown")))
+	gs.reset_to_new_game()
+
 ## HS-D2 (1.2.0): hold it down. Tone on a district, or you on a corner: the
 ## probe all but stops, and a front there counts two nights in one.
 func _check_hold_it_down(gs: Node, gm: Node) -> void:
@@ -21813,7 +21923,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14205
+const MIN_CHECKS := 14239
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -22608,7 +22718,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v32", int(saves.SAVE_VERSION), 32)
+	_expect_int("the schema is v33", int(saves.SAVE_VERSION), 33)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -23054,7 +23164,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v32 for Heat's teeth", int(saves.SAVE_VERSION), 32)
+	_expect_int("the schema is v33 for Heat's teeth", int(saves.SAVE_VERSION), 33)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -23527,7 +23637,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v32 for Wander", int(saves.SAVE_VERSION), 32)
+	_expect_int("the schema is v33 for Wander", int(saves.SAVE_VERSION), 33)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered", "wander_quiet_streak"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

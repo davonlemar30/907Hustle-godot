@@ -502,6 +502,8 @@ func reset_to_new_game() -> void:
 	curtis_doorstep = 0
 	run_earnings = {}
 	hot_goods = []
+	curtis_dismantled = []
+	curtis_dismantle_hold = {}
 	stick_tier = 1
 	stick_daily_count = 0
 	stick_rep = 0
@@ -838,6 +840,12 @@ var curtis_doorstep: int = 0
 ## and the 907List is where it becomes cash, at the fence's rate and the
 ## fence's risk. Tier-three merchandise keeps its own channel (Slide).
 var hot_goods: Array = []
+## HS-D3 (1.2.0, v33): the districts Curtis is out of, and how many nights
+## in a row each district has met the condition (every block he started
+## with is yours and none of them is contested). Durable: once he is out
+## of a district he does not come back to it.
+var curtis_dismantled: Array = []
+var curtis_dismantle_hold: Dictionary = {}
 const FENCE_RATE := 0.6
 
 ## Earnings over the whole run, by source, for the reckoning. `record_earning`

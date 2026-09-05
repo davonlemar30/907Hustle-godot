@@ -165,8 +165,11 @@ func _block_row(sys: Object, b: Dictionary) -> Control:
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(nm)
 	# BR-D4: whose it is, at a glance. Yours, Curtis's, or open.
+	var contested: bool = held and bool(sys.is_contested(id))
 	var owner := "YOURS" if held else ("CURTIS'S" if str(b.get("starting_owner", "")) == TERRITORY_DEFS.OWNER_CURTIS else "OPEN")
-	head.add_child(label(owner, "Kicker", 10, GREEN if held else (RED if owner == "CURTIS'S" else MUTED)))
+	if contested:
+		owner = "CONTESTED"
+	head.add_child(label(owner, "Kicker", 10, (AMBER if contested else GREEN) if held else (RED if owner == "CURTIS'S" else MUTED)))
 	head.add_child(label("HELD" if held else "$%d" % int(b["claim_cost"]), "Mono", 12, GREEN if held else AMBER))
 	if float(b.get("supply_discount", 0.0)) > 0.0:
 		v.add_child(label("Supply: -%d%% on every buy, anywhere, once yours." % int(round(float(b["supply_discount"]) * 100.0)),
@@ -177,9 +180,13 @@ func _block_row(sys: Object, b: Dictionary) -> Control:
 		var n: int = int(rec.get("soldiers", 0))
 		var earns: int = sys.block_income(id)
 		var col: Color = GREEN if n > 0 else RED
-		v.add_child(label("%d posted  ·  $%d a night  ·  +%d heat a night" % [n, earns, int(b["heat_exposure"])], "Muted", 11, col))
+		v.add_child(label("%d posted  ·  $%d a night  ·  +%d heat a night" % [n, earns, int(round(float(sys.block_heat(id))))], "Muted", 11, col))
 		if n == 0:
 			v.add_child(label("EMPTY — earning nothing, still costing heat.", "Muted", 11, RED))
+		# HS-D1: what a front costs, and how close it is to closing.
+		if contested:
+			v.add_child(label("His people keep coming by. It pays half and runs a point hotter until they stop: %d quiet night%s of %d." % [
+				int(sys.front_quiet(id)), "" if int(sys.front_quiet(id)) == 1 else "s", int(sys.FRONT_QUIET_NIGHTS)], "Muted", 11, AMBER, true))
 
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)

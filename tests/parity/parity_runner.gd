@@ -19811,6 +19811,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_one_good_run(gs, gm)
 	_check_stolen_goods_have_a_name(gs, gm)
 	_check_his_blocks_fight_back(gs, gm)
+	_check_a_front_is_a_bill(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -21037,6 +21038,60 @@ func _check_stolen_goods_have_a_name(gs: Node, gm: Node) -> void:
 ## claimed: the tap opens a confrontation with FIGHT and RUN; RUN walks;
 ## FIGHT ends held or hurt, and Curtis knows either way. Nightly, Curtis
 ## probes what you hold in his districts.
+## HS-D1 (1.2.0): a front is a bill. Contested pays half and runs a point
+## hotter; it survives nights until it closes; a probe that lands still
+## takes the block.
+func _check_a_front_is_a_bill(gs: Node, gm: Node) -> void:
+	var territory: Object = gm.system("territory")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_stage_rank(gs, "player")
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	gs.territory_nodes = {"downtown_snow_city_corner": {"soldiers": 2}}
+	gs.territory_fronts = {}
+	var quiet_income: int = int(territory.block_income("downtown_snow_city_corner"))
+	var quiet_heat: float = float(territory.block_heat("downtown_snow_city_corner"))
+	gs.territory_fronts["downtown_snow_city_corner"] = {"capture_reward_consumed": false, "conflict_active": true, "quiet": 0}
+	_expect_true("contested is contested", bool(territory.is_contested("downtown_snow_city_corner")))
+	_expect_int("...and pays half", int(territory.block_income("downtown_snow_city_corner")), int(round(float(quiet_income) * 0.5)))
+	_expect_float("...and runs a point hotter", float(territory.block_heat("downtown_snow_city_corner")), quiet_heat + 1.0)
+	_expect_float("...which the district feels", float(territory.heat_in("downtown")), quiet_heat + 1.0)
+	_expect_true("...at even odds tonight", is_equal_approx(float(territory.probe_chance("downtown_snow_city_corner")), territory.PROBE_CONTESTED))
+	# Three quiet nights close it.
+	territory._front_survived("downtown_snow_city_corner")
+	_expect_int("one quiet night", int(territory.front_quiet("downtown_snow_city_corner")), 1)
+	_expect_true("...still contested", bool(territory.is_contested("downtown_snow_city_corner")))
+	territory._front_survived("downtown_snow_city_corner")
+	territory._front_survived("downtown_snow_city_corner")
+	_expect_true("three, and his people stop coming by", not bool(territory.is_contested("downtown_snow_city_corner")))
+	_expect_int("...and it pays full again", int(territory.block_income("downtown_snow_city_corner")), quiet_income)
+	_expect_true("...and probes at the defended rate", is_equal_approx(float(territory.probe_chance("downtown_snow_city_corner")), territory.PROBE_DEFENDED))
+	# The night itself: a front that survives counts a night; one that does not is gone.
+	gs.territory_fronts["downtown_snow_city_corner"] = {"capture_reward_consumed": false, "conflict_active": true, "quiet": 0}
+	var survived := 0
+	var lost := 0
+	for day in range(1, 40):
+		gs.territory_nodes["downtown_snow_city_corner"] = {"soldiers": 0}
+		gs.territory_fronts["downtown_snow_city_corner"] = {"capture_reward_consumed": false, "conflict_active": true, "quiet": 0}
+		territory._curtis_probes(day)
+		if not gs.holds_block("downtown_snow_city_corner"):
+			lost += 1
+			gs.territory_nodes["downtown_snow_city_corner"] = {"soldiers": 0}
+		elif int(territory.front_quiet("downtown_snow_city_corner")) == 1:
+			survived += 1
+	_expect_true("over forty nights a front both survives (%d) and falls (%d)" % [survived, lost], survived > 0 and lost > 0)
+	_expect_int("...and every night was one or the other", survived + lost, 39)
+	# The win opens a front at zero.
+	gs.reset_to_new_game()
+	_stage_rank(gs, "player")
+	gs.cash = 5000
+	gs.soldiers_idle = 1
+	territory._take_from_curtis("minnesota_offramp")
+	_expect_true("a won block opens a front", bool(territory.is_contested("minnesota_offramp")))
+	_expect_int("...with no quiet nights yet", int(territory.front_quiet("minnesota_offramp")), 0)
+	_expect_true("...and it is on the list", "minnesota_offramp" in (territory.contested_blocks() as Array))
+	gs.reset_to_new_game()
+
 func _check_his_blocks_fight_back(gs: Node, gm: Node) -> void:
 	var territory: Object = gm.system("territory")
 	var engine: Object = gm.system("consequence")
@@ -21686,7 +21741,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14162
+const MIN_CHECKS := 14183
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

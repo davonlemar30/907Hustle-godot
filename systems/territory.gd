@@ -124,6 +124,28 @@ const CONTEST_LOSS_HEALTH := 8
 const PROBE_UNDEFENDED := 0.15
 const PROBE_DEFENDED := 0.05
 const PROBE_CONTESTED := 0.5
+## HS-D1 (1.2.0): a front is a bill. A block his people keep coming by pays
+## half -- the customers stay home -- and costs a point of raw heat a night
+## on top of its own exposure. It stays contested until it has survived
+## FRONT_QUIET_NIGHTS nights; then his people stop coming by and it is yours
+## the way the others are.
+const CONTESTED_INCOME := 0.5
+const CONTESTED_HEAT := 1.0
+const FRONT_QUIET_NIGHTS := 3
+
+func is_contested(block_id: String) -> bool:
+	return bool((gs.territory_fronts.get(block_id, {}) as Dictionary).get("conflict_active", false))
+
+func front_quiet(block_id: String) -> int:
+	return int((gs.territory_fronts.get(block_id, {}) as Dictionary).get("quiet", 0))
+
+## Every block his people are still coming by.
+func contested_blocks() -> Array:
+	var out: Array = []
+	for id in gs.territory_nodes.keys():
+		if is_contested(str(id)):
+			out.append(str(id))
+	return out
 
 func _is_curtis_block(block_id: String) -> bool:
 	return str(gs.block_by_id(block_id).get("starting_owner", "")) == gs.TERRITORY_DEFS.OWNER_CURTIS
@@ -211,7 +233,7 @@ func _take_from_curtis(block_id: String) -> void:
 		{"source_id": "territory_claim"})
 	gs.soldiers_idle = maxi(0, int(gs.soldiers_idle) - 1)
 	gs.territory_nodes[block_id] = {"soldiers": 1}
-	gs.territory_fronts[block_id] = {"capture_reward_consumed": false, "conflict_active": true}
+	gs.territory_fronts[block_id] = {"capture_reward_consumed": false, "conflict_active": true, "quiet": 0}
 	gs.log_activity("%s is yours, and it was his. His people leave slowly, so you know they will be back." % str(b.get("name", block_id)), GREEN)
 
 func choice_label(choice_id: String) -> String:
@@ -268,15 +290,13 @@ func _curtis_probes(ended_day: int) -> void:
 	for id in gs.territory_nodes.keys().duplicate():
 		var block_id := str(id)
 		var chance: float = probe_chance(block_id)
-		var contested: bool = bool((gs.territory_fronts.get(block_id, {}) as Dictionary).get("conflict_active", false))
-		if contested:
-			var front: Dictionary = gs.territory_fronts[block_id]
-			front["conflict_active"] = false
-			gs.territory_fronts[block_id] = front
-		if chance <= 0.0:
-			continue
+		var contested: bool = is_contested(block_id)
 		var roll: int = rng.seeded_int_range(gs.run_seed, "%d:probe:%s" % [ended_day, block_id], 0, 99)
-		if roll >= int(chance * 100.0):
+		if chance <= 0.0 or roll >= int(chance * 100.0):
+			# HS-D1: a contested block that made it through the night is a
+			# night quieter; three of those and his people stop coming by.
+			if contested:
+				_front_survived(block_id)
 			continue
 		var soldiers: int = int((gs.territory_nodes[block_id] as Dictionary).get("soldiers", 0))
 		if soldiers <= 0:
@@ -287,6 +307,20 @@ func _curtis_probes(ended_day: int) -> void:
 			gs.territory_nodes[block_id] = rec
 			_probe_text("Curtis's people tested %s last night. One of yours walked. The corner held." % _block_name(block_id))
 			gs.log_activity("Curtis's people tested %s. One soldier walked off it rather than find out. It held." % _block_name(block_id), AMBER)
+
+## HS-D1: one more night the front held. At FRONT_QUIET_NIGHTS the front
+## closes: the block earns full, costs its own heat only, and probes at
+## the ordinary rate.
+func _front_survived(block_id: String) -> void:
+	var front: Dictionary = gs.territory_fronts.get(block_id, {})
+	front["quiet"] = int(front.get("quiet", 0)) + 1
+	if int(front["quiet"]) >= FRONT_QUIET_NIGHTS:
+		front["conflict_active"] = false
+		gs.territory_fronts[block_id] = front
+		gs.log_activity("His people stop coming by %s. It is yours the way the others are." % _block_name(block_id), GREEN)
+		_probe_text("Curtis's people gave up on %s. Nobody's been by in three nights." % _block_name(block_id))
+		return
+	gs.territory_fronts[block_id] = front
 
 ## A block Curtis takes back.
 func _lose_block(block_id: String, why: String) -> void:
@@ -454,6 +488,9 @@ func block_income(block_id: String) -> int:
 	var total: float = 0.0
 	for i in range(n):
 		total += float(b["earning"]) * pow(gs.SOLDIER_INCOME_DIMINISH, i)
+	# HS-D1: a corner people are fighting over pays half.
+	if is_contested(block_id):
+		total *= CONTESTED_INCOME
 	return int(round(total))
 
 func nightly_income() -> int:
@@ -462,11 +499,19 @@ func nightly_income() -> int:
 		total += block_income(str(id))
 	return total
 
-## Held blocks cost heat whether or not anyone is standing on them.
+## Held blocks cost heat whether or not anyone is standing on them. HS-D1:
+## a contested one costs a point more, because two crews on one corner is
+## the kind of thing the block calls in.
+func block_heat(block_id: String) -> float:
+	var raw: float = float(gs.block_by_id(block_id).get("heat_exposure", 0))
+	if is_contested(block_id):
+		raw += CONTESTED_HEAT
+	return raw
+
 func nightly_heat() -> float:
 	var total: float = 0.0
 	for id in gs.territory_nodes.keys():
-		total += float(gs.block_by_id(str(id)).get("heat_exposure", 0))
+		total += block_heat(str(id))
 	return total
 
 # --- BR-D4: the board per district -------------------------------------------
@@ -504,7 +549,7 @@ func heat_in(district_id: String) -> float:
 	var total := 0.0
 	for id in gs.territory_nodes.keys():
 		if gs.TERRITORY_DEFS.district_of(str(id)) == district_id:
-			total += float(gs.block_by_id(str(id)).get("heat_exposure", 0))
+			total += block_heat(str(id))
 	return total
 
 ## BR-D4: Ship Creek's value. Every held lot with a `supply_discount` cuts

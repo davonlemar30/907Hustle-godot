@@ -81,7 +81,8 @@ func _wire_taps() -> void:
 		tap_connect(work_btn, _on_go_to_work)
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Market", _on_market)
 	make_tappable("Shell/Scroll/Pad/Content/Columns/Turf", _on_turf)
-	make_tappable("Shell/Scroll/Pad/Content/People", _on_people)
+	# TU-D1: the card shows a text; tapping it opens the Phone, not People.
+	make_tappable("Shell/Scroll/Pad/Content/People", _on_texts)
 
 ## Canon's explore_spenard: cashCost 0, timeCost 1 (game-core.js:358-360).
 ##
@@ -202,6 +203,9 @@ func _on_turf() -> void:
 func _on_people() -> void:
 	nav.go_to(nav.PEOPLE)
 
+func _on_texts() -> void:
+	nav.go_to(nav.PHONE)
+
 ## Home is where the most surfaces are gated, so the gates run FIRST and every
 ## bind below them is free to fill a surface without asking whether it is there:
 ## filling a hidden node is harmless, and filling a locked one is what makes the
@@ -248,10 +252,22 @@ func _bind_all() -> void:
 ## worth a slot. Telling them 0.60 would be telling them to do arithmetic.
 ## OG-D4: the way out, on Home once it is open. LEAVE AT DAY'S CLOSE is a
 ## decision, and the card says what it costs to change your mind.
+## TU-D1 (1.3.0): a card rebuilt on every refresh has to be freed NOW, not
+## at frame end. `queue_free()` left the old card in the tree until the
+## frame ended, so a second refresh in the same frame -- a walk fires
+## several -- found the doomed card, freed it again (a no-op), and added a
+## third. The playtest saw the way-out card stacking after every walk.
+func _free_cards(name: String) -> void:
+	var content := get_node_or_null("Shell/Scroll/Pad/Content")
+	if content == null:
+		return
+	for child in content.get_children().duplicate():
+		if str(child.name) == name:
+			content.remove_child(child)
+			child.free()
+
 func _bind_way_out() -> void:
-	var existing := get_node_or_null("Shell/Scroll/Pad/Content/WayOut")
-	if existing != null:
-		existing.queue_free()
+	_free_cards("WayOut")
 	var ending: Object = _gm.system("ending")
 	var exposure: Node = get_node_or_null("/root/Exposure")
 	if ending == null or exposure == null or gs.game_over:
@@ -270,7 +286,7 @@ func _bind_way_out() -> void:
 	v.add_theme_constant_override("separation", 6)
 	card.add_child(v)
 	var kicker := Label.new()
-	kicker.text = "THE WAY OUT"
+	kicker.text = "CASH OUT"
 	kicker.theme_type_variation = &"Kicker"
 	kicker.add_theme_font_size_override("font_size", 10)
 	v.add_child(kicker)
@@ -280,7 +296,7 @@ func _bind_way_out() -> void:
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var need: int = int(ending.way_out_threshold())
 	body.text = ("Tonight. When the day closes you are gone with what is clean." if gs.leaving
-		else "$%s clean and a boss's name buys the last flight out. You have $%s clean. What is not clean stays." % [_commas(need), _commas(int(gs.clean_cash))])
+		else "You could leave. $%s clean and a boss's name buys the last flight out; you have $%s clean. Or you keep going. Nobody is making you." % [_commas(need), _commas(int(gs.clean_cash))])
 	v.add_child(body)
 	var blocked := str(ending.leave_blocker())
 	var b := Button.new()
@@ -292,7 +308,7 @@ func _bind_way_out() -> void:
 		b.text = "STAY"
 		tap_connect(b, func() -> void: _gm.dispatch("stay", {}))
 	else:
-		b.text = "LEAVE AT DAY'S CLOSE" if blocked.is_empty() else blocked.to_upper()
+		b.text = "CASH OUT AT DAY'S CLOSE" if blocked.is_empty() else blocked.to_upper()
 		b.disabled = not blocked.is_empty()
 		tap_connect(b, func() -> void: _gm.dispatch("leave_city", {}))
 	v.add_child(b)
@@ -304,9 +320,7 @@ func _bind_way_out() -> void:
 ## OG-D3: the beater, on Home once you have it: the trunk, and the day it
 ## would not start.
 func _bind_car() -> void:
-	var existing := get_node_or_null("Shell/Scroll/Pad/Content/CarCard")
-	if existing != null:
-		existing.queue_free()
+	_free_cards("CarCard")
 	if not gs.has_vehicle():
 		return
 	var content := get_node_or_null("Shell/Scroll/Pad/Content") as VBoxContainer
@@ -379,7 +393,9 @@ func _bind_hero() -> void:
 	var photo := get_node_or_null("Shell/Scroll/Pad/Content/Photo") as TextureRect
 	if photo == null:
 		return
-	var banner: Texture2D = PORTRAITS.district_header(str(gs.current_district_id))
+	# TU-D1: the district at this time of day, when the file exists; the
+	# plain banner when it does not.
+	var banner: Texture2D = PORTRAITS.district_header_at(str(gs.current_district_id), str(gs.time_slot))
 	if banner != null:
 		photo.texture = banner
 

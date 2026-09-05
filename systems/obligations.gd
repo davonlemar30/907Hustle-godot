@@ -104,9 +104,7 @@ func _pay_rent() -> Dictionary:
 func _pay_phone(payload: Dictionary) -> Dictionary:
 	if gs.game_over:
 		return {"ok": false, "reason": "The run is over."}
-	var due: bool = gs.day >= gs.phone_due_day or gs.phone_days_past_due > 0 or not gs.phone_active
-	if not due:
-		return {"ok": false, "reason": "Due Day %d." % gs.phone_due_day}
+	# TU-D1: the bill can be paid ahead; see `pay_phone_blocker`.
 	if gs.cash < gs.PHONE_BILL:
 		return {"ok": false, "reason": "Need $%d for the phone bill." % gs.PHONE_BILL}
 	# High-visibility for the same reason as rent (TI-003 §6): a billed account
@@ -114,7 +112,9 @@ func _pay_phone(payload: Dictionary) -> Dictionary:
 	var wallet: Object = gm.system("wallet")
 	wallet.spend(gs.PHONE_BILL, wallet.HIGH_VISIBILITY_CLEAN_FIRST,
 		{"source_id": "phone_bill"})
-	gs.phone_due_day = gs.day + PHONE_PERIOD_DAYS
+	# TU-D1: a bill paid ahead pushes the due day out from where it stood,
+	# not from today; a bill paid late starts a fresh period from today.
+	gs.phone_due_day = maxi(int(gs.phone_due_day), int(gs.day)) + PHONE_PERIOD_DAYS
 	gs.phone_days_past_due = 0
 	if not gs.phone_active:
 		gs.phone_reactivate_at_slot = phone.now_slot_number()
@@ -134,20 +134,21 @@ func pay_phone_blocker(surface: String = "phone") -> String:
 	if surface != "store":
 		if not gs.phone_active:
 			return "Pay at the Phone Store"
-		if gs.day < gs.phone_due_day and gs.phone_days_past_due == 0:
-			return "Due Day %d" % gs.phone_due_day
 	if gs.cash < gs.PHONE_BILL:
 		return "Need $%d" % gs.PHONE_BILL
 	return ""
 
+## TU-D1 (1.3.0): rent can be paid ahead. Paying before it is due moves the
+## due day a week out from where it stood, which is what paying ahead means.
 func pay_rent_blocker() -> String:
 	if gs.game_over:
 		return "The run is over"
-	if gs.day < gs.rent_due_day:
-		return "Due Day %d" % gs.rent_due_day
 	if gs.cash < gs.WEEKLY_RENT:
 		return "Need $%d" % gs.WEEKLY_RENT
 	return ""
+
+func rent_paid_ahead() -> bool:
+	return int(gs.day) < int(gs.rent_due_day)
 
 ## Canon's currentRentDue: the due day, rolled forward in whole periods for as
 ## long as it has been sitting unpaid.

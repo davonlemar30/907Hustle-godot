@@ -333,6 +333,8 @@ func _build_flow_sheet_content(spec: Dictionary) -> Control:
 			return FlowSheets.build_intro(gs)
 		"first_morning":
 			return FlowSheets.build_first_morning(gs)
+		"day_break":
+			return FlowSheets.build_day_break(gs, get_node("/root/GameManager"))
 		"arrival":
 			return FlowSheets.build_discovery({"title": str(spec.get("title", "")),
 				"line": str(spec.get("line", "")), "icon": ""})

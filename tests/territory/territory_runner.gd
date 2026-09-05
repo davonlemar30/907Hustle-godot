@@ -144,6 +144,10 @@ func _claim_block(block_id: String) -> bool:
 	if not chain.is_empty() and str((chain.get("source", {}) as Dictionary).get("action_id", "")) == "territory":
 		gs.active_consequence = {}
 		_terr()._take_from_curtis(block_id)
+		# HS-D1: a front halves the block's income and adds heat; this suite
+		# measures the held corner, so the front is closed as state cleanup.
+		# The front's own arithmetic is asserted in parity.
+		gs.territory_fronts.erase(block_id)
 	return true
 
 # --- claiming ---------------------------------------------------------------

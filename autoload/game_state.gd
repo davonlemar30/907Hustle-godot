@@ -504,6 +504,7 @@ func reset_to_new_game() -> void:
 	hot_goods = []
 	curtis_dismantled = []
 	curtis_dismantle_hold = {}
+	market_nudges = {}
 	stick_tier = 1
 	stick_daily_count = 0
 	stick_rep = 0
@@ -848,6 +849,10 @@ var hot_goods: Array = []
 ## of a district he does not come back to it.
 var curtis_dismantled: Array = []
 var curtis_dismantle_hold: Dictionary = {}
+## TU-D4 (1.3.0, v34): today's buyers. district -> product -> {pct, day}: a
+## READ walk that turns up somebody paying over for something, good for the
+## day it was heard. Never touches the market walk; the sell price reads it.
+var market_nudges: Dictionary = {}
 const FENCE_RATE := 0.6
 
 ## Earnings over the whole run, by source, for the reckoning. `record_earning`

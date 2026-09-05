@@ -77,7 +77,7 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## range, plus the two things that deliberately survive (the arrest warning and
 ## the guaranteed road's price) and the proof that the ENGINE still projects
 ## odds it no longer shows.
-const MIN_CHECKS := 3946
+const MIN_CHECKS := 4429
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -2201,10 +2201,14 @@ func _check_no_odds_hints() -> void:
 
 	# What deliberately SURVIVES. Neither is an odds hint, and losing either
 	# would be hiding a rule or a price rather than a probability.
-	a.check("the guaranteed road still states its price",
-		joined.contains("Guaranteed:"))
-	a.check("...and every lane still says what it is for",
-		joined.contains(str(EVENTS.CHOICE_COPY["stand"])))
+	# TU-D4 (1.3.0): a road is a button. The playtest called the copy under
+	# the roads a spoiler and a chore, so it is gone from the sheet -- the
+	# table stays for the engine's own API -- and the guarantee sentence
+	# went with it. What a road did is said after it is taken.
+	a.check("the guaranteed road no longer prints its price under the button",
+		not joined.contains("Guaranteed:"))
+	a.check("...and no lane prints its copy under the verb",
+		not joined.contains(str(EVENTS.CHOICE_COPY["stand"])))
 	built.free()
 
 	# The arrest warnings survive too — proven on a chain that actually carries

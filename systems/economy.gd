@@ -146,6 +146,19 @@ func buy_unit_price(district_id: String, product_id: String) -> int:
 	var discount: float = float(territory.supply_discount()) if territory != null else 0.0
 	return maxi(1, int(round(float(board) * (1.0 - discount))))
 
+## TU-D4 (1.3.0): today's buyer, if a READ walk turned one up. Good for the
+## day it was heard, gone at midnight; the board itself never moves for it.
+func nudge_for(district_id: String, product_id: String) -> float:
+	var row: Variant = ((gs.market_nudges as Dictionary).get(district_id, {}) as Dictionary).get(product_id)
+	if row is Dictionary and int((row as Dictionary).get("day", -1)) == int(gs.day):
+		return float((row as Dictionary).get("pct", 0.0))
+	return 0.0
+
+func nudge_price(district_id: String, product_id: String, pct: float) -> void:
+	if not gs.market_nudges.has(district_id):
+		gs.market_nudges[district_id] = {}
+	gs.market_nudges[district_id][product_id] = {"pct": clampf(pct, 0.0, 0.5), "day": int(gs.day)}
+
 func sell_unit_price(district_id: String, product_id: String) -> int:
 	var market: Dictionary = gs.markets.get(district_id, {})
 	var board: int = int((market.get("prices", {}) as Dictionary).get(product_id, 0)) \
@@ -156,6 +169,9 @@ func sell_unit_price(district_id: String, product_id: String) -> int:
 		board = int(gs.product_by_id(product_id).get("price", 0))
 	if board <= 0:
 		return 0
+	var nudge: float = nudge_for(district_id, product_id)
+	if nudge > 0.0:
+		board = int(round(float(board) * (1.0 + nudge)))
 	var penalty: float = market_price_penalty(district_id)
 	if penalty <= 0.0:
 		return board

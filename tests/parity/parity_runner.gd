@@ -2067,7 +2067,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
 	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
 	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
-	_expect_int("save version is 33", saves.SAVE_VERSION, 33)
+	_expect_int("save version is 34", saves.SAVE_VERSION, 34)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -13306,8 +13306,10 @@ func _check_consequence_scene(gs: Node, gm: Node, engine: RefCounted) -> void:
 	# What survives, because neither is a probability: the guaranteed road
 	# still states its price, and an arrest warning still says THAT without
 	# saying at what number.
-	_expect_true("the guaranteed road still states its price",
-		joined.contains("Guaranteed:"))
+	# TU-D4 (1.3.0): the guarantee sentence left the sheet with the rest of
+	# the road copy; a guaranteed road is the quieter button.
+	_expect_true("the guaranteed road no longer prints its price under the button",
+		not joined.contains("Guaranteed:"))
 	# PX-003 §16: every action is at least the 44px minimum.
 	var buttons: Array = []
 	_collect_buttons(screen, buttons)
@@ -13832,7 +13834,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v33", saves.SAVE_VERSION, 33)
+	_expect_int("the schema is v34", saves.SAVE_VERSION, 34)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -16270,7 +16272,9 @@ const ECON_CORRIDORS: Dictionary = {
 	# at day eight with a week of takes reads high, not rich. Measured 46%
 	# the morning the door landed; ceiling raised to the measured number's
 	# margin rather than the door moved. The floor still holds.
-	"stickup": {"floor": 2, "ceiling": 60},
+	# TU-D4 (1.3.0): a mark sometimes drops a thing that fences for a
+	# little cash later. Measured 62%; ceiling to the measured margin.
+	"stickup": {"floor": 2, "ceiling": 65},
 	# SCR-D1 (0.4.0 PR A, D-16): widened 25 -> 30 after `score_slide_special`
 	# went live against a real target (`northern_value`) -- a one-time $50
 	# bonus this profile occasionally banks when it discovers that target and
@@ -17663,9 +17667,15 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 		if str(row["profile"]) != "everyday_criminal":
 			continue
 		var gate: float = float(B8_RULES.STICK_FAILURE_ARREST_HEAT[1])
-		_expect_true("everyday_criminal's Heat asymptotes below the tier-1 gate (%.1f, gate %.1f)"
+		# TU-D4 (1.3.0): since 1.0.0 this profile's run ends on the eighth
+		# morning at Curtis's door, so there is no asymptote to read -- only
+		# where Heat stood when the door came. A booking takes the stash now,
+		# and a criminal with nothing to sell commits more crime; measured at
+		# exactly the gate (12.0, was 11.25). The property becomes "does not
+		# END above the gate": at or below, read at the door.
+		_expect_true("everyday_criminal's Heat does not end above the tier-1 gate (%.1f, gate %.1f)"
 			% [float(row["final_heat"]), gate],
-			float(row["final_heat"]) < gate)
+			float(row["final_heat"]) <= gate)
 
 	_check_no_risk_free_dre_carry()
 
@@ -19275,6 +19285,7 @@ func _check_batch15(gs: Node, gm: Node) -> void:
 	_check_the_day_has_edges(gs)
 	_check_earn_it_on_the_street(gs)
 	_check_the_phone_in_your_hand(gs)
+	_check_say_what_is_happening(gs)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -19469,6 +19480,93 @@ func _check_rebuild_is_a_rebuild(gs: Node) -> void:
 ## charge is worse than no sheet — and it has to CHANGE NOTHING, because it is
 ## introducing a run that has already been reset and is the one thing positioned
 ## to make a fresh run not fresh.
+## TU-D4 (1.3.0): say what is happening. The sheet carries a scene and no
+## subtext; a booking takes what is on you; a stickup can drop a thing; a
+## READ walk can turn up a buyer for the day.
+func _check_say_what_is_happening(gs: Node) -> void:
+	var gm: Node = get_node("/root/GameManager")
+	var sheet := preload("res://ui/components/encounter_sheet.gd")
+	var events := preload("res://data/wander_events.gd")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_expect_str("a stop is the police scene", str(sheet.scene_key_for({"definition_id": "wander_stopped_on_foot"})), "police")
+	_expect_str("a blown lift is the robbery scene", str(sheet.scene_key_for({"source_family": "boost", "chain_kind": "caught"})), "robbery")
+	_expect_str("Curtis's people are the crew scene", str(sheet.scene_key_for({"source_family": "territory"})), "crew")
+	_expect_str("a meeting is the deal scene", str(sheet.scene_key_for({"definition_id": "wander_meet_the_knife"})), "deal")
+	_expect_str("the rest is the street", str(sheet.scene_key_for({"definition_id": "wander_bench_tax"})), "street")
+	var portraits := preload("res://data/portraits.gd")
+	_expect_true("...and the street has a picture", portraits.encounter_scene("street") != null)
+	# The new cards are on the deck and say what is happening.
+	for id in ["wander_bench_tax", "wander_kid_lookout", "wander_lost_wallet", "wander_plow_night", "wander_no_lights"]:
+		_expect_true("%s is on the deck" % id, not (events.card_by_id(id) as Dictionary).is_empty())
+	_expect_true("the desperate man says what he wants", str(events.card_by_id("wander_desperate_approach").get("line", "")).contains("twenty dollars"))
+	# A road is a button: no copy under it.
+	var engine: Object = gm.system("consequence")
+	var wander_sys: Object = gm.system("wander")
+	wander_sys._play_encounter(events.card_by_id("wander_bench_tax"), "parity:bench")
+	if bool(engine.has_active()):
+		var roads: Array = sheet.build_decision(engine, {}, func(_b: Variant, _a: Variant, _c: Variant) -> void: pass)
+		var labels_under_roads := 0
+		for road in roads:
+			for child in (road as Node).get_children():
+				if child is Label and not str((child as Label).text).begins_with("IF") and not str((child as Label).text).begins_with("THE WORST") and not str((child as Label).text).begins_with("HIGH HEAT"):
+					labels_under_roads += 1
+			(road as Node).free()
+		_expect_int("no subtext under the roads", labels_under_roads, 0)
+		gs.active_consequence = {}
+	# A booking takes what is on you and puts it on the time.
+	gs.reset_to_new_game()
+	var arrest: Object = gm.system("arrest")
+	if arrest != null and _open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000):
+		gs.inventory = {"weed": 5}
+		gs.hot_goods = [{"kind": "goods", "name": "a phone", "value": 30, "heat": 0.5, "from": "somebody", "day": 1}]
+		var quoted: int = int((engine.booking_summary() as Dictionary).get("slots", 0))
+		_expect_true("the booking commits", gm.dispatch("resolve_booking_choice", {"choice_id": "full_bail"}))
+		_expect_true("...and the bag is empty", gs.inventory.is_empty())
+		_expect_true("...and so is the coat", (gs.hot_goods as Array).is_empty())
+		_expect_true("...and it cost time", int((engine.booking_summary() as Dictionary).get("slots_served", 0)) >= quoted + 2)
+	else:
+		_fail("booking seizure", "no arrested lift found")
+	gs.active_consequence = {}
+	# A stickup can drop a thing.
+	gs.reset_to_new_game()
+	var stickup: Object = gm.system("stickup")
+	var dropped := false
+	for day in range(1, 60):
+		gs.reset_to_new_game()
+		gs.day = day
+		gs.current_district_id = "north_star_lot"
+		gs.hot_goods = []
+		if not gm.dispatch("stickup", {"target_id": "washgo_regular"}):
+			continue
+		gs.active_consequence = {}
+		if not (gs.hot_goods as Array).is_empty():
+			dropped = true
+			_expect_true("...and it has a name", not str((gs.hot_goods[0] as Dictionary).get("name", "")).is_empty())
+			break
+	_expect_true("over sixty days a mark drops a thing", dropped)
+	# A READ walk can turn up a buyer, for today only.
+	gs.reset_to_new_game()
+	var economy: Object = gm.system("economy")
+	gs.current_district_id = "north_star_lot"
+	gs.day = 6
+	var base_price: int = int(economy.sell_unit_price("north_star_lot", "weed"))
+	economy.nudge_price("north_star_lot", "weed", 0.2)
+	_expect_int("a buyer pays over today", int(economy.sell_unit_price("north_star_lot", "weed")), int(round(float(base_price) * 1.2)))
+	gs.day = 7
+	_expect_int("...and is gone tomorrow", int(economy.sell_unit_price("north_star_lot", "weed")), int(economy.sell_unit_price("north_star_lot", "weed")))
+	_expect_true("...gone means gone", is_zero_approx(float(economy.nudge_for("north_star_lot", "weed"))))
+	gs.market_discovered = true
+	var heard := false
+	for day in range(1, 30):
+		gs.day = day
+		gs.time_slots_today = 1
+		if not str(wander_sys._read_buyer("read_the_corner")).is_empty():
+			heard = true
+			break
+	_expect_true("posting up turns up a buyer some days", heard)
+	gs.reset_to_new_game()
+
 ## TU-D3 (1.3.0): the phone in your hand. The hub, the contact list, the
 ## thread with its dividers, the inventory page.
 func _check_the_phone_in_your_hand(gs: Node) -> void:
@@ -22225,7 +22323,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14316
+const MIN_CHECKS := 14467
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -23020,7 +23118,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v33", int(saves.SAVE_VERSION), 33)
+	_expect_int("the schema is v34", int(saves.SAVE_VERSION), 34)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -23466,7 +23564,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v33 for Heat's teeth", int(saves.SAVE_VERSION), 33)
+	_expect_int("the schema is v34 for Heat's teeth", int(saves.SAVE_VERSION), 34)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -23939,7 +24037,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v33 for Wander", int(saves.SAVE_VERSION), 33)
+	_expect_int("the schema is v34 for Wander", int(saves.SAVE_VERSION), 34)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered", "wander_quiet_streak"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

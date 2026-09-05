@@ -333,6 +333,23 @@ func _commit(payload: Dictionary) -> Dictionary:
 	var paid: int = _cash_cost(choice_id, quote, cash)
 	var shortfall: int = maxi(0, quote - paid)
 	var booking_slots: int = rules.total_booking_slots(severity, prior_count, shortfall)
+	# TU-D4 (1.3.0): they inventory what was on you. Product and anything
+	# under your coat go in a bag with your name on it, and on the time:
+	# one more slot for every four units, hot goods counting double.
+	if engine.record_receipt(cause_id, "booking:seizure"):
+		var seized_units := 0
+		for pid in gs.inventory.keys():
+			seized_units += int(gs.inventory[pid])
+		var seized_hot: int = (gs.hot_goods as Array).size()
+		if seized_units + seized_hot > 0:
+			gs.inventory = {}
+			gs.hot_goods = []
+			var extra: int = int(ceil(float(seized_units + seized_hot * 2) / 4.0))
+			booking_slots += extra
+			gs.log_activity("They inventory what was on you: %d unit%s of product%s. It goes in a bag with your name on it, and %d slot%s onto the time." % [
+				seized_units, "" if seized_units == 1 else "s",
+				" and %d thing%s that was not yours" % [seized_hot, "" if seized_hot == 1 else "s"] if seized_hot > 0 else "",
+				extra, "" if extra == 1 else "s"], Color(0.827, 0.161, 0.125))
 
 	# 2-3. Spend through WalletSystem, which applies Financial Pressure from the
 	#      dirty portion itself. Bail is high-visibility: it is a formal payment

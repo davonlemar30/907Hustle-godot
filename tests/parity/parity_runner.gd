@@ -4753,6 +4753,11 @@ func _check_screen_reads(gs: Node, gm: Node) -> void:
 	add_child(screen)
 	if screen.has_method("refresh"):
 		screen.refresh()
+	var collapsed: Array[String] = []
+	_collect_labels(screen, collapsed)
+	_expect_true("People starts with concise relationship summaries", not "rent paid" in "\n".join(collapsed).to_lower())
+	screen._toggle_evidence("yalonda")
+	_expect_true("People history is explicitly open", bool(screen._expanded.get("yalonda", false)))
 	var text: Array[String] = []
 	_collect_labels(screen, text)
 	# Freed rather than queued: this instance stays connected to
@@ -15482,6 +15487,15 @@ func _check_phone_dismiss_target(gs: Node, gm: Node) -> void:
 	_expect_true("Texts is open by default, per canon's defaultExpanded",
 		bool(screen._is_open("texts")))
 	screen.refresh()
+	# Mobile now opens a conversation explicitly; deletion is under Manage.
+	_expect_true("mobile starts at inbox", not screen._mobile_detail)
+	_expect_true("delete controls start tucked away", not screen._manage)
+	screen._choose_sender(PHONE_WIDEST_SENDER)
+	_expect_true("mobile opens the conversation", screen._mobile_detail)
+	_expect_str("selected sender is stable", screen._sender, PHONE_WIDEST_SENDER)
+	_expect_true("opening a conversation does not enable deletion", not screen._manage)
+	screen._toggle_manage()
+	_expect_true("Manage exposes deletion deliberately", screen._manage)
 
 	var buttons: Array = []
 	_collect_buttons(screen, buttons)

@@ -21,36 +21,76 @@ const ROLES := {
 	"mina": "NIGHT OWL COUNTER", "curtis": "RIVAL", "dre": "THE NOTE",
 }
 
+var _expanded: Dictionary = {}
+var _focus_id := ""
+var _history_limit: Dictionary = {}
+
+func _ready() -> void:
+	super()
+	$HomeFab.hide()
+	$HomeBtn.hide()
+	$Shell/NavBar/NavRow/HomeSlot.pressed.connect(func() -> void: nav.go_to(nav.HOME))
+	$Shell/NavBar/NavRow/Hustle/V/Ind.color = Color.TRANSPARENT
+	$Shell/NavBar/NavRow/Hustle/V/Ico.self_modulate = MUTED
+	$Shell/NavBar/NavRow/Hustle/V/L.add_theme_color_override("font_color", MUTED)
+	$Shell/NavBar/NavRow/More/V/Ind.color = RED
+
+func _toggle_evidence(id: String) -> void:
+	_expanded[id] = not bool(_expanded.get(id, false))
+	refresh()
+
+func _more_history(id: String) -> void:
+	_history_limit[id] = int(_history_limit.get(id, 6)) + 20
+	refresh()
+
 func _build_body() -> void:
+	$Shell/TopBar/HBox/Brand.custom_minimum_size.y = 36 if size.x < 960 else 66
 	var E: Node = get_node_or_null("/root/Exposure")
 	if E == null:
 		return
+	if nav.has_meta("people_focus"):
+		_focus_id = str(nav.get_meta("people_focus"))
+		_expanded[_focus_id] = true
+		nav.remove_meta("people_focus")
+	body.add_child(note("How people see you. Open their history to see why."))
 	var shown := 0
 	for entry in E.everyone():
 		# OG-D1 (1.0.0): only people you have actually met. Mina and Dre used
 		# to sit on this screen from day one with a score and a role.
 		if not _met(str(entry["id"]), E):
 			continue
-		body.add_child(_person_row(E, entry))
+		var person := _person_row(E, entry)
+		body.add_child(person)
+		if str(entry["id"]) == _focus_id:
+			_scroll_to_person.call_deferred(person)
+			_focus_id = ""
 		shown += 1
 	if shown == 0:
 		body.add_child(note("Nobody knows you yet. That changes the first time you say your name."))
+
+func _scroll_to_person(person: Control) -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if is_instance_valid(person): $Shell/Scroll.ensure_control_visible(person)
 
 ## Met: the household from day one; Mina once you have stood at her counter;
 ## Dre once Juan has said his name; Curtis once he has shown himself. Anyone
 ## with a line in the ledger counts, because a ledger row is a meeting.
 func _met(id: String, E: Node) -> bool:
+	return has_met(gs, E, id)
+
+static func has_met(state: Node, E: Node, id: String) -> bool:
 	if not (E.ledger_of(id) as Array).is_empty():
 		return true
 	match id:
 		"yalonda", "juan":
 			return true
 		"mina":
-			return "night_owl" in (gs.venues_entered as Array) or "night_owl" in (gs.jobs_discovered as Array)
+			return "night_owl" in (state.venues_entered as Array) or "night_owl" in (state.jobs_discovered as Array)
 		"dre":
-			return bool(gs.dre_introduced)
+			return bool(state.dre_introduced)
 		"curtis":
-			return str(gs.curtis_phase) != "invisible"
+			return str(state.curtis_phase) != "invisible"
 	return true
 
 func _band_colour(band: String, inverted: bool) -> Color:
@@ -87,7 +127,7 @@ func _bind_dre_extras(v: VBoxContainer) -> void:
 	if not gs.dre_introduced:
 		v.add_child(label("Juan gave you Dre's name. In Spenard, that's enough of an address.",
 			"Muted", 11, MUTED, true))
-		var seek := button("SEEK HIM OUT", true, _on_seek_dre, 40)
+		var seek := button("SEEK HIM OUT", true, _on_seek_dre, 44)
 		v.add_child(seek)
 		return
 	var status := str(gs.dre_account.get("status", "clear"))
@@ -108,7 +148,7 @@ func _bind_dre_extras(v: VBoxContainer) -> void:
 			v.add_child(label("First offer: $%d now, $%d back in %d days." \
 					% [principal, total, int(dre_system.FIRST_LOAN_TERM_DAYS)],
 				"Muted", 11, MUTED, true))
-			v.add_child(button("BORROW $%d" % principal, true, _on_borrow_dre, 40))
+			v.add_child(button("BORROW $%d" % principal, true, _on_borrow_dre, 44))
 	# 0.4.0 PR B: reads whichever collection-shaped offer is live (the
 	# authored `dre_a_reminder` or a generated `dre_repeat_collection`) —
 	# `dre_collector.gd`'s own generalization, mirrored here rather than
@@ -119,8 +159,8 @@ func _bind_dre_extras(v: VBoxContainer) -> void:
 		var collect_name := str(ctx.get("target_name", "Dontae Wells"))
 		v.add_child(label("%s owes Dre. He'd like it handled." % collect_name,
 			"Muted", 11, MUTED, true))
-		v.add_child(button("TALK IT LOOSE", true, _on_collect_negotiate, 40))
-		v.add_child(button("GO COLLECT", true, _on_collect_hard, 40))
+		v.add_child(button("TALK IT LOOSE", true, _on_collect_negotiate, 44))
+		v.add_child(button("GO COLLECT", true, _on_collect_hard, 44))
 	# 0.4.0 PR C: informational only, no button -- OPP-D3's own "states its
 	# cost in its own confirm copy" applies here as text rather than a
 	# control, since the domain action that completes this (an ordinary
@@ -135,7 +175,7 @@ func _bind_dre_extras(v: VBoxContainer) -> void:
 	if gs.dre_pending_penance:
 		v.add_child(label("The money is square. Your word still isn't.",
 			"Muted", 11, MUTED, true))
-		v.add_child(button("MAKE IT RIGHT", true, _on_do_penance, 40))
+		v.add_child(button("MAKE IT RIGHT", true, _on_do_penance, 44))
 
 func _offer_exists(definition_id: String) -> bool:
 	for entry in gs.opportunity_offers:
@@ -195,12 +235,12 @@ func _person_row(E: Node, entry: Dictionary) -> Control:
 	var face := PORTRAITS.portrait_rect(id, 64)
 	if face != null:
 		head.add_child(face)
-	var nm := label(str(NAMES.get(id, id)), "CardTitle", 13, CREAM)
+	var nm := label(str(NAMES.get(id, id)), "CardTitle", 17, CREAM, true)
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(nm)
 	head.add_child(label(str(entry["label"]), "Mono", 12, _band_colour(str(entry["band"]), inverted)))
 
-	v.add_child(label("%s  ·  %+.2f" % [str(ROLES.get(id, "")), float(entry["score"])], "Muted", 11, MUTED))
+	v.add_child(label(str(ROLES.get(id, "")), "Muted", 12, MUTED))
 
 	if inverted:
 		v.add_child(label("Reads backwards — for him, quiet is good.", "Muted", 10, MUTED, true))
@@ -217,16 +257,21 @@ func _person_row(E: Node, entry: Dictionary) -> Control:
 		v.add_child(label("Knows nothing about you yet.", "Muted", 11, MUTED, true))
 		return c
 
+	var expanded := bool(_expanded.get(id, false))
+	var history := button(("HIDE HISTORY" if expanded else "VIEW HISTORY") + " · %d" % rows.size(), false, func() -> void: _toggle_evidence.call_deferred(id), 44)
+	v.add_child(history)
+	if not expanded: return c
+	v.add_child(label("Relationship score: %+.2f" % float(entry["score"]), "Mono", 11, MUTED))
 	# The evidence, newest first, so the score is never just an assertion.
 	var shown: int = 0
 	for i in range(rows.size() - 1, -1, -1):
-		if shown >= 4:
+		if shown >= int(_history_limit.get(id, 6)):
 			break
 		var row: Dictionary = rows[i]
 		var what: String = str(row["event"]) if not str(row["event"]).is_empty() else str(row["type"])
 		var times: String = "" if int(row["count"]) <= 1 else " x%d" % int(row["count"])
 		v.add_child(label("· %s%s  (%s)" % [what.replace("_", " "), times, str(row["source"])], "Muted", 10, MUTED, true))
 		shown += 1
-	if rows.size() > 4:
-		v.add_child(label("· and %d more" % (rows.size() - 4), "Muted", 10, MUTED))
+	if rows.size() > shown:
+		v.add_child(button("SHOW MORE HISTORY · %d remaining" % (rows.size() - shown), false, func() -> void: _more_history.call_deferred(id), 44))
 	return c

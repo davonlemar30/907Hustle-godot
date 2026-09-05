@@ -104,6 +104,18 @@ func _district_card(sys: Object) -> Control:
 	var total: int = (TERRITORY_DEFS.nodes_in(_district) as Array).size()
 	v.add_child(label("%d of %d held  ·  %d posted here" % [sys.held_in(_district), total,
 		sys.posted_in(_district)], "CardTitle", 13, CREAM))
+	# HS-D4: whose board it is.
+	var summary: Dictionary = sys.district_summary(_district)
+	if bool(summary["dismantled"]):
+		v.add_child(label("HE IS OUT OF HERE", "Kicker", 10, GREEN))
+		v.add_child(label("Curtis pulled his people. Nothing here gets tested, and the corners pay a quarter more.", "Muted", 11, GREEN, true))
+	elif int(summary["started"]) > 0:
+		v.add_child(label("HIS %d  ·  YOURS %d  ·  OPEN %d%s" % [int(summary["his"]), int(summary["yours"]), int(summary["open"]),
+			"  ·  %d CONTESTED" % int(summary["contested"]) if int(summary["contested"]) > 0 else ""], "Kicker", 10, AMBER if int(summary["contested"]) > 0 else MUTED))
+		if int(summary["his"]) == 0 and int(summary["contested"]) == 0:
+			v.add_child(label("Every block he started with is yours. %s" % ("One more clean night and he is out." if int(summary["hold"]) > 0 else "Two clean nights and he is out."), "Muted", 11, GREEN, true))
+		elif int(summary["his"]) == 0:
+			v.add_child(label("Every block he started with is yours, and his people are still on one. Close the front and he is out.", "Muted", 11, AMBER, true))
 	var income: int = sys.income_in(_district)
 	if income > 0 or sys.held_in(_district) > 0:
 		v.add_child(label("$%d a night from here  ·  +%.1f heat a night here" % [income,
@@ -166,10 +178,14 @@ func _block_row(sys: Object, b: Dictionary) -> Control:
 	head.add_child(nm)
 	# BR-D4: whose it is, at a glance. Yours, Curtis's, or open.
 	var contested: bool = held and bool(sys.is_contested(id))
-	var owner := "YOURS" if held else ("CURTIS'S" if str(b.get("starting_owner", "")) == TERRITORY_DEFS.OWNER_CURTIS else "OPEN")
-	if contested:
-		owner = "CONTESTED"
-	head.add_child(label(owner, "Kicker", 10, (AMBER if contested else GREEN) if held else (RED if owner == "CURTIS'S" else MUTED)))
+	# HS-D4: one of five words.
+	var owner: String = str(sys.state_word(id))
+	var owner_colour: Color = MUTED
+	match owner:
+		"YOURS", "COVERED": owner_colour = GREEN
+		"CONTESTED": owner_colour = AMBER
+		"HIS": owner_colour = RED
+	head.add_child(label(owner, "Kicker", 10, owner_colour))
 	head.add_child(label("HELD" if held else "$%d" % int(b["claim_cost"]), "Mono", 12, GREEN if held else AMBER))
 	if float(b.get("supply_discount", 0.0)) > 0.0:
 		v.add_child(label("Supply: -%d%% on every buy, anywhere, once yours." % int(round(float(b["supply_discount"]) * 100.0)),
@@ -180,7 +196,7 @@ func _block_row(sys: Object, b: Dictionary) -> Control:
 		var n: int = int(rec.get("soldiers", 0))
 		var earns: int = sys.block_income(id)
 		var col: Color = GREEN if n > 0 else RED
-		v.add_child(label("%d posted  ·  $%d a night  ·  +%d heat a night" % [n, earns, int(round(float(sys.block_heat(id))))], "Muted", 11, col))
+		v.add_child(label("%d posted  ·  $%d a night  ·  +%d heat a night  ·  tonight: %s" % [n, earns, int(round(float(sys.block_heat(id)))), str(sys.risk_word(id))], "Muted", 11, col))
 		if n == 0:
 			v.add_child(label("EMPTY — earning nothing, still costing heat.", "Muted", 11, RED))
 		# HS-D1: what a front costs, and how close it is to closing.
@@ -216,7 +232,8 @@ func _block_row(sys: Object, b: Dictionary) -> Control:
 		# is worth on the odds.
 		var curtis_owned: bool = str(b.get("starting_owner", "")) == TERRITORY_DEFS.OWNER_CURTIS
 		if curtis_owned:
-			v.add_child(label("Curtis's. Taking it is a fight: your crew and your kit against his people. %d%% on the odds, and he will come back for it." % int(round(float(sys.contest_chance(id)) * 100.0)), "Muted", 11, RED, true))
+			# HS-D4: the odds in words, never a number.
+			v.add_child(label("Curtis's. Taking it is a fight, your crew and your kit against his people: %s. He will come back for it." % str(sys.odds_word(id)).to_lower(), "Muted", 11, RED, true))
 		var verb := "TAKE IT" if curtis_owned else "CLAIM"
 		var btn := button("%s  $%d" % [verb, int(b["claim_cost"])] if blocked.is_empty() else blocked.to_upper(), blocked.is_empty(), _on_claim.bind(id), 46)
 		btn.disabled = not blocked.is_empty()

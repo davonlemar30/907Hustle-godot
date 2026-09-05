@@ -153,6 +153,66 @@ const RECOVERY_CHANCE := 0.5
 const DISMANTLE_NIGHTS := 2
 const DISMANTLED_INCOME := 1.25
 
+# --- HS-D4 (1.2.0): the board in words --------------------------------------
+#
+# Turf never shows a probability. It shows what the number means: how
+# likely his people are to come by tonight, and what taking a block of his
+# is worth on the odds. Bands, not integers; pinned in parity.
+
+## Tonight, for a held block.
+func risk_word(block_id: String) -> String:
+	var chance: float = probe_chance(block_id)
+	if chance <= 0.0:
+		return "QUIET"
+	if chance <= PROBE_HELD_DOWN + 0.001:
+		return "COVERED"
+	if chance <= PROBE_DEFENDED + 0.001:
+		return "LOOKING"
+	if chance <= PROBE_UNDEFENDED + 0.001:
+		return "COMING BY"
+	return "ON IT"
+
+## What a fight for one of his is worth.
+func odds_word(block_id: String) -> String:
+	var chance: float = contest_chance(block_id)
+	if chance < 0.35:
+		return "A LONG SHOT"
+	if chance < 0.55:
+		return "EVEN"
+	if chance < 0.75:
+		return "YOURS TO LOSE"
+	return "A FORMALITY"
+
+## One block, five states: OPEN, YOURS, HIS, CONTESTED, COVERED.
+func state_word(block_id: String) -> String:
+	if gs.holds_block(block_id):
+		if is_held_down(block_id):
+			return "COVERED"
+		if is_contested(block_id):
+			return "CONTESTED"
+		return "YOURS"
+	return "HIS" if _is_curtis_block(block_id) else "OPEN"
+
+## The district, counted: his, yours, open, and where the hold stands.
+func district_summary(district_id: String) -> Dictionary:
+	var his := 0
+	var yours := 0
+	var open := 0
+	var contested := 0
+	for b in gs.TERRITORY_DEFS.nodes_in(district_id):
+		var id := str((b as Dictionary)["id"])
+		if gs.holds_block(id):
+			yours += 1
+			if is_contested(id):
+				contested += 1
+		elif _is_curtis_block(id):
+			his += 1
+		else:
+			open += 1
+	return {"his": his, "yours": yours, "open": open, "contested": contested,
+		"dismantled": is_dismantled(district_id), "hold": dismantle_hold(district_id),
+		"started": (curtis_start_blocks(district_id) as Array).size()}
+
 ## The blocks he started with in a district.
 func curtis_start_blocks(district_id: String) -> Array:
 	var out: Array = []

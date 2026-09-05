@@ -19814,6 +19814,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_a_front_is_a_bill(gs, gm)
 	_check_hold_it_down(gs, gm)
 	_check_he_comes_back(gs, gm)
+	_check_the_board_in_words(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -21040,6 +21041,62 @@ func _check_stolen_goods_have_a_name(gs: Node, gm: Node) -> void:
 ## claimed: the tap opens a confrontation with FIGHT and RUN; RUN walks;
 ## FIGHT ends held or hurt, and Curtis knows either way. Nightly, Curtis
 ## probes what you hold in his districts.
+## HS-D4 (1.2.0): the board in words. Five states, a risk band, an odds
+## band, a district counted -- and no percentage anywhere on Turf.
+func _check_the_board_in_words(gs: Node, gm: Node) -> void:
+	var territory: Object = gm.system("territory")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_stage_rank(gs, "player")
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	gs.current_district_id = "downtown"
+	gs.day = 9
+	gs.territory_nodes = {"downtown_transit_center": {"soldiers": 0}, "downtown_snow_city_corner": {"soldiers": 1},
+		"downtown_fourth_ave_bars": {"soldiers": 1, "watch_day": 9}}
+	gs.territory_fronts = {"downtown_snow_city_corner": {"capture_reward_consumed": false, "conflict_active": true, "quiet": 1}}
+	_expect_str("open is OPEN", str(territory.state_word("spenard_rec_lot")), "OPEN")
+	_expect_str("his is HIS", str(territory.state_word("downtown_humpys_alley")), "HIS")
+	_expect_str("held is YOURS", str(territory.state_word("downtown_transit_center")), "YOURS")
+	_expect_str("a front is CONTESTED", str(territory.state_word("downtown_snow_city_corner")), "CONTESTED")
+	_expect_str("somebody on it is COVERED", str(territory.state_word("downtown_fourth_ave_bars")), "COVERED")
+	_expect_str("an empty venue: COMING BY", str(territory.risk_word("downtown_transit_center")), "COMING BY")
+	_expect_str("a front: ON IT", str(territory.risk_word("downtown_snow_city_corner")), "ON IT")
+	_expect_str("watched: COVERED", str(territory.risk_word("downtown_fourth_ave_bars")), "COVERED")
+	_expect_str("Spenard: QUIET", str(territory.risk_word("spenard_rec_lot")), "QUIET")
+	gs.territory_nodes["downtown_humpys_alley"] = {"soldiers": 1}
+	_expect_str("a defended one: LOOKING", str(territory.risk_word("downtown_humpys_alley")), "LOOKING")
+	gs.territory_nodes.erase("downtown_humpys_alley")
+	var bare := str(territory.odds_word("downtown_fifth_and_g"))
+	_expect_true("the dearest of his, alone, is a long shot or even (%s)" % bare, bare in ["A LONG SHOT", "EVEN"])
+	gs.weapon = "piece"
+	for id in ["tone", "deshawn", "eli", "pherris"]:
+		gs.crew_records[id] = {"recruited": true, "status": "active", "loyalty": 8, "tier": 3,
+			"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {}}
+	var armed := str(territory.odds_word("downtown_fifth_and_g"))
+	_expect_true("armed and crewed it reads better (%s)" % armed, armed in ["EVEN", "YOURS TO LOSE", "A FORMALITY"] and armed != bare)
+	var summary: Dictionary = territory.district_summary("downtown")
+	_expect_int("Downtown counts his", int(summary["his"]), 2)
+	_expect_int("...and yours", int(summary["yours"]), 3)
+	_expect_int("...and the front", int(summary["contested"]), 1)
+	_expect_int("...and what he started with", int(summary["started"]), 3)
+	# Turf itself carries no percentage on the odds.
+	gs.current_district_id = "downtown"
+	var screen: Node = _instantiate_screen("res://ui/screens/turf.tscn")
+	if screen != null:
+		var lines: Array[String] = []
+		_collect_labels(screen, lines)
+		var text := "\n".join(lines)
+		_expect_true("Turf reads CONTESTED", text.contains("CONTESTED"))
+		_expect_true("...and COVERED", text.contains("COVERED"))
+		_expect_true("...and tonight's word", text.contains("tonight:"))
+		_expect_true("...and counts the board", text.contains("HIS 2"))
+		var regex := RegEx.new()
+		regex.compile("\\d+% on the odds")
+		_expect_true("...and never a percentage on the odds", regex.search(text) == null)
+		remove_child(screen)
+		screen.free()
+	gs.reset_to_new_game()
+
 ## HS-D3 (1.2.0): he comes back, and then he does not. Recovery re-opens a
 ## front on the weakest block you took from him; two clean nights with all
 ## of his blocks yours and he is out of the district, for good.
@@ -21923,7 +21980,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14239
+const MIN_CHECKS := 14260
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

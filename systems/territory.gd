@@ -648,6 +648,11 @@ func _discharge_over_capacity() -> void:
 func recruit_soldier_blocker() -> String:
 	if gs.game_over:
 		return "The run is over."
+	# TU-D2 (1.3.0): nobody works a corner for a nobody. The same gate the
+	# crew has; the playtest hired a soldier off two shifts.
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure != null and not bool(exposure.has_rank("known")):
+		return "Nobody stands on a corner for a nobody. Get a name first."
 	if gs.soldiers_total() >= gs.soldier_capacity():
 		return "No room for another. Hold more corners first."
 	if gs.cash < gs.SOLDIER_RECRUIT_COST:

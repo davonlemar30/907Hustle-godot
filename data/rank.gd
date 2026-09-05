@@ -29,7 +29,8 @@ const TIERS := [
 ## build a name slowly; standing your ground, growing, holding ground build
 ## it fast. Submission and being seen hot build nothing.
 const TYPE_WEIGHTS := {
-	"presence": 1, "honesty": 1, "financial": 1, "loyalty": 1, "discretion": 1,
+	# TU-D2: money earns a name too -- what you do with it, capped per thing.
+	"presence": 1, "honesty": 1, "financial": 2, "loyalty": 1, "discretion": 1,
 	"violence": 1, "betrayal": 1,
 	"defiance": 2, "growth": 2, "territory": 2,
 	"submission": 0, "heat_exposure": 0,
@@ -47,8 +48,20 @@ const NOTICES := {
 	"boss": {"from": "Dre", "text": "There's a name on this city now. Mine used to be the only one. Come see me before you do anything about that."},
 }
 
-static func score_of(ledgers: Dictionary) -> int:
-	var total := 0
+## TU-D2 (1.3.0): a thing that happened counts once, however many people
+## heard about it. A shift's `steady_work` reaches every ledger on the
+## neighbourhood channel; before this it scored on each of them, so a
+## couple of shifts made a Known and a week made a Connected, and the
+## playtest could not say how. Rows are folded by their key (type, event,
+## location), the count is the highest any one ledger holds, and showing
+## up -- presence -- is capped as a whole, because being around is not a
+## name. What earns a name is what you did on the street: the cards.
+const PRESENCE_CAP := 3
+
+## key -> {"type", "event", "location", "count"}: every distinct thing the
+## city has written down about you, folded across ledgers.
+static func folded(ledgers: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
 	for npc_id in ledgers.keys():
 		var rows: Variant = ledgers[npc_id]
 		if not (rows is Array):
@@ -56,9 +69,47 @@ static func score_of(ledgers: Dictionary) -> int:
 		for row in rows:
 			if not (row is Dictionary):
 				continue
-			var weight: int = int(TYPE_WEIGHTS.get(str((row as Dictionary).get("type", "")), 1))
-			total += weight * mini(int((row as Dictionary).get("count", 1)), COUNT_CAP)
-	return total
+			var r: Dictionary = row
+			var key := str(r.get("key", "%s|%s|%s" % [str(r.get("type", "")), str(r.get("event", "")), str(r.get("location", ""))]))
+			var count: int = mini(int(r.get("count", 1)), COUNT_CAP)
+			if out.has(key):
+				out[key]["count"] = maxi(int(out[key]["count"]), count)
+			else:
+				out[key] = {"type": str(r.get("type", "")), "event": str(r.get("event", "")),
+					"location": str(r.get("location", "")), "count": count}
+	return out
+
+static func _row_points(entry: Dictionary) -> int:
+	return int(TYPE_WEIGHTS.get(str(entry.get("type", "")), 1)) * int(entry.get("count", 1))
+
+static func score_of(ledgers: Dictionary) -> int:
+	var total := 0
+	var presence := 0
+	for entry in folded(ledgers).values():
+		var points: int = _row_points(entry)
+		if str((entry as Dictionary).get("type", "")) == "presence":
+			presence += points
+		else:
+			total += points
+	return total + mini(presence, PRESENCE_CAP)
+
+## The three things that did the most, in words: "talked the cousin down",
+## "the knife at the ice machine". Event ids read as sentences once the
+## underscores go, which is how they were named.
+static func reasons_of(ledgers: Dictionary, limit: int = 3) -> Array:
+	var entries: Array = folded(ledgers).values()
+	entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return _row_points(a) > _row_points(b))
+	var out: Array = []
+	for entry in entries:
+		if _row_points(entry) <= 0:
+			continue
+		var event := str((entry as Dictionary).get("event", "")).replace("_", " ")
+		if event.is_empty() or event == "staged" or event in out:
+			continue
+		out.append(event)
+		if out.size() >= limit:
+			break
+	return out
 
 static func tier_for(score: int) -> Dictionary:
 	var best: Dictionary = TIERS[0]

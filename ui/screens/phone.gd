@@ -11,16 +11,27 @@ func _obligations() -> Object:
 func _phone() -> Object:
 	return _gm.system("phone")
 
-const CATEGORIES := {"texts": "TEXTS", "contacts": "CONTACTS", "bills": "BILLS", "log": "TODAY'S LOG", "intel": "WORD AROUND TOWN"}
+const CATEGORIES := {"texts": "TEXTS", "contacts": "PEOPLE", "bills": "BILLS", "log": "TODAY'S LOG", "intel": "WORD AROUND TOWN"}
 var _category := "texts"
 var _sender := ""
 var _mobile_detail := false
 var _wide := false
 var _resize_pending := false
+var _manage := false
+var _query := ""
+var _reply_only := false
+var _thread_rows: Array[Control] = []
+var _scroll_reset := false
+var _thread_scroll: ScrollContainer
+var _latest_target: Control
+var _jump_generation := 0
+var _empty_filter: Label
+const PEOPLE := preload("res://ui/screens/people.gd")
 
 func _ready() -> void:
 	super()
 	resized.connect(_schedule_resize)
+	$Shell/NavBar/NavRow/HomeSlot.pressed.connect(func() -> void: nav.go_to(nav.HOME))
 
 func _schedule_resize() -> void:
 	if not _resize_pending and (size.x >= 960.0) != _wide:
@@ -34,7 +45,9 @@ func _resize_layout() -> void:
 
 func _bind_content() -> void:
 	var scroll := $Shell/Scroll as ScrollContainer
-	var previous := scroll.scroll_vertical
+	var thread_position := _thread_scroll.scroll_vertical if is_instance_valid(_thread_scroll) else 0
+	var previous := 0 if _scroll_reset else scroll.scroll_vertical
+	_scroll_reset = false
 	var focused := get_viewport().gui_get_focus_owner()
 	var focus_key := str(focused.name) if focused != null and is_ancestor_of(focused) else ""
 	super()
@@ -42,21 +55,37 @@ func _bind_content() -> void:
 		var replacement := body.find_child(focus_key, true, false) as Control
 		if replacement != null: replacement.grab_focus.call_deferred()
 	scroll.set_deferred("scroll_vertical", previous)
+	if is_instance_valid(_thread_scroll): _thread_scroll.set_deferred("scroll_vertical", thread_position)
 
 func _build_body() -> void:
+	var old_toolbar := get_node_or_null("Shell/PhoneToolbar")
+	if old_toolbar != null:
+		old_toolbar.get_parent().remove_child(old_toolbar)
+		old_toolbar.free()
+	_thread_scroll = null
+	_latest_target = null
+	_empty_filter = null
+	_thread_rows.clear()
 	_wide = size.x >= 960.0
 	var offline: bool = not gs.phone_active
 	_set_text("Shell/Scroll/Pad/Content/Title/H", "NO SERVICE" if offline else "PHONE")
 	_set_text("Shell/Scroll/Pad/Content/Title/Sub", "SWITCHBOARD  /  " + ("Messages held until service returns" if offline else "Texts, people and word on the street"))
 	$Shell/Scroll/Pad/Content/Title/Sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	$Shell/Scroll/Pad/Content/Gap.hide()
+	$Shell/Scroll/Pad/Content/Title.visible = _wide
+	$Shell/TopBar/HBox/Brand.custom_minimum_size.y = 66 if _wide else 36
+	# Phone is active; Home remains an ordinary destination on this screen.
+	$HomeFab.hide()
+	$HomeBtn.hide()
+	var home_cell := get_node("Shell/NavBar/NavRow/HomeSlot") as Control
+	home_cell.show()
 	if offline:
 		body.add_child(_offline_card())
 	var root_body := body
 	var layout: BoxContainer = HBoxContainer.new() if _wide else VBoxContainer.new()
 	layout.add_theme_constant_override("separation", 14)
 	root_body.add_child(layout)
-	var rail: Container = VBoxContainer.new() if _wide else HFlowContainer.new()
+	var rail := VBoxContainer.new()
 	rail.add_theme_constant_override("separation", 6)
 	if _wide:
 		rail.custom_minimum_size.x = 175
@@ -65,11 +94,31 @@ func _build_body() -> void:
 		layout.add_child(rail_card)
 		rail_card.add_child(rail)
 	else:
-		layout.add_child(rail)
+		# One native picker replaces two rows of oversized category buttons.
+		var picker := OptionButton.new()
+		picker.name = "PhoneSection"
+		picker.custom_minimum_size.y = 44
+		picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		for key in CATEGORIES:
+			picker.add_item(CATEGORIES[key])
+		picker.fit_to_longest_item = false
+		if _category == "texts" and _mobile_detail:
+			picker.set_item_text(0, "TEXTS / " + _sender.to_upper())
+		picker.select(CATEGORIES.keys().find(_category))
+		picker.item_selected.connect(func(index: int) -> void: _choose_category.call_deferred(CATEGORIES.keys()[index]))
+		var toolbar := HBoxContainer.new()
+		toolbar.name = "PhoneToolbar"
+		if _category == "texts" and _mobile_detail:
+			var back := _switch_button("‹ INBOX", false, _back_to_messages)
+			back.custom_minimum_size.x = 86
+			toolbar.add_child(back)
+		toolbar.add_child(picker)
+		$Shell.add_child(toolbar)
+		$Shell.move_child(toolbar, $Shell/Scroll.get_index())
 	for key in CATEGORIES:
 		var caption: String = CATEGORIES[key]
 		if key == "texts":
-			caption += "  ·  %d" % _reply_count()
+			caption += "  ·  %d TO REPLY" % _reply_count() if _reply_count() > 0 else ""
 		elif key == "bills":
 			var due := 0
 			for bill in _bills():
@@ -82,6 +131,7 @@ func _build_body() -> void:
 			tab.custom_minimum_size.x = 155 if key == "intel" else 104
 		tab.name = "Category_" + key
 		rail.add_child(tab)
+	if not _wide: rail.free()
 	var pane := VBoxContainer.new()
 	pane.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pane.add_theme_constant_override("separation", 12)
@@ -94,9 +144,6 @@ func _build_body() -> void:
 		"log": _build_log()
 		"intel": _build_intel(offline)
 	body = root_body
-	var footer := label("%d NEEDS A REPLY" % _reply_count() if _reply_count() == 1 else "%d NEED REPLIES" % _reply_count(), "Kicker", 12, RED if _reply_count() else MUTED)
-	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	root_body.add_child(footer)
 
 func _reply_count() -> int:
 	if not gs.phone_active:
@@ -138,22 +185,30 @@ func _switch_button(text: String, primary: bool, handler: Callable, height: int 
 		control.add_theme_color_override("font_color", CREAM)
 	control.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	control.gui_input.connect(func(event: InputEvent) -> void:
-		if event is InputEventKey and event.is_action_pressed("ui_accept") and not event.is_echo():
+		if not control.disabled and event is InputEventKey and event.is_action_pressed("ui_accept") and not event.is_echo():
 			control.accept_event()
 			activate.call())
 	return control
 
 func _choose_category(key: String) -> void:
 	_category = key
+	_manage = false
+	_scroll_reset = true
 	refresh()
+	if key == "texts" and _mobile_detail: _jump_to_message.call_deferred()
 
 func _choose_sender(sender: String) -> void:
 	_sender = sender
+	_manage = false
+	_scroll_reset = true
 	_mobile_detail = true
 	refresh()
+	_jump_to_message.call_deferred()
 
 func _back_to_messages() -> void:
 	_mobile_detail = false
+	_manage = false
+	_scroll_reset = true
 	refresh()
 
 func _build_switchboard(offline: bool) -> void:
@@ -182,8 +237,22 @@ func _build_switchboard(offline: bool) -> void:
 			list.custom_minimum_size.x = 240
 		var list_card := _switch_panel()
 		columns.add_child(list_card)
-		list_card.add_child(list)
-		list.add_child(label("ALL MESSAGES", "CardTitle", 16, CREAM))
+		_mount_pane(list_card, list)
+		list.add_child(label("MESSAGES", "CardTitle", 20, CREAM))
+		list.add_child(label("%d conversations · %s" % [senders.size(), "1 reply pending" if _reply_count() == 1 else "%d replies pending" % _reply_count()], "Muted", 12, MUTED, true))
+		var search := LineEdit.new()
+		search.name = "SearchConversations"
+		search.placeholder_text = "Find a person or message"
+		search.custom_minimum_size.y = 44
+		search.text = _query
+		search.text_changed.connect(_filter_query)
+		list.add_child(search)
+		var filters := HBoxContainer.new()
+		for only in [false, true]:
+			var filter := _switch_button("NEEDS REPLY" if only else "ALL", only == _reply_only, _set_reply_filter.bind(only))
+			filter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			filters.add_child(filter)
+		list.add_child(filters)
 		for sender in senders:
 			var latest: Dictionary = {}
 			var pending := 0
@@ -193,14 +262,35 @@ func _build_switchboard(offline: bool) -> void:
 					if _phone().awaits_reply(message): pending += 1
 			var preview := str(latest.get("text", "")).replace("\n", " ")
 			if preview.length() > 75: preview = preview.left(72) + "..."
-			var caption := sender.to_upper() + ("  ·  REPLY" if pending else "") + "\n" + preview
-			var item := _switch_button(caption, sender == _sender, _choose_sender.bind(sender), 96)
+			var caption := sender.to_upper() + ("  ·  NEEDS REPLY" if pending else "") + "\n" + preview + "\n" + str(_phone().stamp(latest))
+			var item := _switch_button(caption, (_wide and sender == _sender), _choose_sender.bind(sender), 80)
 			item.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			list.add_child(item)
+			var thread := HBoxContainer.new()
+			thread.add_theme_constant_override("separation", 8)
+			var avatar := PORTRAITS.portrait_rect(sender, 40)
+			if avatar != null:
+				thread.add_child(avatar)
+			else:
+				var initials := label(sender.left(1).to_upper(), "CardTitle", 22, MUTED)
+				initials.custom_minimum_size.x = 40
+				initials.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				thread.add_child(initials)
+			item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			thread.add_child(item)
+			thread.set_meta("search", (sender + " " + _sender_text(sender)).to_lower())
+			thread.set_meta("pending", pending)
+			list.add_child(thread)
+			_thread_rows.append(thread)
+		_empty_filter = label("No conversations match. Try All or another search.", "Muted", 13, MUTED, true)
+		list.add_child(_empty_filter)
 		if gs.phone_inbox.size() > 1:
-			list.add_child(_switch_button("CLEAR ALL %d" % gs.phone_inbox.size(), false, _on_clear_inbox))
+			list.add_child(_switch_button("MANAGE MESSAGES" if not _manage else "DONE", false, _toggle_manage))
+			if _manage:
+				list.add_child(note("Deleting removes message history, including any unanswered choices."))
+				list.add_child(_switch_button("DELETE ALL %d MESSAGES" % gs.phone_inbox.size(), false, _confirm_clear))
+		_apply_filter()
 	# A single conversation can open immediately; a populated inbox starts at list.
-	if _wide or _mobile_detail or senders.size() == 1:
+	if _wide or _mobile_detail:
 		var conversation := VBoxContainer.new()
 		conversation.name = "Conversation"
 		conversation.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -209,25 +299,91 @@ func _build_switchboard(offline: bool) -> void:
 		conversation_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if _wide: conversation_card.custom_minimum_size.y = 440
 		columns.add_child(conversation_card)
-		conversation_card.add_child(conversation)
-		if not _wide and _mobile_detail:
-			conversation.add_child(_switch_button("‹ ALL MESSAGES", false, _back_to_messages))
+		_mount_pane(conversation_card, conversation)
 		var header := HBoxContainer.new()
 		conversation.add_child(header)
-		var face := PORTRAITS.portrait_rect(_sender, 64)
+		var face := PORTRAITS.portrait_rect(_sender, 48)
 		if face != null: header.add_child(face)
 		var title := label(_sender.to_upper(), "CardTitle", 24, CREAM, true)
 		title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		header.add_child(title)
+		var manage := _switch_button("DONE" if _manage else "MANAGE", false, _toggle_manage)
+		manage.custom_minimum_size.x = 70
+		header.add_child(manage)
 		if _sender.to_lower().begins_with("yalonda"):
 			for bill in _bills():
 				if str(bill.get("id", "")) == "rent":
 					conversation.add_child(label("RENT  ·  $%d  ·  %s  ·  %s" % [int(bill["amount"]), str(bill["due"]), str(bill["status"])], "Kicker", 12, AMBER, true))
 		var messages: Array = gs.phone_inbox.duplicate()
 		messages.reverse()
+		var pending_target: Control
 		for message in messages:
 			if str(message.get("from", "")) == _sender:
-				conversation.add_child(_message_card(message))
+				var bubble := _message_card(message)
+				conversation.add_child(bubble)
+				_latest_target = bubble
+				if pending_target == null and _phone().awaits_reply(message): pending_target = bubble
+		if pending_target != null: _latest_target = pending_target
+
+func _mount_pane(panel: PanelContainer, content: VBoxContainer) -> void:
+	if not _wide:
+		panel.add_child(content)
+		return
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size.y = maxf(300, size.y - 390)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_child(scroll)
+	scroll.add_child(content)
+	if content.name == "Conversation": _thread_scroll = scroll
+
+func _jump_to_message() -> void:
+	_jump_generation += 1
+	var generation := _jump_generation
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if generation != _jump_generation or not is_instance_valid(_latest_target): return
+	var scroll := _thread_scroll if is_instance_valid(_thread_scroll) else $Shell/Scroll as ScrollContainer
+	scroll.ensure_control_visible(_latest_target)
+
+func _sender_text(sender: String) -> String:
+	var text := ""
+	for message in gs.phone_inbox:
+		if str(message.get("from", "")) == sender: text += " " + str(message.get("text", ""))
+	return text
+
+func _filter_query(query: String) -> void:
+	_query = query
+	_apply_filter()
+
+func _set_reply_filter(only: bool) -> void:
+	_reply_only = only
+	refresh()
+
+func _toggle_reply_filter() -> void:
+	_reply_only = not _reply_only
+	refresh()
+
+func _apply_filter() -> void:
+	var matches := 0
+	for row in _thread_rows:
+		row.visible = (_query.strip_edges().is_empty() or _query.strip_edges().to_lower() in str(row.get_meta("search"))) and (not _reply_only or int(row.get_meta("pending")) > 0)
+		if row.visible: matches += 1
+	if is_instance_valid(_empty_filter): _empty_filter.visible = matches == 0
+
+func _toggle_manage() -> void:
+	_manage = not _manage
+	refresh()
+
+func _confirm_clear() -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Delete message history?"
+	dialog.dialog_text = "Delete all %d messages, including unanswered choices? This cannot be undone." % gs.phone_inbox.size()
+	dialog.confirmed.connect(func() -> void: _on_clear_inbox.call_deferred())
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.confirmed.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(300, 180))
 
 # Existing section builders retain their data and action contracts.
 func _accordion(_key: String, title: String, meta: String, badge_colour: Color = MUTED) -> void:
@@ -275,31 +431,27 @@ func _offline_card() -> Control:
 # --- texts -----------------------------------------------------------------
 
 func _message_card(message: Dictionary) -> Control:
-	var c := card()
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 8)
+	var incoming_margin := MarginContainer.new()
+	incoming_margin.add_theme_constant_override("margin_right", 22)
+	root.add_child(incoming_margin)
+	var c := _switch_panel()
+	incoming_margin.add_child(c)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 5)
 	c.add_child(v)
 
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 8)
-	v.add_child(head)
-	# OG-D3: who is texting, when the game has their face.
-	var face := PORTRAITS.portrait_rect(str(message.get("from", "")), 48)
-	if face != null:
-		face.free()
-	var from := label(str(message.get("from", "")).to_upper(), "CardTitle", 16, CREAM, true)
-	from.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(from)
-	v.add_child(label(_phone().stamp(message), "Mono", 11, MUTED))
-	# Canon's dismiss glyph is U+00D7, which every theme font carries (checked
-	# against the cmaps, not against how it looks in the editor).
-	#
-	# 44x44, the same tap-target floor every other screen is held to. It was
-	# 34x28 until v0.1.0 -- a glyph sized to the glyph rather than to a thumb.
+	var meta := HBoxContainer.new()
+	v.add_child(meta)
+	var stamp := label(_phone().stamp(message), "Mono", 10, MUTED)
+	stamp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	meta.add_child(stamp)
 	var dismiss := _switch_button("×", false, _on_dismiss.bind(str(message.get("id", ""))), 44)
 	dismiss.custom_minimum_size = Vector2(44, 44)
-	head.add_child(dismiss)
-
+	dismiss.visible = _manage
+	dismiss.tooltip_text = "Delete this message"
+	meta.add_child(dismiss)
 	v.add_child(label(str(message.get("text", "")), "Muted", 16, CREAM, true))
 
 	# Canon shows Accept / Turn it down when the offer behind the text is still
@@ -312,11 +464,20 @@ func _message_card(message: Dictionary) -> Control:
 	if not reply.is_empty():
 		var replied := str(reply.get("replied", ""))
 		if replied == "a" or replied == "b":
-			v.add_child(label("you: %s" % str((reply[replied] as Dictionary).get("text", "")),
-				"Muted", 12, CYAN, true))
+			var outgoing := _switch_panel()
+			outgoing.self_modulate = Color(0.75, 0.95, 1.0)
+			var reply_box := VBoxContainer.new()
+			outgoing.add_child(reply_box)
+			reply_box.add_child(label("YOU", "Kicker", 10, CYAN))
+			reply_box.add_child(label(str((reply[replied] as Dictionary).get("text", "")), "Muted", 16, CYAN, true))
+			var outgoing_margin := MarginContainer.new()
+			outgoing_margin.add_theme_constant_override("margin_left", 26)
+			outgoing_margin.add_child(outgoing)
+			root.add_child(outgoing_margin)
 		elif replied == "ghost":
 			v.add_child(label("left on read", "Kicker", 10, MUTED))
 		else:
+			v.add_child(label("YOUR REPLY", "Kicker", 11, AMBER))
 			var id := str(message.get("id", ""))
 			var row := VBoxContainer.new()
 			row.add_theme_constant_override("separation", 8)
@@ -326,14 +487,14 @@ func _message_card(message: Dictionary) -> Control:
 				answer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				answer.add_theme_font_size_override("font_size", 15)
 				row.add_child(answer)
-			v.add_child(row)
+			root.add_child(row)
 	if not action.is_empty() and str(action.get("kind", "")) == "job_offer":
 		v.add_child(label("OFFER ATTACHED", "Kicker", 10, AMBER))
 	elif not action.is_empty() and str(action.get("kind", "")) == "tip":
 		v.add_child(label(_tip_stamp(action), "Kicker", 10, AMBER))
 	elif not action.is_empty() and str(action.get("kind", "")) == "dre_debt":
 		_bind_dre_debt_card(v)
-	return c
+	return root
 
 ## Reads `gs.dre_account` live rather than anything carried on the message —
 ## the same text sitting unread for three days has to show today's true
@@ -407,35 +568,32 @@ func _on_clear_inbox() -> void:
 # --- contacts --------------------------------------------------------------
 
 func _build_contacts() -> void:
-	var known: int = _known_contacts()
-	_accordion("contacts", "Contacts", "%d KNOWN" % known)
-	if not _is_open("contacts"):
-		return
-	if known == 0:
-		body.add_child(note("Nobody has a read on you yet."))
-		return
-	var c := card()
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 5)
-	c.add_child(v)
-	v.add_child(label("WHO KNOWS YOU", "CardTitle", 13, CREAM))
-	v.add_child(label("What each of them makes of you, and the evidence behind it.",
-		"Muted", 12, MUTED, true))
-	v.add_child(button("OPEN PEOPLE", false, _on_open_people, 40))
-	body.add_child(c)
+	body.add_child(label("PEOPLE YOU KNOW", "CardTitle", 20, CREAM))
+	body.add_child(note("Relationships and what people remember about you. Message threads stay in Texts."))
+	var exposure := get_node_or_null("/root/Exposure")
+	if exposure == null: return
+	for entry in exposure.everyone():
+		var id := str(entry["id"])
+		if not PEOPLE.has_met(gs, exposure, id): continue
+		var row := HBoxContainer.new()
+		var face := PORTRAITS.portrait_rect(id, 48)
+		if face != null: row.add_child(face)
+		var name := str(PEOPLE.NAMES.get(id, id.capitalize()))
+		var open := _switch_button(name.to_upper() + "\n" + str(entry["label"]) + " · View relationship", false, _open_person.bind(id), 64)
+		open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(open)
+		body.add_child(row)
 
-## Canon counts `personalContacts + knownSocialContacts` minus the household,
-## both of which need the `state.contacts` ledger this build has not ported.
-## The closest real number is who the run has actually dealt with — an NPC with
-## at least one observation on their ledger.
+func _open_person(id: String) -> void:
+	nav.set_meta("people_focus", id)
+	nav.go_to(nav.PEOPLE)
+
 func _known_contacts() -> int:
-	var exposure: Node = get_node_or_null("/root/Exposure")
-	if exposure == null:
-		return 0
+	var exposure := get_node_or_null("/root/Exposure")
+	if exposure == null: return 0
 	var count := 0
 	for entry in exposure.everyone():
-		if int(entry.get("rows", 0)) > 0:
-			count += 1
+		if PEOPLE.has_met(gs, exposure, str(entry["id"])): count += 1
 	return count
 
 func _on_open_people() -> void:

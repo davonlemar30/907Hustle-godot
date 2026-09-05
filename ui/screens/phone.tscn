@@ -509,10 +509,42 @@ theme_override_colors/font_color = Color(0.42, 0.42, 0.42, 1)
 horizontal_alignment = 1
 text = "HUSTLE"
 
-[node name="HomeSlot" type="Control" parent="Shell/NavBar/NavRow"]
-custom_minimum_size = Vector2(64, 0)
+[node name="HomeSlot" type="Button" parent="Shell/NavBar/NavRow"]
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
+focus_mode = 0
+flat = true
+
+[node name="V" type="VBoxContainer" parent="Shell/NavBar/NavRow/HomeSlot"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Ind" type="ColorRect" parent="Shell/NavBar/NavRow/HomeSlot/V"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Ico" type="TextureRect" parent="Shell/NavBar/NavRow/HomeSlot/V"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ic_home")
+expand_mode = 1
+stretch_mode = 5
+self_modulate = Color(0.42, 0.42, 0.42, 1)
+
+[node name="L" type="Label" parent="Shell/NavBar/NavRow/HomeSlot/V"]
+layout_mode = 2
+theme_type_variation = &"NavLabel"
+horizontal_alignment = 1
+text = "HOME"
 
 [node name="Phone" type="Button" parent="Shell/NavBar/NavRow"]
 custom_minimum_size = Vector2(0, 48)

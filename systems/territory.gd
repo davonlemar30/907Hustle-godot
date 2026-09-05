@@ -138,6 +138,125 @@ const FRONT_QUIET_NIGHTS := 3
 ## whole district, or you, on one block for a slot -- is almost never tested,
 ## and a front there counts two quiet nights in one.
 const PROBE_HELD_DOWN := 0.02
+## HS-D3 (1.2.0): he comes back. Every RECOVERY_EVERY nights, in a district
+## he has people in, he sends them back to the weakest block you took from
+## him -- the fewest soldiers, ties to the cheaper one -- and it is
+## contested again, at even odds, unless somebody is standing on it. He
+## does not come back to a district he is out of, and he does not send
+## people while a front there is still open.
+const RECOVERY_EVERY := 4
+const RECOVERY_CHANCE := 0.5
+## And then he does not. A district where every block he started with is
+## yours, none of them contested, for DISMANTLE_NIGHTS settles in a row, is
+## one he is out of: no probes, no recovery, and the corners there pay a
+## quarter more, because his customers are yours now.
+const DISMANTLE_NIGHTS := 2
+const DISMANTLED_INCOME := 1.25
+
+## The blocks he started with in a district.
+func curtis_start_blocks(district_id: String) -> Array:
+	var out: Array = []
+	for b in gs.TERRITORY_DEFS.nodes_in(district_id):
+		if str((b as Dictionary).get("starting_owner", "")) == gs.TERRITORY_DEFS.OWNER_CURTIS:
+			out.append(str((b as Dictionary)["id"]))
+	return out
+
+## How many of the blocks he started with he still holds there.
+func his_hold(district_id: String) -> int:
+	var n := 0
+	for id in curtis_start_blocks(district_id):
+		if not gs.holds_block(str(id)):
+			n += 1
+	return n
+
+func is_dismantled(district_id: String) -> bool:
+	return district_id in (gs.curtis_dismantled as Array)
+
+func dismantle_hold(district_id: String) -> int:
+	return int((gs.curtis_dismantle_hold as Dictionary).get(district_id, 0))
+
+## The condition, tonight: everything he started with there is yours and
+## nobody is fighting over any of it.
+func dismantle_condition(district_id: String) -> bool:
+	var his: Array = curtis_start_blocks(district_id)
+	if his.is_empty():
+		return false
+	for id in his:
+		if not gs.holds_block(str(id)) or is_contested(str(id)):
+			return false
+	return true
+
+## Nightly, after the probes: the weakest block you took from him, back on
+## the board. Pure of side effects except the front and the line.
+func _curtis_recovers(ended_day: int) -> void:
+	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
+	if rng == null or ended_day % RECOVERY_EVERY != 0:
+		return
+	for district_id in gs.TERRITORY_DEFS.DISTRICT_ORDER:
+		var district := str(district_id)
+		if int(gs.district_by_id(district).get("rival", 0)) <= 0 or is_dismantled(district):
+			continue
+		var weakest := ""
+		var weakest_soldiers := 999
+		var weakest_cost := 999999
+		var open_front := false
+		for id in curtis_start_blocks(district):
+			if not gs.holds_block(str(id)):
+				continue
+			if is_contested(str(id)):
+				open_front = true
+				break
+			var soldiers: int = int((gs.territory_nodes[id] as Dictionary).get("soldiers", 0))
+			var cost: int = int(gs.block_by_id(str(id)).get("claim_cost", 0))
+			if soldiers < weakest_soldiers or (soldiers == weakest_soldiers and cost < weakest_cost):
+				weakest = str(id)
+				weakest_soldiers = soldiers
+				weakest_cost = cost
+		if open_front or weakest.is_empty():
+			continue
+		if is_held_down(weakest):
+			continue
+		var roll: int = rng.seeded_int_range(gs.run_seed, "%d:recover:%s" % [ended_day, district], 0, 99)
+		if roll >= int(RECOVERY_CHANCE * 100.0):
+			continue
+		gs.territory_fronts[weakest] = {"capture_reward_consumed": true, "conflict_active": true, "quiet": 0}
+		gs.log_activity("His people are back on %s. Different faces, same car." % _block_name(weakest), RED)
+		_probe_text("Curtis's people are back on %s. Different faces, same car." % _block_name(weakest))
+
+## Nightly, after recovery: the hold toward him being out of a district,
+## and the night it lands.
+func _settle_dismantling() -> void:
+	for district_id in gs.TERRITORY_DEFS.DISTRICT_ORDER:
+		var district := str(district_id)
+		if is_dismantled(district):
+			continue
+		if not dismantle_condition(district):
+			if dismantle_hold(district) > 0:
+				gs.curtis_dismantle_hold[district] = 0
+			continue
+		var hold: int = dismantle_hold(district) + 1
+		gs.curtis_dismantle_hold[district] = hold
+		if hold < DISMANTLE_NIGHTS:
+			gs.log_activity("Every block of his in %s is yours tonight. One more night like this and he stops coming." % _district_name(district), AMBER)
+			continue
+		_dismantle(district)
+
+func _dismantle(district: String) -> void:
+	gs.curtis_dismantled.append(district)
+	gs.curtis_dismantle_hold.erase(district)
+	var name := _district_name(district)
+	gs.log_activity("Curtis is out of %s. His people stopped coming, then stopped being his. The corners here are yours the way the block is." % name, GREEN)
+	var phone: Object = gm.system("phone") if gm != null else null
+	if phone != null:
+		phone.push_text("Goodie", "curtis pulled his people out of %s. thats not a thing he does. everybody heard." % name.to_lower(), "goodie_dismantled")
+	var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
+	if exposure != null:
+		for npc_id in ["curtis", "dre", "goodie"]:
+			exposure.record_observation(npc_id, {"type": "growth", "event": "dismantled_curtis",
+				"source": "network", "location": district})
+
+func _district_name(district_id: String) -> String:
+	return str(gs.district_by_id(district_id).get("name", district_id)).capitalize()
 const HELD_DOWN_QUIET := 2
 
 ## The district Tone is sitting on tonight, or "". Reads the live
@@ -334,7 +453,7 @@ func result_body(choice_id: String, tier: String, _effects: Dictionary) -> Strin
 func probe_chance(block_id: String) -> float:
 	var district_id: String = str(gs.TERRITORY_DEFS.district_of(block_id))
 	var rival: int = int(gs.district_by_id(district_id).get("rival", 0))
-	if rival <= 0:
+	if rival <= 0 or is_dismantled(district_id):
 		return 0.0
 	# HS-D2: somebody standing on it beats every other state.
 	if is_held_down(block_id):
@@ -556,6 +675,9 @@ func block_income(block_id: String) -> int:
 	# HS-D1: a corner people are fighting over pays half.
 	if is_contested(block_id):
 		total *= CONTESTED_INCOME
+	# HS-D3: where he is out, his customers are yours.
+	if is_dismantled(str(gs.TERRITORY_DEFS.district_of(block_id))):
+		total *= DISMANTLED_INCOME
 	return int(round(total))
 
 func nightly_income() -> int:
@@ -698,6 +820,9 @@ func settle_night(_ended_day: int) -> void:
 			gs.log_activity("%s sat empty all night. Still yours. Somebody noticed it was." % ", ".join(unstaffed), RED)
 		# OG-D6: and Curtis noticed.
 		_curtis_probes(_ended_day)
+		# HS-D3: he comes back, and then he does not.
+		_curtis_recovers(_ended_day)
+	_settle_dismantling()
 
 	_settle_upkeep()
 

@@ -39,6 +39,7 @@ func _ready() -> void:
 	_test_v30_kit()
 	_test_v31_ending()
 	_test_v32_hot_goods()
+	_test_v33_dismantled()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
 	_test_load_pipeline()
@@ -1072,6 +1073,20 @@ func _test_v31_ending() -> void:
 
 ## v32 (OG-D5): hot goods ride the save; junk drops; a hot holding keeps
 ## its name.
+func _test_v33_dismantled() -> void:
+	var valid := _fixed(_state("curtis_dismantled", ["downtown", "nowhere", "downtown"]))
+	_check("a district he is out of survives, an unknown one drops, once each", str(valid["curtis_dismantled"]) == str(["downtown"]))
+	var hold := _fixed(_state("curtis_dismantle_hold", {"downtown": 7, "nowhere": 1, "north_star_lot": "x"}))
+	_check("a hold clamps to the door", int((hold["curtis_dismantle_hold"] as Dictionary).get("downtown", 0)) == 2)
+	_check("...an unknown district drops", not (hold["curtis_dismantle_hold"] as Dictionary).has("nowhere"))
+	_check("...and junk is zero", int((hold["curtis_dismantle_hold"] as Dictionary).get("north_star_lot", 9)) == 0)
+	var wrong := _fixed(_state("curtis_dismantled", "downtown"))
+	_check("a wrong-type list defaults empty", (wrong["curtis_dismantled"] as Array).is_empty())
+	var saves := get_node("/root/SaveSystem")
+	var migrated: Dictionary = saves._migrate({"save_version": 32, "state": {"day": 2, "cash": 10, "street_name": "L"}})
+	_check("a v32 save arrives with him everywhere he was",
+		not migrated.has("curtis_dismantled") or (migrated.get("curtis_dismantled", []) as Array).is_empty())
+
 func _test_v32_hot_goods() -> void:
 	var valid := _fixed(_state("hot_goods", [{"kind": "pills", "name": "a bottle", "value": 60, "heat": 1.0, "from": "the pharmacy", "day": 3}, "junk"]))
 	_check("a hot item survives and junk drops", (valid["hot_goods"] as Array).size() == 1)

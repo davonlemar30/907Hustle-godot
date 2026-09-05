@@ -478,7 +478,7 @@ func reset_to_new_game() -> void:
 	hustles_discovered = []
 	phone_reply_history = {}
 	job_applications = {}
-	rent_due_day = 7
+	rent_due_day = 8
 	rent_missed = 0
 	rent_arrears_day = -1
 	weapon = "hands"
@@ -664,7 +664,9 @@ func job_pay_range(job_id: String) -> Dictionary:
 const WEEKLY_RENT := 150
 const PHONE_BILL := 75
 
-var rent_due_day: int = 7
+## TU-D1 (1.3.0): the first week is free, the way Yalonda says it is. The
+## first rent is due on day 8, the day after the week she gave you.
+var rent_due_day: int = 8
 var rent_missed: int = 0
 ## OG-D1 (1.0.0, v29): the due day that passed unpaid and has not been paid
 ## since, or -1. The escalation clock reads days late off it; paying

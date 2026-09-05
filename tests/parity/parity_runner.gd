@@ -5469,7 +5469,7 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# Word of Mouth (0.1.2) appends `tips` and reorders nothing above it: a
 	# tip is a claim about today's board, so it goes last, after every other
 	# step that could still change what today's board is.
-	"DAY_START:tips", "DAY_START:ghosts", "DAY_START:mentions", "DAY_START:crew_ideas", "DAY_START:beater", "DAY_START:curtis_doorstep", "DAY_START:household",
+	"DAY_START:tips", "DAY_START:ghosts", "DAY_START:mentions", "DAY_START:crew_ideas", "DAY_START:beater", "DAY_START:curtis_doorstep", "DAY_START:household", "DAY_START:day_break",
 	# Dre Lending & Loan-Shark Progression PR B appends `dre_intro` after
 	# `tips` for the same reason: Juan's mention reads the fully-settled day.
 	"DAY_START:dre_intro",
@@ -16617,7 +16617,10 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		# That is an instrument bug and not a finding. Solvency sits above the
 		# earning legs because it does for a player too.
 		var obligations: Object = gm.system("obligations")
-		if obligations != null and str(obligations.pay_rent_blocker()).is_empty():
+		# TU-D1 (1.3.0): rent is payable ahead now, so the driver pays it when
+		# it is due, the way it always did, not every morning it can.
+		if obligations != null and int(gs.day) >= int(gs.rent_due_day) \
+				and str(obligations.pay_rent_blocker()).is_empty():
 			if gm.dispatch("pay_rent", {}):
 				metrics["rent_paid"] = int(metrics.get("rent_paid", 0)) + 1
 				continue
@@ -19257,6 +19260,7 @@ func _check_batch15(gs: Node, gm: Node) -> void:
 	_check_unlock_announcements(gs, gm)
 	_check_the_yalonda_intro(gs)
 	_check_the_first_morning(gs)
+	_check_the_day_has_edges(gs)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -19451,6 +19455,77 @@ func _check_rebuild_is_a_rebuild(gs: Node) -> void:
 ## charge is worse than no sheet — and it has to CHANGE NOTHING, because it is
 ## introducing a run that has already been reset and is the one thing positioned
 ## to make a fresh run not fresh.
+## TU-D1 (1.3.0): the day has edges. The day-break sheet reads the night
+## and the day; the first week is free; bills pay ahead; a rebuilt Home card
+## never stacks.
+func _check_the_day_has_edges(gs: Node) -> void:
+	var flow_sheets := preload("res://ui/components/flow_sheets.gd")
+	var gm: Node = get_node("/root/GameManager")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_expect_int("the first week is free: rent lands on day eight", int(gs.rent_due_day), 8)
+	_expect_int("...the phone keeps canon's day seven", int(gs.phone_due_day), 7)
+	# The sheet.
+	gs.day = 9
+	gs.activity_log = []
+	gs.day = 8
+	gs.time_slot = "NIGHT"
+	gs.log_activity("The corners bring in $40.", Color.WHITE)
+	gs.day = 9
+	gs.time_slot = "MORNING"
+	gs.active_job_id = "wash_go"
+	gs.job_records["wash_go"] = {"xp": 0.0, "rank": 0, "last_worked_day": 8, "hired_day": 2}
+	gs.job_missed["wash_go"] = 1
+	gs.rent_due_day = 10
+	var before: Dictionary = (get_node("/root/SaveSystem") as Node).capture()
+	var content: Control = flow_sheets.build_day_break(gs, gm)
+	var lines: Array[String] = []
+	_collect_labels(content, lines)
+	var text := "\n".join(lines)
+	_expect_true("the break names the day", text.contains("DAY 9"))
+	_expect_true("...and what the night did", text.contains("corners bring in"))
+	_expect_true("...and the shift, and when", text.contains("Shift at Wash & Go") and text.contains("morning"))
+	_expect_true("...and the miss", text.contains("missed 1"))
+	_expect_true("...and the rent coming", text.contains("Rent in 1 day"))
+	_expect_true("...and it changed nothing", str(before) == str((get_node("/root/SaveSystem") as Node).capture()))
+	content.free()
+	# Bills pay ahead.
+	gs.reset_to_new_game()
+	gs.cash = 1000
+	gs.clean_cash = 1000
+	gs.day = 3
+	var obligations: Object = gm.system("obligations")
+	_expect_str("rent is payable before it is due", str(obligations.pay_rent_blocker()), "")
+	_expect_true("...and paying it", gm.dispatch("pay_rent", {}))
+	_expect_int("...moves the due day a week out from where it stood", int(gs.rent_due_day), 15)
+	_expect_str("the phone bill is payable ahead too", str(obligations.pay_phone_blocker()), "")
+	_expect_true("...and paying it", gm.dispatch("pay_phone_bill", {}))
+	_expect_int("...moves its due day out from where it stood", int(gs.phone_due_day), 14)
+	# A rebuilt Home card never stacks.
+	gs.reset_to_new_game()
+	_stage_rank(gs, "connected")
+	gs.vehicle = "beater"
+	var home: Node = _instantiate_screen("res://ui/screens/home.tscn")
+	if home != null:
+		home.refresh()
+		home.refresh()
+		home.refresh()
+		var way_outs := 0
+		var cars := 0
+		for child in home.get_node("Shell/Scroll/Pad/Content").get_children():
+			if str(child.name) == "WayOut":
+				way_outs += 1
+			elif str(child.name) == "CarCard":
+				cars += 1
+		_expect_int("three refreshes, one cash-out card", way_outs, 1)
+		_expect_int("...and one car card", cars, 1)
+		_free_screen(home)
+	# The hero, at a time of day, falls back to the banner.
+	var portraits := preload("res://data/portraits.gd")
+	_expect_true("a timed banner that does not exist is the plain banner or nothing",
+		portraits.district_header_at("north_star_lot", "NIGHT") == portraits.district_header("north_star_lot"))
+	gs.reset_to_new_game()
+
 ## SA-D1 (1.1.0): the morning after. Juan says how a day goes, in his voice,
 ## with the run's real numbers, and changes nothing.
 func _check_the_first_morning(gs: Node) -> void:
@@ -21994,7 +22069,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14260
+const MIN_CHECKS := 14281
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

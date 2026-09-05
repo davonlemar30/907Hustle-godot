@@ -209,6 +209,9 @@ const DAY_START_ORDER: Array[String] = [
 	# SA-D4: the house, after everything the morning brought, so what it says
 	# is about today.
 	"household",
+	# TU-D1 (1.3.0): the day break. Last, so the sheet can read everything
+	# the morning brought; the sheet itself is only a read.
+	"day_break",
 	# Dre Lending & Loan-Shark Progression, PR B (DRE-D1). After `tips` for
 	# the same reason `tips` is after everything else: Juan's mention reads
 	# `gs.cash`/`gs.rent_due_day` against the fully-settled day, not a
@@ -501,6 +504,16 @@ func _run_day_start_step(step: String, today: int) -> void:
 		var household: Object = gm.system("household") if gm != null else null
 		if household != null:
 			household.day_start(today)
+		return
+	if step == "day_break":
+		# The divider between one day and the next: a sheet that says what
+		# the night did and what today holds. Enqueued through the same
+		# queue a discovery or an interview uses; drained by the screen.
+		var loop: MainLoop = Engine.get_main_loop()
+		var nav: Node = (loop as SceneTree).root.get_node_or_null("/root/ScreenManager") \
+			if loop is SceneTree else null
+		if nav != null and today > 1 and not gs.game_over:
+			nav.enqueue_flow_sheet({"kind": "day_break", "day": today})
 		return
 	if step == "beater":
 		var travel: Object = gm.system("travel") if gm != null else null

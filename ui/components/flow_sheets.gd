@@ -16,6 +16,7 @@ extends RefCounted
 ## ran.
 
 const MUTED := Color(0.608, 0.608, 0.608)
+const AMBER := Color(0.882, 0.651, 0.227)
 const CREAM := Color(0.949, 0.941, 0.922)
 ## Home's People card uses this same portrait already (`home.tscn`'s "yalonda"
 ## ExtResource) -- one texture, preloaded here the way LOCK_ICON is.
@@ -126,6 +127,77 @@ static func _first_morning_copy(gs: Node) -> String:
 		+ "Wash & Go is on the corner if you want a check. Everything else " \
 		+ "you find by walking. Walk the block.") \
 		% [int(gs.WEEKLY_RENT), int(gs.rent_due_day)]
+
+## TU-D1 (1.3.0): the day break. The playtest kept missing shifts because
+## nothing divided one day from the next. This is the divider: the day,
+## what the night did (the feed lines the settle wrote), and what today
+## holds -- the shift, the bills. A read, never a write.
+static func build_day_break(gs: Node, gm: Node) -> VBoxContainer:
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	content.add_child(_label("DAY %d" % int(gs.day), "CardTitle", 22, CREAM, false, HORIZONTAL_ALIGNMENT_CENTER))
+	content.add_child(_label(str(gs.current_district().get("name", "")).to_upper() + "  ·  MORNING", "Kicker", 10, MUTED, false, HORIZONTAL_ALIGNMENT_CENTER))
+	var night: Array = day_break_night_lines(gs)
+	if not night.is_empty():
+		content.add_child(_spacer(2))
+		content.add_child(_label("LAST NIGHT", "Kicker", 10, AMBER))
+		for line in night:
+			content.add_child(_label(str(line), "Muted", 12, CREAM, true, HORIZONTAL_ALIGNMENT_LEFT))
+	content.add_child(_spacer(2))
+	content.add_child(_label("TODAY", "Kicker", 10, AMBER))
+	for line in day_break_today_lines(gs, gm):
+		content.add_child(_label(str(line), "Muted", 12, CREAM, true, HORIZONTAL_ALIGNMENT_LEFT))
+	content.add_child(_spacer(4))
+	content.add_child(_dismiss_button("MORNING"))
+	return content
+
+## The feed lines the night wrote: entries stamped with the day that ended
+## and the NIGHT slot, oldest first, at most five.
+static func day_break_night_lines(gs: Node) -> Array:
+	var out: Array = []
+	for entry in gs.activity_log:
+		var e: Dictionary = entry
+		if int(e.get("day", -1)) == int(gs.day) - 1 and str(e.get("time", "")) == "NIGHT":
+			out.push_front(str(e.get("text", "")))
+	if out.size() > 5:
+		out = out.slice(out.size() - 5)
+	return out
+
+## What today holds, in words: the shift and when it runs, the rent, the
+## phone. Reads the run's real numbers.
+static func day_break_today_lines(gs: Node, gm: Node) -> Array:
+	var out: Array = []
+	if not str(gs.active_job_id).is_empty():
+		var job: Dictionary = gs.active_job()
+		var names := ["morning", "afternoon", "evening", "night"]
+		var when: Array = []
+		for slot in (job.get("slots", []) as Array):
+			when.append(names[clampi(int(slot), 0, 3)])
+		var missed: int = int(gs.job_missed.get(gs.active_job_id, 0))
+		var line := "Shift at %s. It runs %s." % [str(job.get("name", "work")), " or ".join(when) if when.size() <= 2 else "%s through %s" % [when[0], when[when.size() - 1]]]
+		if missed > 0:
+			line += " You have missed %d. Do not miss this one." % missed
+		out.append(line)
+	var rent_in: int = int(gs.rent_due_day) - int(gs.day)
+	if int(gs.rent_arrears_day) >= 0:
+		out.append("The rent is late. Yalonda knows.")
+	elif rent_in == 0:
+		out.append("Rent is due today: $%d. Pay it on the Phone." % int(gs.WEEKLY_RENT))
+	elif rent_in > 0 and rent_in <= 3:
+		out.append("Rent in %d day%s: $%d." % [rent_in, "" if rent_in == 1 else "s", int(gs.WEEKLY_RENT)])
+	var phone_in: int = int(gs.phone_due_day) - int(gs.day)
+	if not bool(gs.phone_active):
+		out.append("The phone is off. The Phone Store turns it back on.")
+	elif int(gs.phone_days_past_due) > 0:
+		out.append("The phone bill is late. It goes quiet before it goes dead.")
+	elif phone_in >= 0 and phone_in <= 2:
+		out.append("Phone bill in %d day%s: $%d." % [phone_in, "" if phone_in == 1 else "s", int(gs.PHONE_BILL)])
+	var obligations: Object = gm.system("obligations") if gm != null else null
+	if obligations != null and out.size() == 1 and str(out[0]).begins_with("Shift"):
+		pass
+	if out.is_empty():
+		out.append("Nothing owed today. Four parts, and they are yours.")
+	return out
 
 ## One surface's unlock, celebrated. `card` is `SurfaceVisibility.card_for()`'s
 ## shape: `{title, line, icon}`, `icon` possibly "" — not every surface has one

@@ -73,6 +73,19 @@ static func portrait_for(name_or_id: String) -> Texture2D:
 static func district_header(district_id: String) -> Texture2D:
 	return _load(str(DISTRICT_HEADERS.get(district_id, "")))
 
+## TU-D1 (1.3.0): the same banner at a time of day -- `district_spenard_night`
+## and so on -- falling back to the plain banner, then to nothing.
+static func district_header_at(district_id: String, slot: String) -> Texture2D:
+	var stem := str(DISTRICT_HEADERS.get(district_id, ""))
+	if stem.is_empty():
+		return null
+	var suffix := slot.to_lower()
+	if not suffix.is_empty():
+		var timed: Texture2D = _load("%s_%s" % [stem, suffix])
+		if timed != null:
+			return timed
+	return _load(stem)
+
 static func venue_image(venue_id: String) -> Texture2D:
 	return _load(str(VENUES.get(venue_id, "")))
 

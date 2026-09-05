@@ -27,9 +27,6 @@ var _history_limit: Dictionary = {}
 
 func _ready() -> void:
 	super()
-	$HomeFab.hide()
-	$HomeBtn.hide()
-	$Shell/NavBar/NavRow/HomeSlot.pressed.connect(func() -> void: nav.go_to(nav.HOME))
 	$Shell/NavBar/NavRow/Hustle/V/Ind.color = Color.TRANSPARENT
 	$Shell/NavBar/NavRow/Hustle/V/Ico.self_modulate = MUTED
 	$Shell/NavBar/NavRow/Hustle/V/L.add_theme_color_override("font_color", MUTED)

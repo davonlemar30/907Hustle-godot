@@ -15966,7 +15966,7 @@ func _check_no_duplicate_home_entry() -> void:
 	if home == null:
 		_fail("duplicate nav", "Home would not instantiate")
 		return
-	var home_button := home.get_node_or_null("HomeBtn") as Button
+	var home_button := home.get_node_or_null("Shell/NavBar/NavRow/HomeSlot") as Button
 	_expect_true("Home has a home button at all", home_button != null)
 	if home_button != null:
 		_expect_int("the current screen's own nav cell is inert",
@@ -15978,7 +15978,7 @@ func _check_no_duplicate_home_entry() -> void:
 	if street == null:
 		_fail("duplicate nav", "Street would not instantiate")
 		return
-	var street_home := street.get_node_or_null("HomeBtn") as Button
+	var street_home := street.get_node_or_null("Shell/NavBar/NavRow/HomeSlot") as Button
 	_expect_true("Street's home cell is wired",
 		street_home != null and street_home.pressed.get_connections().size() > 0)
 	_free_screen(street)

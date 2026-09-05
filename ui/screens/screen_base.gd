@@ -73,7 +73,9 @@ func _wire_nav() -> void:
 		# Explicit types throughout: NAV_ROUTES is an untyped Dictionary, so
 		# anything drawn from it is a Variant and := cannot infer.
 		var cell: String = cell_key
-		var path: String = "HomeBtn" if cell == "Home" else "Shell/NavBar/NavRow/" + cell
+		# One nav everywhere (2026-09-04): Home is an ordinary cell, not a
+		# floating button; the slot in the row is the button.
+		var path: String = "Shell/NavBar/NavRow/HomeSlot" if cell == "Home" else "Shell/NavBar/NavRow/" + cell
 		var button := get_node_or_null(path) as Button
 		if button == null:
 			continue

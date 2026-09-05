@@ -31,7 +31,6 @@ const PEOPLE := preload("res://ui/screens/people.gd")
 func _ready() -> void:
 	super()
 	resized.connect(_schedule_resize)
-	$Shell/NavBar/NavRow/HomeSlot.pressed.connect(func() -> void: nav.go_to(nav.HOME))
 
 func _schedule_resize() -> void:
 	if not _resize_pending and (size.x >= 960.0) != _wide:
@@ -74,11 +73,6 @@ func _build_body() -> void:
 	$Shell/Scroll/Pad/Content/Gap.hide()
 	$Shell/Scroll/Pad/Content/Title.visible = _wide
 	$Shell/TopBar/HBox/Brand.custom_minimum_size.y = 66 if _wide else 36
-	# Phone is active; Home remains an ordinary destination on this screen.
-	$HomeFab.hide()
-	$HomeBtn.hide()
-	var home_cell := get_node("Shell/NavBar/NavRow/HomeSlot") as Control
-	home_cell.show()
 	if offline:
 		body.add_child(_offline_card())
 	var root_body := body

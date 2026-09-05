@@ -1,63 +1,9 @@
 extends "res://ui/screens/surface_base.gd"
-## Phone — texts, contacts, bills, and word around town.
-##
-## Ported from the web build's `PhoneScreen` (ui.built.js:15734) and its
-## `phoneBills` helper (15742). Canon's six sections, in canon's order: the
-## offline card, Texts, Contacts, Bills, Today's Log, Word Around Town. The
-## substrate they read — the inbox, the held inbox, the bill clock — is
-## `systems/phone.gd` and `systems/obligations.gd`; this screen surfaces it and
-## reimplements none of it.
-##
-## **The phone stays available even when the network does not.** That is canon's
-## own subtitle for the offline state and it is the design: losing service does
-## not lose you the screen, it changes what the screen can tell you. Texts are
-## held rather than dropped, Word Around Town goes quiet, the Bills row points
-## at the Phone Store instead of offering to pay, and the header renames itself
-## "No Service". Every section has an offline voice.
-##
-## Sections are accordions, as canon's are, and only Texts starts expanded
-## (`defaultExpanded: true` on that one alone). Expansion is UI state kept on the
-## script rather than in GameState — it is not part of the run and has no
-## business in a save — and it survives `_bind_content()`'s clear-and-rebuild
-## because it lives outside the node tree.
-##
-## Divergences, each with its reason:
-##   - **Contacts links out instead of embedding.** Canon renders the whole
-##     `SocialContacts` component here. This build has no `state.contacts`
-##     ledger (relationship levels, call/text/visit availability) and does have
-##     a People screen showing what each character makes of you, so the section
-##     routes there. The count is the number of people the run has actually
-##     formed a read on, not canon's `personalContacts + knownSocialContacts`,
-##     which needs the ledger.
-##   - **"Pay in People > Crew"** became "Pay on the Crew screen": canon's arrow
-##     is U+2192, which no theme font carries, and this is a place where a
-##     sentence beats an icon.
-##   - **The rent row's eviction gate is unreachable.** Canon hides it when
-##     `people.household.evicted`; here the third household warning ends the run
-##     outright, so there is no evicted-and-still-playing state to hide it in.
-##     Ported anyway, as a `game_over` check, so it stays correct if that
-##     changes.
-##   - **The debt row lit up in PR A (0.1.2, Dre Lending & Loan-Shark
-##     Progression).** `systems/dre_lender.gd` owns a real account now;
-##     `GameState.debt`/`debt_due_days` are computed off it, so this row
-##     never needed an edit to start showing something real. Still not
-##     player-reachable this build: `dre_borrow` refuses anyone who is not
-##     `dre_introduced`, and nothing sets that flag yet — PR B's Juan-mention
-##     arc is the door. Until then the row is wired, tested, and waiting.
-##
-## Not ported: the `job_offer` answer buttons on a text. The descriptor is
-## carried through the substrate, but `jobs.gd` hires directly and has no
-## application -> offer pipeline, so no message ever arrives with one. The
-## branch is here and named rather than silently absent.
-
+## Switchboard: responsive categories, sender list and conversation detail.
+## Presentation only; replies, payments and offline rules stay in the systems.
 const BLUE := Color(0.373, 0.663, 0.847)
 const PORTRAITS := preload("res://data/portraits.gd")
 const CYAN := Color(0.475, 0.733, 0.757)
-
-## Canon: `defaultExpanded: true` on Texts, nothing else.
-var _open: Dictionary = {
-	"texts": true, "contacts": false, "bills": false, "log": false, "intel": false,
-}
 
 func _obligations() -> Object:
 	return _gm.system("obligations")
@@ -65,51 +11,233 @@ func _obligations() -> Object:
 func _phone() -> Object:
 	return _gm.system("phone")
 
-func _build_body() -> void:
-	var offline: bool = not gs.phone_active
-	# Canon renames the whole page when the line is dead.
-	_set_text("Shell/Scroll/Pad/Content/Title/H", "NO SERVICE" if offline else "PHONE")
-	_set_text("Shell/Scroll/Pad/Content/Title/Sub",
-		"The phone stays available even when the network does not" if offline
-		else "Texts, contacts, bills, and word around town")
+const CATEGORIES := {"texts": "TEXTS", "contacts": "CONTACTS", "bills": "BILLS", "log": "TODAY'S LOG", "intel": "WORD AROUND TOWN"}
+var _category := "texts"
+var _sender := ""
+var _mobile_detail := false
+var _wide := false
+var _resize_pending := false
 
+func _ready() -> void:
+	super()
+	resized.connect(_schedule_resize)
+
+func _schedule_resize() -> void:
+	if not _resize_pending and (size.x >= 960.0) != _wide:
+		_resize_pending = true
+		_resize_layout.call_deferred()
+
+func _resize_layout() -> void:
+	_resize_pending = false
+	if is_inside_tree():
+		refresh()
+
+func _bind_content() -> void:
+	var scroll := $Shell/Scroll as ScrollContainer
+	var previous := scroll.scroll_vertical
+	var focused := get_viewport().gui_get_focus_owner()
+	var focus_key := str(focused.name) if focused != null and is_ancestor_of(focused) else ""
+	super()
+	if not focus_key.is_empty():
+		var replacement := body.find_child(focus_key, true, false) as Control
+		if replacement != null: replacement.grab_focus.call_deferred()
+	scroll.set_deferred("scroll_vertical", previous)
+
+func _build_body() -> void:
+	_wide = size.x >= 960.0
+	var offline: bool = not gs.phone_active
+	_set_text("Shell/Scroll/Pad/Content/Title/H", "NO SERVICE" if offline else "PHONE")
+	_set_text("Shell/Scroll/Pad/Content/Title/Sub", "SWITCHBOARD  /  " + ("Messages held until service returns" if offline else "Texts, people and word on the street"))
+	$Shell/Scroll/Pad/Content/Title/Sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	$Shell/Scroll/Pad/Content/Gap.hide()
 	if offline:
 		body.add_child(_offline_card())
-	_build_texts(offline)
-	_build_contacts()
-	_build_bills()
-	_build_log()
-	_build_intel(offline)
+	var root_body := body
+	var layout: BoxContainer = HBoxContainer.new() if _wide else VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 14)
+	root_body.add_child(layout)
+	var rail: Container = VBoxContainer.new() if _wide else HFlowContainer.new()
+	rail.add_theme_constant_override("separation", 6)
+	if _wide:
+		rail.custom_minimum_size.x = 175
+	if _wide:
+		var rail_card := _switch_panel()
+		layout.add_child(rail_card)
+		rail_card.add_child(rail)
+	else:
+		layout.add_child(rail)
+	for key in CATEGORIES:
+		var caption: String = CATEGORIES[key]
+		if key == "texts":
+			caption += "  ·  %d" % _reply_count()
+		elif key == "bills":
+			var due := 0
+			for bill in _bills():
+				if int(bill.get("severity", 0)) > 0:
+					due += 1
+			if due > 0:
+				caption += "  ·  %d DUE" % due
+		var tab := _switch_button(caption, key == _category, _choose_category.bind(key), 48)
+		if not _wide:
+			tab.custom_minimum_size.x = 155 if key == "intel" else 104
+		tab.name = "Category_" + key
+		rail.add_child(tab)
+	var pane := VBoxContainer.new()
+	pane.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pane.add_theme_constant_override("separation", 12)
+	layout.add_child(pane)
+	body = pane
+	match _category:
+		"texts": _build_switchboard(offline)
+		"contacts": _build_contacts()
+		"bills": _build_bills()
+		"log": _build_log()
+		"intel": _build_intel(offline)
+	body = root_body
+	var footer := label("%d NEEDS A REPLY" % _reply_count() if _reply_count() == 1 else "%d NEED REPLIES" % _reply_count(), "Kicker", 12, RED if _reply_count() else MUTED)
+	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root_body.add_child(footer)
 
-# --- accordion -------------------------------------------------------------
+func _reply_count() -> int:
+	if not gs.phone_active:
+		return 0
+	var count := 0
+	for message in gs.phone_inbox:
+		if _phone().awaits_reply(message):
+			count += 1
+	return count
 
-## A tappable header row. `meta` is canon's right-aligned count; `badge_colour`
-## carries canon's danger/warning variants on the Bills badge.
-func _accordion(key: String, title: String, meta: String, badge_colour: Color = MUTED) -> void:
-	var c := card()
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 8)
-	c.add_child(h)
+func _switch_panel() -> PanelContainer:
+	var panel := card()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.025, 0.025, 0.027, 0.94)
+	style.border_color = Color(0.20, 0.20, 0.20)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	style.content_margin_left = 12
+	style.content_margin_right = 12
+	style.content_margin_top = 14
+	style.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", style)
+	return panel
 
-	var t := label(title.to_upper(), "CardTitle", 13, CREAM)
-	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	h.add_child(t)
-	if not meta.is_empty():
-		h.add_child(label(meta, "Muted", 11, badge_colour))
-	# The chevron is the only affordance saying these open. Both characters are
-	# from the five every theme font carries — a rotating icon would read better
-	# but no safe glyph points down, and "–" is a standard collapse affordance.
-	h.add_child(label("›" if not _open.get(key, false) else "–", "Muted", 13, MUTED))
+func _switch_button(text: String, primary: bool, handler: Callable, height: int = 44) -> Button:
+	# Deferred callbacks keep refresh() from freeing the emitting control.
+	var activate := func() -> void: handler.call_deferred()
+	var control := button(text, primary, activate, height)
+	control.name = "Action_%s" % text.sha256_text().left(12)
+	control.focus_mode = Control.FOCUS_ALL
+	if primary:
+		var selected := StyleBoxFlat.new()
+		selected.bg_color = Color(0.14, 0.045, 0.04, 0.97)
+		selected.border_color = RED
+		selected.set_border_width_all(1)
+		selected.border_width_left = 3
+		selected.set_content_margin_all(12)
+		control.add_theme_stylebox_override("normal", selected)
+		control.add_theme_color_override("font_color", CREAM)
+	control.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	control.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventKey and event.is_action_pressed("ui_accept") and not event.is_echo():
+			control.accept_event()
+			activate.call())
+	return control
 
-	tap_connect(c, _on_toggle.bind(key))
-	body.add_child(c)
+func _choose_category(key: String) -> void:
+	_category = key
+	refresh()
+
+func _choose_sender(sender: String) -> void:
+	_sender = sender
+	_mobile_detail = true
+	refresh()
+
+func _back_to_messages() -> void:
+	_mobile_detail = false
+	refresh()
+
+func _build_switchboard(offline: bool) -> void:
+	if offline:
+		body.add_child(note("%d messages waiting for service." % gs.phone_held_inbox.size()))
+		return
+	if gs.phone_inbox.is_empty():
+		_sender = ""
+		_mobile_detail = false
+		body.add_child(note("No messages yet. The street will find you."))
+		return
+	var senders: Array[String] = []
+	for message in gs.phone_inbox:
+		var sender := str(message.get("from", ""))
+		if not senders.has(sender):
+			senders.append(sender)
+	if not senders.has(_sender):
+		_sender = senders[0]
+	var columns: BoxContainer = HBoxContainer.new() if _wide else VBoxContainer.new()
+	columns.add_theme_constant_override("separation", 14)
+	body.add_child(columns)
+	if _wide or not _mobile_detail:
+		var list := VBoxContainer.new()
+		list.name = "Conversations"
+		if _wide:
+			list.custom_minimum_size.x = 240
+		var list_card := _switch_panel()
+		columns.add_child(list_card)
+		list_card.add_child(list)
+		list.add_child(label("ALL MESSAGES", "CardTitle", 16, CREAM))
+		for sender in senders:
+			var latest: Dictionary = {}
+			var pending := 0
+			for message in gs.phone_inbox:
+				if str(message.get("from", "")) == sender:
+					if latest.is_empty(): latest = message
+					if _phone().awaits_reply(message): pending += 1
+			var preview := str(latest.get("text", "")).replace("\n", " ")
+			if preview.length() > 75: preview = preview.left(72) + "..."
+			var caption := sender.to_upper() + ("  ·  REPLY" if pending else "") + "\n" + preview
+			var item := _switch_button(caption, sender == _sender, _choose_sender.bind(sender), 96)
+			item.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			list.add_child(item)
+		if gs.phone_inbox.size() > 1:
+			list.add_child(_switch_button("CLEAR ALL %d" % gs.phone_inbox.size(), false, _on_clear_inbox))
+	# A single conversation can open immediately; a populated inbox starts at list.
+	if _wide or _mobile_detail or senders.size() == 1:
+		var conversation := VBoxContainer.new()
+		conversation.name = "Conversation"
+		conversation.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		conversation.add_theme_constant_override("separation", 12)
+		var conversation_card := _switch_panel()
+		conversation_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if _wide: conversation_card.custom_minimum_size.y = 440
+		columns.add_child(conversation_card)
+		conversation_card.add_child(conversation)
+		if not _wide and _mobile_detail:
+			conversation.add_child(_switch_button("‹ ALL MESSAGES", false, _back_to_messages))
+		var header := HBoxContainer.new()
+		conversation.add_child(header)
+		var face := PORTRAITS.portrait_rect(_sender, 64)
+		if face != null: header.add_child(face)
+		var title := label(_sender.to_upper(), "CardTitle", 24, CREAM, true)
+		title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		header.add_child(title)
+		if _sender.to_lower().begins_with("yalonda"):
+			for bill in _bills():
+				if str(bill.get("id", "")) == "rent":
+					conversation.add_child(label("RENT  ·  $%d  ·  %s  ·  %s" % [int(bill["amount"]), str(bill["due"]), str(bill["status"])], "Kicker", 12, AMBER, true))
+		var messages: Array = gs.phone_inbox.duplicate()
+		messages.reverse()
+		for message in messages:
+			if str(message.get("from", "")) == _sender:
+				conversation.add_child(_message_card(message))
+
+# Existing section builders retain their data and action contracts.
+func _accordion(_key: String, title: String, meta: String, badge_colour: Color = MUTED) -> void:
+	body.add_child(label(title.to_upper() + ("  ·  " + meta if not meta.is_empty() else ""), "CardTitle", 16, badge_colour))
 
 func _on_toggle(key: String) -> void:
-	_open[key] = not _open.get(key, false)
-	_bind_content()
+	_choose_category(key)
 
 func _is_open(key: String) -> bool:
-	return bool(_open.get(key, false))
+	return key == _category
 
 # --- offline ---------------------------------------------------------------
 
@@ -146,33 +274,6 @@ func _offline_card() -> Control:
 
 # --- texts -----------------------------------------------------------------
 
-func _build_texts(offline: bool) -> void:
-	var held: int = gs.phone_held_inbox.size()
-	var live: int = gs.phone_inbox.size()
-	var meta: String = "%d HELD" % held if offline else ("%d TEXT" % live if live == 1 else "%d TEXTS" % live)
-	_accordion("texts", "Texts", meta, AMBER if (offline and held > 0) else MUTED)
-	if not _is_open("texts"):
-		return
-
-	if offline:
-		body.add_child(note("%d message is waiting for service." % held if held == 1
-			else "%d messages are waiting for service." % held))
-		return
-	if live == 0:
-		body.add_child(note("No messages yet."))
-		return
-	# Canon only offers Clear all when there is more than one to clear.
-	#
-	# 44pt tall (86bbjkcd8) -- the same tap-target floor the per-message
-	# dismiss button below is already held to. This is the OTHER dismiss
-	# control on this screen (bulk rather than per-message) and had been
-	# left at 40, a thumb-unfriendly size the smoke suite's own tap checks
-	# do not catch because they audit scroll-transparency wiring, not size.
-	if live > 1:
-		body.add_child(button("CLEAR ALL %d" % live, false, _on_clear_inbox, 44))
-	for message in gs.phone_inbox:
-		body.add_child(_message_card(message))
-
 func _message_card(message: Dictionary) -> Control:
 	var c := card()
 	var v := VBoxContainer.new()
@@ -185,21 +286,21 @@ func _message_card(message: Dictionary) -> Control:
 	# OG-D3: who is texting, when the game has their face.
 	var face := PORTRAITS.portrait_rect(str(message.get("from", "")), 48)
 	if face != null:
-		head.add_child(face)
-	var from := label(str(message.get("from", "")).to_upper(), "CardTitle", 13, CREAM)
+		face.free()
+	var from := label(str(message.get("from", "")).to_upper(), "CardTitle", 16, CREAM, true)
 	from.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(from)
-	head.add_child(label(_phone().stamp(message), "Mono", 10, MUTED))
+	v.add_child(label(_phone().stamp(message), "Mono", 11, MUTED))
 	# Canon's dismiss glyph is U+00D7, which every theme font carries (checked
 	# against the cmaps, not against how it looks in the editor).
 	#
 	# 44x44, the same tap-target floor every other screen is held to. It was
 	# 34x28 until v0.1.0 -- a glyph sized to the glyph rather than to a thumb.
-	var dismiss := button("×", false, _on_dismiss.bind(str(message.get("id", ""))), 44)
+	var dismiss := _switch_button("×", false, _on_dismiss.bind(str(message.get("id", ""))), 44)
 	dismiss.custom_minimum_size = Vector2(44, 44)
 	head.add_child(dismiss)
 
-	v.add_child(label(str(message.get("text", "")), "Muted", 12, CREAM, true))
+	v.add_child(label(str(message.get("text", "")), "Muted", 16, CREAM, true))
 
 	# Canon shows Accept / Turn it down when the offer behind the text is still
 	# live. Nothing pushes a job_offer in this build yet (jobs.gd hires direct),
@@ -217,13 +318,13 @@ func _message_card(message: Dictionary) -> Control:
 			v.add_child(label("left on read", "Kicker", 10, MUTED))
 		else:
 			var id := str(message.get("id", ""))
-			var row := HBoxContainer.new()
+			var row := VBoxContainer.new()
 			row.add_theme_constant_override("separation", 8)
 			for option in ["a", "b"]:
-				var answer := button(str((reply[option] as Dictionary).get("text", "")), false,
-					_on_reply.bind(id, option), 44)
+				var answer := _switch_button(str((reply[option] as Dictionary).get("text", "")), false,
+					_on_reply.bind(id, option), 52)
 				answer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				answer.add_theme_font_size_override("font_size", 12)
+				answer.add_theme_font_size_override("font_size", 15)
 				row.add_child(answer)
 			v.add_child(row)
 	if not action.is_empty() and str(action.get("kind", "")) == "job_offer":
@@ -453,10 +554,6 @@ func _build_bills() -> void:
 			any_bad = true
 	# Canon's badge: the count, coloured danger if anything is actually late.
 	var meta: String = "%d DUE" % due_soon if due_soon > 0 else ""
-	# OG-D1: a bill that is due opens its own section the first time the
-	# screen is seen with it due, so PAY is one tap from the nav.
-	if due_soon > 0 and not _open.has("bills"):
-		_open["bills"] = true
 	_accordion("bills", "Bills", meta, RED if any_bad else AMBER)
 	if not _is_open("bills"):
 		return

@@ -11,8 +11,13 @@ func _obligations() -> Object:
 func _phone() -> Object:
 	return _gm.system("phone")
 
-const CATEGORIES := {"texts": "TEXTS", "contacts": "PEOPLE", "bills": "BILLS", "log": "TODAY'S LOG", "intel": "WORD AROUND TOWN"}
-var _category := "texts"
+## TU-D3 (1.3.0): the phone in your hand. The screen opens on a hub -- the
+## owner's mockup: MESSAGES, BILLS, INVENTORY, OPPORTUNITIES, PEOPLE as
+## cards, then the three most recent conversations -- and Messages is a
+## contact list and a thread, grouped by the part of the day, with the
+## unread line and your own replies on the right.
+const CATEGORIES := {"hub": "PHONE", "texts": "MESSAGES", "contacts": "PEOPLE", "bills": "BILLS", "inventory": "INVENTORY", "log": "TODAY'S LOG", "intel": "WORD AROUND TOWN"}
+var _category := "hub"
 var _sender := ""
 var _mobile_detail := false
 var _wide := false
@@ -29,6 +34,10 @@ var _empty_filter: Label
 const PEOPLE := preload("res://ui/screens/people.gd")
 
 func _ready() -> void:
+	# TU-D1/D3: Home's text card asks for Messages by name.
+	if nav != null and nav.has_meta("phone_category"):
+		_category = str(nav.get_meta("phone_category"))
+		nav.remove_meta("phone_category")
 	super()
 	resized.connect(_schedule_resize)
 
@@ -97,7 +106,7 @@ func _build_body() -> void:
 			picker.add_item(CATEGORIES[key])
 		picker.fit_to_longest_item = false
 		if _category == "texts" and _mobile_detail:
-			picker.set_item_text(0, "TEXTS / " + _sender.to_upper())
+			picker.set_item_text(CATEGORIES.keys().find("texts"), "MESSAGES / " + _sender.to_upper())
 		picker.select(CATEGORIES.keys().find(_category))
 		picker.item_selected.connect(func(index: int) -> void: _choose_category.call_deferred(CATEGORIES.keys()[index]))
 		var toolbar := HBoxContainer.new()
@@ -132,9 +141,11 @@ func _build_body() -> void:
 	layout.add_child(pane)
 	body = pane
 	match _category:
+		"hub": _build_hub(offline)
 		"texts": _build_switchboard(offline)
 		"contacts": _build_contacts()
 		"bills": _build_bills()
+		"inventory": _build_inventory()
 		"log": _build_log()
 		"intel": _build_intel(offline)
 	body = root_body
@@ -193,6 +204,7 @@ func _choose_category(key: String) -> void:
 
 func _choose_sender(sender: String) -> void:
 	_sender = sender
+	_category = "texts"
 	_manage = false
 	_scroll_reset = true
 	_mobile_detail = true
@@ -200,6 +212,7 @@ func _choose_sender(sender: String) -> void:
 	_jump_to_message.call_deferred()
 
 func _back_to_messages() -> void:
+	_category = "texts"
 	_mobile_detail = false
 	_manage = false
 	_scroll_reset = true
@@ -248,31 +261,7 @@ func _build_switchboard(offline: bool) -> void:
 			filters.add_child(filter)
 		list.add_child(filters)
 		for sender in senders:
-			var latest: Dictionary = {}
-			var pending := 0
-			for message in gs.phone_inbox:
-				if str(message.get("from", "")) == sender:
-					if latest.is_empty(): latest = message
-					if _phone().awaits_reply(message): pending += 1
-			var preview := str(latest.get("text", "")).replace("\n", " ")
-			if preview.length() > 75: preview = preview.left(72) + "..."
-			var caption := sender.to_upper() + ("  ·  NEEDS REPLY" if pending else "") + "\n" + preview + "\n" + str(_phone().stamp(latest))
-			var item := _switch_button(caption, (_wide and sender == _sender), _choose_sender.bind(sender), 80)
-			item.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			var thread := HBoxContainer.new()
-			thread.add_theme_constant_override("separation", 8)
-			var avatar := PORTRAITS.portrait_rect(sender, 40)
-			if avatar != null:
-				thread.add_child(avatar)
-			else:
-				var initials := label(sender.left(1).to_upper(), "CardTitle", 22, MUTED)
-				initials.custom_minimum_size.x = 40
-				initials.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-				thread.add_child(initials)
-			item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			thread.add_child(item)
-			thread.set_meta("search", (sender + " " + _sender_text(sender)).to_lower())
-			thread.set_meta("pending", pending)
+			var thread := _thread_row(sender)
 			list.add_child(thread)
 			_thread_rows.append(thread)
 		_empty_filter = label("No conversations match. Try All or another search.", "Muted", 13, MUTED, true)
@@ -311,13 +300,27 @@ func _build_switchboard(offline: bool) -> void:
 		var messages: Array = gs.phone_inbox.duplicate()
 		messages.reverse()
 		var pending_target: Control
+		var last_group := ""
+		var unread_marked := false
 		for message in messages:
-			if str(message.get("from", "")) == _sender:
-				var bubble := _message_card(message)
-				conversation.add_child(bubble)
-				_latest_target = bubble
-				if pending_target == null and _phone().awaits_reply(message): pending_target = bubble
+			if str(message.get("from", "")) != _sender:
+				continue
+			# TU-D3: one divider per part of the day, and one UNREAD line
+			# before the first thing still waiting on you.
+			var group := str(_phone().stamp(message))
+			if group != last_group:
+				conversation.add_child(_divider(group, MUTED))
+				last_group = group
+			if not unread_marked and _phone().awaits_reply(message):
+				conversation.add_child(_divider("UNREAD", RED))
+				unread_marked = true
+			var bubble := _message_card(message)
+			conversation.add_child(bubble)
+			_latest_target = bubble
+			if pending_target == null and _phone().awaits_reply(message): pending_target = bubble
 		if pending_target != null: _latest_target = pending_target
+		if _manage:
+			conversation.add_child(_switch_button("ARCHIVE THIS THREAD", false, _archive_thread.bind(_sender), 44))
 
 func _mount_pane(panel: PanelContainer, content: VBoxContainer) -> void:
 	if not _wide:
@@ -438,7 +441,9 @@ func _message_card(message: Dictionary) -> Control:
 
 	var meta := HBoxContainer.new()
 	v.add_child(meta)
-	var stamp := label(_phone().stamp(message), "Mono", 10, MUTED)
+	var who := _avatar(str(message.get("from", "")), 24)
+	meta.add_child(who)
+	var stamp := label(str(message.get("from", "")).to_upper(), "Kicker", 10, MUTED)
 	stamp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	meta.add_child(stamp)
 	var dismiss := _switch_button("×", false, _on_dismiss.bind(str(message.get("id", ""))), 44)
@@ -464,6 +469,9 @@ func _message_card(message: Dictionary) -> Control:
 			outgoing.add_child(reply_box)
 			reply_box.add_child(label("YOU", "Kicker", 10, CYAN))
 			reply_box.add_child(label(str((reply[replied] as Dictionary).get("text", "")), "Muted", 16, CYAN, true))
+			var sent := label("SENT", "Kicker", 10, CYAN)
+			sent.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			reply_box.add_child(sent)
 			var outgoing_margin := MarginContainer.new()
 			outgoing_margin.add_theme_constant_override("margin_left", 26)
 			outgoing_margin.add_child(outgoing)
@@ -558,6 +566,248 @@ func _on_reply(id: String, option: String) -> void:
 
 func _on_clear_inbox() -> void:
 	_gm.dispatch("clear_phone_inbox", {})
+
+# --- TU-D3: the hub, the rows, the thread furniture, the inventory ------------
+
+## The avatar: the face when the game has it, two letters when it does not.
+func _avatar(name: String, px: int) -> Control:
+	var face := PORTRAITS.portrait_rect(name, px)
+	if face != null:
+		return face
+	var box := PanelContainer.new()
+	box.custom_minimum_size = Vector2(px, px)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.12, 0.12, 0.13, 1)
+	style.border_color = Color(0.25, 0.25, 0.26, 1)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(6)
+	box.add_theme_stylebox_override("panel", style)
+	var initials := label(name.left(2).to_upper(), "CardTitle", maxi(10, px / 2), CREAM)
+	initials.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	initials.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	box.add_child(initials)
+	return box
+
+## A conversation in the list: avatar, name, the last thing they said, when,
+## and a red count of what is waiting on you.
+func _thread_row(sender: String) -> Control:
+	var latest: Dictionary = {}
+	var pending := 0
+	for message in gs.phone_inbox:
+		if str(message.get("from", "")) == sender:
+			if latest.is_empty(): latest = message
+			if _phone().awaits_reply(message): pending += 1
+	var preview := str(latest.get("text", "")).replace("\n", " ")
+	if preview.length() > 60: preview = preview.left(57) + "..."
+	var thread := HBoxContainer.new()
+	thread.add_theme_constant_override("separation", 10)
+	thread.add_child(_avatar(sender, 44))
+	var item := _switch_button(sender.to_upper() + "\n" + preview, (_wide and sender == _sender), _choose_sender.bind(sender), 64)
+	item.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	thread.add_child(item)
+	var side := VBoxContainer.new()
+	side.add_theme_constant_override("separation", 4)
+	side.add_child(label(_short_stamp(latest), "Mono", 10, MUTED))
+	if pending > 0:
+		var badge := label(str(pending), "Mono", 11, CREAM)
+		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var badge_box := PanelContainer.new()
+		var style := StyleBoxFlat.new()
+		style.bg_color = RED
+		style.set_corner_radius_all(9)
+		style.set_content_margin_all(3)
+		badge_box.add_theme_stylebox_override("panel", style)
+		badge_box.add_child(badge)
+		badge_box.size_flags_horizontal = Control.SIZE_SHRINK_END
+		side.add_child(badge_box)
+	thread.add_child(side)
+	thread.add_child(label("›", "Muted", 16, MUTED))
+	thread.set_meta("search", (sender + " " + _sender_text(sender)).to_lower())
+	thread.set_meta("pending", pending)
+	return thread
+
+## TODAY / YESTERDAY / DAY N, the way a phone says it.
+func _short_stamp(message: Dictionary) -> String:
+	var day: int = int(message.get("day", 0))
+	if day == int(gs.day):
+		return "TODAY"
+	if day == int(gs.day) - 1:
+		return "YESTERDAY"
+	return "DAY %d" % day
+
+func _divider(text: String, colour: Color) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	for side in [0, 1]:
+		var line := ColorRect.new()
+		line.color = Color(colour, 0.35)
+		line.custom_minimum_size = Vector2(0, 1)
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		if side == 0:
+			row.add_child(line)
+		else:
+			var l := label(text, "Kicker", 10, colour)
+			row.add_child(l)
+			row.add_child(line)
+	return row
+
+func _archive_thread(sender: String) -> void:
+	for message in gs.phone_inbox.duplicate():
+		if str(message.get("from", "")) == sender:
+			_gm.dispatch("dismiss_phone_message", {"id": str(message.get("id", ""))})
+	_mobile_detail = false
+	_manage = false
+	refresh()
+
+## The hub. Five cards and the three most recent conversations.
+func _build_hub(offline: bool) -> void:
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	body.add_child(grid)
+	# MESSAGES
+	var pending: int = _reply_count()
+	var senders := 0
+	var seen: Array = []
+	for message in gs.phone_inbox:
+		if not str(message.get("from", "")) in seen:
+			seen.append(str(message.get("from", "")))
+			senders += 1
+	grid.add_child(_hub_card("MESSAGES", str(pending) if pending > 0 else str(senders),
+		("TO ANSWER" if pending > 0 else ("THREADS" if senders > 0 else "NOTHING YET")) if not offline else "HELD",
+		RED if pending > 0 else CYAN, _choose_category.bind("texts"), pending))
+	# BILLS
+	var rent_in: int = int(gs.rent_due_day) - int(gs.day)
+	var bill_head := ""
+	var bill_sub := ""
+	var bill_col: Color = AMBER
+	if int(gs.rent_arrears_day) >= 0 or rent_in < 0:
+		bill_head = "RENT LATE"
+		bill_sub = "PAY IT"
+		bill_col = RED
+	elif rent_in == 0:
+		bill_head = "RENT DUE"
+		bill_sub = "TODAY"
+		bill_col = RED
+	else:
+		bill_head = "RENT DUE IN"
+		bill_sub = "%d DAY%s" % [rent_in, "" if rent_in == 1 else "S"]
+	var bills := _hub_card("BILLS", bill_head, bill_sub, bill_col, _choose_category.bind("bills"), 0)
+	var obligations: Object = _obligations()
+	if obligations != null and str(obligations.pay_rent_blocker()).is_empty():
+		var pay := _switch_button("PAY EARLY  $%d" % int(gs.WEEKLY_RENT) if rent_in > 0 else "PAY RENT  $%d" % int(gs.WEEKLY_RENT), true, _on_pay_bill.bind("pay_rent", {}), 44)
+		(bills.get_child(0) as VBoxContainer).add_child(pay)
+	grid.add_child(bills)
+	# INVENTORY
+	var items: int = int(gs.cargo_used()) + (gs.hot_goods as Array).size()
+	for pid in (gs.trunk as Dictionary).keys():
+		items += int(gs.trunk[pid])
+	grid.add_child(_hub_card("INVENTORY", str(items), "ITEM" if items == 1 else "ITEMS", CYAN, _choose_category.bind("inventory"), 0))
+	# OPPORTUNITIES
+	var lead: Dictionary = _latest_lead()
+	if lead.is_empty():
+		grid.add_child(_hub_card("OPPORTUNITIES", "QUIET", "Nothing on the wire.", MUTED, _choose_category.bind("intel"), 0))
+	else:
+		var lead_card := _hub_card("OPPORTUNITIES", "NEW LEAD", _lead_line(lead), RED, _choose_sender.bind(str(lead.get("from", ""))), 0)
+		grid.add_child(lead_card)
+	# PEOPLE
+	grid.add_child(_hub_card("PEOPLE", str(_known_contacts()), "KNOWN", Color(0.6, 0.5, 0.85), _choose_category.bind("contacts"), 0))
+	# RECENT
+	var head := HBoxContainer.new()
+	body.add_child(head)
+	var title := label("RECENT MESSAGES", "CardTitle", 13, CREAM)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	var all := _switch_button("VIEW ALL", false, _choose_category.bind("texts"), 44)
+	all.custom_minimum_size.x = 90
+	head.add_child(all)
+	if offline:
+		body.add_child(note("%d messages waiting for service." % gs.phone_held_inbox.size()))
+		return
+	if gs.phone_inbox.is_empty():
+		body.add_child(note("No messages yet. The street will find you."))
+		return
+	var shown := 0
+	for sender in seen:
+		if shown >= 3:
+			break
+		body.add_child(_thread_row(str(sender)))
+		shown += 1
+
+func _hub_card(title: String, big: String, sub: String, colour: Color, handler: Callable, badge: int) -> Control:
+	var c := _switch_panel()
+	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	c.custom_minimum_size = Vector2(0, 118)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	c.add_child(v)
+	var head := HBoxContainer.new()
+	v.add_child(head)
+	var t := label(title, "CardTitle", 13, CREAM)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	if badge > 0:
+		head.add_child(label(str(badge), "Mono", 11, RED))
+	var b := label(big, "CardTitle", 26 if big.length() <= 6 else 15, colour, true)
+	v.add_child(b)
+	v.add_child(label(sub, "Muted", 11, MUTED, true))
+	var open := _switch_button("OPEN", false, handler, 44)
+	open.name = "Open_" + title
+	v.add_child(open)
+	return c
+
+## The newest text that is a lead: a tip, a crew idea, an offer.
+func _latest_lead() -> Dictionary:
+	for message in gs.phone_inbox:
+		var action: Dictionary = message.get("action", {})
+		if str(action.get("kind", "")) in ["tip", "crew_idea", "job_offer"]:
+			return message
+	return {}
+
+func _lead_line(message: Dictionary) -> String:
+	var text := str(message.get("text", "")).replace("\n", " ")
+	if text.length() > 48:
+		text = text.left(45) + "..."
+	return "%s: %s" % [str(message.get("from", "")), text]
+
+## What you are holding: cash by colour, product with what it sells for here,
+## the trunk, what is under your coat, the kit.
+func _build_inventory() -> void:
+	body.add_child(label("WHAT YOU ARE HOLDING", "CardTitle", 20, CREAM))
+	var economy: Object = _gm.system("economy")
+	var c := card()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 5)
+	c.add_child(v)
+	v.add_child(label("CASH", "Kicker", 10, AMBER))
+	v.add_child(label("$%d on you  ·  $%d clean, $%d dirty" % [int(gs.cash), int(gs.clean_cash), int(gs.dirty_cash)], "Muted", 12, CREAM, true))
+	v.add_child(label("THE BAG  ·  %d of %d" % [int(gs.cargo_used()), int(gs.cargo_max)], "Kicker", 10, AMBER))
+	if gs.inventory.is_empty():
+		v.add_child(label("Nothing on you.", "Muted", 12, MUTED, true))
+	for pid in gs.inventory.keys():
+		var units: int = int(gs.inventory[pid])
+		if units <= 0:
+			continue
+		var price: int = int(economy.sell_unit_price(str(gs.current_district_id), str(pid))) if economy != null else 0
+		v.add_child(label("%s  ·  %d unit%s  ·  sells for $%d here" % [str(gs.product_by_id(str(pid)).get("name", str(pid))).capitalize(), units, "" if units == 1 else "s", price], "Muted", 12, CREAM, true))
+	if gs.has_vehicle():
+		v.add_child(label("THE TRUNK", "Kicker", 10, AMBER))
+		if (gs.trunk as Dictionary).is_empty():
+			v.add_child(label("Empty. The checkpoint cannot count what is not there.", "Muted", 12, MUTED, true))
+		for pid in (gs.trunk as Dictionary).keys():
+			v.add_child(label("%s  ·  %d unit%s" % [str(gs.product_by_id(str(pid)).get("name", str(pid))).capitalize(), int(gs.trunk[pid]), "" if int(gs.trunk[pid]) == 1 else "s"], "Muted", 12, CREAM, true))
+	v.add_child(label("UNDER YOUR COAT", "Kicker", 10, AMBER))
+	if (gs.hot_goods as Array).is_empty():
+		v.add_child(label("Nothing that is not yours.", "Muted", 12, MUTED, true))
+	for item in gs.hot_goods:
+		v.add_child(label("%s  ·  worth about $%d to somebody who does not ask" % [str((item as Dictionary).get("name", "something")).capitalize(), int((item as Dictionary).get("value", 0))], "Muted", 12, CREAM, true))
+	v.add_child(label("THE KIT", "Kicker", 10, AMBER))
+	v.add_child(label("%s  ·  %s" % [str(gs.weapon_def().get("name", "Hands")), "the beater" if gs.has_vehicle() else "on foot"], "Muted", 12, CREAM, true))
+	body.add_child(c)
+	body.add_child(note("Sell product at the Market. Hot goods go on the 907List, where the buyer is sometimes a cop."))
 
 # --- contacts --------------------------------------------------------------
 

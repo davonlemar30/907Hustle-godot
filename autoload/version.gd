@@ -82,7 +82,15 @@ extends Node
 ## (SA-D4). New player-facing content and surfaces on the existing
 ## systems, squarely MINOR. No schema bump: everything this build needed
 ## was derivable from a field the game already kept.
-const VERSION := "1.1.0"
+##
+## 1.2.0 (His Side of the Board): a front is a bill (HS-D1), Tone holds it
+## down and you stand watch (HS-D2), Curtis comes back and then he does not
+## -- the dismantleable gate D-2 ruled a mid-game unlock (HS-D3), and Turf
+## reads the board in words, never a percentage (HS-D4). FS-002.6, .8, .9
+## and .10 as this game has them. New systems on the territory the 1.0.0
+## contest opened, squarely MINOR. One schema bump (v33: the districts he
+## is out of, and the hold toward it).
+const VERSION := "1.2.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

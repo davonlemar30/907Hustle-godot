@@ -132,10 +132,11 @@ every time someone asks "is this game balanced."
 
 ## What is deliberately absent
 
-- **Soldier attrition, police raids on staffed corners, block manager
-  assignment.** Named as "not ported" in `territory.gd`'s own header since
-  Phase 3e and still not built. (An ending shipped in 1.0.0, D-28; contested
-  takeovers and Curtis's nightly probes shipped in 1.0.0 PR 6, D-28 OG-D6.)
+- **Police raids on staffed corners, block manager assignment.** Named as
+  "not ported" in `territory.gd`'s own header since Phase 3e and still not
+  built. (An ending shipped in 1.0.0, D-28; contested takeovers, probes,
+  fronts that cost, Tone's night on a district, recovery and the
+  dismantleable gate shipped across 1.0.0 and 1.2.0, D-28 and D-30.)
 - **A debt/consequence system for Territory's own upkeep.** D-1's upkeep is a
   best-effort immediate deduction (pay what the wallet holds, no debt) rather
   than a due-date-and-penalty system like rent, the phone bill, or crew wages.

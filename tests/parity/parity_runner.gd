@@ -14648,7 +14648,7 @@ func _check_version_stamp(gs: Node) -> void:
 	if version == null:
 		_fail("version", "no Version autoload registered")
 		return
-	_expect_str("the build is stamped 1.1.0", str(version.VERSION), "1.1.0")
+	_expect_str("the build is stamped 1.2.0", str(version.VERSION), "1.2.0")
 
 	# Shape, not value: this half survives every future bump, so the convention
 	# README documents stays enforced rather than merely written down.
@@ -14657,9 +14657,9 @@ func _check_version_stamp(gs: Node) -> void:
 	for part in parts:
 		_expect_true("version part '%s' is numeric" % part, str(part).is_valid_int())
 	_expect_int("MAJOR reads back", version.major(), 1)
-	_expect_int("MINOR reads back", version.minor(), 1)
+	_expect_int("MINOR reads back", version.minor(), 2)
 	_expect_int("PATCH reads back", version.patch(), 0)
-	_expect_str("the display form prefixes a v", version.display(), "v1.1.0")
+	_expect_str("the display form prefixes a v", version.display(), "v1.2.0")
 
 	# The title screen renders it, from the singleton rather than from the
 	# scene's editor-time preview.

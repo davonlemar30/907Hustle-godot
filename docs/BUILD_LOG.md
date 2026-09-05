@@ -28,6 +28,46 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 1.2.0 — His Side of the Board: five PRs (added 2026-09-04)
+
+Source: the FS-002 epic's remaining slices (`86bbj1jrd`, `86bbj1jtc`,
+`86bbj1jtv`, `86bbj1ju7`) reconciled against the game 1.0.0 built.
+Rulings: `D-30` (HS-D1..D4). Five PRs, `#159` through `#162` and the
+close-out.
+
+### What this build actually was
+
+The territory war, finished on the pieces that existed. TI-002 described
+control steps, Fortify, intervention, Tone adapters, quiet-rollover
+recovery and a two-night dismantling hold. What the game had by 1.0.0 was
+a contest through the confrontation loop, nightly probes, fronts, a
+crew-operations substrate and Rank. Each slice was re-read against that:
+the contested economy became a front that costs; Fortify and intervention
+became Tone's night on a district and your night on a corner; recovery
+became him coming back for the weakest block; the dismantleable gate
+became a district he is out of, durable, with the unlock D-2 asked for.
+
+### What it cost, and what was measured
+
+One schema bump (v33: `curtis_dismantled`, `curtis_dismantle_hold`).
+Parity 14,168 → 14,260;
+save-validation 273 → 279. No corridor moved: the economy driver never
+takes a Curtis block.
+
+### Gotchas worth the next reader's time
+
+- Crew operations settle at PRE_SETTLE; territory settles after. A
+  posture read off `gs.crew_assignments` at probe time sees a settled,
+  still-today assignment. Read the assignment, not the adapter's result.
+- `gs.district_by_id()` returns the live dictionary. A test can switch a
+  district's `rival` off for one night and must put it back.
+- Observations refuse outside a dispatch. A settle path that writes one
+  has to be exercised through `advance_time` in parity, not called bare.
+- Spenard has `rival: 0`: no probes, no recovery, ever. Dismantling there
+  is two clean nights with his four blocks held.
+- Every `SAVE_VERSION == N` literal in parity is named by the arm that
+  pinned it; there were five at v32.
+
 ## 1.1.0 — Somebody Shows You Around: five PRs (added 2026-09-04)
 
 Source: the 1.0.0 assessment (`docs/ONE_GOOD_RUN_REVIEW.md`) and the open

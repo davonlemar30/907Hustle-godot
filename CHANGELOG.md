@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `1.1.0`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `1.2.0`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,58 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 1.2.0 — His Side of the Board: a front is a bill, hold it down, he comes back, the board in words (2026-09-04)
+
+FS-002's remaining slices (.6, .8, .9, .10), as this game has them: on the
+contest 1.0.0 opened, the probes it added, and the crew-operations
+substrate. Five deliverables, each green before the next. Rulings are
+D-30 (HS-D1..D4).
+
+### PR 1 — A front is a bill (`#159`)
+
+- A front persists (`territory_fronts[block].quiet`) until it survives
+  `FRONT_QUIET_NIGHTS` (3); a probe that lands still takes the block.
+- While contested: income × 0.5, heat +1.0 raw, probes at even odds.
+  Turf reads CONTESTED with the count.
+
+### PR 2 — Hold it down (`#160`)
+
+- `systems/holder_adapter.gd`: Tone's `hold_it_down` on the crew-operations
+  table (loyalty 4, takes a district, exclusive with `put_it_down`,
+  proposed by text when a front is open or a corner sits empty).
+- Territory reads the live assignment: every held block in that district
+  probes at 2%; a contested front there counts two quiet nights in one.
+- `stand_watch`: one held block where you stand, one part of the day,
+  once a night.
+
+### PR 3 — He comes back, and then he does not (`#161`)
+
+- Recovery: every fourth night, per district with `rival > 0`, a 50% roll
+  re-opens a front on the weakest Curtis-start block you hold, unless a
+  front is open or somebody is standing on it. Never Spenard.
+- Dismantled (v33 `curtis_dismantled`, `curtis_dismantle_hold`): every
+  Curtis-start block held and none contested, two settles in a row. No
+  probes, no recovery, income × 1.25, Goodie's text, a growth observation
+  on Curtis, Dre and Goodie, once. Durable.
+- Hustle's rival card says where he stands per district.
+
+### PR 4 — The board in words (`#162`)
+
+- `state_word` (OPEN / YOURS / HIS / CONTESTED / COVERED), `risk_word`
+  (QUIET / COVERED / LOOKING / COMING BY / ON IT), `odds_word` (A LONG
+  SHOT / EVEN / YOURS TO LOSE / A FORMALITY), `district_summary`. Turf
+  reads all of it and carries no percentage on the odds; parity asserts
+  the absence.
+
+### PR 5 — Close-out
+
+- Version `1.2.0`, D-30, this entry, `docs/BUILD_LOG.md`, the README.
+
+### Measured across the build
+
+Parity 14,168 → 14,260; save-validation 273 → 279; territory,
+confrontation and smoke unchanged. One schema bump (v33).
 
 ## 1.1.0 — Somebody Shows You Around: the first ten minutes, the beater, Mina, the house (2026-09-04)
 

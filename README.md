@@ -12,7 +12,7 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `1.1.0`** — shown bottom-right on the title screen, and stamped into
+**Current: `1.2.0`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
@@ -34,6 +34,25 @@ the first time somebody bumps one copy.
 
 *Full technical detail in [`CHANGELOG.md`](CHANGELOG.md) and
 [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
+
+### 1.2.0 — His Side of the Board: a front is a bill, hold it down, he comes back, the board in words
+
+**A front is a bill.** A block you took from Curtis stays contested until
+it survives three nights. Until then it pays half and runs a point
+hotter. Then his people stop coming by.
+
+**Hold it down.** Tone's second operation: he sits on a district's
+corners for the night, and nobody tests a corner Tone is sitting on.
+Or stand watch yourself, one corner, one part of the day.
+
+**He comes back, and then he does not.** Every fourth night he sends
+people back to the weakest block you took. Hold every block he started
+with, two clean nights, and he is out of the district for good: no
+probes, a quarter more on the corners, and everybody heard.
+
+**The board in words.** Turf reads OPEN, YOURS, HIS, CONTESTED, COVERED;
+tonight's risk as a word; his odds as a phrase; the district counted.
+No percentage anywhere on it.
 
 ### 1.1.0 — Somebody Shows You Around: the first ten minutes, the beater, Mina, the house
 

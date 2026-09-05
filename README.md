@@ -12,7 +12,7 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `1.2.0`** — shown bottom-right on the title screen, and stamped into
+**Current: `1.3.0`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
@@ -34,6 +34,32 @@ the first time somebody bumps one copy.
 
 *Full technical detail in [`CHANGELOG.md`](CHANGELOG.md) and
 [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
+
+### 1.3.0 — Tighten It Up: the 1.2.0 playtest, answered
+
+**The day has edges.** Every morning is a sheet: the day, what the night
+did, the shift and when it runs, the bills coming. The first week is
+free. Bills pay ahead. The Home card that shows a text opens the Phone.
+The card that stacked after every walk is fixed.
+
+**Earn it on the street.** A thing counts once however many people heard
+it; showing up is capped; the cards are what earn a name, and a rank-up
+says what did it. Soldiers wait for a name. A text from a stranger comes
+through Juan.
+
+**The phone in your hand.** A hub: messages, bills with PAY EARLY,
+inventory, the newest lead, people, the three latest threads. Messages
+is a contact list and a thread with the day's parts and the unread line.
+
+**Say what is happening.** No subtext under the roads; what a road did
+is said after. The vaguest cards say what is in front of you; five more
+cards; a scene on the sheet. Jail takes what is on you and adds it to
+the time. A mark sometimes has a thing on them. Posting up turns up a
+buyer for the day.
+
+**Clock in, move up, again.** Experience starts you above the bottom
+rung. The hire sheet has a word about money: take it, ask for more, or
+name a number. Every shift has a moment, and a write-up is a strike.
 
 ### 1.2.0 — His Side of the Board: a front is a bill, hold it down, he comes back, the board in words
 
@@ -383,9 +409,10 @@ The run opens on a title screen. NEW RUN leads through name entry into a fresh D
 in Spenard. From there: work a legitimate job or one of five criminal surfaces, move
 between four districts, hire crew and pay their wages, take corners and post soldiers
 on them — while rent, the phone bill and Curtis's attention all advance on their own
-schedule. The run ends four ways: the way out, priced by what you built, once
-you are Boss; or on you, after a warning each time, by the third house warning,
-the third serious booking, or Curtis at the door.
+schedule. The run is open-ended: you can cash out once you are Boss with the
+clean money to leave on, but nobody makes you. It ends on you, after a warning
+each time, by the third house warning, the third serious booking, or Curtis at
+the door, and the reckoning scores it in people.
 
 Crime answers back. A blown lift holds the screen until you decide how to play it;
 a bad enough answer ends in a booking, where you trade cash against calendar time

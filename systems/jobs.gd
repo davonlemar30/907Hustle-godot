@@ -156,7 +156,7 @@ func _earned_rank(job_id: String, rec: Dictionary) -> int:
 	return rank
 
 func can_handle(action: String) -> bool:
-	return action in ["apply_job", "work_shift", "quit_job", "start_interview", "finish_interview"]
+	return action in ["apply_job", "work_shift", "quit_job", "start_interview", "finish_interview", "negotiate_pay"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
 	match action:
@@ -166,6 +166,8 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 			return _work(str(payload.get("approach", "work_hard")))
 		"quit_job":
 			return _quit()
+		"negotiate_pay":
+			return _negotiate(str(payload.get("job_id", "")), str(payload.get("mode", "ask")))
 		"start_interview":
 			return _start_interview(str(payload.get("job_id", "")))
 		"finish_interview":
@@ -302,13 +304,39 @@ func _finish_interview(job_id: String, score: int) -> Dictionary:
 	return {"ok": true, "score": row["score"]}
 
 ## The hire itself: the record, the ladder reset, the feed, the sheet.
+## TU-D5 (1.3.0): the rung you start on. Somebody who held the second rung
+## anywhere else does not start at the bottom here.
+func experience_rank(job_id: String) -> int:
+	var best := 0
+	for other in gs.job_records.keys():
+		if str(other) == job_id:
+			continue
+		best = maxi(best, int((gs.job_records[other] as Dictionary).get("rank", 0)))
+	return 1 if best >= 2 else 0
+
+## Whether the hire sheet offers a word about money: you came from a job,
+## or you have done this before, and you have not already had the word.
+func negotiation_open(job_id: String) -> bool:
+	var rec: Dictionary = gs.job_records.get(job_id, {})
+	if rec.is_empty() or not str(rec.get("negotiated", "")).is_empty():
+		return false
+	return not str(rec.get("came_from", "")).is_empty() or experience_rank(job_id) > 0
+
 func _hire(job_id: String, tier: String) -> Dictionary:
 	var job: Dictionary = gs.job_by_id(job_id)
+	var came_from: String = gs.active_job_id if gs.active_job_id != job_id else ""
+	var start_rank: int = experience_rank(job_id)
 	gs.active_job_id = job_id
 	if not gs.job_records.has(job_id):
-		gs.job_records[job_id] = {"xp": 0.0, "rank": 0, "last_worked_day": -1, "hired_day": gs.day}
+		gs.job_records[job_id] = {"xp": 0.0, "rank": start_rank, "last_worked_day": -1, "hired_day": gs.day}
 	else:
 		gs.job_records[job_id]["hired_day"] = gs.day
+		gs.job_records[job_id]["rank"] = maxi(int(gs.job_records[job_id].get("rank", 0)), start_rank)
+	gs.job_records[job_id]["came_from"] = came_from
+	gs.job_records[job_id].erase("negotiated")
+	gs.job_records[job_id].erase("raise")
+	if start_rank > 0:
+		gs.log_activity("They put you on as %s, not at the bottom. You have done this before, and it shows." % MANAGERS.title_for(job_id, start_rank), GREEN)
 	gs.job_missed[job_id] = 0
 	# Clean and messy both got the job; what separates them is the room. Only
 	# the clean read is worth telling the house about, which is canon's single
@@ -323,6 +351,91 @@ func _hire(job_id: String, tier: String) -> Dictionary:
 	if nav != null:
 		nav.enqueue_flow_sheet({"kind": "hire", "job_id": job_id, "tier": tier})
 	return {"ok": true, "hired": job["name"], "tier": tier}
+
+## TU-D5: the word about money, on the hire sheet. ASK is charisma against
+## a fair chance for ten percent; NAME A NUMBER is intelligence against a
+## worse chance for twenty, and a miss costs a point with the manager.
+const NEGOTIATE := {
+	"ask": {"attribute": "charisma", "chance": 0.55, "raise": 0.10, "miss_rapport": 0},
+	"number": {"attribute": "intelligence", "chance": 0.40, "raise": 0.20, "miss_rapport": -1},
+}
+
+func _negotiate(job_id: String, mode: String) -> Dictionary:
+	if gs.game_over:
+		return {"ok": false, "reason": "The run is over."}
+	if not NEGOTIATE.has(mode):
+		return {"ok": false, "reason": "That is not a way to ask."}
+	if not negotiation_open(job_id):
+		return {"ok": false, "reason": "That conversation already happened."}
+	var spec: Dictionary = NEGOTIATE[mode]
+	var rec: Dictionary = gs.job_records[job_id]
+	var level: int = int(attributes.effective(str(spec["attribute"])))
+	var chance: float = clampf(float(spec["chance"]) + float(level) * 0.04, 0.1, 0.95)
+	var key := "%d:%s:negotiate:%s" % [int(gs.day), job_id, mode]
+	var won: bool = rng.seeded_random(gs.run_seed, key) < chance
+	var manager: Dictionary = MANAGERS.manager_for(job_id)
+	var who := str(manager.get("name", "They"))
+	rec["negotiated"] = mode
+	if won:
+		rec["raise"] = float(spec["raise"])
+		gs.log_activity("%s: \"Fine. %d percent. But you earn it.\"" % [who, int(round(float(spec["raise"]) * 100.0))], GREEN)
+	else:
+		rec["rapport"] = maxi(0, int(rec.get("rapport", 0)) + int(spec["miss_rapport"]))
+		gs.log_activity("%s: \"That's the number.\"%s" % [who, " They remember you asked." if int(spec["miss_rapport"]) < 0 else ""], AMBER)
+	gs.job_records[job_id] = rec
+	return {"ok": true, "won": won, "raise": float(rec.get("raise", 0.0))}
+
+## TU-D5: something happens every shift. The manager's own moments still
+## come round; between them, the floor has its own -- a short register,
+## a regular who asks for you, a write-up. Standing moves, and a write-up
+## is a strike on the same count as a missed day.
+const SHIFT_EVENTS := [
+	# Ordered: a new hire's first moments are the good ones; the write-ups
+	# come once you have been there a while and should know better.
+	{"text": "A regular asks for you by name. %s hears it.", "rapport": 1},
+	{"text": "You cover the back half of somebody's shift without being asked. %s notices without saying.", "rapport": 1, "cash": 15},
+	{"text": "A delivery comes in short and you count it before signing. %s would have signed.", "rapport": 2},
+	{"text": "A card declines three times and the man takes it out on you. You take it. %s takes it out of your tip jar for the trouble.", "health": -2, "rapport": 1},
+	{"text": "The register comes up twenty short and %s looks at you first, then at the new kid. Then back.", "rapport": -1},
+	{"text": "%s catches you on your phone on the floor. \"First one's free.\"", "rapport": -1},
+	{"text": "Late back from the break. %s says nothing, which is the write-up.", "strike": 1},
+	{"text": "Somebody walks out with a cart. You saw it and did nothing. So did %s.", "strike": 1, "cash": -10},
+]
+
+func _shift_event(job_id: String, rec: Dictionary) -> Dictionary:
+	var shifts: int = int(rec.get("shifts", 0))
+	if shifts % 2 == 0:
+		var own: Dictionary = MANAGERS.micro_event(job_id, shifts)
+		if not own.is_empty():
+			return own
+	return SHIFT_EVENTS[(shifts / 2) % SHIFT_EVENTS.size()]
+
+## A write-up: the same count a missed day uses, the same door at three.
+func _strike(job_id: String) -> void:
+	var missed: int = int(gs.job_missed.get(job_id, 0)) + 1
+	gs.job_missed[job_id] = missed
+	gs.log_activity("Written up. %d of 3." % missed, RED)
+	if missed >= MISSED_FIRING:
+		_fire(job_id)
+
+func _fire(job_id: String) -> void:
+	var job: Dictionary = gs.job_by_id(job_id)
+	var rec: Dictionary = gs.job_records.get(job_id, {})
+	var manager: Dictionary = MANAGERS.manager_for(job_id)
+	var phone: Object = gm.system("phone") if gm != null else null
+	if phone != null and manager.has("fired_text"):
+		phone.push_text(str(manager["name"]), str(manager["fired_text"]), "manager_fired")
+	var nav: Node = _screen_manager()
+	if nav != null and manager.has("fired"):
+		nav.enqueue_flow_sheet({"kind": "fired", "job_id": job_id})
+	gs.active_job_id = ""
+	if job_id != "night_owl":
+		rec["xp"] = 0.0
+		rec["rank"] = 0
+		rec["hired_day"] = -1
+		gs.job_records[job_id] = rec
+	gs.job_missed.erase(job_id)
+	gs.log_activity("%s is done with you." % str(job.get("name", "The job")), RED)
 
 func _screen_manager() -> Node:
 	var loop: MainLoop = Engine.get_main_loop()
@@ -431,11 +544,20 @@ func _work(approach_id: String) -> Dictionary:
 	# floor. A line, sometimes a few dollars or a little health; never a
 	# decision. Seeded on the shift count, so a run replays its own floor.
 	var micro := ""
-	if MANAGERS.micro_event_due(int(rec["shifts"]), int(rec.get("last_event_shift", 0))):
-		var event: Dictionary = MANAGERS.micro_event(job_id, int(rec["shifts"]))
+	# TU-D5: every shift, not every third.
+	if true:
+		var event: Dictionary = _shift_event(job_id, rec)
 		if not event.is_empty():
 			rec["last_event_shift"] = int(rec["shifts"])
-			micro = str(event.get("text", ""))
+			micro = str(event.get("text", "")).replace("%s", str(manager.get("name", "The manager")))
+			if int(event.get("rapport", 0)) != 0:
+				rec["rapport"] = maxi(0, int(rec.get("rapport", 0)) + int(event.get("rapport", 0)))
+			if int(event.get("strike", 0)) > 0:
+				gs.job_records[job_id] = rec
+				_strike(job_id)
+				if gs.active_job_id != job_id:
+					gs.log_activity(micro, RED)
+					return {"ok": true, "payout": payout, "fired": true}
 			var tip: int = int(event.get("cash", 0))
 			if tip > 0:
 				gm.system("wallet").credit(tip, gm.system("wallet").CLEAN,

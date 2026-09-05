@@ -224,7 +224,7 @@ static func build_discovery(card: Dictionary) -> VBoxContainer:
 
 ## WS-D4: the hire moment. Whoever runs the place says their two or three
 ## lines; the pay note under it is the one thing the board would have said.
-static func build_hire(job: Dictionary, manager: Dictionary) -> VBoxContainer:
+static func build_hire(job: Dictionary, manager: Dictionary, gm: Node = null) -> VBoxContainer:
 	var content := VBoxContainer.new()
 	content.add_theme_constant_override("separation", 10)
 	content.add_child(_label("HIRED", "Kicker", 10, MUTED))
@@ -237,7 +237,47 @@ static func build_hire(job: Dictionary, manager: Dictionary) -> VBoxContainer:
 		content.add_child(_spacer(2))
 		content.add_child(_label(perk, "Kicker", 11, MUTED, true))
 	content.add_child(_spacer(4))
-	content.add_child(_dismiss_button("FIRST SHIFT" if manager.has("name") and not str(manager.get("name", "")).is_empty() else "GET IN"))
+	var done := _dismiss_button("FIRST SHIFT" if manager.has("name") and not str(manager.get("name", "")).is_empty() else "GET IN")
+	# TU-D5 (1.3.0): the word about money, when you have standing to have
+	# it -- you came from a job, or you have done this before. Three ways:
+	# take it, ask for more (charisma), name a number (intelligence, more,
+	# and a miss costs a point with the manager). One word, then the door.
+	var jobs_system: Object = gm.system("jobs") if gm != null else null
+	var job_id := str(job.get("id", ""))
+	if jobs_system != null and bool(jobs_system.negotiation_open(job_id)):
+		content.add_child(_label("ABOUT THE MONEY", "Kicker", 10, AMBER))
+		var reaction := _label("", "Muted", 13, MUTED, true, HORIZONTAL_ALIGNMENT_LEFT)
+		var options := VBoxContainer.new()
+		options.name = "Negotiate"
+		options.add_theme_constant_override("separation", 8)
+		content.add_child(options)
+		content.add_child(reaction)
+		var ask := func(mode: String) -> void:
+			var before: Dictionary = gm.system("game_state_probe") if false else {}
+			gm.dispatch("negotiate_pay", {"job_id": job_id, "mode": mode})
+			var rec: Dictionary = (gm.get_node("/root/GameState") as Node).job_records.get(job_id, {})
+			reaction.text = ("They went for it: %d percent over the board." % int(round(float(rec.get("raise", 0.0)) * 100.0))) \
+				if float(rec.get("raise", 0.0)) > 0.0 else "That was the number. It still is."
+			options.visible = false
+			done.visible = true
+		for entry in [["TAKE IT", ""], ["ASK FOR MORE", "ask"], ["NAME A NUMBER", "number"]]:
+			var b := Button.new()
+			b.text = str(entry[0])
+			b.name = "Negotiate_" + str(entry[0]).replace(" ", "")
+			b.custom_minimum_size = Vector2(0, 48)
+			b.focus_mode = Control.FOCUS_NONE
+			b.theme_type_variation = &"BtnSecondary"
+			b.add_theme_font_size_override("font_size", 13)
+			var mode := str(entry[1])
+			if mode.is_empty():
+				b.pressed.connect(func() -> void:
+					options.visible = false
+					done.visible = true)
+			else:
+				b.pressed.connect(ask.bind(mode))
+			options.add_child(b)
+		done.visible = false
+	content.add_child(done)
 	return content
 
 ## BR-D3: the interview. Three questions, two answers each, the manager

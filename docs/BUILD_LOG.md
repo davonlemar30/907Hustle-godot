@@ -28,6 +28,50 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 1.3.0 — Tighten It Up: five PRs (added 2026-09-04)
+
+Source: the creative director's 1.2.0 playtest (ClickUp doc "Playtest
+1.2.0") and two phone mockups. Rulings: `D-31` (TU-D1..D5). Five PRs,
+`#166` through `#170`.
+
+### What this build actually was
+
+A playtest build, the way 0.9.0 was: the owner's list, in the order it
+hurt. The day divider first, because it was why shifts were missed; then
+the rank pipeline, because a soldier off two shifts is not how crime
+works; then the phone, from the mockups, because it was called urgent
+twice; then the cards, the jail, the drops and the buyers; then the jobs.
+The playtest also said the game is open-ended and net worth is the score,
+which the cash-out card and the README now say too.
+
+### What it cost, and what was measured
+
+One schema bump (v34 `market_nudges`). Parity 14,263 → 14,467+;
+confrontation 3,946 → 4,429; save-validation 279 → 284. Three corridors
+moved with notes: settler and flipper because Known arrives later for a
+profile that only trades or holds corners; stickup's ceiling because a
+mark's drop fences into a little cash. The everyday-criminal Heat
+property is read where that profile's run ends now (at Curtis's door on
+day eight), not at an asymptote it never reaches.
+
+### Gotchas worth the next reader's time
+
+- `queue_free()` on a card rebuilt every refresh stacks copies within a
+  frame. Free it now.
+- Making a bill payable ahead makes the economy driver pay it every
+  morning. Gate the driver on the due day.
+- Every encounter card needs a FIGHT road with an authored base chance,
+  and a RUN road with one too; only SURRENDER may be deterministic.
+- Choice ids are global across the label and copy tables; road copy
+  must be longer than twenty characters even when the sheet no longer
+  prints it.
+- A scene strip on the encounter sheet costs the four-road cards their
+  third road above the fold at anything taller than 36px.
+- The phone's category-switching methods must set the category; a probe
+  that opens a sender from the hub expects Messages.
+- `_open_boost_booking(gs, gm, engine, 1, "night_owl", 0, 5000)` is how
+  parity reaches a booking; a hand-built chain cannot advance to it.
+
 ## 1.2.0 — His Side of the Board: five PRs (added 2026-09-04)
 
 Source: the FS-002 epic's remaining slices (`86bbj1jrd`, `86bbj1jtc`,

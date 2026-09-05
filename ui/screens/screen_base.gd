@@ -354,7 +354,7 @@ func _build_flow_sheet_content(spec: Dictionary) -> Control:
 				return null
 			var manager: Dictionary = jobs_system.manager_for(str(spec.get("job_id", "")))
 			if str(spec.get("kind", "")) == "hire":
-				return FlowSheets.build_hire(job, manager)
+				return FlowSheets.build_hire(job, manager, get_node("/root/GameManager"))
 			return null if manager.is_empty() else FlowSheets.build_fired(job, manager)
 	return null
 

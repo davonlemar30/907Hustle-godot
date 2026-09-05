@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `1.2.0`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `1.3.0`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,62 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 1.3.0 — Tighten It Up: the 1.2.0 playtest, answered (2026-09-04)
+
+The creative director's 1.2.0 playtest (ClickUp doc "Playtest 1.2.0"):
+missed shifts because nothing divided the days, respect earned off two
+shifts, a cluttered phone, vague cards with spoilers under the roads, a
+duplicating popup, jail that returned your stash, a first week that was
+not free. Five deliverables, each green before the next. Rulings are D-31
+(TU-D1..D5). Codex placed thirteen assets on PR 2's branch along the way.
+
+### PR 1 — The day has edges (`#166`)
+
+- **The day break** (`FlowSheets.build_day_break`, `DAY_START:day_break`).
+- **The first week is free**: rent lands on day 8; the phone bill keeps
+  canon's day 7. **Bills pay ahead.**
+- **The duplicating card**: rebuilt Home cards are freed immediately.
+- Home's text card opens the Phone; the cash-out card reads as an option;
+  `Portraits.district_header_at` for time-of-day heroes.
+
+### PR 2 — Earn it on the street (`#167`)
+
+- `Rank.folded`/`score_of`: a thing counts once across ledgers; presence
+  capped at 3; `financial` weighs 2. `Rank.reasons_of` and "What did it".
+- Soldiers wait for Known. A stranger's rank text comes through Juan.
+- Codex: four Spenard time-of-day heroes, five encounter scenes, four
+  reserved headers and venues.
+
+### PR 3 — The phone in your hand (`#168`)
+
+- The hub, the contact list, the thread with day dividers and the unread
+  line, ARCHIVE under Manage, the inventory page; Home lands on Messages
+  by name; the heroes wired to `home_<district>_<slot>`.
+
+### PR 4 — Say what is happening (`#169`)
+
+- Roads are buttons; eight lines rewritten; `wander_bench_tax`,
+  `wander_kid_lookout`, `wander_lost_wallet`, `wander_plow_night`,
+  `wander_no_lights`; a scene strip on the sheet.
+- Booking seizure; stickup drops (15%); buyers for the day (v34
+  `market_nudges`).
+
+### PR 5 — Clock in, move up, again (`#170`)
+
+- `Jobs.experience_rank`, `negotiation_open`, `negotiate_pay` (ASK /
+  NAME A NUMBER on the hire sheet), a shift event every shift
+  (`SHIFT_EVENTS`), write-ups as strikes, `_fire` shared with the
+  missed-day path.
+- Close-out: version 1.3.0, D-31, this entry, the build log, the asset
+  checklist, the README.
+
+### Measured across the build
+
+Parity 14,263 → 14,467 and up; confrontation 3,946 → 4,429;
+save-validation 279 → 284; smoke panel 112 → 133. One schema bump (v34).
+Corridors re-set with notes: settler 170, flipper 260, stickup ceiling 65;
+the everyday-criminal Heat property is read at the door.
 
 ## 1.2.0 — His Side of the Board: a front is a bill, hold it down, he comes back, the board in words (2026-09-04)
 

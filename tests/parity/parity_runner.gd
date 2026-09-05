@@ -14655,7 +14655,7 @@ func _check_version_stamp(gs: Node) -> void:
 	if version == null:
 		_fail("version", "no Version autoload registered")
 		return
-	_expect_str("the build is stamped 1.2.0", str(version.VERSION), "1.2.0")
+	_expect_str("the build is stamped 1.3.0", str(version.VERSION), "1.3.0")
 
 	# Shape, not value: this half survives every future bump, so the convention
 	# README documents stays enforced rather than merely written down.
@@ -14664,9 +14664,9 @@ func _check_version_stamp(gs: Node) -> void:
 	for part in parts:
 		_expect_true("version part '%s' is numeric" % part, str(part).is_valid_int())
 	_expect_int("MAJOR reads back", version.major(), 1)
-	_expect_int("MINOR reads back", version.minor(), 2)
+	_expect_int("MINOR reads back", version.minor(), 3)
 	_expect_int("PATCH reads back", version.patch(), 0)
-	_expect_str("the display form prefixes a v", version.display(), "v1.2.0")
+	_expect_str("the display form prefixes a v", version.display(), "v1.3.0")
 
 	# The title screen renders it, from the singleton rather than from the
 	# scene's editor-time preview.
@@ -19286,6 +19286,7 @@ func _check_batch15(gs: Node, gm: Node) -> void:
 	_check_earn_it_on_the_street(gs)
 	_check_the_phone_in_your_hand(gs)
 	_check_say_what_is_happening(gs)
+	_check_clock_in_move_up_again(gs)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -19480,6 +19481,75 @@ func _check_rebuild_is_a_rebuild(gs: Node) -> void:
 ## charge is worse than no sheet — and it has to CHANGE NOTHING, because it is
 ## introducing a run that has already been reset and is the one thing positioned
 ## to make a fresh run not fresh.
+## TU-D5 (1.3.0): clock in, move up, again. Experience puts you on the
+## ladder; the hire sheet has a word about money; every shift has a moment
+## and a write-up is a strike.
+func _check_clock_in_move_up_again(gs: Node) -> void:
+	var gm: Node = get_node("/root/GameManager")
+	var jobs: Object = gm.system("jobs")
+	var flow_sheets := preload("res://ui/components/flow_sheets.gd")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.job_records["wash_go"] = {"xp": 30.0, "rank": 2, "last_worked_day": 3, "hired_day": 1, "shifts": 12, "rapport": 6}
+	_expect_int("a second rung elsewhere is a rung here", int(jobs.experience_rank("spenard_chevron")), 1)
+	_expect_int("...but not at the same job", int(jobs.experience_rank("wash_go")), 0)
+	gs.active_job_id = "wash_go"
+	jobs._hire("spenard_chevron", "clean")
+	_expect_int("hired on above the bottom", int(gs.job_records["spenard_chevron"].get("rank", 0)), 1)
+	_expect_str("...remembering where you came from", str(gs.job_records["spenard_chevron"].get("came_from", "")), "wash_go")
+	_expect_true("...and the money is up for a word", bool(jobs.negotiation_open("spenard_chevron")))
+	var base: Dictionary = gs.job_pay_range("spenard_chevron")
+	var won := false
+	for day in range(1, 40):
+		gs.day = day
+		gs.job_records["spenard_chevron"].erase("negotiated")
+		gs.job_records["spenard_chevron"].erase("raise")
+		if gm.dispatch("negotiate_pay", {"job_id": "spenard_chevron", "mode": "ask"}) and float(gs.job_records["spenard_chevron"].get("raise", 0.0)) > 0.0:
+			won = true
+			break
+	_expect_true("asking for more sometimes works", won)
+	var raised: Dictionary = gs.job_pay_range("spenard_chevron")
+	_expect_true("...and it shows in the pay", int(raised["max"]) > int(base["max"]))
+	_expect_true("...and the word happens once", not bool(jobs.negotiation_open("spenard_chevron")))
+	_expect_true("...and cannot be had twice", not gm.dispatch("negotiate_pay", {"job_id": "spenard_chevron", "mode": "number"}))
+	# The hire sheet offers it, and only when there is standing.
+	gs.job_records["spenard_chevron"].erase("negotiated")
+	var manager := preload("res://data/job_managers.gd").manager_for("spenard_chevron")
+	var sheet: Control = flow_sheets.build_hire(gs.job_by_id("spenard_chevron"), manager, gm)
+	var buttons: Array = []
+	_collect_buttons(sheet, buttons)
+	var offers := 0
+	for b in buttons:
+		if str((b as Button).name).begins_with("Negotiate_"):
+			offers += 1
+	_expect_int("the hire sheet offers three ways", offers, 3)
+	sheet.free()
+	gs.reset_to_new_game()
+	jobs._hire("wash_go", "clean")
+	sheet = flow_sheets.build_hire(gs.job_by_id("wash_go"), preload("res://data/job_managers.gd").manager_for("wash_go"), gm)
+	buttons = []
+	_collect_buttons(sheet, buttons)
+	offers = 0
+	for b in buttons:
+		if str((b as Button).name).begins_with("Negotiate_"):
+			offers += 1
+	_expect_int("a first job is not a negotiation", offers, 0)
+	sheet.free()
+	# Every shift has a moment, and a write-up is a strike.
+	gs.reset_to_new_game()
+	_expect_true("the floor has its own moments", jobs.SHIFT_EVENTS.size() >= 8)
+	gs.active_job_id = "wash_go"
+	gs.job_records["wash_go"] = {"xp": 0.0, "rank": 0, "last_worked_day": -1, "hired_day": 1, "shifts": 1, "rapport": 3}
+	gs.job_missed["wash_go"] = 0
+	var event: Dictionary = jobs._shift_event("wash_go", gs.job_records["wash_go"])
+	_expect_true("a shift always has something", not event.is_empty())
+	jobs._strike("wash_go")
+	jobs._strike("wash_go")
+	_expect_str("two write-ups and you still work there", str(gs.active_job_id), "wash_go")
+	jobs._strike("wash_go")
+	_expect_str("three and you do not", str(gs.active_job_id), "")
+	gs.reset_to_new_game()
+
 ## TU-D4 (1.3.0): say what is happening. The sheet carries a scene and no
 ## subtext; a booking takes what is on you; a stickup can drop a thing; a
 ## READ walk can turn up a buyer for the day.
@@ -20223,7 +20293,8 @@ func _check_managers(gs: Node, gm: Node) -> void:
 		var result: Dictionary = jobs_system.handle("work_shift", {"approach": "take_it_easy"})
 		if not str(result.get("micro_event", "")).is_empty():
 			events += 1
-	_expect_int("four shifts at the Wash & Go carry one floor event", events, 1)
+	# TU-D5 (1.3.0): every shift has a moment now.
+	_expect_int("four shifts at the Wash & Go carry a moment each", events, 4)
 	_expect_int("the record counts the shifts",
 		int((gs.job_records["wash_go"] as Dictionary).get("shifts", 0)), 4)
 
@@ -20520,14 +20591,17 @@ func _check_clock_in_move_up(gs: Node, gm: Node) -> void:
 	jobs_system.handle("work_shift", {"approach": "socialize"})
 	_expect_true("SOCIALIZE is a little charisma",
 		float(gs.attribute_progress.get("charisma", 0.0)) + float(gs.attributes.get("charisma", 0)) > charisma_before)
-	_expect_int("...and a point with Lani", int((gs.job_records["wash_go"] as Dictionary).get("rapport", 0)), 1)
+	# TU-D5 (1.3.0): the floor has a moment every shift, which can move a
+	# point either way; the social point is the floor, not the total.
+	_expect_true("...and a point with Lani", int((gs.job_records["wash_go"] as Dictionary).get("rapport", 0)) >= 1)
 	gs.day = 4
 	gs.time_slots_today = 0
 	gs.time_slot = "MORNING"
 	gs.health = 50
 	jobs_system.handle("work_shift", {"approach": "take_it_easy"})
-	_expect_int("BREAK ROOM is rest", int(gs.health),
-		50 + int(gs.approach_by_id("take_it_easy")["health"]) + int(jobs_system.BREAK_ROOM_HEALTH))
+	# TU-D5 (1.3.0): every shift has a moment now, and the manager's own
+	# can add a little health; the rest is the floor, not the ceiling.
+	_expect_true("BREAK ROOM is rest", int(gs.health) >= 50 + int(gs.approach_by_id("take_it_easy")["health"]) + int(jobs_system.BREAK_ROOM_HEALTH))
 	# A miss breaks the streak and costs the boss a point.
 	_lifecycle_ready(gs)
 	gs.active_job_id = "wash_go"
@@ -22323,7 +22397,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14467
+const MIN_CHECKS := 14482
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

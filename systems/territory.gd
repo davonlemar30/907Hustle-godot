@@ -49,7 +49,7 @@ func setup(game_state: Node, manager: Node) -> void:
 	# Driven by DayLifecycle in declared order. See systems/day_lifecycle.gd.
 
 func can_handle(action: String) -> bool:
-	return action in ["claim_block", "abandon_block", "recruit_soldier", "post_soldier", "pull_soldier"]
+	return action in ["claim_block", "abandon_block", "recruit_soldier", "post_soldier", "pull_soldier", "stand_watch"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
 	var block_id: String = str(payload.get("block_id", ""))
@@ -64,6 +64,8 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 			return _post(block_id)
 		"pull_soldier":
 			return _pull(block_id)
+		"stand_watch":
+			return _stand_watch(block_id)
 	return {"ok": false, "reason": "Unknown territory action."}
 
 # --- claiming --------------------------------------------------------------
@@ -132,6 +134,63 @@ const PROBE_CONTESTED := 0.5
 const CONTESTED_INCOME := 0.5
 const CONTESTED_HEAT := 1.0
 const FRONT_QUIET_NIGHTS := 3
+## HS-D2 (1.2.0): a corner somebody is standing on tonight -- Tone, on the
+## whole district, or you, on one block for a slot -- is almost never tested,
+## and a front there counts two quiet nights in one.
+const PROBE_HELD_DOWN := 0.02
+const HELD_DOWN_QUIET := 2
+
+## The district Tone is sitting on tonight, or "". Reads the live
+## assignment: crew operations settle at PRE_SETTLE, so by the time the
+## night's probes run the assignment is settled and still today's.
+func held_down_district() -> String:
+	var entry: Variant = gs.crew_assignments.get("tone")
+	if not (entry is Dictionary):
+		return ""
+	var assignment: Dictionary = entry
+	if int(assignment.get("day", -1)) != int(gs.day) or str(assignment.get("operation_id", "")) != "hold_it_down":
+		return ""
+	var params: Variant = assignment.get("params")
+	if params is Dictionary:
+		return str((params as Dictionary).get("district_id", ""))
+	return ""
+
+## You, on this corner, tonight.
+func is_watched(block_id: String) -> bool:
+	return int((gs.territory_nodes.get(block_id, {}) as Dictionary).get("watch_day", -1)) == int(gs.day)
+
+## Somebody is standing on it tonight, one way or the other.
+func is_held_down(block_id: String) -> bool:
+	if is_watched(block_id):
+		return true
+	var district: String = held_down_district()
+	return not district.is_empty() and str(gs.TERRITORY_DEFS.district_of(block_id)) == district
+
+func stand_watch_blocker(block_id: String) -> String:
+	if gs.game_over:
+		return "The run is over"
+	if not gs.holds_block(block_id):
+		return "Not yours"
+	if str(gs.TERRITORY_DEFS.district_of(block_id)) != str(gs.current_district_id):
+		return "You stand watch where you stand"
+	if is_watched(block_id):
+		return "You are already on it tonight"
+	return ""
+
+## One slot, one corner, tonight. Zero money: it costs the part of the day
+## you would have spent earning, which is the whole price.
+func _stand_watch(block_id: String) -> Dictionary:
+	var blocked := stand_watch_blocker(block_id)
+	if not blocked.is_empty():
+		return {"ok": false, "reason": blocked + "."}
+	var rec: Dictionary = gs.territory_nodes[block_id]
+	rec["watch_day"] = int(gs.day)
+	gs.territory_nodes[block_id] = rec
+	gs.log_activity("You stand on %s until the block stops looking. It takes the rest of the part." % _block_name(block_id), AMBER)
+	var time_sys: Object = gm.system("time") if gm != null else null
+	if time_sys != null:
+		time_sys.handle("advance_time", {})
+	return {"ok": true}
 
 func is_contested(block_id: String) -> bool:
 	return bool((gs.territory_fronts.get(block_id, {}) as Dictionary).get("conflict_active", false))
@@ -277,6 +336,9 @@ func probe_chance(block_id: String) -> float:
 	var rival: int = int(gs.district_by_id(district_id).get("rival", 0))
 	if rival <= 0:
 		return 0.0
+	# HS-D2: somebody standing on it beats every other state.
+	if is_held_down(block_id):
+		return PROBE_HELD_DOWN
 	if bool((gs.territory_fronts.get(block_id, {}) as Dictionary).get("conflict_active", false)):
 		return PROBE_CONTESTED
 	var soldiers: int = int((gs.territory_nodes.get(block_id, {}) as Dictionary).get("soldiers", 0))
@@ -297,6 +359,9 @@ func _curtis_probes(ended_day: int) -> void:
 			# night quieter; three of those and his people stop coming by.
 			if contested:
 				_front_survived(block_id)
+				# HS-D2: his people came by, saw who was standing there, left.
+				if is_held_down(block_id) and is_contested(block_id):
+					_front_survived(block_id)
 			continue
 		var soldiers: int = int((gs.territory_nodes[block_id] as Dictionary).get("soldiers", 0))
 		if soldiers <= 0:

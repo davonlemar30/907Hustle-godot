@@ -203,6 +203,10 @@ func _ready() -> void:
 	var enforcer_adapter = preload("res://systems/enforcer_adapter.gd").new()
 	enforcer_adapter.setup(_gs, self, crew_operations)
 	register_system("enforcer_adapter", enforcer_adapter)
+	# HS-D2 (1.2.0): Tone sits on a district's corners for the night.
+	var holder_adapter = preload("res://systems/holder_adapter.gd").new()
+	holder_adapter.setup(_gs, self, crew_operations)
+	register_system("holder_adapter", holder_adapter)
 	# OG-D4 (1.0.0 PR 4): the ending.
 	var ending = preload("res://systems/ending.gd").new()
 	ending.setup(_gs, self)

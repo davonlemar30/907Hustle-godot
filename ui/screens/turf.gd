@@ -200,6 +200,14 @@ func _block_row(sys: Object, b: Dictionary) -> Control:
 		pull.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(pull)
 		v.add_child(row)
+		# HS-D2: your own night on it.
+		if bool(sys.is_held_down(id)):
+			v.add_child(label("Somebody is on it tonight. Nobody tests a corner somebody is standing on.", "Muted", 11, GREEN, true))
+		var watch_blocked: String = str(sys.stand_watch_blocker(id))
+		if watch_blocked.is_empty() or not bool(sys.is_watched(id)):
+			var watch := button("STAND WATCH TONIGHT  ·  one part of the day" if watch_blocked.is_empty() else watch_blocked.to_upper(), false, _on_watch.bind(id), 40)
+			watch.disabled = not watch_blocked.is_empty()
+			v.add_child(watch)
 		v.add_child(button("GIVE IT UP", false, _on_abandon.bind(id), 40))
 	else:
 		v.add_child(label("$%d per soldier a night  ·  +%d heat a night once yours" % [int(b["earning"]), int(b["heat_exposure"])], "Muted", 11, MUTED))
@@ -222,6 +230,10 @@ func _on_hire() -> void:
 func _on_claim(id: String) -> void:
 	if _gm.dispatch("claim_block", {"block_id": id}):
 		nav.show_toast("%s is yours." % str(gs.block_by_id(id)["name"]))
+
+func _on_watch(id: String) -> void:
+	if _gm.dispatch("stand_watch", {"block_id": id}):
+		nav.show_toast("You are on %s tonight." % str(gs.block_by_id(id)["name"]))
 
 func _on_abandon(id: String) -> void:
 	if _gm.dispatch("abandon_block", {"block_id": id}):

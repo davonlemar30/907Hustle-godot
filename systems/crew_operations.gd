@@ -135,6 +135,10 @@ const DISCOVERY_REQUIREMENTS := {
 		{"type": "crew_active", "crew_id": "eli"},
 		{"type": "crew_loyalty_min", "crew_id": "eli", "min": 4},
 	],
+	"hold_it_down": [
+		{"type": "crew_active", "crew_id": "tone"},
+		{"type": "crew_loyalty_min", "crew_id": "tone", "min": 4},
+	],
 	"put_it_down": [
 		{"type": "crew_active", "crew_id": "tone"},
 		{"type": "crew_loyalty_min", "crew_id": "tone", "min": 5},
@@ -164,6 +168,13 @@ const ASSIGNMENT_REQUIREMENTS := {
 		{"type": "crew_loyalty_min", "crew_id": "eli", "min": 5},
 		{"type": "payroll_not_delinquent", "crew_id": "eli"},
 		{"type": "crew_unassigned_today", "crew_id": "eli"},
+		{"type": "planning_window_open"},
+	],
+	"hold_it_down": [
+		{"type": "crew_active", "crew_id": "tone"},
+		{"type": "crew_loyalty_min", "crew_id": "tone", "min": 4},
+		{"type": "payroll_not_delinquent", "crew_id": "tone"},
+		{"type": "crew_unassigned_today", "crew_id": "tone"},
 		{"type": "planning_window_open"},
 	],
 	"smooth_it_over": [
@@ -198,6 +209,8 @@ const OPERATION_CAPABILITY := {
 	"smooth_it_over": {"crew_id": "deshawn", "capability_id": "smooth_it_over"},
 	"scout_district": {"crew_id": "eli", "capability_id": "scout_district"},
 	"put_it_down": {"crew_id": "tone", "capability_id": "put_it_down"},
+	# HS-D2 (1.2.0): Tone sits on your corners in one district for the night.
+	"hold_it_down": {"crew_id": "tone", "capability_id": "hold_it_down"},
 }
 
 ## BR-D6: what the Crew screen calls each operation, and whether it needs a
@@ -208,8 +221,9 @@ const OPERATION_LABELS := {
 	"smooth_it_over": "SMOOTH IT OVER",
 	"scout_district": "SCOUT",
 	"put_it_down": "PUT IT DOWN",
+	"hold_it_down": "HOLD IT DOWN",
 }
-const OPERATION_TAKES_DISTRICT := ["scout_district", "put_it_down", "smooth_it_over"]
+const OPERATION_TAKES_DISTRICT := ["scout_district", "put_it_down", "smooth_it_over", "hold_it_down"]
 
 ## BR-D6: they have their own ideas. Once a member is sure of you (loyalty
 ## at `PROPOSAL_LOYALTY`), every few mornings one of them texts a proposal
@@ -337,8 +351,9 @@ func _mark_discovered(operation_id: String) -> void:
 	if operation_id in gs.crew_operation_state["discovered"]:
 		return
 	gs.crew_operation_state["discovered"].append(operation_id)
-	gs.log_activity(
-		"Pherris mentions she could work the board herself, if you asked.", AMBER)
+	# HS-D2: the line names who said it. It used to name Pherris for every
+	# operation on the table.
+	gs.log_activity("%s mentions there is something they could take on, if you asked." % _sender_for(operation_id), AMBER)
 
 # --- FS-001.9: state-driven callbacks --------------------------------------
 
@@ -811,7 +826,7 @@ func day_start_ideas(today: int) -> void:
 	if phone == null:
 		return
 	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
-	for operation_id in ["put_it_down", "smooth_it_over", "run_the_bag", "907list_run_board", "scout_district"]:
+	for operation_id in ["hold_it_down", "put_it_down", "smooth_it_over", "run_the_bag", "907list_run_board", "scout_district"]:
 		var crew_id := str((OPERATION_CAPABILITY[operation_id] as Dictionary).get("crew_id", ""))
 		if not gs.is_recruited(crew_id):
 			continue
@@ -850,6 +865,29 @@ func _proposal_for(operation_id: String, crew_id: String) -> Dictionary:
 	var engine: Object = gm.system("consequence") if gm != null else null
 	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
 	match operation_id:
+		"hold_it_down":
+			# HS-D2: a front, or a corner with nobody on it, in a district
+			# Curtis has people in.
+			var territory: Object = gm.system("territory") if gm != null else null
+			if territory == null:
+				return {}
+			var target := ""
+			for block_id in (territory.contested_blocks() as Array):
+				target = str(gs.TERRITORY_DEFS.district_of(str(block_id)))
+				break
+			if target.is_empty():
+				for id in gs.territory_nodes.keys():
+					var district_id := str(gs.TERRITORY_DEFS.district_of(str(id)))
+					if int(gs.district_by_id(district_id).get("rival", 0)) > 0 \
+							and int((gs.territory_nodes[id] as Dictionary).get("soldiers", 0)) <= 0:
+						target = district_id
+						break
+			if target.is_empty():
+				return {}
+			var name := str(gs.district_by_id(target).get("name", target)).capitalize()
+			return {"text": "His people been by %s twice this week. I'll sit on it tonight. Say the word." % name,
+				"yes": "sit on it", "no": "not tonight", "went": "Say less.",
+				"stayed": "Your corner.", "params": {"district_id": target}}
 		"put_it_down", "smooth_it_over":
 			var worst := ""
 			var worst_score := 0.0

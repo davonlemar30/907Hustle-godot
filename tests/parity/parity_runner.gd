@@ -19812,6 +19812,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_stolen_goods_have_a_name(gs, gm)
 	_check_his_blocks_fight_back(gs, gm)
 	_check_a_front_is_a_bill(gs, gm)
+	_check_hold_it_down(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -21038,6 +21039,77 @@ func _check_stolen_goods_have_a_name(gs: Node, gm: Node) -> void:
 ## claimed: the tap opens a confrontation with FIGHT and RUN; RUN walks;
 ## FIGHT ends held or hurt, and Curtis knows either way. Nightly, Curtis
 ## probes what you hold in his districts.
+## HS-D2 (1.2.0): hold it down. Tone on a district, or you on a corner: the
+## probe all but stops, and a front there counts two nights in one.
+func _check_hold_it_down(gs: Node, gm: Node) -> void:
+	var territory: Object = gm.system("territory")
+	var ops: Object = gm.system("crew_operations")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_stage_rank(gs, "player")
+	gs.cash = 5000
+	gs.clean_cash = 5000
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	gs.current_district_id = "downtown"
+	gs.day = 12
+	gs.time_slots_today = 0
+	gs.territory_nodes = {"downtown_transit_center": {"soldiers": 0}, "downtown_snow_city_corner": {"soldiers": 1}}
+	gs.territory_fronts = {"downtown_snow_city_corner": {"capture_reward_consumed": false, "conflict_active": true, "quiet": 0}}
+	_expect_true("the operation is on the table", "hold_it_down" in (ops.operation_ids() as Array))
+	_expect_true("...and takes a district", "hold_it_down" in ops.OPERATION_TAKES_DISTRICT)
+	_expect_true("nobody on the crew, nobody sitting", str(territory.held_down_district()).is_empty())
+	_expect_true("...and the empty venue probes at the undefended rate", is_equal_approx(float(territory.probe_chance("downtown_transit_center")), territory.PROBE_UNDEFENDED))
+	# Tone, sure of you, on Downtown.
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 6, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {}}
+	ops.reconcile()
+	_expect_true("at loyalty six Tone has mentioned it", bool(ops.is_discovered("hold_it_down")))
+	_expect_true("the morning assignment takes", gm.dispatch("assign_crew_operation", {"crew_id": "tone", "operation_id": "hold_it_down", "params": {"district_id": "downtown"}}))
+	_expect_str("...and Tone is on Downtown tonight", str(territory.held_down_district()), "downtown")
+	_expect_true("...so the empty venue is all but safe", is_equal_approx(float(territory.probe_chance("downtown_transit_center")), territory.PROBE_HELD_DOWN))
+	_expect_true("...and so is the contested one", is_equal_approx(float(territory.probe_chance("downtown_snow_city_corner")), territory.PROBE_HELD_DOWN))
+	_expect_true("...and Spenard is not his problem tonight", not bool(territory.is_held_down("spenard_rec_lot")))
+	_expect_true("...and he cannot also put it down", not gm.dispatch("assign_crew_operation", {"crew_id": "tone", "operation_id": "put_it_down", "params": {"district_id": "downtown"}}))
+	# A front under Tone counts two nights in one, on a night the probe misses.
+	var counted := false
+	for day in range(12, 60):
+		gs.day = day
+		var assignment: Dictionary = gs.crew_assignments["tone"]
+		assignment["day"] = day
+		gs.crew_assignments["tone"] = assignment
+		gs.territory_nodes["downtown_snow_city_corner"] = {"soldiers": 1}
+		gs.territory_fronts["downtown_snow_city_corner"] = {"capture_reward_consumed": false, "conflict_active": true, "quiet": 0}
+		territory._curtis_probes(day)
+		if gs.holds_block("downtown_snow_city_corner"):
+			_expect_int("a night under Tone is two quiet nights", int(territory.front_quiet("downtown_snow_city_corner")), 2)
+			counted = true
+			break
+	_expect_true("...and such a night exists", counted)
+	# You, on one corner, for a slot.
+	gs.reset_to_new_game()
+	_stage_rank(gs, "player")
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	gs.current_district_id = "downtown"
+	gs.day = 5
+	gs.time_slots_today = 1
+	gs.territory_nodes = {"downtown_transit_center": {"soldiers": 0}}
+	gs.territory_fronts = {}
+	_expect_str("a corner you hold, where you stand, is watchable", str(territory.stand_watch_blocker("downtown_transit_center")), "")
+	_expect_true("a corner you do not hold is not", not str(territory.stand_watch_blocker("downtown_snow_city_corner")).is_empty())
+	var slots_before: int = int(gs.time_slots_today)
+	_expect_true("standing watch dispatches", gm.dispatch("stand_watch", {"block_id": "downtown_transit_center"}))
+	_expect_int("...and costs a part of the day", int(gs.time_slots_today), slots_before + 1)
+	_expect_true("...and you are on it tonight", bool(territory.is_watched("downtown_transit_center")))
+	_expect_true("...so it is all but safe", is_equal_approx(float(territory.probe_chance("downtown_transit_center")), territory.PROBE_HELD_DOWN))
+	_expect_true("...and once is the limit", not gm.dispatch("stand_watch", {"block_id": "downtown_transit_center"}))
+	gs.current_district_id = "north_star_lot"
+	gs.territory_nodes["spenard_rec_lot"] = {"soldiers": 0}
+	gs.current_district_id = "downtown"
+	_expect_true("...and you stand watch where you stand", not str(territory.stand_watch_blocker("spenard_rec_lot")).is_empty())
+	gs.day = 6
+	_expect_true("tomorrow it is just a corner again", not bool(territory.is_watched("downtown_transit_center")))
+	gs.reset_to_new_game()
+
 ## HS-D1 (1.2.0): a front is a bill. Contested pays half and runs a point
 ## hotter; it survives nights until it closes; a probe that lands still
 ## takes the block.
@@ -21741,7 +21813,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14183
+const MIN_CHECKS := 14205
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

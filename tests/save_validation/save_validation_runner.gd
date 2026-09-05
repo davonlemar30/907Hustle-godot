@@ -40,6 +40,7 @@ func _ready() -> void:
 	_test_v31_ending()
 	_test_v32_hot_goods()
 	_test_v33_dismantled()
+	_test_v34_nudges()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
 	_test_load_pipeline()
@@ -1073,6 +1074,18 @@ func _test_v31_ending() -> void:
 
 ## v32 (OG-D5): hot goods ride the save; junk drops; a hot holding keeps
 ## its name.
+func _test_v34_nudges() -> void:
+	var valid := _fixed(_state("market_nudges", {"downtown": {"weed": {"pct": 0.9, "day": 4}, "junk": "x"}, "nowhere": {"weed": {"pct": 0.1, "day": 1}}}))
+	var nudges: Dictionary = valid["market_nudges"]
+	_check("a known district's buyer survives, capped", is_equal_approx(float(((nudges.get("downtown", {}) as Dictionary).get("weed", {}) as Dictionary).get("pct", 0.0)), 0.5))
+	_check("...junk rows drop", not (nudges.get("downtown", {}) as Dictionary).has("junk"))
+	_check("...and an unknown district drops", not nudges.has("nowhere"))
+	var wrong := _fixed(_state("market_nudges", 7))
+	_check("a wrong-type nudge table defaults empty", (wrong["market_nudges"] as Dictionary).is_empty())
+	var saves := get_node("/root/SaveSystem")
+	var migrated: Dictionary = saves._migrate({"save_version": 33, "state": {"day": 2, "cash": 10, "street_name": "L"}})
+	_check("a v33 save arrives with no buyers", not migrated.has("market_nudges") or (migrated.get("market_nudges", {}) as Dictionary).is_empty())
+
 func _test_v33_dismantled() -> void:
 	var valid := _fixed(_state("curtis_dismantled", ["downtown", "nowhere", "downtown"]))
 	_check("a district he is out of survives, an unknown one drops, once each", str(valid["curtis_dismantled"]) == str(["downtown"]))

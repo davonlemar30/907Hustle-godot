@@ -193,6 +193,12 @@ static func build_situation(engine: Object, gs: Node, summary: Dictionary) -> Ar
 	# STOPS YOU, CAUGHT, CHECKPOINT) moves up into the kicker, where the word
 	# CONSEQUENCE used to sit -- the engine's name for itself, which the player
 	# was never meant to read.
+	# TU-D4 (1.3.0): the scene, when the game has one for this kind of moment.
+	# A strip, 36 tall, measured: the four-road cards' third road has to sit
+	# above the fold at 375x812 with the scene on top of everything.
+	var scene := PORTRAITS.header_rect(PORTRAITS.encounter_scene(scene_key_for(summary)), 36)
+	if scene != null:
+		v.add_child(scene)
 	v.add_child(_label(kicker_for(engine, summary), "Kicker", 10, ORANGE))
 	# OG-D3: the face across the table, when the opponent is somebody the
 	# game has a portrait of. Nothing when it is "the one who will not stop
@@ -270,6 +276,27 @@ static func build_situation(engine: Object, gs: Node, summary: Dictionary) -> Ar
 	return out
 
 ## BB-D2: who is in front of you, or "" when the chain has nobody named.
+## TU-D4: which of the five scenes this is. Police by the card; robbery by
+## the family that got caught; crew by who is standing there; a deal by
+## the meeting; the street for everything else.
+static func scene_key_for(summary: Dictionary) -> String:
+	var definition := str(summary.get("definition_id", ""))
+	var family := str(summary.get("source_family", ""))
+	var kind := str(summary.get("chain_kind", ""))
+	for word in ["stopped", "vehicle_search", "warrant", "checkpoint", "police", "cruiser"]:
+		if definition.contains(word):
+			return "police"
+	if kind == "checkpoint" or family == "police":
+		return "police"
+	if family in ["stick", "boost", "stickup"] or kind == "caught":
+		return "robbery"
+	if family in ["retaliation", "territory", "curtis", "dre", "book", "rent", "crew"] or kind == "retaliation" \
+			or definition.contains("curtis") or definition.contains("territorial"):
+		return "crew"
+	if family in ["list", "market"] or definition.contains("meet") or definition.contains("list_meetup") or definition.contains("lookout"):
+		return "deal"
+	return "street"
+
 static func opponent_for(summary: Dictionary) -> String:
 	var who := str(summary.get("source_opponent", ""))
 	if who.is_empty():
@@ -493,15 +520,15 @@ static func _choice_card(engine: Object, row: Dictionary, wire: Callable) -> Con
 	# SQ-D12: no odds chip. The lane is its name and what it is for, and the
 	# player finds out the rest by doing it. Through the engine's adapter seam,
 	# so a chain kind with its own vocabulary says its own words.
-	v.add_child(_label(engine.choice_description(choice_id,
-		str(CHOICE_COPY.get(choice_id, ""))), "Muted", 11, MUTED, true))
+	# TU-D4 (1.3.0): a road is a button. The line under it is gone -- the
+	# playtest called the subtext a spoiler and a chore -- and so is the
+	# guarantee sentence; a guaranteed road is the quieter button. What a
+	# road did is said after it is taken. The arrest warning stays: that it
+	# CAN book you is a rule, not a spoiler.
 
 	# The one thing that survives SQ-D12, and the reason it survives: a
 	# guaranteed road is not a probability the player is being denied, it is a
 	# PRICE, and a price is knowable before you pay it.
-	if deterministic:
-		v.add_child(_label(engine.choice_guarantee(choice_id,
-			"Guaranteed: no injury, no Heat, no arrest."), "Muted", 11, CYAN, true))
 
 	var warning := str(ARREST_WARNINGS.get(str(row.get("arrest_risk", "")), ""))
 	if not warning.is_empty():

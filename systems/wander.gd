@@ -1124,6 +1124,12 @@ func _play_read(card: Dictionary) -> Dictionary:
 			told = _read_prices()
 		"crew":
 			told = _read_crew()
+	# TU-D4 (1.3.0): posting up can turn up a buyer. On a corner read, half
+	# the time, somebody at the counter is paying over for one thing today.
+	if str(card.get("read", "")) in ["pressure", "prices"] and bool(gs.market_discovered):
+		var buyer: String = _read_buyer(str(card["id"]))
+		if not buyer.is_empty():
+			told.append(buyer)
 	if told.is_empty():
 		# Nothing to say is still an hour spent. Never silent.
 		gs.log_activity("Quiet. The kind you don't trust yet.", MUTED)
@@ -1133,6 +1139,30 @@ func _play_read(card: Dictionary) -> Dictionary:
 
 ## Which families this corner is hot for. The band vocabulary is the engine's,
 ## and no screen shows it for the district you are standing in.
+## The buyer: one product on this district's board, ten to twenty percent
+## over, for today. Keyed on the day and the slot, so a second walk in the
+## same part of the day hears the same thing.
+func _read_buyer(card_id: String) -> String:
+	var economy: Object = gm.system("economy") if gm != null else null
+	if economy == null:
+		return ""
+	var key := "%d:%d:%s:buyer" % [int(gs.day), int(gs.time_slots_today), str(gs.current_district_id)]
+	if rng.seeded_int_range(gs.run_seed, key, 0, 99) >= 50:
+		return ""
+	var candidates: Array = []
+	for prod in gs.products:
+		if bool((prod as Dictionary).get("locked", false)):
+			continue
+		if int(economy.sell_unit_price(str(gs.current_district_id), str((prod as Dictionary)["id"]))) > 0:
+			candidates.append(prod)
+	if candidates.is_empty():
+		return ""
+	var prod: Dictionary = candidates[rng.seeded_int_range(gs.run_seed, key + ":which", 0, candidates.size() - 1)]
+	var pct: float = 0.10 + 0.05 * float(rng.seeded_int_range(gs.run_seed, key + ":pct", 0, 2))
+	economy.nudge_price(str(gs.current_district_id), str(prod["id"]), pct)
+	return "Somebody at the counter is paying over for %s today: $%d a unit. It will not last past dark." % [
+		str(prod.get("name", prod["id"])).to_lower(), int(economy.sell_unit_price(str(gs.current_district_id), str(prod["id"])))]
+
 func _read_pressure() -> Array:
 	var engine: Object = gm.system("consequence") if gm != null else null
 	if engine == null:

@@ -61,6 +61,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_ending(state, repairs)
 	_validate_hot_goods(state, repairs)
 	_validate_dismantled(state, repairs)
+	_validate_market_nudges(state, repairs)
 	_validate_boost_bribes_used(state, repairs)
 	_validate_tip_effects(state, repairs)
 	_validate_tip_misses(state, repairs)
@@ -746,6 +747,34 @@ func _validate_boost_discovery(state: Dictionary, repairs: Array[String]) -> voi
 	state["boost_targets_discovered"] = cleaned
 
 ## v32 (OG-D5). Every hot item is a name, a value and a heat; junk drops.
+## v34 (TU-D4). district -> product -> {pct 0..0.5, day int}; anything else drops.
+func _validate_market_nudges(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("market_nudges"):
+		return
+	if not state["market_nudges"] is Dictionary:
+		state["market_nudges"] = {}
+		_repair(repairs, "market_nudges", "wrong type; defaulted")
+		return
+	var clean: Dictionary = {}
+	for district in (state["market_nudges"] as Dictionary).keys():
+		if not str(district) in TERRITORY_DEFS.DISTRICT_ORDER:
+			_repair(repairs, "market_nudges", "unknown district dropped")
+			continue
+		var products: Variant = (state["market_nudges"] as Dictionary)[district]
+		if not products is Dictionary:
+			_repair(repairs, "market_nudges.%s" % str(district), "wrong type; dropped")
+			continue
+		var clean_products: Dictionary = {}
+		for pid in (products as Dictionary).keys():
+			var row: Variant = (products as Dictionary)[pid]
+			if not row is Dictionary or not (row as Dictionary).has("day"):
+				_repair(repairs, "market_nudges.%s.%s" % [str(district), str(pid)], "invalid row dropped")
+				continue
+			clean_products[str(pid)] = {"pct": clampf(float((row as Dictionary).get("pct", 0.0)), 0.0, 0.5), "day": int((row as Dictionary).get("day", 0))}
+		if not clean_products.is_empty():
+			clean[str(district)] = clean_products
+	state["market_nudges"] = clean
+
 ## v33 (HS-D3). Districts the game knows, and a hold of 0..2 per district.
 func _validate_dismantled(state: Dictionary, repairs: Array[String]) -> void:
 	if state.has("curtis_dismantled"):

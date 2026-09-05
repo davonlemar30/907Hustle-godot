@@ -120,6 +120,24 @@ func _apply_heat(amount: float) -> float:
 		{"source_id": "stickup"})
 
 ## The shared cash owner. A stickup take is dirty money by definition.
+## TU-D4: what a mark might have on them besides cash, by target.
+## Measured: at 0.4 and 0.25 the everyday-criminal profile fenced enough of
+## them that its Heat no longer settled below the tier-1 gate (HEAT-D1 own
+## property, asserted in parity). 0.15 keeps the drop a delight, not a habit.
+const STICK_DROP_CHANCE := 0.15
+const STICK_LOOT := {
+	"chilkoots_stumbler": ["a phone with a cracked screen", "a watch and a Koots wristband"],
+	"washgo_regular": ["a phone", "a ring and a bus pass"],
+	"spenard_diner_regular": ["a gold chain", "a phone in a leather case"],
+	"fourth_ave_crawler": ["a phone and a hotel key", "a watch that is not fake"],
+	"c_street_atm": ["a bank card with the PIN on a sticky note", "a phone"],
+	"mv_overpass_walker": ["a phone", "a pair of headphones"],
+	"mv_fence_buyer": ["a military ID and a phone", "a watch off a wrist"],
+	"lot_hauler": ["a CB handset", "a phone and a fuel card"],
+	"spenard_fuel_till": ["a carton of Newports", "a roll of scratchers"],
+	"downtown_fuel_till": ["a carton of Newports", "a phone off the counter"],
+}
+
 func _wallet() -> Object:
 	return gm.system("wallet")
 
@@ -293,6 +311,17 @@ func _run(target_id: String) -> Dictionary:
 		var take: int = rng.seeded_int_range(gs.run_seed, key + ":take", int(band[0]), int(band[1]))
 		_wallet().credit(take, _wallet().DIRTY, {"source_id": "stickup_take"})
 		gs.record_earning("stick", take)
+		# TU-D4 (1.3.0): sometimes what they had on them is a thing, not
+		# cash -- a phone, a chain, a carton -- and it goes under your coat
+		# for the 907List, at the fence's rate and the fence's risk.
+		if STICK_LOOT.has(str(t["id"])) and int(t["tier"]) < 3 \
+				and rng.seeded_int_range(gs.run_seed, key + ":drop", 0, 99) < int(STICK_DROP_CHANCE * 100.0):
+			var names: Array = STICK_LOOT[str(t["id"])]
+			var loot := {"kind": "goods", "name": str(names[rng.seeded_int_range(gs.run_seed, key + ":drop:which", 0, names.size() - 1)]),
+				"value": clampi(int(round(float(take) * 0.35)), 15, 120), "heat": 0.5 * float(int(t["tier"])),
+				"from": str(t["name"]), "day": int(gs.day)}
+			gs.hot_goods.append(loot)
+			gs.log_activity("And %s, which is not cash yet." % str(loot["name"]), AMBER)
 		# A clean take is half the heat of a loud one: the money moved and
 		# nobody watched you struggle for it.
 		applied = _apply_heat(float(t["heat"]) * (0.5 if tier == "clean" else 1.0))

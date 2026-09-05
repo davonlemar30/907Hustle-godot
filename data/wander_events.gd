@@ -629,7 +629,7 @@ const CARDS: Array[Dictionary] = [
 		"intents": [INTENT_DEAL], "gate_bias": "stick",
 		"districts": [], "slots": [EVENING, NIGHT], "once": false,
 		"requirements": [{"type": "day_min", "min": 4}, {"type": "collection_non_empty", "collection": "inventory"}],
-		"line": "Two of them peel off the wall as you pass, and one is already talking.",
+		"line": "Two guys peel off the wall and box you in. One wants your bag. The other is watching for cops.",
 		"encounter": {
 			"definition_id": "wander_shakedown",
 			"opponent": "Two off the wall",
@@ -906,7 +906,7 @@ const CARDS: Array[Dictionary] = [
 		# reuses the phase read `facts()` already exposes for `heat_watched`'s
 		# own neighbour rather than inventing a second awareness scale.
 		"requirements": [{"type": "fact_true", "fact": "curtis_watching_or_worse"}],
-		"line": "Somebody who works the block for Curtis falls in beside you. He already has a number in mind.",
+		"line": "Somebody who works the block for Curtis falls in beside you. He wants a cut of what you made here, and he has a number.",
 		"encounter": {
 			"definition_id": "wander_curtis_tax",
 			"opponent": "Curtis's man",
@@ -1134,7 +1134,7 @@ const CARDS: Array[Dictionary] = [
 		# The one card in the roster that requires a history. A warrant check
 		# on somebody who has never been booked is not a warrant check.
 		"requirements": [{"type": "fact_true", "fact": "has_priors"}],
-		"line": "He takes your name to the car and does not come straight back.",
+		"line": "He takes your name back to the cruiser and stays there a long time. He is running it.",
 		"encounter": {
 			"definition_id": "wander_warrant_check",
 			"opponent": "The name check",
@@ -1207,6 +1207,168 @@ const CARDS: Array[Dictionary] = [
 	# the Chevron a week in; a piece from Dre's cousin, later, once the run
 	# is a player. Each is a meeting card with a PAY road that grants it.
 
+	# --- TU-D4 (1.3.0): more of the street, said plainly ------------------------
+	{
+		"id": "wander_bench_tax", "kind": KIND_ENCOUNTER, "weight": 8,
+		"intents": [], "gate_bias": "",
+		"districts": [SPENARD], "slots": [EVENING, NIGHT], "once": false,
+		"requirements": [{"type": "day_min", "min": 2}],
+		"line": "A man at the bus shelter says the bench is his and sitting on it costs ten dollars. His friend behind him has not said anything yet.",
+		"encounter": {
+			"definition_id": "wander_bench_tax",
+			"opponent": "The man who owns the bench",
+			"shape": "negotiation",
+			"choices": ["bench_stand", "bench_laugh", "bench_pay"],
+			"roles": {"bench_stand": ROLE_FIGHT, "bench_laugh": ROLE_RUN, "bench_pay": ROLE_SURRENDER},
+			"admits_crew": true,
+			"deterministic": ["bench_pay"],
+			"base": {"bench_stand": 0.55, "bench_laugh": 0.60},
+			"observations": {
+				"bench_stand": {
+					"clean": {"type": "defiance", "event": "kept_the_bench"},
+					"messy": {"type": "violence", "event": "street_fight"},
+					"failure": {"type": "violence", "event": "street_fight"},
+					"catastrophic": {"type": "violence", "event": "street_fight"},
+				},
+				"bench_laugh": {
+					"clean": {"type": "discretion", "event": "laughed_it_off"},
+					"messy": {"type": "discretion", "event": "laughed_it_off"},
+					"failure": {"type": "violence", "event": "caught_from_behind"},
+					"catastrophic": {"type": "violence", "event": "caught_from_behind"},
+				},
+				"bench_pay": {"type": "financial", "event": "paid_the_bench_tax"},
+			},
+			"effects": {
+				"bench_stand": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 4, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 8, "cash_fraction": 0.1, "goods_fraction": 0.0},
+					"catastrophic": {"health": 14, "cash_fraction": 0.3, "goods_fraction": 0.0},
+				},
+				"bench_laugh": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 3, "cash_fraction": 0.1, "goods_fraction": 0.0},
+					"catastrophic": {"health": 7, "cash_fraction": 0.25, "goods_fraction": 0.0},
+				},
+				"bench_pay": {"deterministic": {"health": 0, "cash_flat": 10, "goods_fraction": 0.0}},
+			},
+		},
+	},
+	{
+		"id": "wander_kid_lookout", "kind": KIND_ENCOUNTER, "weight": 7,
+		"intents": [INTENT_DEAL], "gate_bias": "",
+		"districts": [SPENARD, MOUNTAIN_VIEW], "slots": [AFTERNOON, EVENING], "once": false,
+		"requirements": [{"type": "day_min", "min": 3}, {"type": "fact_true", "fact": "market_discovered"}],
+		"line": "A kid, twelve maybe, offers to watch the corner for you for five dollars. He is already watching it, and he has already counted your pockets.",
+		"encounter": {
+			"definition_id": "wander_kid_lookout",
+			"opponent": "The kid on the corner",
+			"shape": "negotiation",
+			"choices": ["kid_send_home", "kid_walk", "kid_pay"],
+			"roles": {"kid_send_home": ROLE_FIGHT, "kid_walk": ROLE_RUN, "kid_pay": ROLE_SURRENDER},
+			"admits_crew": false,
+			"deterministic": ["kid_pay"],
+			"base": {"kid_send_home": 0.60, "kid_walk": 0.70},
+			"observations": {
+				"kid_send_home": {
+					"clean": {"type": "honesty", "event": "sent_a_kid_home"},
+					"messy": {"type": "honesty", "event": "sent_a_kid_home"},
+					"failure": {"type": "presence", "event": "argued_with_a_kid"},
+					"catastrophic": {"type": "presence", "event": "argued_with_a_kid"},
+				},
+				"kid_walk": {
+					"clean": {"type": "discretion", "event": "kept_walking"},
+					"messy": {"type": "discretion", "event": "kept_walking"},
+					"failure": {"type": "presence", "event": "the_kid_followed"},
+					"catastrophic": {"type": "presence", "event": "the_kid_followed"},
+				},
+				"kid_pay": {"type": "growth", "event": "hired_a_lookout"},
+			},
+			"effects": {
+				"kid_send_home": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "heat": 0.5},
+					"catastrophic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "heat": 1.0},
+				},
+				"kid_walk": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "heat": 0.5},
+					"catastrophic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.1, "heat": 0.5},
+				},
+				"kid_pay": {"deterministic": {"health": 0, "cash_flat": 5, "goods_fraction": 0.0}},
+			},
+		},
+	},
+	{
+		"id": "wander_lost_wallet", "kind": KIND_ENCOUNTER, "weight": 6,
+		"intents": [INTENT_READ, INTENT_DEAL], "gate_bias": "",
+		"districts": [SPENARD], "slots": [MORNING, AFTERNOON], "once": false,
+		"requirements": [{"type": "day_min", "min": 2}],
+		"line": "A wallet in the slush by the pumps: eighty dollars, a bus pass, and the ID of a woman you have seen at the Wash & Go. Nobody saw you pick it up.",
+		"encounter": {
+			"definition_id": "wander_lost_wallet",
+			"opponent": "A wallet in the slush",
+			"shape": "negotiation",
+			"choices": ["wallet_ask", "wallet_keep", "wallet_return"],
+			"roles": {"wallet_ask": ROLE_FIGHT, "wallet_keep": ROLE_RUN, "wallet_return": ROLE_SURRENDER},
+			"admits_crew": false,
+			"deterministic": ["wallet_return"],
+			"base": {"wallet_ask": 0.60, "wallet_keep": 0.70},
+			"observations": {
+				"wallet_ask": {
+					"clean": {"type": "honesty", "event": "found_the_owner"},
+					"messy": {"type": "honesty", "event": "found_the_owner"},
+					"failure": {"type": "presence", "event": "asked_around_with_a_wallet"},
+					"catastrophic": {"type": "betrayal", "event": "asked_around_with_a_wallet"},
+				},
+				"wallet_keep": {
+					"clean": {"type": "discretion", "event": "kept_the_wallet"},
+					"messy": {"type": "discretion", "event": "kept_the_wallet"},
+					"failure": {"type": "betrayal", "event": "seen_keeping_a_wallet"},
+					"catastrophic": {"type": "betrayal", "event": "seen_keeping_a_wallet"},
+				},
+				"wallet_return": {"type": "honesty", "event": "returned_the_wallet"},
+			},
+			"effects": {
+				"wallet_ask": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "heat": 0.5},
+				},
+				"wallet_keep": {
+					"clean": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"messy": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"failure": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0},
+					"catastrophic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0, "heat": 0.5},
+				},
+				"wallet_return": {"deterministic": {"health": 0, "cash_fraction": 0.0, "goods_fraction": 0.0}},
+			},
+			"grants": {
+				"wallet_ask": {"clean": {"cash": 20}, "messy": {"cash": 20}},
+				"wallet_keep": {"clean": {"cash": 80}, "messy": {"cash": 80}, "failure": {"cash": 80}},
+			},
+		},
+	},
+	{
+		"id": "wander_plow_night", "kind": KIND_AMBIENT, "weight": 7,
+		"intents": [INTENT_READ],
+		"districts": [SPENARD], "slots": [NIGHT], "once": false,
+		"requirements": [],
+		"line": "The plow comes through at two and buries every car on the street side, Juan's truck included. He is out there with a shovel, not talking.",
+		"observation": {"npc": "juan", "type": "presence", "event": "seen_around", "source": "household"},
+	},
+	{
+		"id": "wander_no_lights", "kind": KIND_AMBIENT, "weight": 8,
+		"intents": [INTENT_READ],
+		"districts": [DOWNTOWN], "slots": [EVENING, NIGHT], "once": false,
+		"requirements": [{"type": "fact_true", "fact": "heat_noticed"}],
+		"line": "Two cruisers pass with no lights and no hurry. They are not looking for anyone. They are letting you see them not looking.",
+		"observation": {"npc": "dre", "type": "discretion", "event": "seen_around", "source": "neighborhood"},
+	},
 	# --- SA-D3 (1.1.0): the Vales, at the counter ------------------------------
 	#
 	# Once, in the evening, once Mina reads you warm: a man with her last
@@ -1470,7 +1632,7 @@ const CARDS: Array[Dictionary] = [
 		# happens to anybody standing anywhere. Weighted highest of the eight
 		# for the same reason.
 		"requirements": [],
-		"line": "He was talking before he got to you and has not stopped since. His hands will not stay still.",
+		"line": "A man with shaking hands walks up asking for twenty dollars, and he is not going to take no. He is between you and the sidewalk.",
 		"encounter": {
 			"definition_id": "wander_desperate_approach",
 			"opponent": "The one who will not stop talking",
@@ -1601,7 +1763,7 @@ const CARDS: Array[Dictionary] = [
 		"intents": [], "gate_bias": "",
 		"districts": [], "slots": [EVENING, NIGHT], "once": false,
 		"requirements": [{"type": "day_min", "min": 4}],
-		"line": "Something happened in this lot ten minutes ago. Glass on the ground, a door still open, and two people who know your name now, looking at you like you are a witness or a problem.",
+		"line": "Something happened in this lot ten minutes ago: glass on the ground, a door still open, and two people who now know your name, deciding whether you are a witness or a problem.",
 		"encounter": {
 			"definition_id": "wander_wrong_place",
 			"opponent": "The two who were here first",
@@ -1656,7 +1818,7 @@ const CARDS: Array[Dictionary] = [
 		# Reads the engine's own MARKET band for the district underfoot, which
 		# is the same read `SEE WHO IS OUT` renders -- not a second scale.
 		"requirements": [{"type": "day_min", "min": 8}, {"type": "fact_true", "fact": "market_pressure_visible"}],
-		"line": "They know what you have been doing on this block, and they have decided it is their block.",
+		"line": "Two of Curtis's people block the sidewalk. This corner is theirs, they say, and so is whatever you made on it.",
 		"encounter": {
 			"definition_id": "wander_territorial_beef",
 			"opponent": "The ones who work this block",
@@ -1720,7 +1882,7 @@ const CARDS: Array[Dictionary] = [
 		"intents": [], "gate_bias": "",
 		"districts": [], "slots": [], "once": false,
 		"requirements": [{"type": "day_min", "min": 20}, {"type": "fact_true", "fact": "curtis_visible"}],
-		"line": "Somebody is getting worked over half a block up, and one of them has already looked at you twice.",
+		"line": "Half a block up, three men are stomping somebody on the ground. One of them has looked at you twice, and the second look was a question.",
 		"encounter": {
 			"definition_id": "wander_somebody_elses_problem",
 			"opponent": "The two up the block",
@@ -1965,7 +2127,7 @@ const CARDS: Array[Dictionary] = [
 		"requirements": [{"type": "day_min", "min": 2},
 			{"type": "hustle_undiscovered", "hustle": "market"}],
 		"discovers": "market",
-		"line": "A man in a Carhartt with the hood down is watching the corner like it owes him money. He has been watching you longer than that.",
+		"line": "A man in a Carhartt has been watching the corner like it owes him money, and watching you longer. He is walking over now.",
 		"encounter": {
 			"definition_id": "wander_meet_goodie",
 			"opponent": "Goodie",
@@ -2163,6 +2325,16 @@ const CHOICE_LABELS := {
 	# "fight", "run" or "surrender". That is SQ-D6 working: the role is the
 	# structural position and the label is what this particular situation
 	# actually offers you.
+	# TU-D4: the bench, the kid, the wallet.
+	"bench_stand": "FIGHT",
+	"bench_laugh": "BLUFF",
+	"bench_pay": "PAY",
+	"kid_send_home": "TALK",
+	"kid_walk": "RUN",
+	"kid_pay": "PAY",
+	"wallet_ask": "TALK",
+	"wallet_keep": "RUN",
+	"wallet_return": "COMPLY",
 	# SA-D3: the Vales.
 	"vale_step_in": "FIGHT",
 	"vale_talk": "TALK",
@@ -2247,6 +2419,15 @@ const CHOICE_COPY := {
 	"let_deshawn_talk": "His voice, not yours. Everybody walks.",
 	# VOX-D1: short declaratives, terms rather than threats, and the addict
 	# lines carry no comedy and no pity.
+	"bench_stand": "Sit down anyway, and let him decide what that costs him.",
+	"bench_laugh": "Laugh, and keep walking like that settled it.",
+	"bench_pay": "Ten dollars. It is his bench.",
+	"kid_send_home": "Tell him to go home, like somebody who means it.",
+	"kid_walk": "Keep walking. He is twelve.",
+	"kid_pay": "Five dollars. He is already watching it.",
+	"wallet_ask": "Ask around the Wash & Go. Somebody will know her, and they will know you asked.",
+	"wallet_keep": "Pocket the cash. Drop the rest in the trash by the pumps.",
+	"wallet_return": "Take it to the Wash & Go. Lani will know her.",
 	"vale_step_in": "Get between them. He is bigger than you and she did not ask.",
 	"vale_talk": "Sit down next to him like you belong there and ask about the drive up.",
 	"vale_stay": "Stay at the end of the counter. Watch. Be somebody she can look at.",
@@ -2316,6 +2497,9 @@ const CHOICE_COPY := {
 const CHOICE_GUARANTEE := {
 	"let_it_go": "Guaranteed: nobody swings. The trunk is his.",
 	"vale_stay": "Guaranteed: nobody swings. She saw you not leave.",
+	"bench_pay": "Guaranteed: ten dollars, and the bench.",
+	"kid_pay": "Guaranteed: five dollars, and a lookout.",
+	"wallet_return": "Guaranteed: nothing in your pocket, and a name that knows.",
 	"knife_buy": "Guaranteed: $120, and the knife is yours.",
 	"knife_pass": "Guaranteed: nothing changes hands.",
 	"piece_buy": "Guaranteed: $600, and the piece is yours. Heat rides with it from here.",
@@ -2470,6 +2654,57 @@ const RESULT_COPY := {
 		},
 		"cross_the_street": {
 			"deterministic": ["YOU CROSS THE STREET", "Nothing happens to you. They watch it not happen, and they know what it means, and so does the block."],
+		},
+	},
+	"wander_bench_tax": {
+		"bench_stand": {
+			"clean": ["HE FINDS ANOTHER BENCH", "You sit. He looks at his friend, his friend looks at the road, and the bench is a bench again."],
+			"messy": ["ONE SWING EACH", "He swings first and you swing better. His friend does not get involved. You keep the bench and a fat lip."],
+			"failure": ["THE FRIEND GETS INVOLVED", "It was two on one the whole time. You come off the bench the hard way, and some of what was in your pocket stays on it."],
+			"catastrophic": ["THE SHELTER", "They put you into the glass of the shelter and go through your pockets while you are still deciding to get up."],
+		},
+		"bench_laugh": {
+			"clean": ["HE LAUGHS TOO", "You laugh and keep walking, and he laughs, because it was a bit, and now it is over."],
+			"messy": ["HE DOES NOT LAUGH", "He does not think it is funny. He says so, loud, to the whole stop. You are past him before it becomes more than that."],
+			"failure": ["FROM BEHIND", "You laughed and turned your back, which was the mistake. He catches you three steps on."],
+			"catastrophic": ["THE FRIEND WAS FASTER", "The friend was faster than he looked. You are on the ground by the schedule nobody updated, and your pockets are lighter."],
+		},
+		"bench_pay": {
+			"deterministic": ["TEN DOLLARS", "You pay the bench tax. He takes it like rent. His friend never said a word."],
+		},
+	},
+	"wander_kid_lookout": {
+		"kid_send_home": {
+			"clean": ["HE GOES", "You tell him to go home, and something in how you say it works. He goes. He looks back once."],
+			"messy": ["HE GOES, SLOWLY", "He argues, then goes, then stands at the end of the block watching anyway. Free, this time."],
+			"failure": ["HE TELLS THE BLOCK", "He tells everybody in earshot what you told him, louder than you said it. Now the block knows there is a corner to watch."],
+			"catastrophic": ["HIS BROTHER", "His brother is seventeen and was across the street. Nothing happens, except that you are known now, by the wrong family."],
+		},
+		"kid_walk": {
+			"clean": ["HE LOSES INTEREST", "You keep walking. He picks somebody else to watch."],
+			"messy": ["HE FOLLOWS", "He follows for a block, narrating. Then he gets bored."],
+			"failure": ["HE FOLLOWS ALL THE WAY", "He follows you to the corner and stands there watching the transaction like a customer."],
+			"catastrophic": ["HE GOES THROUGH YOUR BAG", "Somewhere in the following, a hand went in your bag. He is twelve, and he is gone."],
+		},
+		"kid_pay": {
+			"deterministic": ["FIVE DOLLARS", "You pay him. He watches the corner like it is his job, because now it is."],
+		},
+	},
+	"wander_lost_wallet": {
+		"wallet_ask": {
+			"clean": ["SHE WAS AT THE COUNTER", "Lani knows her, and she is three people back in line. She gives you twenty for the trouble and says your name to the room."],
+			"messy": ["LANI PASSES IT ON", "Lani takes it and says she will get it to her. Twenty dollars comes back to you a day later in an envelope with no note."],
+			"failure": ["THE WRONG PERSON HEARS", "You ask the wrong person, who wants to know why you are asking. The wallet goes back to Lani. The story goes around."],
+			"catastrophic": ["NOW YOU ARE THE STORY", "By the time it reaches her, the story is that you had it all afternoon. She thanks you like somebody who does not believe you."],
+		},
+		"wallet_keep": {
+			"clean": ["NOBODY SAW", "The cash goes in your pocket and the rest goes in the trash by the pumps. Nobody saw. She will look for it anyway."],
+			"messy": ["SOMEBODY MIGHT HAVE", "A car at the pumps pulls out as you straighten up. Eighty dollars, and a driver who may have seen where it came from."],
+			"failure": ["THE ATTENDANT SAW", "The attendant watched the whole thing through the glass. He does not say anything. He does not have to; it is his block."],
+			"catastrophic": ["SHE SAW", "She was coming back for it. She watches you put it in your pocket from thirty feet away, and she knows your face from the Wash & Go."],
+		},
+		"wallet_return": {
+			"deterministic": ["LANI KNOWS HER", "You leave it with Lani, who knows exactly who she is. Nothing in your pocket. Somebody at the Wash & Go knows what you did."],
 		},
 	},
 	"wander_vale_at_the_counter": {

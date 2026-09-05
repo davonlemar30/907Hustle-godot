@@ -98,6 +98,11 @@ static func district_header_at(district_id: String, slot: String) -> Texture2D:
 			return timed
 	return _load(stem)
 
+## TU-D4 (1.3.0): the scene behind an encounter -- street, police, robbery,
+## crew, deal -- or nothing.
+static func encounter_scene(key: String) -> Texture2D:
+	return _load("encounter_%s" % key)
+
 static func venue_image(venue_id: String) -> Texture2D:
 	return _load(str(VENUES.get(venue_id, "")))
 

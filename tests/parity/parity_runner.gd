@@ -15484,8 +15484,10 @@ func _check_phone_dismiss_target(gs: Node, gm: Node) -> void:
 	# Batch 15 made the clear immediate, and this went red the same run. The
 	# default is now ASSERTED rather than assumed, so a change to it is a failing
 	# check here instead of a silently wrong premise.
-	_expect_true("Texts is open by default, per canon's defaultExpanded",
-		bool(screen._is_open("texts")))
+	# TU-D3 (1.3.0): the phone opens on the hub; Messages is one tap.
+	_expect_true("the phone opens on the hub", bool(screen._is_open("hub")))
+	screen._choose_category("texts")
+	_expect_true("...and Messages opens on a tap", bool(screen._is_open("texts")))
 	screen.refresh()
 	# Mobile now opens a conversation explicitly; deletion is under Manage.
 	_expect_true("mobile starts at inbox", not screen._mobile_detail)
@@ -19272,6 +19274,7 @@ func _check_batch15(gs: Node, gm: Node) -> void:
 	_check_the_first_morning(gs)
 	_check_the_day_has_edges(gs)
 	_check_earn_it_on_the_street(gs)
+	_check_the_phone_in_your_hand(gs)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -19466,6 +19469,84 @@ func _check_rebuild_is_a_rebuild(gs: Node) -> void:
 ## charge is worse than no sheet — and it has to CHANGE NOTHING, because it is
 ## introducing a run that has already been reset and is the one thing positioned
 ## to make a fresh run not fresh.
+## TU-D3 (1.3.0): the phone in your hand. The hub, the contact list, the
+## thread with its dividers, the inventory page.
+func _check_the_phone_in_your_hand(gs: Node) -> void:
+	var gm: Node = get_node("/root/GameManager")
+	var phone: Object = gm.system("phone")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.cash = 400
+	gs.clean_cash = 400
+	gs.day = 5
+	gs.rent_due_day = 8
+	gs.phone_inbox = []
+	gs.inventory = {"weed": 3}
+	gs.hot_goods = [{"kind": "clothes", "name": "a Carhartt with the tag on", "value": 60, "heat": 0.5, "from": "Northern Value", "day": 4}]
+	gs.day = 4
+	phone.push_text("Juan", "somebody at the wash and go asked me who you were", "juan_rent")
+	gs.day = 5
+	phone.push_text("Yalonda", "Rent is $150 a week. Due day 8. I don't do reminders.", "yalonda_rent")
+	phone.push_text("Dre", "hit me when you got something", "")
+	var screen: Node = _instantiate_screen("res://ui/screens/phone.tscn")
+	if screen == null:
+		_fail("phone", "Phone would not instantiate")
+		return
+	_expect_str("the phone opens on the hub", str(screen._category), "hub")
+	var lines: Array[String] = []
+	_collect_labels(screen, lines)
+	var text := "\n".join(lines)
+	_expect_true("the hub has the five cards", text.contains("MESSAGES") and text.contains("BILLS") and text.contains("INVENTORY") and text.contains("OPPORTUNITIES") and text.contains("PEOPLE"))
+	_expect_true("...and says when the rent is", text.contains("RENT DUE IN") and text.contains("3 DAYS"))
+	_expect_true("...and counts what you hold", text.contains("4") and text.contains("ITEMS"))
+	var buttons: Array = []
+	_collect_buttons(screen, buttons)
+	var pay_early := false
+	var recent_dre := false
+	for b in buttons:
+		if str((b as Button).text).begins_with("PAY EARLY"):
+			pay_early = true
+		if str((b as Button).text).begins_with("DRE"):
+			recent_dre = true
+	_expect_true("...and the recent conversations", text.contains("RECENT MESSAGES") and recent_dre)
+	_expect_true("...and offers to pay early", pay_early)
+	# The inventory page.
+	screen._choose_category("inventory")
+	lines = []
+	_collect_labels(screen, lines)
+	text = "\n".join(lines)
+	_expect_true("inventory lists the bag", text.contains("Weed") and text.contains("3 units"))
+	_expect_true("...and what is under the coat", text.contains("Carhartt"))
+	_expect_true("...and the cash by colour", text.contains("clean"))
+	# The thread: dividers by the part of the day, the unread line, and a
+	# reply that reads as yours.
+	screen._choose_category("texts")
+	screen._choose_sender("Yalonda")
+	lines = []
+	_collect_labels(screen, lines)
+	text = "\n".join(lines)
+	_expect_true("the thread is grouped by the part of the day", text.contains("DAY 5 ·"))
+	_expect_true("...with the unread line before what waits on you", text.contains("UNREAD"))
+	_expect_true("...and the sender named once per bubble", text.contains("YALONDA"))
+	for msg in gs.phone_inbox:
+		if str((msg as Dictionary).get("from", "")) == "Yalonda":
+			screen._on_reply(str((msg as Dictionary).get("id", "")), "a")
+	lines = []
+	_collect_labels(screen, lines)
+	text = "\n".join(lines)
+	_expect_true("a reply reads as sent", text.contains("SENT"))
+	_expect_true("...and the unread line is gone", not text.contains("UNREAD"))
+	# Home's text card lands on Messages.
+	var nav: Node = get_node("/root/ScreenManager")
+	nav.set_meta("phone_category", "texts")
+	_free_screen(screen)
+	screen = _instantiate_screen("res://ui/screens/phone.tscn")
+	if screen != null:
+		_expect_str("asked for by name, the phone opens on Messages", str(screen._category), "texts")
+		_expect_true("...and forgets the request", not nav.has_meta("phone_category"))
+		_free_screen(screen)
+	gs.reset_to_new_game()
+
 ## TU-D2 (1.3.0): earn it on the street. A thing counts once however many
 ## heard it; showing up is capped; the cards are what earn a name; a
 ## rank-up says why; soldiers wait for a name; a text from a stranger
@@ -19594,7 +19675,10 @@ func _check_the_day_has_edges(gs: Node) -> void:
 	# The hero, at a time of day, falls back to the banner.
 	var portraits := preload("res://data/portraits.gd")
 	_expect_true("a timed banner that does not exist is the plain banner or nothing",
-		portraits.district_header_at("north_star_lot", "NIGHT") == portraits.district_header("north_star_lot"))
+		portraits.district_header_at("downtown", "NIGHT") == portraits.district_header("downtown"))
+	_expect_true("Spenard at night is its own picture",
+		portraits.district_header_at("north_star_lot", "NIGHT") != null
+		and portraits.district_header_at("north_star_lot", "NIGHT") != portraits.district_header("north_star_lot"))
 	gs.reset_to_new_game()
 
 ## SA-D1 (1.1.0): the morning after. Juan says how a day goes, in his voice,
@@ -22141,7 +22225,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14293
+const MIN_CHECKS := 14316
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

@@ -75,12 +75,24 @@ static func district_header(district_id: String) -> Texture2D:
 
 ## TU-D1 (1.3.0): the same banner at a time of day -- `district_spenard_night`
 ## and so on -- falling back to the plain banner, then to nothing.
+## The Home variants are named `home_<district>_<slot>` (the first four are
+## Spenard's, 750x300); `district_<x>_<slot>` is honoured too.
+const HOME_STEMS := {
+	"north_star_lot": "home_spenard", "downtown": "home_downtown",
+	"airport_industrial": "home_shipcreek", "mountain_view": "home_mountainview",
+}
+
 static func district_header_at(district_id: String, slot: String) -> Texture2D:
 	var stem := str(DISTRICT_HEADERS.get(district_id, ""))
 	if stem.is_empty():
 		return null
 	var suffix := slot.to_lower()
 	if not suffix.is_empty():
+		var home_stem := str(HOME_STEMS.get(district_id, ""))
+		if not home_stem.is_empty():
+			var home: Texture2D = _load("%s_%s" % [home_stem, suffix])
+			if home != null:
+				return home
 		var timed: Texture2D = _load("%s_%s" % [stem, suffix])
 		if timed != null:
 			return timed

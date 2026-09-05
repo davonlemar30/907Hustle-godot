@@ -204,6 +204,7 @@ func _on_people() -> void:
 	nav.go_to(nav.PEOPLE)
 
 func _on_texts() -> void:
+	nav.set_meta("phone_category", "texts")
 	nav.go_to(nav.PHONE)
 
 ## Home is where the most surfaces are gated, so the gates run FIRST and every

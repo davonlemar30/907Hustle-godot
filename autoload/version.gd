@@ -90,7 +90,15 @@ extends Node
 ## and .10 as this game has them. New systems on the territory the 1.0.0
 ## contest opened, squarely MINOR. One schema bump (v33: the districts he
 ## is out of, and the hold toward it).
-const VERSION := "1.2.0"
+##
+## 1.3.0 (Tighten It Up): the 1.2.0 playtest, answered. The day has edges
+## (TU-D1), a name is earned on the street and once per thing (TU-D2), the
+## phone in your hand from the owner's mockups (TU-D3), cards that say what
+## is happening with no subtext, seizure at booking, drops, buyers (TU-D4),
+## and clock in, move up, again: experience on the ladder, a word about
+## money, a moment every shift (TU-D5). MINOR. One schema bump (v34, the
+## day's buyers).
+const VERSION := "1.3.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

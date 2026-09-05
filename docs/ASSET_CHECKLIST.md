@@ -50,6 +50,38 @@ ride card between districts, and on the arrival sheet the first time.
 | `district_shipcreek.webp` | Ship Creek (`airport_industrial`) |
 | `district_mountainview.webp` | Mountain View |
 
+## Home by time of day — 750 × 300
+
+Shown as Home's hero instead of the district banner when the file for the
+current part of the day exists. Spenard's four are in (1.3.0, Codex).
+
+| File | District · part |
+|---|---|
+| `home_spenard_morning.webp` | Spenard · morning |
+| `home_spenard_afternoon.webp` | Spenard · afternoon |
+| `home_spenard_evening.webp` | Spenard · evening |
+| `home_spenard_night.webp` | Spenard · night |
+| `home_downtown_<part>.webp` | Downtown, four parts |
+| `home_shipcreek_<part>.webp` | Ship Creek, four parts |
+| `home_mountainview_<part>.webp` | Mountain View, four parts |
+
+## Encounter scenes — 750 × 400
+
+A strip across the top of the encounter sheet, chosen by what the moment
+is. All five are in (1.3.0, Codex).
+
+| File | Shown for |
+|---|---|
+| `encounter_street.webp` | the street: most wander cards |
+| `encounter_police.webp` | a stop, a search, a warrant, a checkpoint |
+| `encounter_robbery.webp` | a blown lift or stickup |
+| `encounter_crew.webp` | Curtis's people, retaliation, the doorstep |
+| `encounter_deal.webp` | a meeting, the 907List meet, the kid on the corner |
+
+Reserved, present, not yet read by anything: `district_fairview.webp`,
+`district_govhill.webp`, `venue_airstrip_barber.webp`, `venue_bunker.webp`
+(districts and venues the game does not have yet).
+
 ## Venue interiors — 750 × 400
 
 Shown as the background of a venue's own screen, where one exists. Venues

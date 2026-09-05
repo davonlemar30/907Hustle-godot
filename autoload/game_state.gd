@@ -656,7 +656,8 @@ func job_pay_range(job_id: String) -> Dictionary:
 		return {}
 	var rec: Dictionary = job_records.get(job_id, {})
 	var rank: int = int(rec.get("rank", 0))
-	var mult: float = 1.0 + float(rank) * 0.10
+	# TU-D5: the word about money, if you had it.
+	var mult: float = (1.0 + float(rank) * 0.10) * (1.0 + float(rec.get("raise", 0.0)))
 	var band: Array = job["pay"]
 	return {"min": int(round(float(band[0]) * mult)), "max": int(round(float(band[1]) * mult)), "rank": rank}
 

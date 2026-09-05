@@ -2052,6 +2052,67 @@ with shipped code).
 
 ---
 
+## D-31 — Tighten It Up: the 1.2.0 playtest, answered
+
+**Decided** 2026-09-04 · **Ships in** 1.3.0, five PRs (`#166` the day has
+edges, `#167` earn it on the street, `#168` the phone in your hand, `#169`
+say what is happening, `#170` clock in, move up, again) · **Source:** the
+creative director's 1.2.0 playtest and two phone mockups
+
+### The question
+
+The playtest said the game falls apart the longer it is played: days run
+together and shifts get missed, a name comes too fast and from the wrong
+things, the phone is cluttered, the cards are vague and the roads spoil
+themselves, a popup duplicates, jail hands back the stash, the first
+week was not free, and the game still seemed to think it ends. It also
+said what the game is: open-ended, net worth as the score, the encounter
+cards as the bread and butter. The question was which of those are
+systems and which are copy, and which existing systems each rides.
+
+### The rulings
+
+**TU-D1 — the day has edges.** A day-break sheet at `DAY_START`, a read
+of the night's feed and today's obligations, never a write. The first
+rent on day eight because Yalonda said the first week was free. Bills
+payable ahead, the due day moving out from where it stood. Rejected: a
+clock (the game's time is four parts; a divider names them).
+
+**TU-D2 — a thing counts once.** Rank folds observation rows by key
+across ledgers; presence is capped; money weighs two. The cards earn the
+name; a rank-up says what did it. Soldiers gate at Known like crew. A
+notice from an unmet NPC routes through Juan. Rejected: raising the tier
+floors (the fan-out was the bug, not the floors).
+
+**TU-D3 — the phone in your hand.** The mockups are the spec; no separate
+design pass. A hub category, a contact list, a thread with day dividers
+and an unread line, the inventory page. No data-model change: every
+count is a read of the inbox and the run. Rejected: true clock
+timestamps (the game has parts of a day, and says so).
+
+**TU-D4 — say what is happening.** Roads are buttons; the copy table
+survives for the engine's API. Cards say what is in front of you; new
+cards must still carry a FIGHT road with odds. A scene strip at 36px. A
+booking takes what is on you and adds it to the time. A mark drops a
+thing at 15% (0.4 and 0.25 pushed the everyday criminal's Heat to the
+gate). A corner read turns up a buyer for the day, persisted (v34) so a
+reload keeps it, never touching the oracle walk. Rejected: hiding the
+arrest warning (that it CAN book you is a rule) and hiding the odds
+(BB-D6's contract stands).
+
+**TU-D5 — clock in, move up, again.** Experience places you one rung up
+if you held the second rung elsewhere. The hire sheet's word about
+money: take it, ask (charisma, 10%), name a number (intelligence, 20%,
+a miss costs standing). A moment every shift from the manager's own
+table and a shared floor table; a write-up is a strike on the same count
+as a missed day, through one `_fire`. Rejected: a separate negotiation
+screen (the hire sheet is the moment).
+
+### Recommended next
+
+A playtest of 1.3.0; the assets still missing (see `docs/ASSET_CHECKLIST.md`);
+sound; the middle days; Simone and Curtis's own texts (FS-002.11).
+
 ## D-30 — His Side of the Board: a front is a bill, hold it down, he comes back, the board in words
 
 **Decided** 2026-09-04 · **Ships in** 1.2.0, five PRs (`#159` a front is a

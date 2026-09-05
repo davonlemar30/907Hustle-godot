@@ -2052,6 +2052,59 @@ with shipped code).
 
 ---
 
+## D-30 — His Side of the Board: a front is a bill, hold it down, he comes back, the board in words
+
+**Decided** 2026-09-04 · **Ships in** 1.2.0, five PRs (`#159` a front is a
+bill, `#160` hold it down, `#161` he comes back, `#162` the board in words,
+the close-out) · **Source:** FS-002's remaining slices, reconciled against
+the game as built
+
+### The question
+
+FS-002 was written for a territory model with control steps and a
+pressure case. The game shipped a different one: a contest through the
+confrontation loop, nightly probes, fronts that cleared on sight, and
+Rank where Respect had been. The slices still named real gaps -- a front
+that cost nothing, no way to defend but soldiers, a rival who never came
+back, no gate at the end of the arc, and a Turf screen printing odds as
+integers. The question was how much of TI-002 to build versus how much
+of it the existing pieces already answered.
+
+### The rulings
+
+**HS-D1 — a front is a bill.** The front the contest opens persists and
+counts quiet nights; three close it. Contested pays half and runs a point
+hotter. No control steps: the block is yours or it is not, and the front
+is the cost of it being newly yours. Rejected: TI-002's +2/+1/0/-1 income
+ladder (a fifth state nobody would read).
+
+**HS-D2 — presence, not posture.** Fortify and intervention became one
+thing each: Tone on a district for the night through the crew-operations
+substrate (discovered, assigned, exclusive, settled, proposed like the
+rest), and you on one corner for a part of the day. Both read at probe
+time off state the save already carries. Rejected: a Territory-specific
+Tone availability table (the ticket forbade it; the substrate has one).
+
+**HS-D3 — he comes back, and then he does not.** Recovery is a front
+re-opened on the weakest block you took, every fourth night, at even
+money, never in Spenard. The dismantleable gate is a district: every
+block he started with yours, none contested, two settles running, then
+durable. The unlock D-2 asked for is the district itself -- no probes, a
+quarter more on the corners, the city noticing. Rejected: "+2 Respect"
+(Respect is gone; three ledgers write growth instead), and a capability
+snapshot (there are no capabilities to snapshot).
+
+**HS-D4 — the board in words.** Five state words, a risk band, an odds
+band, a district count, all pure functions pinned in parity, and a Turf
+that never prints a probability. Rejected: a separate projection layer
+(the pure functions on the system are the projection).
+
+### Recommended next
+
+FS-002.11 (the narrative events around the war: a text from Curtis when
+he loses a district, Simone), the assets and sound, the QA pass, and the
+cuts the 0.9.0 review asked for.
+
 ## D-29 — Somebody Shows You Around: the first ten minutes, the beater, Mina, the house
 
 **Decided** 2026-09-04 · **Ships in** 1.1.0, five PRs (`#153` the first ten

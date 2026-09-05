@@ -211,6 +211,7 @@ func _ledger_for_write(npc_id: String) -> Array:
 
 # --- OG-D2 (1.0.0): rank, derived from the ledgers ------------------------
 const RANK := preload("res://data/rank.gd")
+const REPLIES := preload("res://data/phone_replies.gd")
 
 func rank_score() -> int:
 	return RANK.score_of(gs.npc_ledgers)
@@ -237,12 +238,25 @@ func _notice_rank(before_index: int) -> void:
 		return
 	var tier: Dictionary = RANK.by_index(after_index)
 	gs.log_activity(str(tier["line"]), Color(0.882, 0.651, 0.227))
+	# TU-D2 (1.3.0): what did it. The playtest reached Connected without
+	# knowing how; the feed says the three things that counted most.
+	var reasons: Array = RANK.reasons_of(gs.npc_ledgers)
+	if not reasons.is_empty():
+		gs.log_activity("What did it: %s." % ", ".join(reasons), Color(0.608, 0.608, 0.608))
 	var notice: Dictionary = RANK.NOTICES.get(str(tier["id"]), {})
 	if notice.is_empty() or game_manager == null:
 		return
 	var phone: Object = game_manager.system("phone")
 	if phone != null:
-		phone.push_text(str(notice["from"]), str(notice["text"]), "rank_notice")
+		# TU-D2: a text from somebody you have not met ("Who is Pherris?")
+		# comes from Juan instead, who says who it was from.
+		var sender := str(notice["from"])
+		var sender_id := str(REPLIES.npc_for(sender))
+		var text := str(notice["text"])
+		if not sender_id.is_empty() and sender_id != "juan" and (ledger_of(sender_id) as Array).is_empty():
+			text = "somebody named %s told me to tell you: %s" % [sender, text]
+			sender = "Juan"
+		phone.push_text(sender, text, "rank_notice")
 
 func _key(spec: Dictionary) -> String:
 	return "%s|%s|%s" % [str(spec.get("type", "")), str(spec.get("event", "")), str(spec.get("location", ""))]

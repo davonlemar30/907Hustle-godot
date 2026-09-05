@@ -16234,7 +16234,12 @@ const ECON_CORRIDORS: Dictionary = {
 	# for a player who keeps moving rather than one the new mechanic prices
 	# out of the strategy.
 	"arbitrage": {"floor": 140, "ceiling": 320},
-	"flipper": {"floor": 280, "ceiling": 430},
+	# TU-D2 (1.3.0): a name is earned once per thing now, however many people
+	# heard it, and showing up is capped. Known arrives later for a profile
+	# that only trades or only holds corners, so the board's second tier and
+	# the soldier hire land later too. Measured 274%; floor lowered to the
+	# measured number's margin rather than the name made cheap again.
+	"flipper": {"floor": 260, "ceiling": 430},
 	"trader": {"floor": 0, "ceiling": 15},
 	# STK-D1 (0.3.0): closes `86bbjngyz`. Measured at 6% on the post-A/B
 	# baseline (was 2%, single digits was the whole point — "2% was the
@@ -16327,7 +16332,12 @@ const ECON_CORRIDORS: Dictionary = {
 	# rest by walking, and `settler` is gated. Measured 213% on this build's
 	# own sweep (was 284 at 0.7.0); floor lowered to the measured number's own
 	# margin, disclosed, not tuned back -- the reveal is the point.
-	"settler": {"floor": 200, "ceiling": 520},
+	# TU-D2 (1.3.0): a name is earned once per thing now, however many people
+	# heard it, and showing up is capped. Known arrives later for a profile
+	# that only trades or only holds corners, so the board's second tier and
+	# the soldier hire land later too. Measured 180%; floor lowered to the
+	# measured number's margin rather than the name made cheap again.
+	"settler": {"floor": 170, "ceiling": 520},
 	# PR E: measured at 91% of the day job (5 Dre loans taken, 21 Book loans
 	# funded, averaged over the 4 seeds) — leverage roughly breaks even
 	# against steady work once Dre's cut and the arc's own time cost are
@@ -19261,6 +19271,7 @@ func _check_batch15(gs: Node, gm: Node) -> void:
 	_check_the_yalonda_intro(gs)
 	_check_the_first_morning(gs)
 	_check_the_day_has_edges(gs)
+	_check_earn_it_on_the_street(gs)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 
@@ -19455,6 +19466,66 @@ func _check_rebuild_is_a_rebuild(gs: Node) -> void:
 ## charge is worse than no sheet — and it has to CHANGE NOTHING, because it is
 ## introducing a run that has already been reset and is the one thing positioned
 ## to make a fresh run not fresh.
+## TU-D2 (1.3.0): earn it on the street. A thing counts once however many
+## heard it; showing up is capped; the cards are what earn a name; a
+## rank-up says why; soldiers wait for a name; a text from a stranger
+## comes through Juan.
+func _check_earn_it_on_the_street(gs: Node) -> void:
+	var rank := preload("res://data/rank.gd")
+	var exposure: Node = get_node("/root/Exposure")
+	var gm: Node = get_node("/root/GameManager")
+	var territory: Object = gm.system("territory")
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	var row := {"key": "presence|steady_work|north_star_lot", "type": "presence", "event": "steady_work",
+		"location": "north_star_lot", "source": "neighborhood", "count": 3, "day": 1}
+	for npc_id in ["yalonda", "juan", "mina", "dre", "goodie", "deshawn", "eli", "tone"]:
+		gs.npc_ledgers[npc_id] = [row.duplicate()]
+	_expect_int("eight ledgers hearing about the same shifts is one thing", int(rank.score_of(gs.npc_ledgers)), 3)
+	_expect_str("...and showing up alone is a New Face at most, never Known", str(exposure.rank_id()), "new_face")
+	gs.npc_ledgers["juan"].append({"key": "presence|seen_around|downtown", "type": "presence", "event": "seen_around",
+		"location": "downtown", "source": "neighborhood", "count": 3, "day": 2})
+	_expect_int("showing up somewhere else does not add: presence is capped", int(rank.score_of(gs.npc_ledgers)), 3)
+	gs.npc_ledgers["juan"].append({"key": "discretion|talked_through_a_stop|north_star_lot", "type": "discretion",
+		"event": "talked_through_a_stop", "location": "north_star_lot", "source": "direct", "count": 1, "day": 3})
+	gs.npc_ledgers["mina"].append({"key": "discretion|talked_through_a_stop|north_star_lot", "type": "discretion",
+		"event": "talked_through_a_stop", "location": "north_star_lot", "source": "network", "count": 1, "day": 3})
+	_expect_int("a card outcome counts once too, and it counts", int(rank.score_of(gs.npc_ledgers)), 4)
+	gs.npc_ledgers["juan"].append({"key": "violence|ran_up_on_a_thief|north_star_lot", "type": "violence",
+		"event": "ran_up_on_a_thief", "location": "north_star_lot", "source": "direct", "count": 2, "day": 4})
+	gs.npc_ledgers["juan"].append({"key": "growth|has_a_car|north_star_lot", "type": "growth",
+		"event": "has_a_car", "location": "north_star_lot", "source": "neighborhood", "count": 1, "day": 5})
+	_expect_int("...and different things add up", int(rank.score_of(gs.npc_ledgers)), 8)
+	_expect_str("...to Known", str(exposure.rank_id()), "known")
+	var reasons: Array = rank.reasons_of(gs.npc_ledgers)
+	_expect_true("the reasons are the things that did it (%s)" % str(reasons), reasons.size() == 3 and "ran up on a thief" in reasons)
+	# Soldiers wait for a name.
+	gs.reset_to_new_game()
+	gs.cash = 5000
+	gs.clean_cash = 5000
+	_expect_true("a nobody cannot hire a soldier", str(territory.recruit_soldier_blocker()).contains("name"))
+	_stage_rank(gs, "known")
+	_expect_str("a Known can", str(territory.recruit_soldier_blocker()), "")
+	# The staging helper still stages.
+	gs.reset_to_new_game()
+	_stage_rank(gs, "player")
+	_expect_true("staging still reaches Player", bool(exposure.has_rank("player")))
+	# A stranger's text comes through Juan.
+	gs.reset_to_new_game()
+	gs.phone_inbox = []
+	gs.npc_ledgers = {}
+	_stage_rank(gs, "connected")
+	exposure._notice_rank(rank.index_of("player"))
+	var from := ""
+	var body := ""
+	for msg in gs.phone_inbox:
+		if str((msg as Dictionary).get("text", "")).contains("how to reach you"):
+			from = str((msg as Dictionary).get("from", ""))
+			body = str((msg as Dictionary).get("text", ""))
+	_expect_str("Connected, never having met Pherris, hears it from Juan", from, "Juan")
+	_expect_true("...who says who it was from", body.contains("Pherris"))
+	gs.reset_to_new_game()
+
 ## TU-D1 (1.3.0): the day has edges. The day-break sheet reads the night
 ## and the day; the first week is free; bills pay ahead; a rebuilt Home card
 ## never stacks.
@@ -21703,6 +21774,7 @@ func _check_city_chain(gs: Node, gm: Node) -> void:
 func _check_turf_costs_no_slot(gs: Node, gm: Node) -> void:
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
+	_stage_rank(gs, "known")  # TU-D2: a soldier wants a name behind the corner too
 	gs.cash = 100000
 	var day_before: int = int(gs.day)
 	var slot_before: int = int(gs.time_slots_today)
@@ -22069,7 +22141,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14281
+const MIN_CHECKS := 14293
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

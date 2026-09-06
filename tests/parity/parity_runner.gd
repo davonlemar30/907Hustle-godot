@@ -2259,9 +2259,18 @@ func _check_fs001_ranks(gs: Node, fixture: Dictionary) -> void:
 	}
 	for row in fixture["curve_lookups"]:
 		var name: String = str(row["curve"])
-		_expect_float("fs001 curve %s @%d" % [name, int(row["rank"])],
-			float(gs.curve_value_for_rank(curves[name], int(row["rank"]), 1.0)),
-			float(row["value"]))
+		var rank: int = int(row["rank"])
+		var want: float = float(row["value"])
+		# RM-D6 (1.4.0): the oracle's wage curves stop at three entries and
+		# clamp; this build authors a fourth. At ranks 1-3 the oracle is the
+		# truth, byte for byte. Above 3 a wage curve reads its own fourth
+		# entry, and the CLAMP-UP rule the fixture was recorded to prove is
+		# asserted against the curve's last entry instead of the oracle's.
+		if name.begins_with("wage_") and rank > 3:
+			var curve: Array = curves[name]
+			want = float(curve[curve.size() - 1])
+		_expect_float("fs001 curve %s @%d" % [name, rank],
+			float(gs.curve_value_for_rank(curves[name], rank, 1.0)), want)
 	# The fallback is reachable only when a curve is empty, which is the one
 	# path that must NOT clamp to something the player never earned.
 	var empty: Dictionary = fixture["curve_empty"]
@@ -2411,14 +2420,22 @@ func _check_crew_regression() -> void:
 			crew.defense_multiplier(), 1.50)
 	gs.crew_records.erase("tone")
 
-	# Wages: the curve at every rank, unchanged, including above the curve.
+	# Wages: ranks 1-3 byte-for-byte what 1.3.0 paid (RM-D6), the fourth
+	# entry per member, and a clamp above it -- for every member, including
+	# Eli, who had no curve at all.
 	for entry in [["deshawn", 1, 50], ["deshawn", 2, 100], ["deshawn", 3, 200],
-			["deshawn", 4, 200], ["tone", 3, 250], ["pherris", 2, 120], ["eli", 3, 45]]:
+			["deshawn", 4, 260], ["deshawn", 6, 260],
+			["tone", 1, 85], ["tone", 2, 150], ["tone", 3, 250], ["tone", 4, 330],
+			["pherris", 1, 60], ["pherris", 2, 120], ["pherris", 3, 220], ["pherris", 4, 300],
+			["eli", 1, 45], ["eli", 2, 45], ["eli", 3, 45], ["eli", 4, 70], ["eli", 5, 70]]:
 		_expect_int("crew wage %s rank %d" % [str(entry[0]), int(entry[1])],
 			gs.crew_wage_for(str(entry[0]), int(entry[1])), int(entry[2]))
+	for member in ["deshawn", "tone", "pherris", "eli"]:
+		_expect_int("crew wage curve %s has four entries" % member, (gs.TIER_WAGES[member] as Array).size(), 4)
 
-	# Promotion gates: unchanged requirements, and the top of the authored
-	# ladder is reported as a fact rather than only as a message.
+	# Promotion gates: tiers 2 and 3 produce the exact strings 1.3.0's two
+	# `if`s produced (RM-D4), and the top of the authored ladder is reported
+	# as a fact rather than only as a message.
 	gs.crew_records["eli"]["tier"] = 1
 	gs.crew_records["eli"]["loyalty"] = 6
 	gs.crew_records["eli"]["recruited_day"] = gs.day
@@ -2432,20 +2449,62 @@ func _check_crew_regression() -> void:
 	_expect_int("crew promote raises the rank", int(gs.crew_record("eli")["tier"]), 2)
 	_expect_str("crew rank 2 reads as PROVEN", crew.rank_label("eli"), "PROVEN")
 	_expect_true("crew promote keeps proofs", gs.crew_record("eli").has("proofs"))
+	gs.crew_records["eli"]["loyalty"] = 8
+	_expect_str("crew promote to 3 needs loyalty 9", crew.promote_blocker("eli"), "Needs loyalty 9.")
+	gs.crew_records["eli"]["loyalty"] = 9
+	_expect_str("crew promote to 3 needs twelve days", crew.promote_blocker("eli"), "Needs 7 more days.")
 
-	# At the top of the AUTHORED ladder there is nowhere to go, even though
-	# ranks 4-6 have labels. That gap is the whole shape of this build.
+	# RM-D5 (1.4.0): rank 3 is no longer the top. The fourth rung wants the
+	# shared floor first (loyalty, then tenure, in that order) and then his
+	# OWN proof -- bags actually run -- and says how far short he is.
+	var texts_before: int = (gs.phone_inbox as Array).size()
 	gs.crew_records["eli"]["tier"] = 3
-	_expect_true("crew rank 3 is the top of the authored ladder", crew.at_top_rank("eli"))
-	_expect_str("crew promote at the top", crew.promote_blocker("eli"), "Nowhere higher to go.")
+	gs.crew_records["eli"]["loyalty"] = 7
+	gs.crew_records["eli"]["recruited_day"] = gs.day - 30
+	_expect_true("crew rank 3 is not the top any more", not crew.at_top_rank("eli"))
 	_expect_str("crew rank 3 reads as TRUSTED", crew.rank_label("eli"), "TRUSTED")
+	_expect_str("crew promote to 4 needs loyalty 8", crew.promote_blocker("eli"), "Needs loyalty 8.")
+	gs.crew_records["eli"]["loyalty"] = 8
+	gs.crew_records["eli"]["recruited_day"] = gs.day - 10
+	_expect_str("crew promote to 4 needs twenty days", crew.promote_blocker("eli"), "Needs 10 more days.")
+	gs.crew_records["eli"]["recruited_day"] = gs.day - 20
+	_expect_str("crew promote to 4 needs his own proof", crew.promote_blocker("eli"), "Needs 4 bags run, has 0.")
+	crew.record_proof("eli", "run_the_bag", 2)
+	_expect_str("crew promote to 4 counts the bags", crew.promote_blocker("eli"), "Needs 4 bags run, has 2.")
+	crew.record_proof("eli", "scout_district", 9)
+	_expect_str("crew promote to 4 is not fooled by the other counter", crew.promote_blocker("eli"), "Needs 4 bags run, has 2.")
+	crew.record_proof("eli", "run_the_bag", 2)
+	_expect_str("crew promote to 4 clears on his own work", crew.promote_blocker("eli"), "")
+	_expect_true("crew promote to 4 dispatches", gm.dispatch("promote_crew", {"crew_id": "eli"}))
+	_expect_int("crew promote to 4 raises the rank", int(gs.crew_record("eli")["tier"]), 4)
+	_expect_str("crew rank 4 reads as SPECIALIST LEAD", crew.rank_label("eli"), "SPECIALIST LEAD")
+	_expect_int("crew rank 4 pays the fourth entry", gs.crew_wage_for("eli", 4), 70)
+	_expect_int("crew rank 4 is one text in his voice", (gs.phone_inbox as Array).size(), texts_before + 1)
+	# Rank 4 is the top of the AUTHORED ladder: 5 and 6 have labels and no
+	# entry, and PROMOTE hides there rather than advertising them.
+	_expect_true("crew rank 4 is the top of the authored ladder", crew.at_top_rank("eli"))
+	_expect_str("crew promote at the top", crew.promote_blocker("eli"), "Nowhere higher to go.")
+	# Every member has a rank-4 proof on their own operation, and the rows
+	# are well-formed for the evaluator (a proof row without a key would
+	# fail closed, which is the right direction but the wrong reason).
+	for member in ["pherris", "eli", "deshawn", "tone"]:
+		var rows: Array = crew.tier_requirements(member, 4)
+		_expect_int("crew %s has three rows to rank 4" % member, rows.size(), 3)
+		var proof_row: Dictionary = rows[2]
+		_expect_true("crew %s's proof is their own operation" % member,
+			(gs.CREW_CAPABILITIES[member] as Dictionary).has(str(proof_row["key"])))
+		_expect_true("crew %s's proof key is an operation" % member, gs.PROOF_LABELS.has(str(proof_row["key"])))
+		_expect_true("crew %s's rows carry their id" % member, rows.all(func(r): return str(r.get("crew_id", "")) == member))
+	_expect_true("crew rank 5 has no entry", not gs.CREW_TIER_REQUIREMENTS.has(5))
 
 	# A record saved before `proofs` existed reads as {} rather than erroring —
-	# which is why this needed no save schema bump.
+	# which is why this needed no save schema bump. At rank 3 it is told, in
+	# words, that it has done nothing yet.
+	gs.crew_records["eli"]["tier"] = 3
 	gs.crew_records["eli"].erase("proofs")
 	_expect_true("crew legacy record has no proofs key", not gs.crew_record("eli").has("proofs"))
 	_expect_true("crew legacy proofs read as empty", crew.crew_proofs("eli").is_empty())
-	_expect_true("crew legacy record still promotes cleanly", crew.at_top_rank("eli"))
+	_expect_str("crew legacy record is short its proof, not broken", crew.promote_blocker("eli"), "Needs 4 bags run, has 0.")
 	# `crew_proofs()` also type-guards the value, but that guard is deliberately
 	# NOT asserted here: the function returns a typed Dictionary, so a guarded
 	# read and an unguarded one both yield {} — the engine recovers the type
@@ -4054,8 +4113,13 @@ func _check_fs001_settlement_ordering(gs: Node, gm: Node, ops: RefCounted) -> vo
 func _check_fs001_economy(gs: Node, gm: Node, ops: RefCounted) -> void:
 	var delegated: Dictionary = _fs001_run(gs, gm, ops, true, 30)
 	var solo: Dictionary = _fs001_run(gs, gm, ops, false, 30)
+	# RM-D6 (1.4.0): the same run at TRUSTED and at SPECIALIST LEAD. Reported,
+	# never tuned here: what a rung costs in payroll against what the board
+	# returns is the evidence the PR body carries (86bbjkccu's standing rule).
+	var trusted: Dictionary = _fs001_run(gs, gm, ops, true, 30, 3)
+	var lead: Dictionary = _fs001_run(gs, gm, ops, true, 30, 4)
 
-	for row in [delegated, solo]:
+	for row in [delegated, solo, trusted, lead]:
 		var metrics: Dictionary = row
 		print(("fs001 economy: %s — days %d · cash $%d · delegated cycles %d · "
 			+ "locked capital $%d · player slots free %d")
@@ -4069,6 +4133,19 @@ func _check_fs001_economy(gs: Node, gm: Node, ops: RefCounted) -> void:
 				int(metrics["exposure_delta"]), int(metrics["curtis_delta"]),
 				int(metrics["gross"]), int(metrics["profit"])])
 		print("fs001-economy-metrics: %s" % JSON.stringify(metrics))
+
+	# RM-D6: a rung costs more recurring payroll than the rung below -- the
+	# pressure the owner asked for -- and the lead run still plays and still
+	# delegates. Wages counted as paid plus still owed, since a run that
+	# cannot pay is exactly the run this measures.
+	var wage_bill := func(row: Dictionary) -> int:
+		return int(row["wages_paid"]) + int(row["wages_owed"])
+	_expect_true("rank 3 costs more payroll than rank 2 over the same month",
+		wage_bill.call(trusted) > wage_bill.call(delegated))
+	_expect_true("rank 4 costs more payroll than rank 3 over the same month",
+		wage_bill.call(lead) > wage_bill.call(trusted))
+	_expect_true("the rank-4 run actually played", int(lead["days"]) > 1)
+	_expect_true("...and actually delegated", int(lead["delegated_cycles"]) > 0)
 
 	# --- the invariants ---
 	_expect_true("the delegated run actually played",
@@ -4108,9 +4185,12 @@ func _check_fs001_economy(gs: Node, gm: Node, ops: RefCounted) -> void:
 
 ## One seeded economy run. `delegate` decides whether she is asked each morning.
 func _fs001_run(gs: Node, gm: Node, ops: RefCounted, delegate: bool,
-		days: int) -> Dictionary:
+		days: int, rank: int = 2) -> Dictionary:
 	var exposure := get_node("/root/Exposure")
 	_rb_ready(gs, 2500)
+	# RM-D6 (1.4.0): the same thirty days at a chosen rank, so the wage a rung
+	# costs is measured on a driven run rather than guessed.
+	gs.crew_records[RB_CREW]["tier"] = rank
 	gs.run_seed = "fs001-economy"
 	gs.day = 1
 	# `_rb_ready` writes `gs.cash` directly, which is one of TI-003 §6's named
@@ -4132,7 +4212,8 @@ func _fs001_run(gs: Node, gm: Node, ops: RefCounted, delegate: bool,
 	var curtis_before: int = int(gs.curtis_awareness)
 	var cash_before: int = int(gs.cash)
 	var metrics: Dictionary = {
-		"label": "delegated" if delegate else "solo",
+		"label": ("delegated" if delegate else "solo") + ("" if rank == 2 else "_rank%d" % rank),
+		"rank": rank,
 		"delegated_cycles": 0, "gross": 0, "profit": 0,
 		"player_slots_free": 0, "wages_paid": 0, "missed_obligations": 0,
 		"locked_capital": 0,
@@ -22403,7 +22484,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14516
+const MIN_CHECKS := 14566
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

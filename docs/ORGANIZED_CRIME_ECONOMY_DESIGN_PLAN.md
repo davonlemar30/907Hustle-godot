@@ -572,8 +572,35 @@ system in `SETTLE_ORDER` (a registered system with the base
 nights), calls the police (Heat + District Pressure), goes to the rival
 (allegiance flips against you), or resists in a room. **Geography ≠
 allegiance:** a Downtown venue node keeps its `earning` as the door; the
-business behind it is a separate row (ORG-Q3 asks the owner to confirm this
-does not double-pay).
+business behind it is a separate row — **ruled 2026-09-06 (ORG-Q3: yes)**.
+
+**Owner rulings, 2026-09-06 (recorded here; the build prompt is
+`BUILD_HER_SIDE_OF_THE_STREET_PROMPT.md`):**
+- **One place, many doors.** The same Spenard establishment already lives
+  under several shipped ids (Wash & Go is a job, a stickup target, a territory
+  node and a job manager; the Chevron is a Boost target, a stickup target and
+  a night manager). A business row is the one new identity and carries a
+  `links` map to the shipped ids; nothing is renamed or duplicated.
+- **The first set is a hybrid**, small and varied: existing places where the
+  fiction supports it (Wash & Go, the Spenard Chevron) plus two new authored
+  businesses whose *future* strategic value justifies them (the Northern
+  Lights Motel — higher-risk, Curtis-protected, the motel's beds in P7; Arctic
+  Auto & Tire — a garage, stands off the board, the mechanic seam in P7). The
+  laundromat is the laundering seam. The Night Owl stays out of the first set.
+- **The take is bounded.** An authored base take; pressure bands raise it
+  modestly (`[1.0, 1.15, 1.3, 1.3]` as starting targets) while raising
+  resentment, Heat, District Pressure, rival involvement and closure risk; the
+  highest band is a business pushed toward failure, never a tier worth
+  keeping. A cooperative arrangement pays the base at no pressure and is meant
+  to be the strongest long-term choice. Acceptance bar: over thirty driven
+  nights, EV(band 3) < EV(band 0).
+- **Routes for the first build:** ASK (the owner's disposition band), LEAN
+  (a confrontation chain), TAKE (a lean at a rival-protected business).
+  **Buy-in with clean money moves to P7** — ownership is the seed of every
+  capability and ships with them.
+- **The dismantle gate is untouched** (D-30): rival-protected businesses do
+  not extend the condition for putting Curtis out of a district; when he is
+  out, his businesses there go neutral.
 
 ### 6.6 Strategic infrastructure
 
@@ -668,7 +695,7 @@ P0  Foundation repair: validator clamp → MAX_CREW_RANK; capability table total
  │     │       every scope for free)                                         [ORG-Q6]
  │     │     │
  │     │     ├─→ P3  Item model: ITEMS, armor, armory, weapon reads extended
- │     │     │       to stickup / arrest / seizure / checkpoint (v35)         [ORG-Q1, ORG-Q2]
+ │     │     │       to stickup / arrest / seizure / checkpoint (v36)         [ORG-Q1, ORG-Q2]
  │     │     │     └─→ P4  Sources: dealers as opportunities, introductions
  │     │     │            from the shipped cards, scarcity
  │     │     │            └─→ P5  Crew kit + soldier readiness
@@ -702,10 +729,11 @@ P0  Foundation repair: validator clamp → MAX_CREW_RANK; capability table total
 8. `curtis_*` persisted names — new data keyed by `rival_id`, old names left.
 
 **Schema map:** P1 none (nested keys, precedent `proofs`); P2 none (a status
-string already persisted); P3 v35 additive (`armor`, `armory`); P4 none
+string already persisted); P3 v36 additive (`armor`, `armory`); P4 none
 (opportunities are persisted instances); P5 none (nested `kit`, per-district
 readiness in a persisted dict — one bump if a new top-level dict is preferred);
-P6 v36 additive (`businesses`); P7 none; P8 v37 additive (`rival_people_known`,
+P6 **v35** additive (`businesses` — renumbered 2026-09-06: P6 ships before
+P3); P7 none; P8 v37 additive (`rival_people_known`,
 per-person state); P9 none; P10 none (a brief on `crew_assignments`).
 
 ---
@@ -811,7 +839,7 @@ owed against $1,889 of profit over thirty days (rank 3: $5,060 / $2,083)._
 
 ### P3 — The item model
 
-Additive v35 (`armor`, `armory`), `ITEMS` with `slot`, weapon read by stickup
+Additive v36 (`armor`, `armory`), `ITEMS` with `slot`, weapon read by stickup
 (un-pin `weaponBonus`), arrest severity ARMED row, booking seizes the weapon
 (ORG-Q2), checkpoint STASH IT covers the trunk, armor composed with
 `absorbed_damage`. Confrontation suite (4,429) is the guard. Blocked by ORG-Q1
@@ -827,11 +855,14 @@ introductions; a Phone contact per source. No schema. Needs P3.
 `kit` per member (rank-gated), per-district readiness word, probe rates read
 it, losses degrade it. Needs P2, P3, P4.
 
-### P6 — Businesses
+### P6 — Businesses — **next: 1.5.0 "Her Side of the Street"**
 
-Definitions, runtime rows (v36), owner ledgers, four routes, a `businesses`
-settle step, overpressure outcomes, Turf rows under the district. Parallel to
-P3. Blocked by ORG-Q3 on the venue-node question only.
+Definitions, runtime rows (**v35**), owner ledgers, three routes (ASK, LEAN,
+TAKE; buy-in moves to P7), a `businesses` settle step after territory, bands
+and a bounded take, overpressure outcomes, the promise (backing) and the
+probe/abandon/dismantle hand-offs, Turf rows under the district. Parallel to
+P3. ORG-Q3 ruled 2026-09-06; the full rulings are in §6.5 and the prompt
+`BUILD_HER_SIDE_OF_THE_STREET_PROMPT.md` (HSS-D1..D10, four PRs).
 
 ### P7 — Infrastructure
 
@@ -893,7 +924,7 @@ weapons ticket asked for; it also changes a 1.0.0 balance the owner tuned
 node earns as the door, the business pays separately for protection; (b) the
 business replaces the node's earning. *Consequences:* (a) is additive and
 keeps 0.9.0's tuning; (b) is a migration of Downtown's economy.
-*Recommendation:* **(a)**. **Blocks:** P6.
+*Recommendation:* **(a)**. **Ruled 2026-09-06: (a).**
 
 **ORG-Q4 — Which comes first after P1: equipment (P2–P5) or businesses
 (P6–P7)?** They are parallel. Equipment is the readiness report's stated
@@ -901,7 +932,7 @@ priority; businesses are the larger missing *gameplay* layer, need no ruling
 beyond Q3, and unblock crew capacity. *Recommendation:* **businesses first**
 (P6 → P7), because the safehouse is on the critical path to lieutenants and
 because a business is content the player meets on day one of a build, where a
-vest is not. **Blocks:** the 1.5.0 prompt only.
+vest is not. **Ruled 2026-09-06: businesses first.**
 
 **ORG-Q5 — Does a second rival organization exist in this initiative?**
 DD-002 defers multiple factions; the vacuum needs somebody to fill it.
@@ -929,9 +960,49 @@ authored consequences (flip, betrayal); (c) also by the player's choice.
 lieutenants?** *Plain:* rank 5 needs a third crew slot to mean anything.
 *Recommendation:* **yes**, P7 before P10. **Blocks:** the order of 1.6.0+.
 
+**Questions raised and ruled in the 1.5.0 planning pass (2026-09-06):**
+
+**ORG-Q10 — Which businesses form the first playable Spenard set?** Ruled: a
+hybrid — existing places where the fiction supports protection, extortion
+and allegiance, plus two or three new authored businesses whose future
+strategic value justifies them (laundromat, motel, mechanic); one shared
+identity per establishment, never a Boost record and a business record for
+the same door; the set kept small and varied.
+
+**ORG-Q11 — How does the take relate to pressure?** Ruled: an authored base
+take; bands raise it modestly and raise every cost with it; the top band is a
+business being pushed toward failure; a cooperative arrangement is meant to
+be the strongest long-term economic choice.
+
+**ORG-Q12 — Do rival-protected businesses touch the dismantle gate?** Ruled:
+no, not in 1.5.0; D-30 stands; his businesses go neutral when he is out.
+
 ---
 
-## 10. Recommended next build — 1.4.0 "Room to Move Up"
+## 10. Recommended next build
+
+### 1.5.0 "Her Side of the Street" — recommended 2026-09-06
+
+**P6**, four PRs (one place; her side of the street; breaking, and his; the
+close-out), ruling family **HSS**, version **1.5.0** (MINOR), schema **v35**
+(one additive field, `businesses`). Prompt:
+`BUILD_HER_SIDE_OF_THE_STREET_PROMPT.md` at the repo root. Owner rulings
+ORG-Q3, Q4, Q10, Q11 and Q12 were taken in chat on 2026-09-06 and are recorded
+in §6.5 and §9; the prompt's owner defaults (band words, starting numbers,
+two new names, the Night Owl out, the lean's pressure family) are asked again
+on day one.
+
+Why this and not equipment: the fresh post-1.4.0 review found no reason to
+leave the businesses path — it needs no ruling beyond the ones above, it is
+content the player meets on day one of a build, it lands on the
+thinnest-covered surface (territory) with the suite that covers it, and the
+safehouse that P7 hangs off an owned business is still the prerequisite for
+lieutenants. Two facts sharpened the plan: the same Spenard doors already
+exist under three or four shipped ids each (hence "one place, many doors"),
+and the protection ask is already authored as `wt_protection` in
+`data/wander_events.gd` and does nothing.
+
+### 1.4.0 "Room to Move Up" — shipped
 
 **P0 + P1**, four PRs, ruling family **D-32**, version **1.4.0** (MINOR: a
 new reachable rank and standing briefs are new player-facing behaviour).
@@ -973,9 +1044,10 @@ every later phase cites its requirement-list shape.
 
 ## 12. What this plan deliberately does not decide
 
-Any number above rank 4 (wages at 5–6, item prices, extortion takes,
+Ruled since first writing: which district gets businesses first (Spenard,
+ORG-Q10). Still open: any number above rank 4 (wages at 5–6, item prices, extortion takes,
 readiness costs); the item catalogue's contents beyond the three shipped rows
 and a vest; the names of Curtis's people and which district each stands in;
-which district gets businesses first; the second rival; the exact proof
+the second rival; the exact proof
 thresholds (bounded in the build prompt, measured by the implementer); and
 anything about a Nile gambling floor, which is a build of its own.

@@ -2369,6 +2369,25 @@ room — and it still loses. Both halves of the bar are now asserted in parity.
   moved the day — all discovery producers. It now states its day-one premise
   explicitly instead of inheriting one.
 
+### The close-out's long live session
+
+A fresh run driven to day 35 through the real game: the laundromat **asked**
+(Lani at WARM, no room, no roll), the Chevron **leaned** (band 1), the Motel
+**taken** off Curtis (band 1, awareness 2). Then thirty settled nights.
+
+Nightly take ran 132, 132, 126, 126, then 120 for the rest — the two leaned
+bands decaying one step each after four quiet nights, exactly as HSS-D5 says,
+and settling at $35 + $40 + $45. That last $45 is the Motel paying **half** of
+its $90: its own Motel Row node was never held, `let_down` is true on the row,
+and the owner's ledger took the hit once rather than nightly. Total **$3,636**
+across thirty nights, every dollar dirty and under the `businesses` earnings
+key, with no game over and a clean log.
+
+The relationship cost reads exactly as designed at the end of it: **Lani
+NEUTRAL** (asked, never leaned), **Marcus COLD** (leaned), **Bev COLD**
+(taken). Asking costs nothing on the ledger; the other two roads cost the
+person.
+
 ### What this binds
 
 Nothing outside the businesses surface. No shipped id is renamed. The dismantle

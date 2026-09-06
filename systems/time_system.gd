@@ -103,6 +103,20 @@ func can_handle(action: String) -> bool:
 func handle(action: String, _payload: Dictionary) -> Dictionary:
 	if action != "advance_time":
 		return {"ok": false, "reason": "Unknown time action."}
+	# FL-D1 (1.5.1): a run that is over does not get another slot.
+	#
+	# Every ACTION already refused on `game_over` in its own handler -- wander,
+	# the rooms, the hustles -- but the clock did not, so a finished run could
+	# still burn its parts of the day and roll into tomorrow. That was invisible
+	# while the only endings were chosen or scheduled; the floor made it
+	# reachable, because a player killed mid-day is left standing on a screen
+	# whose only remaining control is the one that moves time.
+	#
+	# Refused here rather than in `GameManager` so it reads the same way as
+	# every other system's guard, and so the reckoning's NEW RUN button --
+	# which resets rather than advancing -- is untouched.
+	if gs.game_over:
+		return {"ok": false, "reason": "The run is over."}
 	# Canon advanceRun hands restorePhoneIfReady the absolute slot from BEFORE
 	# the move, so a line paid for this slot cannot come back in the same slot.
 	var previous_absolute: int = phone.now_slot_number()

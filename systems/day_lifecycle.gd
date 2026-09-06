@@ -142,7 +142,10 @@ const ROLLOVER_ORDER: Array[String] = [
 ## on it, so the quiet rule correctly declines to fire on top of this.
 const POST_SETTLE_ORDER: Array[String] = [
 	"pressure_clean_recovery",
-	# OG-D4: the day you chose closes.
+	# OG-D4, corrected by FL-D3 (1.5.1): this step keeps its NAME and has no
+	# job. There is no way out any more; all it does is neutralise a stale
+	# `leaving` flag from a pre-1.5.1 save. The name stays because the lifecycle
+	# trace is pinned literally and a rename would move a pin for nothing.
 	"way_out",
 ]
 

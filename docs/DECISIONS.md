@@ -17,9 +17,13 @@ D-2 and D-4, the `CAUGHT_EFFECTS` anomaly, and the `legal_worker` baseline.
 
 ## D-2 — The ending
 
-**Status: open — escalated, not answered.** Recorded here per Build 18's own
-exit criteria ("D-2 answered or escalated"), because answering it is outside
-what this session has standing to do.
+**Status: RULED 2026-09-06 — see D-34.** Open from the project's beginning
+until 1.5.1. D-28 (OG-D4) gave the question its first shipped answer — a way
+out, three losses — and 1.5.1's owner ruling replaced the first half of that
+answer outright: **wealth never ends this game.** The terminal outcomes of the
+street-life simulation are **death** and incarceration severe enough to end the
+run. Everything below is the original escalation, kept as written because the
+question it asks is the one D-34 answers.
 
 **Decided (that it needs deciding) by** the 2026-08-23 studio pass · **Ticket**
 `86bbjxtfz` · **Constraint honoured in** Batch 18 PR 3 (FS-002.3)
@@ -2049,6 +2053,150 @@ about the day-cross settlement order, and the resolution — code wins, with the
 reason recorded — is exactly steps 2–4 of this protocol run against a case the
 protocol did not originally anticipate (a *document*, not a brief, disagreeing
 with shipped code).
+
+---
+
+## D-34 — The Floor: death at zero, and there is no way out
+
+**Decided** 2026-09-06 · **Ships in** 1.5.1, three PRs (the floor; the first
+week; the close-out) · **Source:** the 1.3.0–1.5.0 playtests and the owner's
+ending ruling of 2026-09-06; `BUILD_THE_FLOOR_PROMPT.md`; ClickUp `86bbvrc0j`
+(health), the OUT-ending record, `86bbvrc1d` (rent), `86bbvrc1n` (Juan),
+`86bbvrc2q` (People cards), `86bbvrc3b` (Turf) · **Closes D-2**
+
+### The question
+
+Two of these are corrections and one is a change to what the game is for.
+
+**A player could sit at zero health and keep playing.** Reproduced on 1.5.0 by
+a headless probe: health forced to 0, two days advanced, the run still open, a
+wander accepted. The web canon ended the run there (`game-core.js:6504`,
+`endRun(state, "killed")`) and the Godot port never carried it over. `ending.gd`
+read health nowhere — it ended a run four ways and none of them was dying.
+That is a release blocker.
+
+**The game had a "cash out".** At Boss, with clean money past a threshold that
+scaled with what you had built, the player left and the run was declared won —
+D-28's "the win condition is the way out". The owner has ruled that out of the
+game: 907Hustle is a long career in which a surviving player keeps building
+wealth and organization into the hundreds of thousands or millions, and
+legitimacy at the top **expands** what the player can do rather than ending the
+run.
+
+### The rulings
+
+**FL-D1 — Zero is death, and it is checked in one place.** `ending.note_health()`
+ends the run with kind `dead` when `health <= 0` and the run is open. It is
+called from `GameState.reconcile_persistent_invariants()`, which every
+successful dispatch already runs **before** `state_changed` — so the reckoning
+is on screen on the same refresh as the hit, and the encounter sheet that dealt
+the damage never gets a frame over a dead player.
+
+**No write site checks health.** All fourteen writers are untouched, and that is
+the point of the placement: a room authored next year inherits the floor without
+knowing the floor exists. `HEADS["dead"]` is "IT ENDS HERE", `KICKERS["dead"]`
+is "THE CITY GOT YOU", and the reason names no source — the feed's last line is
+the source. `dead` joins `_validate_ending`'s allowed kinds.
+
+**FL-D2 — Injury is not death.** Nothing about health above zero changes:
+recovery, the clinic, the doctor and the gym's min-health gates stay as they
+are. The two rooms authored to floor health at 1 — `territory.gd`'s contest
+loss and `businesses.gd`'s lean loss — keep their floor, asserted against the
+source. No damage number moved.
+
+**FL-D3 — There is no out.** `leave_city`, `stay`, `_leave`, `leave_blocker`,
+`way_out_threshold` and the three `WAY_OUT_*` constants are **deleted**, not
+deprecated (the `spenard_blocks` rule), along with Home's CASH OUT card. The
+ending system now handles no action at all. **No money threshold of any kind
+replaces it.**
+
+The `way_out` POST_SETTLE step **keeps its name** — the lifecycle trace is
+pinned literally — and its body becomes "clear a stale `leaving`, end nothing".
+`_validate_ending` repairs `leaving` to `false` unconditionally with a note,
+because the only true value it can now hold is a stale one naming a departure
+night that will never arrive; the field stays captured, since removing a
+persisted field is a schema change and this build does not have one.
+
+**Legacy only:** `"out"` survives in the validator's allowed kinds, in
+`HEADS`/`KICKERS` and in `game_over.gd`'s `won` branch, each commented as
+existing for saves that already ended that way and never produced again.
+`dead` is deliberately **not** green.
+
+### Measured (MEAS-D1) — which hits can now kill
+
+Twelve sites clamp damage to 0 and can therefore reach it. Two clamp to 1 and
+cannot. No number moved; this is the authored damage as it already stood.
+
+| Site | Authored damage | Worst single hit |
+|---|---|---|
+| `doorstep.gd:530` | 4 / 12 / 20 by road and tier | **20** |
+| `stickup.gd:305` | `INJURY_BANDS` messy [5,10], catastrophic [15,25] | **25** |
+| `stickup.gd:1208` | room run [1,5] messy, [4,10] failure | 10 |
+| `stickup.gd:634` | caught-tier band | band |
+| `corner.gd:417` | 6/10 stiff, 8/14 push | 14 |
+| `wander.gd:1671` | 4 or 12 | 12 |
+| `nine07list.gd:743` | 6 or 8 | 8 |
+| `boost.gd:485` | `injury_band` by tier and Boost tier | band |
+| `dre_collector.gd:338` | `injury_band` from the collection effects | band |
+| `confrontation_loop.gd:314` | the script's `health` effect | script |
+| `retaliation.gd:382` | the retaliation effect's `health` | effect |
+| `venues.gd:239` | 1–4 by tier | 4 |
+| `territory.gd:465` | contest loss — **floors at 1** | non-lethal |
+| `businesses.gd:677` | lean loss — **floors at 1** | non-lethal |
+
+Every one of these is reduced by Tone first (`CrewSystem.absorbed_damage`),
+which is the one existing mitigation and is unchanged.
+
+### Real bugs and consequences this caught
+
+- **The settler economy profile now dies in half its seeds.** The driven
+  30-day sweep's wander-heaviest profile — ~36 walks, taking street damage the
+  whole way, and the driver never rests, visits the clinic or buys a doctor —
+  measured **158% of the day job with a 50% game-over rate and an average run
+  of 28 days**, against 244% and a full 31 days before the floor existed. The
+  corridor floor was lowered to the measured number's own margin and
+  **disclosed rather than tuned back**, the same way every prior entry in
+  `ECON_CORRIDORS` was. **This is the finding worth an owner's attention:** a
+  player who never heals dies inside a month, and the game has no
+  injury/recovery pressure loop that makes that a choice rather than an
+  accident. Recorded as follow-up; explicitly not fixed here (FL-D2).
+- **A finished run could still spend time, and two places were quietly doing
+  it.** Every ACTION refused on `game_over` in its own handler — wander, the
+  rooms, the hustles — but the CLOCK did not. A live probe of a dead player
+  burned four slots and rolled from day 12 into day 13. That was invisible
+  while the only endings were chosen (the way out) or scheduled overnight; the
+  floor made it reachable, because a player killed mid-day is left on a screen
+  whose only remaining control is the one that moves time. `advance_time` now
+  refuses on `game_over`, in the same shape every other system's guard uses.
+
+  Adding that guard immediately exposed the second place: parity's RNG-drift
+  comparison drives a "loud" 39-day run of two crimes a day, and it was
+  reaching the third serious booking on **day 21** (`_end("sentence")`) and
+  maxing Curtis's attention on **day 22** (`_end("curtis")`) — then driving on
+  for another eighteen days, because nothing stopped it. **The second half of
+  every drift comparison has been measuring a run that was already over.** The
+  driver now suppresses both endings the way it already suppressed cash and
+  bans, and asserts it finished alive.
+
+  My own first version of the death arm missed this too: it asserted only that
+  `gs.day` had not moved, which one `advance_time` inside a day satisfies
+  without refusing anything. It now asserts the clock.
+- **DOOR-D1's assertion had to be restated rather than deleted.** The doorstep
+  suite pinned "nothing in this file ever sets `game_over` directly" at floor
+  health. With the floor live, a fight that takes the last point now ends the
+  run — through the shared end-condition machinery, which is exactly what
+  DOOR-D1 defers to. The arm now asserts that if it ended, health is zero and
+  the kind is `dead`, so the rule's real guarantee (the room invents no ending
+  of its own) is stronger than the literal it replaced.
+
+### What this binds
+
+Nothing beyond the ending. Eviction and Curtis-at-the-door ship exactly as
+D-28 left them — whether they belong in a game whose only terminals are death
+and incarceration is a follow-up question for the owner, recorded in ClickUp,
+not changed here. No injury/hospitalization system exists; the owner's ruling
+names those as *permitted* consequences above zero, which is roadmap. No
+schema bump: every change is a new value in an old field.
 
 ---
 

@@ -847,13 +847,28 @@ func _validate_hot_goods(state: Dictionary, repairs: Array[String]) -> void:
 		clean.append(item)
 	state["hot_goods"] = clean
 
-## v31 (OG-D4). A kind the ending knows, a bool, a dictionary of ints.
+## v31 (OG-D4), corrected by FL-D1 and FL-D3 (1.5.1).
+##
+## `"dead"` is the kind 1.5.1 added. `"out"` stays in the allowed set as
+## **legacy only** -- no road produces it after FL-D3, but a save that ended
+## that way before 1.5.1 must still load and still render its reckoning, and
+## dropping the kind would clear the ending off exactly those saves.
+##
+## `leaving` is repaired to `false` UNCONDITIONALLY rather than merely
+## type-checked. There is no way out any more, so the only true value the field
+## can hold is a stale one from a pre-1.5.1 save that chose a departure night
+## which will now never arrive; left alone it would sit there forever, read by
+## nothing. The field stays in the capture list -- removing a persisted field
+## is a schema change and this build does not have one.
 func _validate_ending(state: Dictionary, repairs: Array[String]) -> void:
-	if state.has("game_over_kind") and not str(state["game_over_kind"]) in ["", "out", "evicted", "sentence", "curtis"]:
+	if state.has("game_over_kind") and not str(state["game_over_kind"]) in ["", "dead", "out", "evicted", "sentence", "curtis"]:
 		state["game_over_kind"] = ""
 		_repair(repairs, "game_over_kind", "unknown; cleared")
 	if state.has("leaving"):
 		_bool(state, "leaving", false, "leaving", repairs)
+		if bool(state["leaving"]):
+			state["leaving"] = false
+			_repair(repairs, "leaving", "the way out was removed in 1.5.1; cleared")
 	if state.has("curtis_doorstep"):
 		_int(state, "curtis_doorstep", 0, "curtis_doorstep", repairs)
 		state["curtis_doorstep"] = clampi(int(state["curtis_doorstep"]), 0, 3)

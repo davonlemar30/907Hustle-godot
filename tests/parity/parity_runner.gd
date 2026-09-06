@@ -14252,6 +14252,31 @@ func _check_market_stream_non_drift(gs: Node, gm: Node, engine: RefCounted) -> v
 	guard = 0
 	while int(gs.day) < TARGET_DAY and guard < 20000:
 		guard += 1
+		# FL-D1 (1.5.1): this arm measures RNG DRIFT across a loud run, not
+		# survival, and it has to stay ALIVE to measure a full one.
+		#
+		# It already topped the wallet and the health bar up before each crime so
+		# a booking always had a lane. Two more top-ups are needed now, and the
+		# the rest exposed a real defect. Health moves to the front of the loop so
+		# a fight lost inside a chain cannot end the run mid-comparison; the
+		# SERIOUS-prior count and Curtis's doorstep counter are reset because two
+		# crimes a day for thirty-nine days reaches the third serious booking
+		# around day 21 (`_end("sentence")`) and maxes Exposure with nobody
+		# standing with you by day 22 (`_end("curtis")`).
+		#
+		# Until 1.5.1 nothing noticed. The run ended on day 21 and the driver kept
+		# robbing and advancing for another eighteen days, because a finished run
+		# could still spend time -- so the second half of every drift comparison
+		# was measuring a run that was already over. The clock refuses now
+		# (FL-D1), which is what turned a silent measurement into a failing arm.
+		# These are suppressions of endings this arm does not measure, in exactly
+		# the spirit of the cash and ban top-ups already here; the sentence and
+		# Curtis rules are asserted where they belong, in the ending arms.
+		gs.health = int(gs.health_max)
+		var record: Dictionary = gs.arrest_record
+		record["serious"] = 0
+		gs.arrest_record = record
+		gs.curtis_doorstep = 0
 		delayed_seen = delayed_seen or not gs.consequence_queue.is_empty()
 		var day_before: int = int(gs.day)
 		if not (gs.active_consequence as Dictionary).is_empty():
@@ -14288,6 +14313,7 @@ func _check_market_stream_non_drift(gs: Node, gm: Node, engine: RefCounted) -> v
 		int(gs.arrest_record["priors"]) > 0 or gs.district_pressure.size() > 0)
 	_expect_true("the loud arm reached the delayed path too", delayed_seen)
 	_expect_true("the loud arm reached the target day", int(gs.day) >= TARGET_DAY)
+	_expect_true("...without the run having ended under it", not gs.game_over)
 
 	# --- and every board matches, day for day ---
 	var compared: int = 0
@@ -16435,7 +16461,24 @@ const ECON_CORRIDORS: Dictionary = {
 	# that only trades or only holds corners, so the board's second tier and
 	# the soldier hire land later too. Measured 180%; floor lowered to the
 	# measured number's margin rather than the name made cheap again.
-	"settler": {"floor": 170, "ceiling": 520},
+	#
+	# FL-D1 (1.5.1): **this profile now dies.** Zero health ends a run as of
+	# this build, and `settler` is the wander-heaviest driver in the sweep --
+	# ~36 walks over thirty days, taking street damage the whole way, and the
+	# driver never rests, visits the clinic or buys a doctor. Measured 158%
+	# across 4 seeds with a **50% game-over rate** and an average run of 28 days
+	# rather than 31; the profiles that do not walk are unmoved.
+	#
+	# The floor is lowered to the measured number's own margin and NOT tuned
+	# back, the same way every entry above was: the corridor is a measurement,
+	# and the measurement moved because a real bug was fixed. Rebalancing which
+	# hits reach zero is explicitly out of this build's scope (FL-D2), so the
+	# number is disclosed rather than defended. **What this exposes is real and
+	# is worth an owner's decision:** a player who never heals dies inside a
+	# month, and the game has no injury/recovery pressure loop to make that a
+	# choice rather than an accident. That is recorded as follow-up, not fixed
+	# here.
+	"settler": {"floor": 150, "ceiling": 520},
 	# PR E: measured at 91% of the day job (5 Dre loans taken, 21 Book loans
 	# funded, averaged over the 4 seeds) — leverage roughly breaks even
 	# against steady work once Dre's cut and the arc's own time cost are
@@ -19929,7 +19972,10 @@ func _check_the_day_has_edges(gs: Node) -> void:
 				way_outs += 1
 			elif str(child.name) == "CarCard":
 				cars += 1
-		_expect_int("three refreshes, one cash-out card", way_outs, 1)
+		# FL-D3: the cash-out card is deleted, so the thing this arm guards is now
+		# that repeated refreshes still produce exactly ONE car card -- the
+		# duplicate-card bug it was written for -- and none of the removed one.
+		_expect_int("three refreshes, no cash-out card", way_outs, 0)
 		_expect_int("...and one car card", cars, 1)
 		_free_screen(home)
 	# The hero, at a time of day, falls back to the banner.
@@ -20315,6 +20361,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_mina_vale(gs, gm)
 	_check_the_house_talks_back(gs, gm)
 	_check_one_good_run(gs, gm)
+	_check_the_floor(gs, gm)
 	_check_stolen_goods_have_a_name(gs, gm)
 	_check_his_blocks_fight_back(gs, gm)
 	_check_a_front_is_a_bill(gs, gm)
@@ -21807,37 +21854,170 @@ func _wander_card_eligible(gs: Node, gm: Node, card_id: String) -> bool:
 ## chose; the third serious booking is a sentence; Curtis comes to the door
 ## when Exposure is maxed and nobody stands with you; every ending is the
 ## one reckoning, with a line for everyone who remembers you.
+
+## FL-D1 / FL-D2 (1.5.1): zero is death, and injury is not.
+##
+## The web canon ended the run at `health <= 0` and the port never carried it
+## over -- a player could sit at zero and keep wandering. This is the arm that
+## closes it, and the property it guards is not just "death happens" but
+## **"death happens on the same dispatch as the hit"**: the check lives in
+## `GameState.reconcile_persistent_invariants()`, which runs before
+## `state_changed`, so a screen refreshing off that signal already sees the
+## reckoning rather than a live player at zero.
+func _check_the_floor(gs: Node, gm: Node) -> void:
+	var ending: Object = gm.system("ending")
+	if ending == null:
+		_fail("the floor", "no ending system")
+		return
+
+	# A fresh run is not dead. This is the danger the check's placement creates:
+	# `reconcile_persistent_invariants()` runs on the dispatch that RESETS a
+	# run too, and reading a stale health there would kill every new game.
+	gs.reset_to_new_game()
+	_expect_true("a fresh run has health", int(gs.health) > 0)
+	_expect_true("dispatching on a fresh run does not kill it", gm.dispatch("advance_time", {}))
+	_expect_true("...and the run is open", not gs.game_over)
+
+	# Zero, reached by hand, ends on the NEXT dispatch -- the save-loaded case.
+	# A 1.5.0 save carrying `health == 0` ends on its first dispatch after this
+	# build, which is correct and is what this pins.
+	gs.reset_to_new_game()
+	gs.health = 0
+	_expect_true("a run at zero is not yet ended before anything happens", not gs.game_over)
+	gm.dispatch("advance_time", {})
+	_expect_true("a save loaded at zero dies on its first dispatch", gs.game_over)
+	_expect_str("...as dead", str(gs.game_over_kind), "dead")
+	_expect_true("...with a reason that names no source",
+		not str(gs.game_over_reason).is_empty())
+
+	# The reckoning reads as itself.
+	var r: Dictionary = ending.reckoning()
+	_expect_str("death has its own head", str(r.get("head", "")), "IT ENDS HERE")
+	_expect_str("...and the city's kicker", str(r.get("kicker", "")), "THE CITY GOT YOU")
+
+	# Through a REAL room, on the same dispatch as the hit. A stickup at one
+	# health is the shortest road: the injury roll is the source, and the
+	# assertion is that both the damage and the ending land on the one dispatch.
+	_reset_stickup_probe(gs)
+	gs.health = 1
+	var health_before: int = int(gs.health)
+	_expect_true("the room dispatches", gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET}))
+	if int(gs.health) < health_before:
+		_expect_int("the room took the last of it", int(gs.health), 0)
+		_expect_true("...and the run ended on the same dispatch", gs.game_over)
+		_expect_str("...as dead", str(gs.game_over_kind), "dead")
+	else:
+		# The seeded roll did not hurt the player on this day. That is a real
+		# outcome of a real room, not a failure -- but it proves nothing, so
+		# the arm says so out loud rather than passing silently.
+		_expect_true("the room did not hurt the player on this day; the floor is asserted elsewhere",
+			not gs.game_over)
+
+	# FL-D2: injury is not death. A room that leaves one health ends nothing,
+	# and the two rooms authored to floor at 1 keep their floor.
+	gs.reset_to_new_game()
+	gs.health = 1
+	gm.dispatch("advance_time", {})
+	_expect_true("one health is not zero", not gs.game_over)
+	_expect_int("...and stays where it was", int(gs.health), 1)
+
+	# The two non-lethal rooms, by their own clamp. Read off the source rather
+	# than driven: what is being pinned is that the floor is 1 and not 0.
+	var territory_src := FileAccess.get_file_as_string("res://systems/territory.gd")
+	var businesses_src := FileAccess.get_file_as_string("res://systems/businesses.gd")
+	_expect_true("a lost contest floors health at one, never zero",
+		territory_src.contains("clampi(gs.health - health, 1, gs.health_max)"))
+	_expect_true("a lost lean floors health at one, never zero",
+		businesses_src.contains("clampi(gs.health - health, 1, gs.health_max)"))
+
+	# A dead run cannot keep playing. The reckoning is terminal, and the
+	# original bug was precisely that it was not.
+	gs.reset_to_new_game()
+	gs.health = 0
+	gm.dispatch("advance_time", {})
+	_expect_true("premise: the run is over", gs.game_over)
+	var day_at_death: int = int(gs.day)
+	var slots_at_death: int = int(gs.time_slots_today)
+	_expect_true("a dead player cannot wander", not gm.dispatch("wander", {}))
+	_expect_true("...cannot rob anybody", not gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET}))
+	# The clock, asserted on the CLOCK and not on the calendar. The first
+	# version of this arm checked only that `gs.day` had not moved, which a
+	# single `advance_time` inside a day satisfies without refusing anything --
+	# and a live probe found exactly that: a dead player burned four slots and
+	# rolled from day 12 into day 13 while every arm here stayed green. Four
+	# dispatches, because one is not enough to cross a day from any slot.
+	for _slot in range(4):
+		_expect_true("...and cannot spend a part of the day",
+			not gm.dispatch("advance_time", {}))
+	_expect_int("...so the clock does not move", int(gs.time_slots_today), slots_at_death)
+	_expect_int("...and neither does the day", int(gs.day), day_at_death)
+	gs.reset_to_new_game()
+
 func _check_one_good_run(gs: Node, gm: Node) -> void:
 	var ending: Object = gm.system("ending")
 	_expect_true("the ending is a system", ending != null)
 	if ending == null:
 		return
+	# FL-D3 (1.5.1): there is no way out, and this arm proves the NEGATIVE.
+	#
+	# It used to drive the whole road -- threshold, blocker, `leave_city`,
+	# `stay`, the night that ended the run "out". All of that is deleted, so what
+	# is worth asserting now is that the richest possible Boss cannot buy an
+	# ending, because the owner's ruling is that wealth never ends this game.
 	gs.reset_to_new_game()
 	gs.npc_ledgers = {}
-	_expect_int("leaving clean costs the base with nothing built", int(ending.way_out_threshold()), ending.WAY_OUT_BASE)
+	_stage_rank(gs, "boss")
+	gs.clean_cash = 1000000
+	gs.cash = 1000000
 	gs.territory_nodes = {"spenard_rec_lot": {"soldiers": 1}}
 	gs.crew_records["eli"] = {"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
 		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
-	_expect_int("...and more for what you built", int(ending.way_out_threshold()),
-		ending.WAY_OUT_BASE + ending.WAY_OUT_PER_CORNER + ending.WAY_OUT_PER_CREW)
-	gs.clean_cash = 99999
-	gs.cash = 99999
-	_expect_true("clean money without the name is not the way out",
-		str(ending.leave_blocker()).contains("boss"))
-	_stage_rank(gs, "boss")
-	gs.clean_cash = 100
-	_expect_true("the name without the money is not either", str(ending.leave_blocker()).contains("clean"))
-	gs.clean_cash = 99999
-	_expect_str("both is the door", str(ending.leave_blocker()), "")
-	_expect_true("you decide", gm.dispatch("leave_city", {}))
-	_expect_true("...tonight", bool(gs.leaving))
-	_expect_true("...and can stay", gm.dispatch("stay", {}))
-	gm.dispatch("leave_city", {})
+	_expect_true("a boss with a million clean cannot leave -- the action is gone",
+		not gm.dispatch("leave_city", {}))
+	_expect_true("...and neither can they stay, because there is nothing to stay from",
+		not gm.dispatch("stay", {}))
+	_expect_true("the ending system handles no action at all",
+		not ending.can_handle("leave_city") and not ending.can_handle("stay"))
+	_expect_true("no threshold survives to be read",
+		not ending.has_method("way_out_threshold") and not ending.has_method("leave_blocker"))
+	_expect_true("a million clean is not an ending", not gs.game_over)
+
+	# A night passes and still nothing ends. The `way_out` step still runs (its
+	# name is pinned in the lifecycle trace) and does nothing but clear the flag.
+	gs.leaving = true
 	gs.time_slots_today = 3
 	gs.time_slot = "NIGHT"
 	gm.dispatch("advance_time", {})
-	_expect_true("the day closes on the run", bool(gs.game_over))
-	_expect_str("...and you made it out", str(gs.game_over_kind), "out")
+	_expect_true("a stale leaving flag ends nothing", not gs.game_over)
+	_expect_true("...and the step neutralises it", not bool(gs.leaving))
+
+	# Home renders no card for a road that does not exist, at the rank that used
+	# to show it and at the rank that used to open it.
+	for rank_id in ["connected", "boss"]:
+		gs.reset_to_new_game()
+		_stage_rank(gs, str(rank_id))
+		gs.clean_cash = 1000000
+		gs.cash = 1000000
+		var screen: Node = _instantiate_screen("res://ui/screens/home.tscn")
+		if screen != null:
+			screen.refresh()
+			var found := 0
+			for child in screen.get_node("Shell/Scroll/Pad/Content").get_children():
+				if str(child.name) == "WayOut":
+					found += 1
+			_expect_int("Home at %s renders no cash-out card" % str(rank_id), found, 0)
+			_free_screen(screen)
+
+	# The legacy kind still renders, because a save that ended that way before
+	# 1.5.1 has to keep its reckoning -- head, corners, people and crew.
+	gs.reset_to_new_game()
+	gs.npc_ledgers = {}
+	_stage_rank(gs, "boss")
+	gs.territory_nodes = {"spenard_rec_lot": {"soldiers": 1}}
+	gs.crew_records["eli"] = {"recruited": true, "status": "active", "loyalty": 5, "tier": 1,
+		"wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	gs.game_over = true
+	gs.game_over_kind = "out"
 	var r: Dictionary = ending.reckoning()
 	_expect_str("the reckoning says so", str(r.get("head", "")), "YOU MADE IT OUT")
 	_expect_true("...and names the corner", (r.get("corners", []) as Array).size() == 1)
@@ -21881,7 +22061,8 @@ func _check_one_good_run(gs: Node, gm: Node) -> void:
 	_expect_int("...and standing with you resets the count", int(gs.curtis_doorstep), 0)
 
 	# Every ending reads as itself.
-	for kind in ["out", "evicted", "sentence", "curtis"]:
+	# FL-D1 adds `dead`; `out` stays because a pre-1.5.1 save can still carry it.
+	for kind in ["dead", "out", "evicted", "sentence", "curtis"]:
 		gs.reset_to_new_game()
 		gs.game_over = true
 		gs.game_over_kind = kind
@@ -26686,8 +26867,19 @@ func _check_doorstep_never_scripted_death(gs: Node, gm: Node) -> void:
 			break
 		gm.dispatch("resolve_consequence_choice", {"choice_id": "fight"})
 	_expect_true("health is clamped at the floor, never below it", int(gs.health) >= 0)
-	_expect_true("and nothing in this file ever sets game_over directly",
-		not bool(gs.game_over))
+	# DOOR-D1's guarantee, restated for FL-D1 (1.5.1). The room still never
+	# scripts an ending of its own -- but zero health now ends a run through the
+	# shared floor in `reconcile_persistent_invariants()`, which IS "the existing
+	# end-condition machinery" this rule defers to. So the assertion is no longer
+	# "the run never ends here"; it is "if it ended, the floor ended it, and this
+	# file invented nothing".
+	if bool(gs.game_over):
+		_expect_int("...and if the room took the last of it, health is zero",
+			int(gs.health), 0)
+		_expect_str("...and the floor ended it, not the room",
+			str(gs.game_over_kind), "dead")
+	else:
+		_expect_true("the room scripted no ending of its own", int(gs.health) > 0)
 	if bool(engine.has_active()):
 		gm.dispatch("consequence_continue", {})
 

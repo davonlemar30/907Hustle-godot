@@ -234,7 +234,6 @@ func _bind_gates() -> void:
 
 func _bind_all() -> void:
 	_bind_hero()
-	_bind_way_out()
 	_bind_car()
 	_bind_wander()
 	_bind_actions()
@@ -266,57 +265,6 @@ func _free_cards(name: String) -> void:
 		if str(child.name) == name:
 			content.remove_child(child)
 			child.free()
-
-func _bind_way_out() -> void:
-	_free_cards("WayOut")
-	var ending: Object = _gm.system("ending")
-	var exposure: Node = get_node_or_null("/root/Exposure")
-	if ending == null or exposure == null or gs.game_over:
-		return
-	# Shown from Connected up: the door is visible before it opens.
-	if not exposure.has_rank("connected"):
-		return
-	var content := get_node_or_null("Shell/Scroll/Pad/Content") as VBoxContainer
-	if content == null:
-		return
-	var card := PanelContainer.new()
-	card.name = "WayOut"
-	card.theme_type_variation = &"Card"
-	card.mouse_filter = Control.MOUSE_FILTER_PASS
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 6)
-	card.add_child(v)
-	var kicker := Label.new()
-	kicker.text = "CASH OUT"
-	kicker.theme_type_variation = &"Kicker"
-	kicker.add_theme_font_size_override("font_size", 10)
-	v.add_child(kicker)
-	var body := Label.new()
-	body.theme_type_variation = &"Muted"
-	body.add_theme_font_size_override("font_size", 11)
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var need: int = int(ending.way_out_threshold())
-	body.text = ("Tonight. When the day closes you are gone with what is clean." if gs.leaving
-		else "You could leave. $%s clean and a boss's name buys the last flight out; you have $%s clean. Or you keep going. Nobody is making you." % [_commas(need), _commas(int(gs.clean_cash))])
-	v.add_child(body)
-	var blocked := str(ending.leave_blocker())
-	var b := Button.new()
-	b.custom_minimum_size = Vector2(0, 48)
-	b.focus_mode = Control.FOCUS_NONE
-	b.theme_type_variation = &"BtnPrimary" if blocked.is_empty() else &"BtnSecondary"
-	b.add_theme_font_size_override("font_size", 13)
-	if gs.leaving:
-		b.text = "STAY"
-		tap_connect(b, func() -> void: _gm.dispatch("stay", {}))
-	else:
-		b.text = "CASH OUT AT DAY'S CLOSE" if blocked.is_empty() else blocked.to_upper()
-		b.disabled = not blocked.is_empty()
-		tap_connect(b, func() -> void: _gm.dispatch("leave_city", {}))
-	v.add_child(b)
-	content.add_child(card)
-	var wander_card := get_node_or_null("Shell/Scroll/Pad/Content/Wander")
-	if wander_card != null:
-		content.move_child(card, wander_card.get_index())
 
 ## OG-D3: the beater, on Home once you have it: the trunk, and the day it
 ## would not start.

@@ -5556,7 +5556,7 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# Word of Mouth (0.1.2) appends `tips` and reorders nothing above it: a
 	# tip is a claim about today's board, so it goes last, after every other
 	# step that could still change what today's board is.
-	"DAY_START:tips", "DAY_START:ghosts", "DAY_START:mentions", "DAY_START:crew_ideas", "DAY_START:beater", "DAY_START:curtis_doorstep", "DAY_START:household", "DAY_START:day_break",
+	"DAY_START:tips", "DAY_START:ghosts", "DAY_START:mentions", "DAY_START:crew_briefs", "DAY_START:crew_ideas", "DAY_START:beater", "DAY_START:curtis_doorstep", "DAY_START:household", "DAY_START:day_break",
 	# Dre Lending & Loan-Shark Progression PR B appends `dre_intro` after
 	# `tips` for the same reason: Juan's mention reads the fully-settled day.
 	"DAY_START:dre_intro",
@@ -22484,7 +22484,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14566
+const MIN_CHECKS := 14618
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -22549,6 +22549,7 @@ func _check_batch6b(gs: Node, gm: Node) -> void:
 	_check_runner_relief(gs, gm)
 	_check_fixer_relief(gs, gm)
 	_check_one_home_for_rank(gs, gm)
+	_check_standing_brief(gs, gm)
 	_check_operation_flag_isolation(gs, gm)
 	_check_unauthored_shark_term(gs, gm)
 	gs.street_name = "Parity"
@@ -22935,6 +22936,173 @@ func _check_one_home_for_rank(gs: Node, gm: Node) -> void:
 	gs.crew_records["eli"].erase("proofs")
 	crew.record_proof("eli", "run_the_bag")
 	_expect_int("proof: a legacy record takes its first proof", int(crew.crew_proofs("eli").get("run_the_bag", 0)), 1)
+	gs.reset_to_new_game()
+
+# --- RM-D7..D9 (1.4.0): the standing brief -------------------------------------
+
+func _tone_texts(gs: Node) -> int:
+	var n := 0
+	for m in gs.phone_inbox:
+		if str((m as Dictionary).get("from", "")) == "Tone":
+			n += 1
+	return n
+
+func _brief_cross_day(gs: Node, gm: Node) -> void:
+	var owed: int = int(gs.crew_record("tone").get("wage_due", 0))
+	if owed > 0 and int(gs.cash) >= owed:
+		gm.dispatch("pay_crew", {"crew_id": "tone"})
+	var start: int = int(gs.day)
+	var guard := 0
+	while int(gs.day) == start and guard < 8:
+		gm.dispatch("advance_time", {})
+		guard += 1
+
+func _brief_stage(gs: Node, gm: Node, ops: Object, rank: int) -> void:
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_stage_rank(gs, "player")
+	gs.cash = 20000
+	gs.clean_cash = 20000
+	gs.dirty_cash = 0
+	gs.districts_unlocked = ["north_star_lot", "downtown"]
+	gs.current_district_id = "downtown"
+	gs.day = 12
+	gs.time_slots_today = 0
+	gs.time_slot = "MORNING"
+	gs.rent_due_day = 99
+	gs.phone_due_day = 99
+	gs.territory_nodes = {"downtown_transit_center": {"soldiers": 1}}
+	gs.territory_fronts = {}
+	gs.phone_inbox = []
+	_b6b_recruit(gs, "tone", 9, rank)
+	ops.reconcile()
+
+## A lead's operation renews every morning through the same gates; suspends
+## with one text and resumes without one; ends three ways and no others.
+func _check_standing_brief(gs: Node, gm: Node) -> void:
+	var ops: Object = gm.system("crew_operations")
+	var crew: Object = gm.system("crew")
+	var lifecycle: Object = gm.system("day_lifecycle")
+	if ops == null or crew == null or lifecycle == null:
+		_fail("standing brief", "a system is missing")
+		return
+	var order: Array = lifecycle.DAY_START_ORDER
+	_expect_true("brief: the morning step exists", "crew_briefs" in order)
+	_expect_true("brief: ...and runs before the ideas", order.find("crew_briefs") < order.find("crew_ideas"))
+	var stand := {"crew_id": "tone", "operation_id": "hold_it_down", "params": {"district_id": "downtown"}, "standing": true}
+
+	# Rank-gated: a TRUSTED Tone cannot hold a brief, and the reason is the
+	# rank row -- the first use of `crew_rank_min` in the build.
+	_brief_stage(gs, gm, ops, 3)
+	var refused: Dictionary = ops.handle("assign_crew_operation", stand)
+	_expect_true("brief: a TRUSTED cannot hold one", not bool(refused.get("ok", false)))
+	_expect_str("brief: ...and the reason is rank", str((refused.get("blocker", {}) as Dictionary).get("blocker_code", "")), "crew_rank_min")
+	_expect_true("brief: ...so nothing was claimed", ops.assignment_for("tone").is_empty())
+	_expect_true("brief: ...and there is no brief", not ops.has_brief("tone"))
+
+	# A SPECIALIST LEAD can. The brief is on the record, today is claimed.
+	_brief_stage(gs, gm, ops, 4)
+	_expect_true("brief: a lead takes a brief", gm.dispatch("assign_crew_operation", stand))
+	_expect_true("brief: it is on the record", ops.has_brief("tone"))
+	_expect_str("brief: ...for the operation", str(ops.brief_for("tone").get("operation_id", "")), "hold_it_down")
+	_expect_int("brief: ...since today", int(ops.brief_for("tone").get("since_day", -1)), 12)
+	_expect_true("brief: ...and today is claimed", not ops.assignment_for("tone").is_empty())
+	_expect_true("brief: a different operation is refused while standing",
+		not gm.dispatch("assign_crew_operation", {"crew_id": "tone", "operation_id": "put_it_down", "params": {"district_id": "downtown"}}))
+	var why: Dictionary = ops.handle("assign_crew_operation", {"crew_id": "tone", "operation_id": "put_it_down", "params": {"district_id": "downtown"}})
+	_expect_str("brief: ...with the brief named", str((why.get("blocker", {}) as Dictionary).get("blocker_code", "")), "on_a_brief")
+
+	# Three mornings: it renews, the night writes a proof, and the phone hears
+	# about the first night only (RM-D9).
+	var texts_before: int = _tone_texts(gs)
+	_brief_cross_day(gs, gm)
+	_expect_int("brief: night one", int(gs.day), 13)
+	_expect_true("brief: the morning renewed it", not ops.assignment_for("tone").is_empty())
+	_expect_str("brief: ...on the brief's operation", str(ops.assignment_for("tone").get("operation_id", "")), "hold_it_down")
+	_expect_true("brief: ...and the brief rode forward", ops.has_brief("tone"))
+	_expect_int("brief: night one wrote a proof", int(crew.crew_proofs("tone").get("hold_it_down", 0)), 1)
+	_expect_int("brief: the first night is one text", _tone_texts(gs) - texts_before, 1)
+	_expect_str("brief: ...and the record says it worked", str(ops.brief_for("tone").get("last_kind", "")), "worked")
+	_brief_cross_day(gs, gm)
+	_brief_cross_day(gs, gm)
+	_expect_int("brief: three nights, three proofs", int(crew.crew_proofs("tone").get("hold_it_down", 0)), 3)
+	_expect_true("brief: still claimed on the fourth morning", not ops.assignment_for("tone").is_empty())
+	_expect_int("brief: a steady brief stays off the phone", _tone_texts(gs) - texts_before, 1)
+	_expect_int("brief: ...and idle nights are zero", int(ops.brief_for("tone").get("idle_nights", 0)), 0)
+
+	# Payroll: the gate fails, the brief suspends with one text, and resumes
+	# silently the morning it is paid.
+	gs.crew_records["tone"]["wage_missed_since"] = int(gs.day) - 5
+	gs.crew_records["tone"]["wage_due"] = 500
+	var before_hold: int = _tone_texts(gs)
+	var start: int = int(gs.day)
+	var guard := 0
+	while int(gs.day) == start and guard < 8:
+		gm.dispatch("advance_time", {})
+		guard += 1
+	_expect_true("brief: an unpaid lead does not claim the morning", ops.assignment_for("tone").is_empty())
+	_expect_str("brief: ...the brief is on hold for payroll", str(ops.brief_for("tone").get("suspended", "")), "payroll_not_delinquent")
+	_expect_int("brief: ...and said so once", _tone_texts(gs) - before_hold, 1)
+	start = int(gs.day)
+	guard = 0
+	while int(gs.day) == start and guard < 8:
+		gm.dispatch("advance_time", {})
+		guard += 1
+	_expect_int("brief: a second held morning says nothing new", _tone_texts(gs) - before_hold, 1)
+	_expect_true("brief: ...and the brief is still there", ops.has_brief("tone"))
+	gs.cash = 20000
+	gs.clean_cash = 20000
+	gs.dirty_cash = 0
+	_expect_true("brief: paying clears the ledger", gm.dispatch("pay_crew", {"crew_id": "tone"}))
+	var before_resume: int = _tone_texts(gs)
+	_brief_cross_day(gs, gm)
+	_expect_true("brief: paid, it resumes", not ops.assignment_for("tone").is_empty())
+	_expect_str("brief: ...and the hold is cleared", str(ops.brief_for("tone").get("suspended", "")), "")
+	_expect_int("brief: ...without a word", _tone_texts(gs) - before_resume, 0)
+
+	# END BRIEF: today's claim stands, tomorrow is a morning decision again.
+	_expect_true("brief: END dispatches", gm.dispatch("end_crew_brief", {"crew_id": "tone"}))
+	_expect_true("brief: ...the brief is gone", not ops.has_brief("tone"))
+	_expect_true("brief: ...today's claim stands", not ops.assignment_for("tone").is_empty())
+	_expect_true("brief: END twice is refused", not gm.dispatch("end_crew_brief", {"crew_id": "tone"}))
+	_brief_cross_day(gs, gm)
+	_expect_true("brief: no brief, no claim next morning", ops.assignment_for("tone").is_empty())
+
+	# Departure takes the brief with it, quietly.
+	_expect_true("brief: a lead takes a brief again", gm.dispatch("assign_crew_operation", stand))
+	gs.crew_records["tone"]["status"] = "departed"
+	gs.crew_records["tone"]["recruited"] = false
+	var before_gone: int = _tone_texts(gs)
+	_brief_cross_day(gs, gm)
+	_expect_true("brief: a departed member has no brief", not ops.has_brief("tone"))
+	# The night he left still settles the claim he made that morning and
+	# reports it -- the existing rule for any assignment. The MORNING says
+	# nothing: no hold, no stand-down, the brief simply goes with him.
+	_expect_int("brief: ...and the morning said nothing", _tone_texts(gs) - before_gone, 1)
+
+	# Two idle nights: nothing to sit on, no proof, and the lead stands down.
+	_brief_stage(gs, gm, ops, 4)
+	gs.territory_nodes = {}
+	_expect_true("brief: a brief with nothing to hold still takes", gm.dispatch("assign_crew_operation", stand))
+	var before_idle: int = _tone_texts(gs)
+	_brief_cross_day(gs, gm)
+	_expect_int("brief: one idle night", int(ops.brief_for("tone").get("idle_nights", 0)), 1)
+	_expect_int("brief: ...is one text (the first night)", _tone_texts(gs) - before_idle, 1)
+	_expect_str("brief: ...and the record says idle", str(ops.brief_for("tone").get("last_kind", "")), "idle")
+	_expect_true("brief: ...and the morning renewed it anyway", not ops.assignment_for("tone").is_empty())
+	# The second idle night is the last: the morning after it he stands
+	# down -- one text, the brief gone, nothing claimed.
+	_brief_cross_day(gs, gm)
+	_expect_true("brief: after two idle nights he stands down", not ops.has_brief("tone"))
+	_expect_int("brief: ...and says so, once", _tone_texts(gs) - before_idle, 2)
+	_expect_true("brief: ...and claims nothing", ops.assignment_for("tone").is_empty())
+	# A day loaded mid-morning is not claimed twice: the step sees today's
+	# claim and leaves it.
+	_brief_stage(gs, gm, ops, 4)
+	_expect_true("brief: staged", gm.dispatch("assign_crew_operation", stand))
+	var claimed: Dictionary = ops.assignment_for("tone")
+	ops.day_start_briefs(int(gs.day))
+	_expect_true("brief: the step does not re-claim a claimed morning", ops.assignment_for("tone") == claimed)
 	gs.reset_to_new_game()
 
 # --- the flags ---------------------------------------------------------------

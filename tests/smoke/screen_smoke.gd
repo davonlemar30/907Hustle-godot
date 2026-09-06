@@ -257,6 +257,13 @@ func _stage_long_lines(gs: Node) -> void:
 		"tier": 3, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {}}
 	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 9,
 		"tier": 4, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {"hold_it_down": 3}}
+	# RM-D7: Tone on a standing brief -- the STANDING chip and END BRIEF at 375.
+	gs.crew_operation_state["discovered"] = ["hold_it_down", "put_it_down", "907list_run_board"]
+	gs.crew_assignments["tone"] = {"day": gs.day, "operation_id": "hold_it_down", "settled": false,
+		"result": null, "spend_limit": -1, "params": {"district_id": "north_star_lot"}, "selection": null,
+		"assigned_district_id": "north_star_lot",
+		"brief": {"operation_id": "hold_it_down", "params": {"district_id": "north_star_lot"},
+			"spend_limit": -1, "since_day": 6, "idle_nights": 0, "suspended": "", "last_kind": "worked"}}
 	var gm: Node = get_node("/root/GameManager")
 	var phone: Object = gm.system("phone")
 	if phone != null:

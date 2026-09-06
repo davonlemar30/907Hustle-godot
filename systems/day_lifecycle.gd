@@ -199,6 +199,10 @@ const DAY_START_ORDER: Array[String] = [
 	# a ghost, and the people who notice, notice at the start of the next.
 	"ghosts",
 	"mentions",
+	# RM-D7 (1.4.0): standing briefs claim their mornings BEFORE anybody
+	# proposes anything, so a lead on a brief is already out when the ideas
+	# step asks who is free.
+	"crew_briefs",
 	# BR-D6: they have their own ideas. After the block's mentions, a
 	# trusted crew member may text a proposal for the day.
 	"crew_ideas",
@@ -520,6 +524,11 @@ func _run_day_start_step(step: String, today: int) -> void:
 		if travel != null:
 			travel.day_start_beater(today)
 			travel.day_start_beater_offer(today)
+		return
+	if step == "crew_briefs":
+		var ops: Object = gm.system("crew_operations") if gm != null else null
+		if ops != null:
+			ops.day_start_briefs(today)
 		return
 	if step == "crew_ideas":
 		var ops: Object = gm.system("crew_operations") if gm != null else null

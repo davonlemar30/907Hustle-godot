@@ -104,6 +104,21 @@ func _member_row(sys: Object, person: Dictionary, hired: bool) -> Control:
 	# the screen does not know what an operation is, only how to show one.
 	var ops: Object = _gm.system("crew_operations")
 	if ops != null:
+		# RM-D7 (1.4.0): a lead on a brief. The chip says what and since
+		# when; END BRIEF is the one control, and it stops renewal from
+		# tomorrow -- today's claim stands.
+		var brief: Dictionary = ops.brief_for(id)
+		if not brief.is_empty():
+			var op_name := str(ops.OPERATION_LABELS.get(str(brief.get("operation_id", "")), "").to_upper())
+			var since: int = int(brief.get("since_day", gs.day))
+			var suspended := str(brief.get("suspended", ""))
+			var chip := "STANDING  ·  %s  ·  since day %d" % [op_name, since]
+			if not suspended.is_empty():
+				chip = "ON HOLD  ·  %s  ·  %s" % [op_name, _blocker_short(suspended)]
+			v.add_child(label(chip, "Mono", 11, AMBER, true))
+			var end_b := button("END BRIEF", false, _on_end_brief.bind(id), 44)
+			end_b.add_theme_font_size_override("font_size", 11)
+			v.add_child(end_b)
 		var duty := _duty_line(ops, id)
 		if not duty.is_empty():
 			v.add_child(label(duty, "Mono", 11, AMBER))
@@ -133,6 +148,15 @@ func _member_row(sys: Object, person: Dictionary, hired: bool) -> Control:
 				b.add_theme_font_size_override("font_size", 11)
 				b.disabled = not available
 				v.add_child(b)
+			# RM-D7: at rank 4 and above, the same operation as a standing
+			# brief. A district operation stands where the player is
+			# standing; the morning tap is still there for anywhere else.
+			if tier >= ops.BRIEF_RANK_MIN and ops.brief_for(id).is_empty():
+				var stand := button("STAND: %s" % name, false,
+					_on_stand.bind(id, str(operation_id)), 44)
+				stand.add_theme_font_size_override("font_size", 11)
+				stand.disabled = ops.brief_blocker(id, str(operation_id)) != null
+				v.add_child(stand)
 
 	var promo_blocked: String = sys.promote_blocker(id)
 	if not sys.at_top_rank(id):
@@ -186,7 +210,22 @@ func _blocker_short(code: String) -> String:
 		"crew_unassigned_today": return "already busy"
 		"planning_window_open": return "morning decision"
 		"crew_active": return "not on the crew"
+		"crew_rank_min": return "not a lead yet"
+		"on_a_brief": return "on a brief"
 	return "not available"
+
+## RM-D7: a standing brief on this operation, where the player stands.
+func _on_stand(crew_id: String, operation_id: String) -> void:
+	var ops: Object = _gm.system("crew_operations")
+	var payload := {"crew_id": crew_id, "operation_id": operation_id, "standing": true}
+	if ops != null and operation_id in ops.OPERATION_TAKES_DISTRICT:
+		payload["params"] = {"district_id": str(gs.current_district_id)}
+	if _gm.dispatch("assign_crew_operation", payload):
+		refresh()
+
+func _on_end_brief(crew_id: String) -> void:
+	if _gm.dispatch("end_crew_brief", {"crew_id": crew_id}):
+		refresh()
 
 func _on_mission(crew_id: String, operation_id: String, district_id: String) -> void:
 	var payload := {"crew_id": crew_id, "operation_id": operation_id}

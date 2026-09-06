@@ -199,13 +199,26 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## exist.
 ## v31: `game_over_kind`, `leaving`, `run_earnings` (One Good Run PR 4,
 ## OG-D4) -- the ending. Additive.
+## v35: `businesses` (Her Side of the Street PR 1, HSS-D2) -- the businesses
+## the player knows about, and where each one stands. Additive: a v34 save
+## loads with `{}` and discovers its businesses from the history it already
+## carries, because every discovery producer reads a latch that save already
+## has -- `boost_targets_discovered` for the Chevron, `jobs_discovered` for
+## the Wash & Go, a visible home district for the Motel Row. Nothing is
+## reconstructed and nothing is guessed: a place the player clocked is a place
+## the player knows, and the row says only that.
+##
+## The pressure band, the closure and the seeded-history flag all live INSIDE
+## the row rather than beside it. One field, once -- if a later slice believes
+## it needs a second top-level field for this feature, that is a design
+## question and not a schema one.
 ## v34: `market_nudges` (Tighten It Up PR 4, TU-D4) -- today's buyers, by
 ## district and product, from a READ walk.
 ## v33: `curtis_dismantled`, `curtis_dismantle_hold` (His Side of the Board
 ## PR 3, HS-D3) -- the districts he is out of, and the hold toward it.
 ## v32: `hot_goods` (One Good Run PR 5, OG-D5) -- what the Lift walked out
 ## with and has not fenced. Additive: an empty coat.
-const SAVE_VERSION := 34
+const SAVE_VERSION := 35
 const RANK := preload("res://data/rank.gd")
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
@@ -301,6 +314,8 @@ const PERSIST_FIELDS: Array[String] = [
 	"curtis_dismantled", "curtis_dismantle_hold",
 	# Today's buyers (v34, TU-D4).
 	"market_nudges",
+	# The businesses the player knows, and where each stands (v35, HSS-D2).
+	"businesses",
 	# The interruption gate's quiet streak (v25, STR-D2). Same reasoning as
 	# wander_misses above: the run's own history of a mechanic that reads it.
 	"wander_quiet_streak",
@@ -954,6 +969,11 @@ func _migrate(payload: Dictionary) -> Dictionary:
 			24:
 				# v24 -> v25: wander_quiet_streak. Purely additive -- see this
 				# arm's own paragraph by SAVE_VERSION.
+				pass
+			34:
+				# v34 -> v35: businesses. Additive; the rows are discovered
+				# from latches this save already carries -- see this arm's own
+				# paragraph by SAVE_VERSION.
 				pass
 			33:
 				# v33 -> v34: market_nudges. Additive; a day-scoped read.

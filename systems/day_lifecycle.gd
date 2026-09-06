@@ -271,7 +271,13 @@ const DAY_START_ORDER: Array[String] = [
 ## it exists so a later PR's settlement-driven objective needs no new
 ## SETTLE_ORDER entry, only a new row in its own data file.
 const SETTLE_ORDER: Array[String] = [
-	"crew", "territory", "shark", "dre", "jobs", "obligations", "opportunities",
+	# HSS-D1 (1.5.0): `businesses` settles immediately after `territory` and
+	# not anywhere else. A business's nightly pay depends on whether the ground
+	# under it is still yours (HSS-D8's backing), and Curtis's probes run
+	# inside Territory's own settlement — so a corner he took back tonight has
+	# to have been taken back before the promise on it is judged this morning.
+	"crew", "territory", "businesses", "shark", "dre", "jobs", "obligations",
+	"opportunities",
 ]
 
 var gs: Node

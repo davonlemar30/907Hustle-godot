@@ -15,6 +15,10 @@ const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
 ## Word of Mouth's ramp cap, for the same reason `WANDER_EVENTS` is here: the
 ## clamp on a corrupt `tip_misses` has to agree with the ramp it is clamping.
 const TIP_EVENTS := preload("res://data/tip_events.gd")
+## The authored businesses, for `_validate_businesses` — HSS-D2. Same reason
+## `TERRITORY_DEFS` is here: a keyed dictionary of rows that must match an
+## authored table needs the table to repair against.
+const BUSINESS_DEFS := preload("res://data/business_definitions.gd")
 
 ## Built lazily because the authored Boost table still lives on GameState.
 ## GameState extends Node, so every temporary instance must be freed explicitly;
@@ -71,6 +75,7 @@ func validate_state(input: Dictionary) -> Dictionary:
 	_validate_dre_account(state, repairs)
 	_validate_dre_account_history(state, repairs)
 	_validate_territory_nodes(state, repairs)
+	_validate_businesses(state, repairs)
 	_validate_opportunity_offers(state, repairs)
 	_validate_active_opportunities(state, repairs)
 	_validate_opportunity_history(state, repairs)
@@ -1338,6 +1343,80 @@ func _validate_territory_nodes(state: Dictionary, repairs: Array[String]) -> voi
 			_repair(repairs, "soldiers_idle", "negative; repaired to 0")
 		else:
 			state["soldiers_idle"] = int(state["soldiers_idle"])
+
+## HSS-D2 (1.5.0). The businesses the player knows, repaired against the
+## authored table the way `_validate_territory_nodes` repairs the board.
+##
+## The rule that shapes every arm below: **presence means known**. A row this
+## validator drops is not "a business with no arrangement" — it is a business
+## the player has never met, and the discovery producers will create it again
+## the moment a latch says they should. That is why an unrecognised id is
+## dropped whole rather than repaired into a neutral row: repairing it would
+## invent a meeting that never happened.
+##
+## Load-only, no write-back, following `_validate_territory_nodes`.
+func _validate_businesses(state: Dictionary, repairs: Array[String]) -> void:
+	if not state.has("businesses"):
+		return
+	if not state["businesses"] is Dictionary:
+		state["businesses"] = {}
+		_repair(repairs, "businesses", "wrong type; defaulted")
+		return
+	var rows: Dictionary = state["businesses"]
+	# Sorted for the same reason the board is: repair order must not depend on
+	# Dictionary iteration order, which GDScript does not promise across
+	# payloads.
+	var ids: Array = rows.keys()
+	ids.sort()
+	# The closure clamp needs the day the save is being read at. An absent or
+	# malformed day reads as 0, which makes every closure look like it is in
+	# the future and clamps nothing — the permissive direction, because the
+	# day arm has its own validation and this one must not double-repair it.
+	var today: int = 0
+	if state.has("day") and (state["day"] is int or state["day"] is float):
+		today = int(state["day"])
+	var cleaned: Dictionary = {}
+	for business_id in ids:
+		var path := "businesses.%s" % str(business_id)
+		var definition: Dictionary = BUSINESS_DEFS.by_id(str(business_id))
+		if definition.is_empty():
+			_repair(repairs, path, "no such business; dropped")
+			continue
+		var row: Variant = rows[business_id]
+		if not row is Dictionary:
+			_repair(repairs, path, "wrong type; dropped")
+			continue
+		var clean_row: Dictionary = (row as Dictionary).duplicate(true)
+		# Allegiance defaults to the AUTHORED start, not to neutral: the Motel
+		# is Curtis's before the player looks at it, and a corrupted row there
+		# must not quietly hand it to nobody.
+		var authored := str(definition["starting_allegiance"])
+		_string(clean_row, "allegiance", authored, path + ".allegiance", repairs)
+		if not str(clean_row["allegiance"]) in BUSINESS_DEFS.ALLEGIANCES:
+			clean_row["allegiance"] = authored
+			_repair(repairs, path + ".allegiance", "unknown allegiance; defaulted to the authored start")
+		_int(clean_row, "pressure", 0, path + ".pressure", repairs)
+		var pressure: int = int(clean_row["pressure"])
+		if pressure < 0 or pressure > int(BUSINESS_DEFS.MAX_PRESSURE):
+			clean_row["pressure"] = clampi(pressure, 0, int(BUSINESS_DEFS.MAX_PRESSURE))
+			_repair(repairs, path + ".pressure", "out of range; clamped")
+		_int(clean_row, "since_day", -1, path + ".since_day", repairs)
+		# A closure that has already expired is not a closure. Clamped to -1
+		# rather than to today so a repaired row reads "open" without also
+		# reading "closed until this morning", which the Turf copy would have
+		# to render as "closed 0 more nights".
+		_int(clean_row, "closed_until", -1, path + ".closed_until", repairs)
+		if int(clean_row["closed_until"]) <= today:
+			if int(clean_row["closed_until"]) > -1:
+				_repair(repairs, path + ".closed_until", "closure already expired; cleared")
+			clean_row["closed_until"] = -1
+		# The last break outcome this business rolled (HSS-D7), or "" for a
+		# business that has never been pushed that far. A word, not a code:
+		# Turf renders it and the feed already said it once.
+		_string(clean_row, "last_kind", "", path + ".last_kind", repairs)
+		_bool(clean_row, "history_seeded", false, path + ".history_seeded", repairs)
+		cleaned[str(business_id)] = clean_row
+	state["businesses"] = cleaned
 
 func _validate_arrest_record(state: Dictionary, repairs: Array[String]) -> void:
 	if not state.has("arrest_record"):

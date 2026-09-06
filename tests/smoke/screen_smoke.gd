@@ -264,6 +264,24 @@ func _stage_long_lines(gs: Node) -> void:
 		"assigned_district_id": "north_star_lot",
 		"brief": {"operation_id": "hold_it_down", "params": {"district_id": "north_star_lot"},
 			"spend_limit": -1, "since_day": 6, "idle_nights": 0, "suspended": "", "last_kind": "worked"}}
+	# HSS-D9 (1.5.0): Turf's BUSINESSES section at 375, in every state a row
+	# can be in at once -- an arrangement whose promise is NOT being kept (the
+	# longest line the section writes), one that is nobody's, one that is his,
+	# and one the player has not met, which must render no row at all. The
+	# Chevron's row is created by hand rather than by clocking its Boost target,
+	# so this staging says what state it wants instead of depending on a latch.
+	gs.boost_targets_discovered.append("spenard_fuel")
+	gs.businesses["wash_and_go"] = {"allegiance": "yours", "pressure": 2,
+		"since_day": 1, "closed_until": -1, "last_kind": "", "history_seeded": true}
+	gs.businesses["spenard_chevron"] = {"allegiance": "none", "pressure": 0,
+		"since_day": 1, "closed_until": -1, "last_kind": "", "history_seeded": true}
+	gs.businesses["northern_lights_motel"] = {"allegiance": "curtis", "pressure": 0,
+		"since_day": 1, "closed_until": -1, "last_kind": "", "history_seeded": true}
+	# HSS-D3: an owner appears on People the day her row exists, so Lani's row
+	# above is also what puts her on that screen with a name and a band. Vic
+	# stays off both screens -- `arctic_auto` is deliberately absent, and no
+	# producer fires for it on a day-one board.
+	gs.beater_dead_today = false
 	var gm: Node = get_node("/root/GameManager")
 	var phone: Object = gm.system("phone")
 	if phone != null:

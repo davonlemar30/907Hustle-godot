@@ -9,6 +9,9 @@ extends "res://ui/screens/surface_base.gd"
 ## FS-002.3: the authored board, off the canonical data file rather than
 ## `gs.spenard_blocks` (deleted).
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
+## HSS-D9 (1.5.0): the authored businesses, rendered as a second section under
+## the district card. The board is ground; this is who is on it.
+const BUSINESS_DEFS := preload("res://data/business_definitions.gd")
 
 ## BR-D4: which district's board is showing. UI-only; defaults to where the
 ## player is standing, because that is the board they can act on.
@@ -29,6 +32,19 @@ func _build_body() -> void:
 	body.add_child(_district_card(sys))
 	for b in TERRITORY_DEFS.nodes_in(_district):
 		body.add_child(_block_row(sys, b))
+
+	# HSS-D9: the second axis, under the same district. Only businesses the
+	# player has met appear — `known_in` refreshes discovery first, so opening
+	# Turf is itself one of the producers (the Motel Row is visible from the
+	# home district on day one, which is why his business is on this screen
+	# before any ground is).
+	var businesses: Object = _gm.system("businesses")
+	if businesses != null:
+		var known: Array = businesses.known_in(_district)
+		if not known.is_empty():
+			body.add_child(section("BUSINESSES"))
+			for definition in known:
+				body.add_child(_business_row(businesses, definition as Dictionary))
 
 	# A corner you hold that the authored table does not carry (86bbjxtab).
 	# The loop above walks the TABLE, so a held id with no definition rendered
@@ -239,6 +255,81 @@ func _block_row(sys: Object, b: Dictionary) -> Control:
 		btn.disabled = not blocked.is_empty()
 		v.add_child(btn)
 	return c
+
+## HSS-D9. One row per known business: what it is, whose it is, what it pays,
+## and whether anybody is backing the promise — in words, never a number the
+## player has to decode. No verbs in this slice; ASK, LEAN and WALK AWAY land
+## on this row next.
+func _business_row(sys: Object, definition: Dictionary) -> Control:
+	var id: String = str(definition["id"])
+	var yours: bool = bool(sys.is_yours(id))
+	var his: bool = bool(sys.is_his(id))
+	var closed: bool = bool(sys.is_closed(id))
+	var c := card()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 5)
+	c.add_child(v)
+
+	var head := HBoxContainer.new()
+	v.add_child(head)
+	var nm := label(str(definition["name"]), "CardTitle", 13, CREAM if yours else MUTED)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(nm)
+	# Whose it is, in one word, the way a block row reads.
+	var word := "OPEN"
+	var word_colour: Color = MUTED
+	if closed:
+		word = "CLOSED"
+		word_colour = RED
+	elif his:
+		word = "HIS"
+		word_colour = RED
+	elif yours:
+		# HSS-D5: at an arrangement, the word IS the pressure band.
+		word = str(BUSINESS_DEFS.band_word(int(sys.pressure_of(id))))
+		word_colour = GREEN if int(sys.pressure_of(id)) == 0 else AMBER
+	head.add_child(label(word, "Kicker", 10, word_colour))
+
+	# What it pays tonight, or why it does not.
+	if closed:
+		var left: int = int(sys.closed_nights_left(id))
+		head.add_child(label("SHUT", "Mono", 12, RED))
+		v.add_child(label("Her doors are shut. %d more night%s, and nothing comes off it until they open."
+			% [left, "" if left == 1 else "s"], "Muted", 11, RED, true))
+	elif his:
+		head.add_child(label("--", "Mono", 12, MUTED))
+		v.add_child(label("Curtis's people are in it. Whatever it makes, it makes for him.", "Muted", 11, RED, true))
+	elif yours:
+		head.add_child(label("$%d" % int(sys.take_tonight(id)), "Mono", 12, GREEN))
+		v.add_child(label("$%d a night." % int(sys.take_tonight(id)), "Muted", 11, GREEN))
+	else:
+		head.add_child(label("--", "Mono", 12, MUTED))
+
+	# The owner, and how she reads you — the same word People shows.
+	var E: Node = get_node_or_null("/root/Exposure")
+	var owner_id := str(definition["owner_id"])
+	var owner_name := str(PEOPLE_NAMES.get(owner_id, owner_id.capitalize()))
+	if E != null:
+		v.add_child(label("%s  ·  %s" % [owner_name, str(E.band_label(owner_id))], "Muted", 11, MUTED))
+	else:
+		v.add_child(label(owner_name, "Muted", 11, MUTED))
+
+	# HSS-D8: the promise, in words. Only says anything where it can be kept
+	# or broken — a business that is not yours has no promise on it.
+	if yours and not closed:
+		if bool(sys.is_backed(id)):
+			v.add_child(label("Somebody is around. She is getting what she pays for.", "Muted", 11, GREEN, true))
+		elif str(definition.get("node_id", "")).is_empty():
+			v.add_child(label("Nobody of yours holds anything around here. It pays half until somebody does.", "Muted", 11, AMBER, true))
+		else:
+			v.add_child(label("Nobody is standing on the lot. It pays half until somebody is.", "Muted", 11, AMBER, true))
+	return c
+
+## The owners' display names, shared with the People screen. Kept here rather
+## than reached across because a screen does not read another screen.
+const PEOPLE_NAMES := {
+	"lani": "Lani", "marcus": "Marcus", "bev": "Bev Halvorsen", "vic": "Vic Salazar",
+}
 
 func _on_hire() -> void:
 	if _gm.dispatch("recruit_soldier", {}):

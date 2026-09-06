@@ -114,6 +114,39 @@ const NPC_LENSES := {
 	"mina": {"archetype": "ROMANTIC", "weights": {"violence": -4.0, "discretion": 4.0}, "event_weights": {}, "source_multipliers": {"network": 2.0}},
 	"curtis": {"archetype": "THREAT", "weights": {"growth": -3.0}, "event_weights": {}, "source_multipliers": {}},
 	"dre": {"archetype": "STREET", "weights": {"financial": 4.0, "honesty": 2.0}, "event_weights": {}, "source_multipliers": {}},
+	# HSS-D3 (1.5.0): the four business owners. Each is one CIVILIAN row with a
+	# handful of overrides -- the authoring cost of a new character in this
+	# system, by design, and the reason a business owner is a row here and not
+	# a new system.
+	#
+	# `leaned_on` is priced per owner only where the owner has a reason to read
+	# it differently (HSS-D6). Where it is absent the chain falls through to the
+	# `violence` category, which CIVILIAN already prices at -3.0 -- an owner
+	# with no special history reads a lean as exactly what it is.
+	#
+	# Lani runs a laundromat on a lot that has been fought over, and she has
+	# watched the player work a shift there. She weighs discretion heavily
+	# because her business is people leaving their clothes with a stranger, and
+	# she prices a lean softer than the category would -- she asked for
+	# protection first (`wt_protection`, HSS-D10), so a hand on the counter is
+	# a bad answer to her own question rather than a stranger's threat.
+	"lani": {"archetype": "CIVILIAN", "weights": {"discretion": 2.0, "heat_exposure": -3.5},
+		"event_weights": {"leaned_on": -2.5, "asked_for_protection": 1.5}, "source_multipliers": {}},
+	# Marcus works nights alone behind glass and has already watched a till go
+	# out the door. Violence is not abstract to him and he prices a lean above
+	# what the category would.
+	"marcus": {"archetype": "CIVILIAN", "weights": {"violence": -4.0, "presence": 1.2},
+		"event_weights": {"leaned_on": -4.0}, "source_multipliers": {}},
+	# Bev has run the Motel Row under Curtis's people for years. She reads
+	# money clearly and heat less so -- a motel on that row has always had
+	# police in the lot, and one more car does not move her.
+	"bev": {"archetype": "CIVILIAN", "weights": {"financial": 2.5, "heat_exposure": -1.5},
+		"event_weights": {}, "source_multipliers": {}},
+	# Vic has a shop full of men with wrenches and does not think of himself as
+	# somebody who gets leaned on. Defiance reads positive on his lens for the
+	# same reason it does on Dre's: he respects nerve, including his own.
+	"vic": {"archetype": "CIVILIAN", "weights": {"defiance": 1.0, "violence": -2.0},
+		"event_weights": {}, "source_multipliers": {}},
 }
 
 # --- channels --------------------------------------------------------------
@@ -137,6 +170,14 @@ const NPC_CHANNELS := {
 	"mina": ["direct", "neighborhood", "network"],
 	"curtis": ["direct", "network", "reputation"],
 	"dre": ["direct", "network"],
+	# HSS-D3: an owner hears what happens at her own counter (`direct`) and
+	# what the block says about the rest of it (`neighborhood`). None of them
+	# is on the network -- that is Curtis's channel and Mina's, and a
+	# laundromat does not hear about a warehouse in Ship Creek.
+	"lani": ["direct", "neighborhood"],
+	"marcus": ["direct", "neighborhood"],
+	"bev": ["direct", "neighborhood"],
+	"vic": ["direct", "neighborhood"],
 }
 
 ## Canon CURTIS_NETWORK_CATEGORIES. **Curtis hears through a filter, not a

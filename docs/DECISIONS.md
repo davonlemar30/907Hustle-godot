@@ -2164,8 +2164,11 @@ the previous night's. Measured in parity: three steady nights are one text.
 
 ### Recommended next
 
-Ranks 5 and 6 (P10 of the design plan) after crew capacity can exceed 2;
-the availability model (ORG-011); businesses (ORG-005) as the next branch.
+Businesses (ORG-005, the design plan's P6) as the next branch, because the
+safehouse in ORG-006 is what lets crew capacity exceed 2 and lieutenants
+mean anything; the availability model (ORG-011) before any kit; ranks 5
+and 6 (P10) after both. Owner questions ORG-Q1..Q9 in the plan §9; Q3
+(venue nodes and businesses) blocks P6.
 
 ## D-31 — Tighten It Up: the 1.2.0 playtest, answered
 
@@ -2434,7 +2437,9 @@ is one line if play says otherwise).
 a Curtis block opens a `KIND_CONFRONTATION` chain through the existing
 engine with a `territory` source adapter; `contest_chance` is pure and
 pinned; FIGHT's win resolves through `_take_from_curtis` (claim, live
-front, retaliation queued); RUN is deterministic and marks his ledger.
+front — **not** a queued retaliation: `_take_from_curtis` opens the front
+and posts the soldier and queues nothing, corrected 2026-09-06 against the
+code); RUN is deterministic and marks his ledger.
 Nightly probes at SETTLE test undefended, defended and contested blocks
 at three pinned rates; a lost block is a feed line and a crew member's
 text in their voice. The territory suite takes his corners by hand

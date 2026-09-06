@@ -250,6 +250,13 @@ const LONG_LINE := "Two women outside the laundromat, talking about somebody nam
 func _stage_long_lines(gs: Node) -> void:
 	for i in 3:
 		gs.log_activity(LONG_LINE, Color(0.8, 0.8, 0.8))
+	# RM-D5 (1.4.0): the Crew screen's longest new line is a proof blocker in
+	# words ("MOVE UP  ·  NEEDS 5 BOARDS RUN, HAS 0."), and a member at the top
+	# of the authored ladder has no PROMOTE at all. Both at 375.
+	gs.crew_records["pherris"] = {"recruited": true, "status": "active", "loyalty": 9,
+		"tier": 3, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {}}
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 9,
+		"tier": 4, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {"hold_it_down": 3}}
 	var gm: Node = get_node("/root/GameManager")
 	var phone: Object = gm.system("phone")
 	if phone != null:

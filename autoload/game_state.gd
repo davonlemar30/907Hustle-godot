@@ -1204,16 +1204,57 @@ var crew_roster: Array = [
 	{"id": "tone", "name": "Anton 'Tone' Bell", "role": "ENFORCER / LOOKOUT", "power": 5, "cost": 250, "wage": 85, "desc": "Protects the garage and changes confrontation choices."},
 ]
 
-## Canon TIER_WAGES. Eli has no curve and keeps his base wage at every tier.
+## Canon TIER_WAGES for ranks 1-3, byte-for-byte. RM-D6 (1.4.0): a fourth
+## entry per member, authored per person inside the owner's bands and never a
+## multiplier -- and Eli, who had no curve and kept his base wage at every
+## tier, gets one that is flat through 3 and bites at 4. Ranks 1-3 pay exactly
+## what they paid in 1.3.0; parity asserts every entry. Wages are the one
+## curve that must NOT clamp up: `crew_wage_for()` indexes this array, so a
+## rank without an entry would silently pay the rank below.
 const TIER_WAGES := {
-	"deshawn": [50, 100, 200],
-	"tone": [85, 150, 250],
-	"pherris": [60, 120, 220],
+	"deshawn": [50, 100, 200, 260],
+	"tone": [85, 150, 250, 330],
+	"pherris": [60, 120, 220, 300],
+	"eli": [45, 45, 45, 70],
 }
-## Canon TIER_REQUIREMENTS: loyalty AND days since recruited.
+## RM-D4 (1.4.0): promotion is a requirement list. Canon's TIER_REQUIREMENTS
+## (loyalty AND days since recruited) were two bespoke `if`s in
+## `crew.promote_blocker()` beside an evaluator that already spoke both;
+## tiers 2 and 3 are the same two rows in the same order, so the blocker the
+## player reads is the string they read in 1.3.0. Tier 4 is FS-001 Revision
+## 2's floor (loyalty 8+, ~20-25 days) plus the person's own proof, which
+## lives in `PROMOTION_PROOFS` below and is appended after these. `crew_id`
+## is filled in at evaluation time by `crew.tier_requirements()`. Tiers 5 and
+## 6 have no entry on purpose: `at_top_rank()` reads presence, and the Crew
+## screen hides PROMOTE at the top rather than advertising a rung whose scope
+## does not exist yet (the locked hidden-not-disabled rule).
 const CREW_TIER_REQUIREMENTS := {
-	2: {"loyalty": 7, "days": 5},
-	3: {"loyalty": 9, "days": 12},
+	2: [{"type": "crew_loyalty_min", "min": 7}, {"type": "crew_tenure_days_min", "min": 5}],
+	3: [{"type": "crew_loyalty_min", "min": 9}, {"type": "crew_tenure_days_min", "min": 12}],
+	4: [{"type": "crew_loyalty_min", "min": 8}, {"type": "crew_tenure_days_min", "min": 20}],
+}
+## RM-D5 (1.4.0): role proof, per person, on their OWN operation's counter
+## (`crew.record_proof`, RM-D3). Pherris reaches 4 by working the board, Tone
+## by holding corners, and neither path is the other's -- the owner's ruling:
+## role-specific evidence of the responsibility, never a generic XP bar.
+## These are starting targets, to be tuned through playtesting so each member
+## needs comparable effort relative to how often their operation can run;
+## the bounded band is 3-8 each.
+const PROMOTION_PROOFS := {
+	"pherris": {4: [{"type": "proof_counter_min", "key": "907list_run_board", "min": 5}]},
+	"eli": {4: [{"type": "proof_counter_min", "key": "run_the_bag", "min": 4}]},
+	"deshawn": {4: [{"type": "proof_counter_min", "key": "smooth_it_over", "min": 4}]},
+	"tone": {4: [{"type": "proof_counter_min", "key": "hold_it_down", "min": 3}]},
+}
+## What a proof counter is called when the player is told how far short they
+## are: "Needs 5 boards run, has 2."
+const PROOF_LABELS := {
+	"907list_run_board": "boards run",
+	"run_the_bag": "bags run",
+	"smooth_it_over": "blocks cooled",
+	"scout_district": "districts scouted",
+	"put_it_down": "problems put down",
+	"hold_it_down": "nights held",
 }
 const CREW_LOYALTY_MIN := 0
 const CREW_LOYALTY_MAX := 10

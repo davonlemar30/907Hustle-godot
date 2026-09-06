@@ -136,7 +136,14 @@ func _member_row(sys: Object, person: Dictionary, hired: bool) -> Control:
 
 	var promo_blocked: String = sys.promote_blocker(id)
 	if not sys.at_top_rank(id):
-		var promo := button("PROMOTE" if promo_blocked.is_empty() else promo_blocked.to_upper(), false, _on_promote.bind(id))
+		# RM-D5 (1.4.0): the reason the next rank is not open yet, in words,
+		# with the evaluator's own numbers ("NEEDS 5 BOARDS RUN, HAS 2."). A
+		# full-width line rather than the button's label, because a proof
+		# blocker does not fit beside PAY at 375 and a truncated reason is
+		# worse than none. The button says the one thing it does.
+		if not promo_blocked.is_empty():
+			v.add_child(label("MOVE UP  ·  %s" % promo_blocked.to_upper(), "Muted", 11, MUTED, true))
+		var promo := button("PROMOTE", false, _on_promote.bind(id))
 		promo.disabled = not promo_blocked.is_empty()
 		promo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(promo)

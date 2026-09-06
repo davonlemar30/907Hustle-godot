@@ -187,20 +187,72 @@ func at_top_rank(id: String) -> bool:
 	var rec: Dictionary = gs.crew_record(id)
 	return not gs.CREW_TIER_REQUIREMENTS.has(int(rec.get("tier", 1)) + 1)
 
+## RM-D4 (1.4.0): the rows a promotion to `tier` has to pass, for this person,
+## in authored order -- the shared loyalty/tenure floor first, then their own
+## proof (RM-D5). `crew_id` is stamped here so the tables stay per-tier data
+## and the evaluator gets the record it asks for.
+func tier_requirements(id: String, tier: int) -> Array:
+	var rows: Array = []
+	for row in (gs.CREW_TIER_REQUIREMENTS.get(tier, []) as Array):
+		rows.append(_with_crew(row, id))
+	var own: Dictionary = gs.PROMOTION_PROOFS.get(id, {})
+	for row in (own.get(tier, []) as Array):
+		rows.append(_with_crew(row, id))
+	return rows
+
+func _with_crew(row: Dictionary, id: String) -> Dictionary:
+	var out: Dictionary = row.duplicate()
+	out["crew_id"] = id
+	return out
+
+## The facts a promotion is judged against: this person's record and today.
+## The same shape `crew_operations._facts()` hands the evaluator, so the
+## tenure and loyalty rows read identically in both places.
+func _promotion_facts(id: String) -> Dictionary:
+	return {"crew": {id: gs.crew_record(id)}, "current_day": gs.day}
+
+## The first failing row and its verdict, or {} when every row passes. Rows
+## are walked one at a time rather than through `evaluate_requirements` so
+## the copy below can name WHICH proof is short: the verdict carries
+## `current` and `required` but not the row's key.
+func promote_verdict(id: String) -> Dictionary:
+	var requirements: RefCounted = gm.system("requirements") as RefCounted
+	if requirements == null:
+		return {}
+	var target: int = int(gs.crew_record(id).get("tier", 1)) + 1
+	var facts: Dictionary = _promotion_facts(id)
+	for row in tier_requirements(id, target):
+		var verdict: Dictionary = requirements.evaluate_requirement(row, facts)
+		if not bool(verdict["ok"]):
+			return {"row": row, "verdict": verdict}
+	return {}
+
 func promote_blocker(id: String) -> String:
 	if not gs.is_recruited(id):
 		return "Not on the crew."
 	if at_top_rank(id):
 		return "Nowhere higher to go."
-	var rec: Dictionary = gs.crew_record(id)
-	var target: int = int(rec.get("tier", 1)) + 1
-	var req: Dictionary = gs.CREW_TIER_REQUIREMENTS[target]
-	if int(rec.get("loyalty", 0)) < int(req["loyalty"]):
-		return "Needs loyalty %d." % int(req["loyalty"])
-	var days: int = gs.day - int(rec.get("recruited_day", gs.day))
-	if days < int(req["days"]):
-		return "Needs %d more days." % (int(req["days"]) - days)
-	return ""
+	var failed: Dictionary = promote_verdict(id)
+	if failed.is_empty():
+		return ""
+	return promotion_blocker_copy(failed["row"], failed["verdict"])
+
+## The blocker in the player's words, with the evaluator's own numbers. The
+## loyalty and tenure strings are the exact strings 1.3.0's two `if`s
+## produced, asserted in parity; the proof string is new with RM-D5.
+func promotion_blocker_copy(row: Dictionary, verdict: Dictionary) -> String:
+	var required: int = int(float(verdict.get("required", 0)))
+	var current_raw: Variant = verdict.get("current", 0)
+	var current: int = int(float(current_raw)) if (current_raw is int or current_raw is float) and is_finite(float(current_raw)) else 0
+	match str(row.get("type", "")):
+		"crew_loyalty_min":
+			return "Needs loyalty %d." % required
+		"crew_tenure_days_min":
+			return "Needs %d more days." % maxi(1, required - current)
+		"proof_counter_min":
+			var label := str(gs.PROOF_LABELS.get(str(row.get("key", "")), "proofs"))
+			return "Needs %d %s, has %d." % [required, label, current]
+	return "Not yet."
 
 func _promote(id: String) -> Dictionary:
 	var blocked := promote_blocker(id)
@@ -212,7 +264,24 @@ func _promote(id: String) -> Dictionary:
 	gs.log_activity("%s is %s now. The wage moves with it."
 		% [str(gs.crew_member_by_id(id)["name"]).split(" ")[0],
 			gs.rank_label(int(rec["tier"])).capitalize()], GREEN)
+	# RM-D5: the fourth rung is the first one earned by proof, and the person
+	# says so in their own voice. Ranks 2 and 3 keep 1.3.0's silence -- a text
+	# there would be new behaviour on a rung this build promised not to touch.
+	if int(rec["tier"]) == 4 and PROMOTION_TEXTS.has(id):
+		var phone: Object = gm.system("phone") if gm != null else null
+		if phone != null:
+			phone.push_text(PROMOTION_SENDERS.get(id, id.capitalize()), str(PROMOTION_TEXTS[id]), "")
 	return {"ok": true}
+
+## RM-D5: what each of them says the day they make SPECIALIST LEAD. Short,
+## in the Power register, a fact rather than a ceremony.
+const PROMOTION_SENDERS := {"pherris": "Pherris", "eli": "Eli", "deshawn": "Deshawn", "tone": "Tone"}
+const PROMOTION_TEXTS := {
+	"pherris": "lead. I heard. I'm going to act like it, so get used to me having opinions about the board",
+	"eli": "specialist lead. thats a title. same routes, i just dont wait to be told now",
+	"deshawn": "appreciate that. for real. the block hears that kind of thing too, you know",
+	"tone": "Lead. Fine. Means I stop waiting for the word.",
+}
 
 # --- effects ---------------------------------------------------------------
 

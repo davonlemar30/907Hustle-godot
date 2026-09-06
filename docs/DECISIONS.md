@@ -2097,7 +2097,36 @@ starting targets to be tuned through playtesting so each member needs
 comparable effort relative to how often their operation can run.** No
 schema bump: `proofs` already round-trips inside `crew_records`.
 
-_RM-D4 through RM-D9 land with the PRs whose code depends on them._
+**RM-D4 — promotion is a requirement list.** `CREW_TIER_REQUIREMENTS[tier]`
+is an Array of requirement rows evaluated by `requirements.gd`; tiers 2 and 3
+are the same `crew_loyalty_min` + `crew_tenure_days_min` rows they were, in
+that order, so `promote_blocker()` returns the exact strings 1.3.0 returned
+(asserted). `at_top_rank()` keeps its predicate. Per-member proof rows live in
+`PROMOTION_PROOFS[crew_id][tier]`, appended after the shared rows so the
+evaluator's short-circuit names the most fundamental thing first.
+
+**RM-D5 — rank 4 is reachable by the work you already paid for.** Shared
+rows for 4: loyalty 8, tenure 20 days (FS-001 Rev 2's floors). Proof rows,
+starting targets in a 3–8 band: Pherris 5 boards run, Eli 4 bags run,
+Deshawn 4 blocks cooled, Tone 3 nights held. The Crew screen prints the
+blocker in words with the evaluator's own numbers ("MOVE UP · NEEDS 5 BOARDS
+RUN, HAS 2."); the rank-up gains one text in the member's voice at 4 only.
+Tiers 5 and 6 have no entry, so `at_top_rank()` is true at 4 and PROMOTE
+hides there — absent, not coming, per the locked hidden-not-disabled rule.
+
+**RM-D6 — ranks 1–3 pay and behave exactly as 1.3.0.** `TIER_WAGES` gains a
+fourth entry per member, Eli included (`[45, 45, 45, 70]`); the first three
+entries of every row are untouched and asserted at every rank. Rank-4 wages
+inside the owner's bands: Deshawn 260, Tone 330, Pherris 300, Eli 70. Effect
+curves and capability curves keep three entries and clamp up at 4 by design.
+**Measured, not tuned** (the FS-001 thirty-day driver, same seed and board):
+Pherris at TRUSTED costs $5,060 in wages over the month (paid + owed) for
+$2,083 of her profit; at SPECIALIST LEAD $5,700 for $1,889 — the run cannot
+keep her paid, so $1,500 sits owed by day 31. The rung is payroll pressure,
+as ruled; whether the board should return more at 4 is the standing
+86bbjkccu question and is reported, not tuned.
+
+_RM-D7 through RM-D9 land with the standing-brief PR._
 
 ### Recommended next
 

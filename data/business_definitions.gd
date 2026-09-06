@@ -213,7 +213,16 @@ static func take_at(id: String, pressure: int) -> int:
 	var b: Dictionary = by_id(id)
 	if b.is_empty():
 		return 0
-	return int(round(float(b["base_take"]) * band_multiplier(pressure)))
+	# **Rounded DOWN, and that is a ruling rather than a taste.** HSS-D5 bounds
+	# the squeeze at `EV(2) <= 1.3 x EV(0)`, and rounding to NEAREST breaches
+	# that bound on any base take whose 1.3x lands on a half dollar: $35 x 1.3
+	# is 45.5, which rounds to 46 and pays 1.314x -- over the bound, on the very
+	# first row authored, caught by the driven table in parity. Flooring makes
+	# the bound hold for EVERY base take rather than for the ones somebody
+	# happened to check; a ruling a rounding mode can breach is not a ruling.
+	# It is also the right direction in the register: she pays the number, and
+	# the number does not round in the collector's favour.
+	return floori(float(b["base_take"]) * band_multiplier(pressure))
 
 static func heat_at(id: String, pressure: int) -> float:
 	var b: Dictionary = by_id(id)

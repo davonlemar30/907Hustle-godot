@@ -307,6 +307,9 @@ func _ready() -> void:
 	consequence_engine.register_source_adapter("doorstep", doorstep)
 	# OG-D6 (1.0.0 PR 6): taking a Curtis block is a confrontation.
 	consequence_engine.register_source_adapter("territory", territory)
+	# HSS-D4 (1.5.0): the lean's room resolves back through the businesses
+	# system, the same way a block contest resolves through territory.
+	consequence_engine.register_source_adapter("businesses", businesses)
 	# Both corner scripts share one adapter -- see `systems/corner.gd`'s header
 	# on why two action ids would be two places for the round rules to drift.
 	consequence_engine.register_source_adapter("corner", corner)

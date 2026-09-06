@@ -7997,8 +7997,8 @@ func _check_engine_adapters(gs: Node, gm: Node, engine: RefCounted) -> void:
 	# including after a load. That is the mechanism the whole rule rests on.
 	_expect_str("the source adapters registered at boot",
 		str(engine.registered_adapter_ids()),
-		str(["boost", "corner", "doorstep", "dre_collection", "list_meetup",
-			"retaliation", "stickup", "territory", "travel", "wander"]))
+		str(["boost", "businesses", "corner", "doorstep", "dre_collection",
+			"list_meetup", "retaliation", "stickup", "territory", "travel", "wander"]))
 	_expect_true("the boost adapter resolves to a system",
 		engine.source_adapter("boost") != null)
 	_expect_true("the boost adapter is the boost system",
@@ -20310,6 +20310,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_earn_your_name(gs, gm)
 	_check_the_kit(gs, gm)
 	_check_one_place(gs, gm)
+	_check_her_side_of_the_street(gs, gm)
 	_check_the_beater_on_the_street(gs, gm)
 	_check_mina_vale(gs, gm)
 	_check_the_house_talks_back(gs, gm)
@@ -21409,6 +21410,191 @@ func _roster_has(roster: Array, npc_id: String) -> bool:
 		if str((entry as Dictionary).get("id", "")) == npc_id:
 			return true
 	return false
+
+## HSS-D5 / MEAS-D1 (1.5.0): the squeeze, measured over thirty nights.
+##
+## Three policies, each driven for thirty settled nights on the same backed
+## arrangement: held at STEADY, held at SQUEEZED, held at BREAKING. "Held" is
+## the player leaning as often as the decay requires, so each policy is what a
+## player who commits to it actually gets.
+##
+## The owner's acceptance bar is `EV(3) < EV(0)` and `EV(2) <= 1.3 x EV(0)`.
+## The second is asserted here. The FIRST is not assertable in this slice and
+## deliberately is not asserted: the mechanism that makes the top band lose --
+## HSS-D7's break, one roll a night over close / police / curtis / resist -- is
+## PR 3. On take alone the top band pays 1.3x by construction, which is exactly
+## why the ruling puts a failure roll under it. This function is written now so
+## PR 3 turns the bar on rather than inventing a measurement to pass it.
+func _check_her_side_of_the_street(gs: Node, gm: Node) -> void:
+	var business_defs := preload("res://data/business_definitions.gd")
+	var businesses: Object = gm.system("businesses")
+	var table: Array = []
+	for policy in [0, 2, 3]:
+		table.append(_drive_business_policy(gs, gm, businesses, int(policy)))
+
+	var ev0: int = int((table[0] as Dictionary)["take"])
+	var ev2: int = int((table[1] as Dictionary)["take"])
+	var ev3: int = int((table[2] as Dictionary)["take"])
+	var heat0: float = float((table[0] as Dictionary)["heat"])
+	var heat2: float = float((table[1] as Dictionary)["heat"])
+	var heat3: float = float((table[2] as Dictionary)["heat"])
+
+	for row in table:
+		var r: Dictionary = row
+		print("businesses-ev: policy %s over %d nights · take $%d ($%d a night) · heat %.1f a night, meter at %.1f, pegged night %d"
+			% [business_defs.band_word(int(r["policy"])), int(r["nights"]), int(r["take"]),
+				int(round(float(r["take"]) / float(r["nights"]))),
+				float(r["heat_per_night"]), float(r["heat"]), int(r["nights_to_ceiling"])])
+	print("businesses-ev-metrics: %s" % JSON.stringify(
+		{"ev0": ev0, "ev2": ev2, "ev3": ev3, "heat0": heat0, "heat2": heat2, "heat3": heat3,
+			"ceiling2": int((table[1] as Dictionary)["nights_to_ceiling"]),
+			"ceiling3": int((table[2] as Dictionary)["nights_to_ceiling"])}))
+
+	_expect_true("thirty nights at STEADY pay something ($%d)" % ev0, ev0 > 0)
+	# The owner's bound, asserted against the ruling's own number rather than a
+	# literal copied here.
+	_expect_true("SQUEEZED never pays more than 1.3x STEADY ($%d vs $%d)" % [ev2, ev0],
+		float(ev2) <= 1.3 * float(ev0) + 0.001)
+	_expect_true("...and the band table agrees it never could",
+		float(business_defs.BAND_MULTIPLIERS[2]) <= 1.3)
+	# The squeeze costs, in the currency the city answers with. This is the half
+	# of the bar that IS live in this slice.
+	_expect_true("STEADY brings no heat at all (%.1f)" % heat0, is_zero_approx(heat0))
+	_expect_true("SQUEEZED brings heat (%.1f)" % heat2, heat2 > 0.0)
+	# Both loud bands peg the meter inside thirty nights, so the totals tie at
+	# `heat_max` and say nothing. How fast each one gets there is what does.
+	var to_ceiling2: int = int((table[1] as Dictionary)["nights_to_ceiling"])
+	var to_ceiling3: int = int((table[2] as Dictionary)["nights_to_ceiling"])
+	_expect_true("BREAKING pegs the heat meter (night %d)" % to_ceiling3, to_ceiling3 > 0)
+	_expect_true("...faster than SQUEEZED does (night %d vs %d)" % [to_ceiling3, to_ceiling2],
+		to_ceiling3 < to_ceiling2)
+	_expect_true("...and asks for more heat a night than SQUEEZED (%.1f vs %.1f)"
+		% [float((table[2] as Dictionary)["heat_per_night"]),
+			float((table[1] as Dictionary)["heat_per_night"])],
+		float((table[2] as Dictionary)["heat_per_night"])
+			> float((table[1] as Dictionary)["heat_per_night"]))
+	_expect_true("and the top band buys nothing over the one below it",
+		float(business_defs.BAND_MULTIPLIERS[3])
+			<= float(business_defs.BAND_MULTIPLIERS[2]))
+
+	_check_she_asks_first(gs, gm, businesses)
+	gs.reset_to_new_game()
+
+## HSS-D10: `wt_protection` is the ask, wired to the thing it was describing.
+## Its line, its gate and its observation on CURTIS's ledger are unchanged --
+## the card gains a hook, not a rewrite, and this arm is what proves the
+## unchanged half stayed unchanged.
+func _check_she_asks_first(gs: Node, gm: Node, businesses: Object) -> void:
+	var wander_events := preload("res://data/wander_events.gd")
+	var exposure: Node = get_node("/root/Exposure")
+	var card: Dictionary = {}
+	for row in wander_events.CARDS:
+		if str((row as Dictionary)["id"]) == "wt_protection":
+			card = row
+			break
+	_expect_true("wt_protection is still an authored card", not card.is_empty())
+	_expect_str("...and now opens the laundromat's arrangement",
+		str(card.get("opens_business", "")), "wash_and_go")
+	_expect_true("...with its line untouched",
+		str(card.get("line", "")).contains("her side of the street"))
+	_expect_true("...still fires once", bool(card.get("once", false)))
+	_expect_true("...still gated on day 20 and one crew member",
+		str(card.get("requirements", [])).contains("day_min")
+			and str(card.get("requirements", [])).contains("crew_count_min"))
+	var observation: Dictionary = card.get("observation", {})
+	_expect_str("...and its observation still lands on Curtis",
+		str(observation.get("npc", "")), "curtis")
+	_expect_str("...as the same growth event it always was",
+		str(observation.get("event", "")), "asked_for_protection")
+
+	# The hook itself: she asks, and the arrangement opens at the base with no
+	# band gate -- she is the one asking, so her disposition is not the door.
+	_frozen_ready(gs)
+	gs.day = 20
+	gs.businesses = {}
+	gs.npc_ledgers["lani"] = []
+	businesses.known_ids()
+	_expect_str("premise: Lani is not warm on the player",
+		str(exposure.band_of("lani")), "neutral")
+	_expect_true("...so ASK would be refused",
+		not str(businesses.ask_blocker("wash_and_go")).is_empty())
+	# Driven through the card's OWN play path, not by calling the hook. The
+	# first version of this arm called `open_from_event` directly and passed
+	# green while the live card did nothing at all: the hook had been wired into
+	# `_play_encounter`, and an ambient card has no `encounter` block, so that
+	# function hands it straight back to `_play_ambient` before any of its hooks
+	# run. A test that calls the seam under test proves only that the seam
+	# works, never that anything reaches it.
+	var wander_sys: Object = gm.system("wander")
+	wander_sys._play_ambient(card)
+	_expect_str("but when she asks, the arrangement opens anyway",
+		str(businesses.allegiance_of("wash_and_go")), "yours")
+	# The card's observation on Curtis is asserted on the authored ROW above and
+	# not on the ledger here: `record_observation` refuses outside a
+	# `GameManager.dispatch()`, and this arm calls `_play_ambient` directly to
+	# reach the hook. The live path was verified by a driven run instead.
+	_expect_int("...at the base, not at a band",
+		int(businesses.pressure_of("wash_and_go")), 0)
+
+	# Once. A second firing does not reopen or re-band an arrangement.
+	var row: Dictionary = businesses.row_of("wash_and_go")
+	row["pressure"] = 2
+	wander_sys._play_ambient(card)
+	_expect_int("and asking again changes nothing that is already open",
+		int(businesses.pressure_of("wash_and_go")), 2)
+
+## One policy, thirty settled nights. The band is PINNED each night rather than
+## leaned for, because this measures the ECONOMICS of a policy and not the odds
+## of the room -- the room is asserted in the confrontation suite, and rolling
+## it here would measure the resolver instead of the take.
+func _drive_business_policy(gs: Node, gm: Node, businesses: Object, policy: int) -> Dictionary:
+	var business_defs := preload("res://data/business_definitions.gd")
+	var nights := 30
+	gs.reset_to_new_game()
+	# OG-D2: a corner needs a Player behind it, and this run needs the corner --
+	# an arrangement with no ground under it pays HALF (HSS-D8), which is a
+	# different measurement than the one this table claims to be.
+	_stage_rank(gs, "player")
+	gs.day = 5
+	gs.current_district_id = "north_star_lot"
+	gs.cash = 100000
+	gs.clean_cash = 100000
+	gs.dirty_cash = 0
+	gs.heat = 0.0
+	gs.soldiers_idle = 2
+	_expect_true("EV driver holds the lot under the laundromat (policy %d)" % policy,
+		gm.dispatch("claim_block", {"block_id": "wash_and_go_lot"}))
+	businesses.known_ids()
+	var row: Dictionary = businesses.row_of("wash_and_go")
+	row["allegiance"] = "yours"
+	row["pressure"] = policy
+	_expect_true("...and the promise is backed, so this measures a kept one (policy %d)" % policy,
+		bool(businesses.is_backed("wash_and_go")))
+
+	var take_before: int = int(gs.run_earnings.get("businesses", 0))
+	# Heat SATURATES at `heat_max`, so a thirty-night total measures the ceiling
+	# rather than the policy once a policy reaches it. What separates the bands
+	# is how FAST they get there, which is the number that survives the clamp.
+	var ceiling: float = float(gs.heat_max)
+	var nights_to_ceiling := -1
+	for night in range(nights):
+		gs.day += 1
+		# Holding a band means leaning as often as the decay requires. Pinning
+		# `since_day` to today is exactly that: the player was by, so nothing
+		# settles back.
+		row["pressure"] = policy
+		row["since_day"] = int(gs.day)
+		businesses.settle_night(int(gs.day))
+		if nights_to_ceiling < 0 and float(gs.heat) >= ceiling - 0.0001:
+			nights_to_ceiling = night + 1
+	return {
+		"policy": policy,
+		"nights": nights,
+		"take": int(gs.run_earnings.get("businesses", 0)) - take_before,
+		"heat": float(gs.heat),
+		"heat_per_night": float(business_defs.heat_at("wash_and_go", policy)),
+		"nights_to_ceiling": nights_to_ceiling,
+	}
 
 func _check_the_kit(gs: Node, gm: Node) -> void:
 	var portraits := preload("res://data/portraits.gd")
@@ -22613,7 +22799,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14689
+const MIN_CHECKS := 14716
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

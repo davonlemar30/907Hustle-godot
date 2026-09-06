@@ -805,6 +805,19 @@ func _play_ambient(card: Dictionary) -> Dictionary:
 	if not opens.is_empty() and not opens in gs.districts_unlocked:
 		gs.districts_unlocked.append(opens)
 	gs.log_activity(str(card["line"]), MUTED)
+	# HSS-D10: an authored moment that opens an arrangement. Reused rather than
+	# given a second event -- `wt_protection` has been describing this exact
+	# conversation since 0.9.0 and doing nothing with it.
+	#
+	# It lives HERE, in the ambient path, and not in `_play_encounter`: an
+	# ambient card has no `encounter` block, so `_play_encounter` hands it
+	# straight back to this function before any of its own hooks run. A card
+	# that opens a business AND has an encounter would need the hook in both;
+	# no such card is authored, and the one that exists is ambient.
+	if card.has("opens_business"):
+		var businesses: Object = gm.system("businesses") if gm != null else null
+		if businesses != null:
+			businesses.open_from_event(str(card["opens_business"]))
 	var spec: Variant = card.get("observation")
 	if spec is Dictionary:
 		var exposure: Node = Engine.get_main_loop().root.get_node_or_null("/root/Exposure")

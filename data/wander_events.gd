@@ -2109,6 +2109,13 @@ const CARDS: Array[Dictionary] = [
 		"line": "The woman who runs the laundromat waits until nobody else is in it. She has heard you have people. She wants to know what it would cost for those people to be on her side of the street. She says it like a price, because it is one.",
 		"observation": {"npc": "curtis", "type": "growth", "event": "asked_for_protection",
 			"source": "neighborhood"},
+		# HSS-D10 (1.5.0): the ask that was already authored here, wired to the
+		# thing it was always describing. She is the one asking, so there is no
+		# band gate -- the day-20 / one-crew requirements above ARE the gate, and
+		# they are the right one: she asks because you have people. Once, like
+		# every other card with `once`, and its line and its observation on
+		# Curtis's ledger are untouched.
+		"opens_business": "wash_and_go",
 	},
 
 	# --- WS-D1 (0.8.0): the meetings -- the city reveals itself --------------

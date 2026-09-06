@@ -282,6 +282,14 @@ func _stage_long_lines(gs: Node) -> void:
 	# stays off both screens -- `arctic_auto` is deliberately absent, and no
 	# producer fires for it on a day-one board.
 	gs.beater_dead_today = false
+	# HSS-D9: the verbs and their blockers at 375. Tone is already on the roster
+	# from the RM-D7 staging above, which is the crew_count_min LEAN needs; a
+	# WARM Lani is what ASK needs. Between them the laundromat's row renders both
+	# buttons, while the Chevron's row has neither gate satisfied and renders
+	# both blockers in words in their place -- so one pass measures both paths at
+	# 375, which is the point of doing it here rather than in two fixtures.
+	gs.npc_ledgers["lani"] = [{"key": "warm:1", "type": "presence", "event": "",
+		"location": "north_star_lot", "source": "witnessed", "count": 4, "day": 1}]
 	var gm: Node = get_node("/root/GameManager")
 	var phone: Object = gm.system("phone")
 	if phone != null:

@@ -77,7 +77,7 @@ const LOOP := preload("res://systems/confrontation_loop.gd")
 ## range, plus the two things that deliberately survive (the arrest warning and
 ## the guaranteed road's price) and the proof that the ENGINE still projects
 ## odds it no longer shows.
-const MIN_CHECKS := 4429
+const MIN_CHECKS := 4447
 
 ## The tier-2 probe room: Spenard, night slot, resistance 1, take [100, 180].
 const T2_TARGET := "spenard_fuel_till"
@@ -117,6 +117,7 @@ func _ready() -> void:
 	_check_interim_results()
 	_check_pay_roads()
 	_check_meetings()
+	_check_business_lean_room()
 
 	a.report("confrontation", get_tree(), MIN_CHECKS)
 
@@ -2887,4 +2888,80 @@ func _check_meetings() -> void:
 	wander._apply_grants(gs.active_consequence, "wander_meet_goodie", "goodie_buy", "deterministic")
 	a.eq_int("a replayed grant hands over nothing", int(gs.inventory.get("weed", 0)), 2)
 	gm.dispatch("consequence_continue", {})
+	gs.active_consequence = {}
+
+## HSS-D4 (1.5.0): the lean's room. A new kind-source on the shipped chassis --
+## the point of this arm is that it needs no new machinery, and that the
+## exactly-once ledger guards it the same way it guards every other chain.
+func _check_business_lean_room() -> void:
+	var engine: Object = gm.system("consequence")
+	var businesses: Object = gm.system("businesses")
+	_reset_probe()
+	gs.day = 6
+	gs.active_consequence = {}
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 5,
+		"tier": 1, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	businesses.known_ids()
+
+	a.eq_bool("a lean opens a room",
+		gm.dispatch("business_lean", {"business_id": "wash_and_go"}), true)
+	a.eq_bool("...on the shipped confrontation kind",
+		str(gs.active_consequence.get("chain_kind", "")) == str(engine.KIND_CONFRONTATION), true)
+	var source: Dictionary = gs.active_consequence.get("source", {})
+	a.eq_str("...whose adapter is the businesses system",
+		str(source.get("action_id", "")), "businesses")
+	a.eq_bool("...and the engine can find that adapter",
+		engine.source_adapter("businesses") != null, true)
+
+	# The adapter's own words reach the sheet through BB-D1's seam, rather than
+	# falling through to Boost's vocabulary the way every street encounter did
+	# before that seam existed.
+	a.eq_str("the room labels the lean in its own words",
+		str(businesses.choice_label("lean_on")), "LEAN ON HER")
+	a.check("...and the way out is guaranteed in words",
+		not str(businesses.choice_guarantee("walk_away")).is_empty())
+	a.check("...and the lean is not, because it is a roll",
+		str(businesses.choice_guarantee("lean_on")).is_empty())
+
+	var cause_id: String = str(gs.active_consequence.get("cause_id", ""))
+	a.check("the chain carries a cause id", not cause_id.is_empty())
+
+	a.eq_bool("the lean commits",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "lean_on"}), true)
+	var tier: String = str((gs.active_consequence.get("decision", {}) as Dictionary)
+		.get("resolved_tier", ""))
+	a.check("...and resolves to a real tier (%s)" % tier,
+		tier in ["clean", "messy", "failure", "catastrophic"])
+	a.check("...with the adapter's own headline",
+		not str(engine.result_headline("")).is_empty())
+	a.check("...and its own body",
+		not str(engine.result_body("")).is_empty())
+
+	var allegiance_after: String = str(businesses.allegiance_of("wash_and_go"))
+	var pressure_after: int = int(businesses.pressure_of("wash_and_go"))
+
+	# The exactly-once ledger, asserted while the Cause is still LIVE. This
+	# ordering is the test: `prune_settled` drops the history row for a cause
+	# with no live chain, so asking about receipts after CONTINUE asks about a
+	# row the engine has correctly already forgotten -- which reads as "the
+	# guard did not work" when what actually happened is that the chain closed.
+	a.eq_bool("the outcome receipt is claimed for this cause",
+		engine.has_receipt(cause_id, "business_lean:won")
+			or engine.has_receipt(cause_id, "business_lean:lost"), true)
+	a.eq_bool("the costs receipt too",
+		engine.has_receipt(cause_id, "business_lean:costs"), true)
+	a.eq_bool("claiming any of them a second time is refused",
+		engine.record_receipt(cause_id, "business_lean:costs"), false)
+
+	# A lean resolved again against the same live Cause -- the reload case -- must
+	# not pay twice or move two bands.
+	var replay: Dictionary = gs.active_consequence.duplicate(true)
+	businesses.resolve_consequence(replay, "lean_on")
+	a.eq_str("a replayed resolution does not change hands twice",
+		str(businesses.allegiance_of("wash_and_go")), allegiance_after)
+	a.eq_int("...and does not move a second band",
+		int(businesses.pressure_of("wash_and_go")), pressure_after)
+
+	gm.dispatch("consequence_continue", {})
+	a.eq_bool("and CONTINUE clears the room", gs.active_consequence.is_empty(), true)
 	gs.active_consequence = {}

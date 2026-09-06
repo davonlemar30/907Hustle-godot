@@ -2255,6 +2255,26 @@ earns before dying rather than what the strategy is worth — and it is flagged
 in place for revisit when an injury/recovery pressure loop exists. It is not
 this build's to fix (FL-D2).
 
+### The close-out's live session
+
+Driven through the real game at 1.5.1:
+
+- **The rent calendar.** A run driven to day 23 paying when due: rent came due
+  the night ending **day 14**, next due **21**, paid, next due **28** — zero
+  missed. A second run that never paid recorded the first miss on day 14
+  rather than day 8, which is the finding this build exists to fix. (Rent is
+  paid by an explicit action, not deducted automatically; a driver that never
+  pays correctly misses.)
+- **A death.** A run loaded at `health == 0` ended on its first dispatch as
+  `dead`, head "IT ENDS HERE", and afterwards refused both `advance_time` and
+  `wander` with the day frozen.
+- **A legacy `out` save.** Captured with `game_over_kind = "out"` and
+  `leaving = true`, run through the validator and re-applied: the kind
+  survives, `leaving` is repaired to `false`, and the reckoning still renders
+  "YOU MADE IT OUT" / "ONE GOOD RUN". Nothing produces that kind any more.
+- **Version and schema.** `1.5.1`, `v1.5.1`, major 1 / minor 5 / patch 1,
+  `SAVE_VERSION` 35.
+
 ### What this binds
 
 Nothing beyond the ending. Eviction and Curtis-at-the-door ship exactly as

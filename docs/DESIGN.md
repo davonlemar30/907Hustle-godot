@@ -144,4 +144,6 @@ every time someone asks "is this game balanced."
   ruling can build a real consequence on top without this choice foreclosing
   it.
 - **A difficulty curve, seed/character selection.** The run is one character,
-  one seed per playthrough. (The win condition is the way out, 1.0.0, D-28.)
+  one seed per playthrough. (There is no win condition: 1.5.1 / D-34 removed
+  the way out, and a run ends in death or in the city getting you. The
+  1.0.0 / D-28 line this replaced said "the win condition is the way out".)

@@ -16,9 +16,11 @@ extends RefCounted
 ##
 ## Canon gates recruiting behind things that do not exist yet, each named here:
 ##   base.controlled / base.visiting → no garage, so recruiting happens anywhere
-##   crew.introduced, contactStage   → no NPC introduction arcs, so all four are
-##                                     recruitable from Day 1
-##   crewRecruitmentEligible proof   → no behaviour/proof tracking
+##   crew.introduced, contactStage   → no NPC introduction arcs; since OG-D2
+##                                     (1.0.0) all four gate on the player being
+##                                     KNOWN (`recruit_blocker`), not on a day
+##   crewRecruitmentEligible proof   → no behaviour/proof tracking for RECRUITING;
+##                                     PROMOTION proofs exist as of RM-D3 (1.4.0)
 ##   crewCapacityFor base upgrades   → capacity fixed at canon's floor of 2
 ##
 ## Tone's defense multiplier IS applied as of batch 6b — see `absorbed_damage()`.
@@ -279,6 +281,28 @@ func absorbed_damage(raw: int) -> int:
 func crew_proofs(id: String) -> Dictionary:
 	var proofs: Variant = gs.crew_record(id).get("proofs", {})
 	return proofs if proofs is Dictionary else {}
+
+## RM-D3 (1.4.0): proof is written where the work settles. Each adapter's
+## `settle()` calls this once for a night of REAL work -- a board with at
+## least one cycle bought, a bag with a trip covered, relief actually applied,
+## a district actually scouted, a corner actually held, a problem actually
+## put down -- and never for the "nothing to do" outcome. One counter per
+## operation id, keyed by the operation, so a proof is role-specific evidence
+## that this person did THEIR job and never a shared pool anybody can grind
+## (the owner's 2026-09-06 ruling: not a generic XP system). The requirement
+## type that reads it is `proof_counter_min`; nothing else does.
+##
+## Writes into the same `crew_records[id]` dictionary the record already is;
+## no schema bump, for the reason `crew_proofs()` gives.
+func record_proof(id: String, key: String, amount: int = 1) -> void:
+	if amount <= 0 or not gs.crew_records.has(id):
+		return
+	var rec: Dictionary = gs.crew_records[id]
+	var proofs: Variant = rec.get("proofs", {})
+	var table: Dictionary = proofs if proofs is Dictionary else {}
+	table[key] = int(table.get(key, 0)) + amount
+	rec["proofs"] = table
+	gs.crew_records[id] = rec
 
 ## The rank a crew member reads as. The player is told this and never the tier
 ## number — same rule the attribute labels follow.

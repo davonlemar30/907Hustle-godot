@@ -98,6 +98,11 @@ func settle(_crew_id: String, assignment: Dictionary, _ended_day: int) -> Varian
 		if moved > 0.0:
 			total += moved
 			touched += 1
+	# RM-D3 (1.4.0): a block he actually cooled is proof; a quiet one is not.
+	if touched > 0:
+		var crew: Object = gm.system("crew") if gm != null else null
+		if crew != null:
+			crew.record_proof("deshawn", OPERATION_ID)
 	return {"district_id": district, "recovered": total, "families": touched}
 
 # --- his voice --------------------------------------------------------------

@@ -2806,6 +2806,12 @@ func _check_ops_settlement(gs: Node, gm: Node, ops: RefCounted) -> void:
 	# And today's read no longer sees it, which is what frees the crew member.
 	_expect_true("ops stale assignment is not today's",
 		ops.assignment_for(OPS_CREW).is_empty())
+	# RM-D3 (1.4.0): a board she closed something on is a proof; one that
+	# closed nothing is not. Read off the record the settlement just wrote.
+	var closed: int = int((settled_result as Dictionary).get("settled_count", 0)) if settled_result is Dictionary else 0
+	var her_proofs: Dictionary = (gs.crew_records.get(OPS_CREW, {}) as Dictionary).get("proofs", {})
+	_expect_int("ops a real board run is exactly one proof",
+		int(her_proofs.get(OPS_OPERATION, 0)), 1 if closed > 0 else 0)
 
 	# A new morning: assignable again.
 	gs.time_slots_today = 0
@@ -22397,7 +22403,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14482
+const MIN_CHECKS := 14516
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -22461,6 +22467,7 @@ func _check_batch6b(gs: Node, gm: Node) -> void:
 	_check_tone_at_the_damage_sites(gs, gm)
 	_check_runner_relief(gs, gm)
 	_check_fixer_relief(gs, gm)
+	_check_one_home_for_rank(gs, gm)
 	_check_operation_flag_isolation(gs, gm)
 	_check_unauthored_shark_term(gs, gm)
 	gs.street_name = "Parity"
@@ -22737,6 +22744,116 @@ func _check_fixer_relief(gs: Node, gm: Node) -> void:
 		_expect_int("a quiet corner is nobody's day's work",
 			int((quiet as Dictionary)["families"]), 0)
 		_expect_float("and claims nothing", float((quiet as Dictionary)["recovered"]), 0.0)
+	gs.reset_to_new_game()
+
+# --- RM-D2 / RM-D3 (1.4.0): one home for what a person can do ------------------
+
+## The capability table is total over the operations, Tone's relief comes
+## through it at the values the adapter used to carry, and every adapter writes
+## a proof for a night of real work and nothing for an idle one.
+func _check_one_home_for_rank(gs: Node, gm: Node) -> void:
+	var ops: Object = gm.system("crew_operations")
+	var crew: Object = gm.system("crew")
+	var enforcer: Object = gm.system("enforcer_adapter")
+	var fixer: Object = gm.system("fixer_adapter")
+	var runner: Object = gm.system("runner_adapter")
+	var scout: Object = gm.system("scout_adapter")
+	var holder: Object = gm.system("holder_adapter")
+	var lister: Object = gm.system("list_adapter")
+	var engine: Object = gm.system("consequence")
+	if ops == null or crew == null or enforcer == null or fixer == null or runner == null \
+			or scout == null or holder == null or lister == null or engine == null:
+		_fail("one home", "a system is missing")
+		return
+
+	# RM-D2: every operation has a capability row for its own person, at rank 1.
+	for operation_id in ops.OPERATION_CAPABILITY.keys():
+		var expected: Dictionary = ops.OPERATION_CAPABILITY[operation_id]
+		_expect_true("one home: %s has a capability row" % str(operation_id),
+			gs.crew_has_capability(str(expected["crew_id"]), str(expected["capability_id"]), 1))
+	_expect_int("one home: six operations, six rows", ops.OPERATION_CAPABILITY.size(), 6)
+	# The two burned ids stay burned (fs001 fixture).
+	_expect_true("one home: eli/territory_operations stays burned",
+		not gs.crew_has_capability("eli", "territory_operations", 3))
+	_expect_true("one home: deshawn/network_operations stays burned",
+		not gs.crew_has_capability("deshawn", "network_operations", 3))
+
+	# Tone's relief through the table is byte-identical to the constant it
+	# replaced ([3.0, 4.0, 5.0]) and clamps up above the curve.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	for entry in [[1, 3.0], [2, 4.0], [3, 5.0], [4, 5.0], [6, 5.0]]:
+		_b6b_recruit(gs, "tone", 6, int(entry[0]))
+		_expect_float("one home: Tone rank %d relief through the table" % int(entry[0]),
+			float(enforcer.relief_amount()), float(entry[1]))
+
+	# RM-D3: proof on real work, nothing on an idle night. One counter per
+	# operation id, on the person's own record.
+	var district := str(gs.current_district_id)
+	_b6b_recruit(gs, "tone", 6, 3)
+	var quiet_tone: Variant = enforcer.settle("tone", {"district_id": district}, gs.day)
+	_expect_true("proof: a quiet district is not put down", quiet_tone is Dictionary and float(quiet_tone["recovered"]) == 0.0)
+	_expect_int("proof: ...and writes nothing", int(crew.crew_proofs("tone").get("put_it_down", 0)), 0)
+	engine.add_pressure(district, "market", 4.0, "cause:parity:one_home")
+	enforcer.settle("tone", {"district_id": district}, gs.day)
+	_expect_int("proof: a problem put down is one proof", int(crew.crew_proofs("tone").get("put_it_down", 0)), 1)
+	# Holding: corners to sit on, or not.
+	gs.territory_nodes = {}
+	holder.settle("tone", {"params": {"district_id": "downtown"}}, gs.day)
+	_expect_int("proof: nothing to sit on is not a night held", int(crew.crew_proofs("tone").get("hold_it_down", 0)), 0)
+	gs.territory_nodes = {"downtown_transit_center": {"soldiers": 1}}
+	holder.settle("tone", {"params": {"district_id": "downtown"}}, gs.day)
+	holder.settle("tone", {"params": {"district_id": "downtown"}}, gs.day)
+	_expect_int("proof: two nights held are two proofs", int(crew.crew_proofs("tone").get("hold_it_down", 0)), 2)
+	_expect_int("proof: ...and put_it_down's counter is untouched", int(crew.crew_proofs("tone").get("put_it_down", 0)), 1)
+	# And the requirement type reads it, off the record as settled.
+	var requirements: RefCounted = gm.system("requirements") as RefCounted
+	var verdict: Dictionary = requirements.evaluate_requirement(
+		{"type": "proof_counter_min", "crew_id": "tone", "key": "hold_it_down", "min": 2},
+		{"crew": {"tone": gs.crew_record("tone")}, "current_day": gs.day})
+	_expect_true("proof: proof_counter_min reads the settled counter", bool(verdict["ok"]))
+	var short: Dictionary = requirements.evaluate_requirement(
+		{"type": "proof_counter_min", "crew_id": "tone", "key": "hold_it_down", "min": 3},
+		{"crew": {"tone": gs.crew_record("tone")}, "current_day": gs.day})
+	_expect_true("proof: ...and says how far short", not bool(short["ok"]) and int(short["current"]) == 2 and int(short["required"]) == 3)
+	# Deshawn: a cooled block, then a quiet one.
+	_b6b_recruit(gs, "deshawn", 6, 3)
+	var rules: RefCounted = preload("res://data/consequence_rules.gd").new()
+	engine.add_pressure(district, str(rules.PRESSURE_FAMILIES[0]), 4.0, "cause:parity:one_home")
+	fixer.settle("deshawn", {"district_id": district}, gs.day)
+	_expect_int("proof: a block cooled is one proof", int(crew.crew_proofs("deshawn").get("smooth_it_over", 0)), 1)
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	_b6b_recruit(gs, "deshawn", 6, 3)
+	fixer.settle("deshawn", {"district_id": str(gs.current_district_id)}, gs.day)
+	_expect_int("proof: a quiet block is not smoothing", int(crew.crew_proofs("deshawn").get("smooth_it_over", 0)), 0)
+	# Eli: the bag, and the scout.
+	_b6b_recruit(gs, "eli", 6, 2)
+	runner.settle("eli", {"trips_covered": 0}, gs.day)
+	_expect_int("proof: a day nobody went anywhere is not a bag run", int(crew.crew_proofs("eli").get("run_the_bag", 0)), 0)
+	runner.settle("eli", {"trips_covered": 2}, gs.day)
+	_expect_int("proof: a bag walked is one proof, however many trips", int(crew.crew_proofs("eli").get("run_the_bag", 0)), 1)
+	scout.settle("eli", {"params": {"district_id": "nowhere"}}, gs.day)
+	_expect_int("proof: a district that does not exist was not scouted", int(crew.crew_proofs("eli").get("scout_district", 0)), 0)
+	scout.settle("eli", {"params": {"district_id": "downtown"}}, gs.day)
+	_expect_int("proof: a district scouted is one proof", int(crew.crew_proofs("eli").get("scout_district", 0)), 1)
+	# Pherris: nothing ready to close is not a board run.
+	_b6b_recruit(gs, "pherris", 6, 3)
+	gs.list_holdings = []
+	lister.settle("pherris", {"operation_id": "907list_run_board", "settled": false, "result": null}, gs.day)
+	_expect_int("proof: an empty board is not a board run", int(crew.crew_proofs("pherris").get("907list_run_board", 0)), 0)
+	# The writer itself: keyed, additive, and a stranger writes nothing.
+	crew.record_proof("pherris", "907list_run_board")
+	crew.record_proof("pherris", "907list_run_board", 2)
+	_expect_int("proof: the writer is additive", int(crew.crew_proofs("pherris").get("907list_run_board", 0)), 3)
+	crew.record_proof("pherris", "907list_run_board", 0)
+	_expect_int("proof: zero is not a proof", int(crew.crew_proofs("pherris").get("907list_run_board", 0)), 3)
+	crew.record_proof("nobody", "907list_run_board")
+	_expect_true("proof: a stranger has no record to write", not gs.crew_records.has("nobody"))
+	# A legacy record (no proofs key) takes the first proof cleanly.
+	gs.crew_records["eli"].erase("proofs")
+	crew.record_proof("eli", "run_the_bag")
+	_expect_int("proof: a legacy record takes its first proof", int(crew.crew_proofs("eli").get("run_the_bag", 0)), 1)
 	gs.reset_to_new_game()
 
 # --- the flags ---------------------------------------------------------------

@@ -159,7 +159,18 @@ func _validate_crew_records(state: Dictionary, repairs: Array[String]) -> void:
 		_bool(record, "recruited", false, path + ".recruited", repairs)
 		_string(record, "status", "active", path + ".status", repairs)
 		_int(record, "tier", 1, path + ".tier", repairs)
-		record["tier"] = clampi(int(record["tier"]), 1, 3)
+		# RM-D1 (1.4.0): a rank the game can author is a rank a save can hold.
+		# This clamped to a literal 3 from FS-001.5 through 1.3.0, which meant
+		# any promotion above TRUSTED was repaired back down on the next load
+		# -- silently, with a repair line nobody reads. The ceiling is the
+		# table's, not this file's.
+		record["tier"] = clampi(int(record["tier"]), 1, GAME_STATE.MAX_CREW_RANK)
+		# RM-D3: proofs are written at settlement now. A record without the key
+		# is a legacy record and reads as {} through `crew_proofs()`; only a
+		# WRONG type is repaired, so an old save takes no repair line for it.
+		if record.has("proofs") and not (record["proofs"] is Dictionary):
+			record["proofs"] = {}
+			_repair(repairs, path + ".proofs", "wrong type; defaulted")
 		_int(record, "loyalty", 5, path + ".loyalty", repairs)
 		record["loyalty"] = clampi(int(record["loyalty"]), 0, 10)
 		_int(record, "wage_due", 0, path + ".wage_due", repairs)

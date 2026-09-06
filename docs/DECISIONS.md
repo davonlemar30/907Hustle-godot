@@ -2052,6 +2052,58 @@ with shipped code).
 
 ---
 
+## D-32 — Room to Move Up: one home, rank four, the standing brief
+
+**Decided** 2026-09-06 · **Ships in** 1.4.0, four PRs (one home for rank,
+move up, the standing brief, the close-out) · **Source:**
+`docs/ORGANIZED_CRIME_ECONOMY_DESIGN_PLAN.md` (the organized-crime design
+pass), `BUILD_ROOM_TO_MOVE_UP_PROMPT.md` and its owner addendum; ClickUp
+ORG-001 / ORG-001.1 / ORG-001.2; FS-001 Revision 2 (the six-rank spine)
+
+### The question
+
+The crew ladder has been authored to six ranks and reachable to three since
+FS-001.5. The design pass found the gap smaller than it looked and with one
+hidden tooth: `save_validator.gd` clamped every loaded tier to a literal 3,
+so no promotion above TRUSTED could survive a load; rank curves lived in two
+homes; the proof vocabulary `requirements.gd` evaluates had no writer; and
+the promotion gate was two bespoke `if`s beside an evaluator that already
+speaks the language. The question was how to make rank 4 real, by work,
+without touching anything ranks 1–3 already do.
+
+### The rulings
+
+**RM-D1 — a rank the game can author is a rank a save can hold.** The
+validator's crew arm clamps `tier` to `1..MAX_CREW_RANK`, never a literal.
+Save validation asserts 4 and 6 survive, 0 and -3 clamp to 1, 9 clamps to 6.
+
+**RM-D2 — one home for what a person can do.** `CREW_CAPABILITIES` is total
+over `OPERATION_CAPABILITY`: `eli/scout_district`, `tone/put_it_down`
+(carrying `relief_by_rank [3.0, 4.0, 5.0]`), `tone/hold_it_down`. The
+enforcer reads through `crew_capability_value()`; `RELIEF_BY_RANK` is
+deleted, not deprecated beside it. Parity and territory assert the values
+are byte-identical. The two burned ids in the fs001 fixture stay burned.
+
+**RM-D3 — proof is written where the work settles.** Every adapter's
+`settle()` calls `crew.record_proof(id, <operation_id>)` once for a night
+of real work — a board with something closed, a bag with a trip covered,
+relief actually applied, a district actually scouted, a corner actually
+held, a problem actually put down — and never for the "nothing to do"
+outcome. One counter per operation id on the person's own record. **The
+owner's ruling (2026-09-06): proofs are role-specific evidence that this
+person demonstrated the responsibility of their position, required in
+addition to loyalty and tenure; never a generic XP system; thresholds are
+starting targets to be tuned through playtesting so each member needs
+comparable effort relative to how often their operation can run.** No
+schema bump: `proofs` already round-trips inside `crew_records`.
+
+_RM-D4 through RM-D9 land with the PRs whose code depends on them._
+
+### Recommended next
+
+Ranks 5 and 6 (P10 of the design plan) after crew capacity can exceed 2;
+the availability model (ORG-011); businesses (ORG-005) as the next branch.
+
 ## D-31 — Tighten It Up: the 1.2.0 playtest, answered
 
 **Decided** 2026-09-04 · **Ships in** 1.3.0, five PRs (`#166` the day has

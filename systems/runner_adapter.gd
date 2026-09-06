@@ -79,6 +79,12 @@ func carry_relief() -> float:
 func settle(_crew_id: String, assignment: Dictionary, _ended_day: int) -> Variant:
 	var covered: int = int(assignment.get("trips_covered", 0))
 	var stopped: int = int(assignment.get("stops_absorbed", 0))
+	# RM-D3 (1.4.0): a bag he actually walked is proof; a day you never went
+	# anywhere with anything is not.
+	if covered > 0:
+		var crew: Object = gm.system("crew") if gm != null else null
+		if crew != null:
+			crew.record_proof("eli", OPERATION_ID)
 	return {"trips_covered": covered, "stops_absorbed": stopped}
 
 # --- his voice --------------------------------------------------------------

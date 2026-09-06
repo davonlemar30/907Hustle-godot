@@ -8,8 +8,10 @@ extends RefCounted
 const OPERATION_ID := "put_it_down"
 const CAPABILITY_ID := "put_it_down"
 const RULES := preload("res://data/consequence_rules.gd")
-## What Tone takes off, by rank; and what it costs the district in heat.
-const RELIEF_BY_RANK := [3.0, 4.0, 5.0]
+## What it costs the district in heat. What Tone takes off, by rank, lives on
+## `GameState.CREW_CAPABILITIES` as `relief_by_rank` -- RM-D2 (1.4.0) moved it
+## there from a constant here, because a rank curve in an adapter was a second
+## home for a fact the capability table owns.
 const HEAT_COST := 1.5
 
 var gs: Node
@@ -36,7 +38,8 @@ func _district_for(assignment: Dictionary) -> String:
 
 func relief_amount() -> float:
 	var rank: int = int(gs.crew_record("tone").get("tier", 1))
-	return float(RELIEF_BY_RANK[clampi(rank - 1, 0, RELIEF_BY_RANK.size() - 1)])
+	return maxf(0.0, float(gs.crew_capability_value("tone", CAPABILITY_ID,
+		"relief_by_rank", rank, 0.0)))
 
 func settle(_crew_id: String, assignment: Dictionary, _ended_day: int) -> Variant:
 	var engine: Object = gm.system("consequence") if gm != null else null
@@ -54,8 +57,14 @@ func settle(_crew_id: String, assignment: Dictionary, _ended_day: int) -> Varian
 			touched += 1
 	if total > 0.0 and heat != null:
 		heat.apply_gain(HEAT_COST, heat.FAMILY_NONE, district, {"source_id": "crew_put_it_down"})
+	# RM-D3: a problem actually put down is proof. A quiet district is not.
+	if total > 0.0:
+		_crew().record_proof("tone", OPERATION_ID)
 	return {"district_id": district, "recovered": total, "families": touched,
 		"heat": HEAT_COST if total > 0.0 else 0.0}
+
+func _crew() -> Object:
+	return gm.system("crew") if gm != null else null
 
 func sender() -> String:
 	return "Tone"

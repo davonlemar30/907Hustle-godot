@@ -1307,8 +1307,18 @@ func curve_value_for_rank(curve: Variant, rank: int, fallback: Variant = 1.0) ->
 ##
 ## The two added here are DELEGABLE OPERATIONS — a day claimed, a wage owed, a
 ## result at settlement — which is the shape `907list_run_board` established.
-## Tone stays a presence effect and is deliberately not here: what he does is
-## stand near you, and standing near you is not something you assign.
+##
+## **RM-D2 (1.4.0): the table is total over `OPERATION_CAPABILITY`.** Between
+## 0.9.0 and 1.3.0 three operations landed without a row here --
+## `scout_district`, `put_it_down`, `hold_it_down` -- and Tone's put-it-down
+## curve lived in `enforcer_adapter.RELIEF_BY_RANK` instead. Nothing broke
+## (`crew_has_capability()` had no runtime caller), but a rank that confers
+## scope needs one place to ask what a person can do, and a curve in an
+## adapter is a second home for a fact this table owns. The three rows below
+## carry the exact values the adapters carried; the enforcer reads through
+## `crew_capability_value()` like the runner and the fixer already did. Tone's
+## DEFENCE multiplier is still not here: it is a presence effect, not an
+## operation, and stays on `TONE_DEFENSE_MULTIPLIER`.
 ##
 ## Capability ids are constrained. `tests/parity/fixtures/requirements/
 ## fs001_fixtures.json` asserts `eli/territory_operations` and
@@ -1323,12 +1333,20 @@ const CREW_CAPABILITIES := {
 	# The curve is the FRACTION of that chance he takes off.
 	"eli": {
 		"run_the_bag": {"min_rank": 1, "carry_relief_by_rank": [0.45, 0.60, 0.75]},
+		"scout_district": {"min_rank": 1},
 	},
 	# "De-escalates conflicts, recruits through trust, keeps Spenard talking."
 	# v0.1.0 made District Pressure recoverable on a clean outcome; this is the
 	# other way down. The curve is points of Pressure taken off one district.
 	"deshawn": {
 		"smooth_it_over": {"min_rank": 1, "pressure_relief_by_rank": [1.0, 1.5, 2.0]},
+	},
+	# BR-D6 (0.9.0): scouting is Eli's; putting it down and, HS-D2, holding it
+	# down are Tone's. Rows added in 1.4.0 (RM-D2) with the values the
+	# adapters authored. Points of District Pressure Tone takes off, by rank.
+	"tone": {
+		"put_it_down": {"min_rank": 1, "relief_by_rank": [3.0, 4.0, 5.0]},
+		"hold_it_down": {"min_rank": 1},
 	},
 }
 

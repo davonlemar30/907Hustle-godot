@@ -1102,6 +1102,36 @@ func _test_v31_ending() -> void:
 	var migrated: Dictionary = saves._migrate({"save_version": 30, "state": {"day": 9, "cash": 10, "street_name": "L", "game_over": true}})
 	_check("an over v30 save was evicted", str(migrated.get("game_over_kind", "")) == "evicted")
 
+	# FL-D1 / FL-D3 (1.5.1). `dead` is the kind the floor produces; `out` is
+	# kept as LEGACY so a save that ended that way before 1.5.1 still loads with
+	# its ending intact rather than having it silently cleared.
+	var dead := _fixed(_state("game_over_kind", "dead"))
+	_check("death survives the validator", str(dead["game_over_kind"]) == "dead")
+	for kind in ["out", "evicted", "sentence", "curtis"]:
+		var kept := _fixed(_state("game_over_kind", str(kind)))
+		_check("the %s ending survives the validator" % str(kind),
+			str(kept["game_over_kind"]) == str(kind))
+
+	# FL-D3: there is no way out, so a persisted `leaving` can only be stale.
+	# It is repaired to false UNCONDITIONALLY and the repair is reported, rather
+	# than merely type-checked -- left alone it would sit there forever naming a
+	# departure night that will never arrive.
+	var leaving_result: Dictionary = _result(_state("leaving", true))
+	var leaving_state: Dictionary = leaving_result["state"]
+	_check("a stale leaving flag is cleared", bool(leaving_state["leaving"]) == false)
+	var noted := false
+	for note in (leaving_result["repairs"] as Array):
+		if str(note).begins_with("leaving:"):
+			noted = true
+	_check("...and the repair says why", noted)
+	var not_leaving := _fixed(_state("leaving", false))
+	_check("a false leaving flag is left alone and reports nothing",
+		bool(not_leaving["leaving"]) == false)
+	# The field stays CAPTURED. Removing a persisted field is a schema change
+	# and this build does not have one.
+	_check("leaving is still a persisted field",
+		"leaving" in (saves.PERSIST_FIELDS as Array))
+
 ## v32 (OG-D5): hot goods ride the save; junk drops; a hot holding keeps
 ## its name.
 ## RM-D7 (1.4.0): a standing brief rides `crew_assignments`, which persists

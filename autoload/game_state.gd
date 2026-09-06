@@ -762,6 +762,34 @@ func reconcile_persistent_invariants() -> void:
 	if health < health_max or heat > 1.0:
 		recovery_introduced = true
 	_reconcile_progression_latches()
+	_reconcile_the_floor()
+
+## FL-D1 (1.5.1): zero is death, checked in one place.
+##
+## Here rather than at any of the fourteen health writers, for the same reason
+## the latches above live here: no single writer can settle it, and a room
+## authored next year inherits the floor without knowing the floor exists.
+##
+## The ordering is the point. This function runs inside every successful
+## dispatch BEFORE `notify_changed()`, so the reckoning is on screen on the
+## same refresh as the hit -- the encounter sheet that dealt the damage never
+## gets a frame over a dead player.
+##
+## Reads the LIVE health, which matters on the one dispatch that resets a run:
+## `reset_to_new_game()` restores health to `health_max` before this runs, so a
+## fresh run cannot die on the dispatch that created it.
+##
+## Null-guarded on the manager and the system: the lifecycle ordering tests
+## drive settlement without every system registered.
+func _reconcile_the_floor() -> void:
+	if game_over or health > 0:
+		return
+	var manager: Node = get_node_or_null("/root/GameManager")
+	if manager == null:
+		return
+	var ending: Object = manager.system("ending")
+	if ending != null:
+		ending.note_health()
 
 ## The two v0.1.0 discovery latches, re-derived from canonical facts.
 ##

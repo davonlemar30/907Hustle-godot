@@ -1,27 +1,43 @@
 extends RefCounted
-## The ending -- One Good Run (PR 4, OG-D4). D-2, open since the project
-## began, ruled per docs/VISION_REVIEW.md §5:
+## The ending -- One Good Run (PR 4, OG-D4), corrected by FL-D1 and FL-D3
+## (1.5.1, "The Floor"). D-2 is closed.
 ##
-##   The run ends when you get out: clean money past a threshold that
-##   scales with what you built, a Boss's name, and a day you choose. The
-##   run ends at that day's close.
+## ## What ends a run, as of 1.5.1
 ##
-##   The run ends when the city gets you: evicted (the house warnings,
-##   kept), locked up (the third serious booking is a sentence), or Curtis
-##   (Exposure maxed and nobody standing with you -- he comes to the door).
+##   **Death.** `health <= 0`. Checked in ONE place -- `note_health()`, called
+##   from `GameState.reconcile_persistent_invariants()`, which every successful
+##   dispatch already runs before `state_changed`. No write site checks health;
+##   the fourteen writers are untouched. The web canon ended the run here
+##   (`game-core.js:6504`, `endRun(state, "killed")`) and the port never carried
+##   it over, which is the bug this closes.
 ##
-##   Both are one screen: the reckoning. What you built, what it cost, who
-##   remembers you.
+##   **The city gets you:** evicted (the house warnings, kept), locked up (the
+##   third serious booking is a sentence), or Curtis (Exposure maxed and nobody
+##   standing with you -- he comes to the door).
 ##
-## `gs.game_over_kind` names which; `gs.leaving` is the day you chose.
+## ## What does NOT end a run any more
+##
+## **There is no way out.** 1.0.0 shipped a "cash out": at Boss, with clean
+## money past a scaling threshold, the player left and the run was declared
+## won. The owner ruled that out of the game in 1.5.1 -- 907Hustle is a long
+## career in which a surviving player keeps building wealth and organization,
+## and legitimacy at the top EXPANDS what the player can do rather than ending
+## the run. **No money threshold of any kind replaces it.** `leave_city`,
+## `stay`, `_leave`, `leave_blocker`, `way_out_threshold` and the three
+## `WAY_OUT_*` constants are deleted, not deprecated (the `spenard_blocks`
+## rule). The `"out"` KIND survives for saves that already ended that way and
+## is never produced again; every legacy arm is commented as such.
+##
+## **Injury is not death** (FL-D2). Nothing about health above zero changes:
+## recovery, the clinic, the doctor and the gym's min-health gates stay as they
+## are, and the two rooms authored to floor health at 1 (`territory.gd`'s
+## contest loss, `businesses.gd`'s lean loss) keep their floor.
+##
+## Every ending is one screen: the reckoning. What you built, what it cost, who
+## remembers you. `gs.game_over_kind` names which.
 
 const RANK := preload("res://data/rank.gd")
 
-## What leaving clean costs: the more you built, the more you are walking
-## away from, and the more it takes to walk away with.
-const WAY_OUT_BASE := 3000
-const WAY_OUT_PER_CORNER := 400
-const WAY_OUT_PER_CREW := 300
 ## The severities that count toward a sentence.
 const SERIOUS := ["stick_t2", "stick_t3", "boost_t2"]
 const SENTENCE_AT := 3
@@ -46,55 +62,58 @@ func setup(game_state: Node, manager: Node) -> void:
 	gs = game_state
 	gm = manager
 
-func can_handle(action: String) -> bool:
-	return action in ["leave_city", "stay"]
+## FL-D3: this system dispatches nothing. `leave_city` and `stay` were the
+## only two actions it ever handled and both are gone with the road they served
+## -- an unknown action is refused by `GameManager` before it reaches here,
+## which is what makes the negative arm in parity assertable.
+func can_handle(_action: String) -> bool:
+	return false
 
-func handle(action: String, _payload: Dictionary) -> Dictionary:
-	match action:
-		"leave_city":
-			return _leave()
-		"stay":
-			gs.leaving = false
-			gs.log_activity("Not today. The room is still yours.", AMBER)
-			return {"ok": true}
+func handle(_action: String, _payload: Dictionary) -> Dictionary:
 	return {"ok": false, "reason": "Unknown ending action."}
 
-# --- the way out -------------------------------------------------------------
+# --- the floor (FL-D1) ------------------------------------------------------
 
-func way_out_threshold() -> int:
-	return WAY_OUT_BASE + WAY_OUT_PER_CORNER * int(gs.territory_nodes.size()) \
-		+ WAY_OUT_PER_CREW * int(gs.recruited_crew().size())
+## Zero is death, and it is checked in ONE place.
+##
+## Called from `GameState.reconcile_persistent_invariants()`, which runs inside
+## every successful dispatch BEFORE `state_changed` -- so the reckoning is on
+## screen on the same refresh as the hit that caused it, and the encounter sheet
+## that dealt it does not get a frame to render over a dead player.
+##
+## **No write site checks health.** The fourteen writers are untouched, which is
+## the whole point of doing it here: a new room that hurts the player inherits
+## the floor without knowing the floor exists.
+##
+## Safe to call with `gm` absent -- the lifecycle ordering tests drive settlement
+## without every system registered -- because it touches nothing but `gs`.
+##
+## The reason names no source. The feed's last line is the source.
+func note_health() -> void:
+	if gs == null or gs.game_over:
+		return
+	if int(gs.health) > 0:
+		return
+	_end("dead", DEATH_REASON)
+
+## VOX-D1, the Power register: a death is a fact. Nobody narrates it.
+const DEATH_REASON := "On the ground, with what you had on you. Nobody calls it in."
 
 func _exposure() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
 
-## Why you cannot leave yet, or "".
-func leave_blocker() -> String:
-	if gs.game_over:
-		return "The run is over."
-	if gs.leaving:
-		return "Tonight."
-	var exposure: Node = _exposure()
-	if exposure != null and not exposure.has_rank("boss"):
-		return "Not a boss yet. Nobody leaves as less."
-	var need: int = way_out_threshold()
-	if int(gs.clean_cash) < need:
-		return "Need $%s clean. Dirty money does not travel." % _commas(need)
-	return ""
-
-func _leave() -> Dictionary:
-	var blocked := leave_blocker()
-	if not blocked.is_empty():
-		return {"ok": false, "reason": blocked}
-	gs.leaving = true
-	gs.log_activity("You decide. Tonight, when the day closes, you are on the last flight out with what is clean. Whatever is not stays.", GREEN)
-	return {"ok": true}
-
-## POST_SETTLE: the day you chose closes.
+## POST_SETTLE `way_out`: the step keeps its NAME and loses its job.
+##
+## FL-D3 (owner default 3): the lifecycle trace is pinned literally in parity
+## (`POST_SETTLE:way_out`), and keeping the name means the pin, the step list
+## and the phase ordering all stay exactly as shipped while the road underneath
+## them is gone. All this does now is neutralise a stale `leaving` flag on a
+## save written before 1.5.1 -- the validator repairs it on load, and this
+## catches the one that was already in memory. It ends nothing.
 func settle_way_out(_ended_day: int) -> void:
-	if gs.game_over or not gs.leaving:
+	if gs == null:
 		return
-	_end("out", "You made it out.")
+	gs.leaving = false
 
 # --- the city gets you ------------------------------------------------------
 
@@ -129,11 +148,17 @@ func _end(kind: String, reason: String) -> void:
 	gs.game_over = true
 	gs.game_over_kind = kind
 	gs.game_over_reason = reason
+	# Legacy only: `"out"` is never produced after FL-D3, but a save that
+	# already ended that way still renders its green line.
 	gs.log_activity(reason, GREEN if kind == "out" else RED)
 
 # --- the reckoning ----------------------------------------------------------
 
 const HEADS := {
+	# FL-D1: the floor. Owner default, 2026-09-06.
+	"dead": "IT ENDS HERE",
+	# Legacy only (FL-D3): kept so a save that ended this way before 1.5.1 still
+	# renders. No road produces it.
 	"out": "YOU MADE IT OUT",
 	"evicted": "NOWHERE TO GO",
 	"sentence": "THE SENTENCE",
@@ -141,6 +166,8 @@ const HEADS := {
 	"": "THE RUN ENDED",
 }
 const KICKERS := {
+	"dead": "THE CITY GOT YOU",
+	# Legacy only (FL-D3), as above.
 	"out": "ONE GOOD RUN",
 	"evicted": "THE CITY GOT YOU",
 	"sentence": "THE CITY GOT YOU",

@@ -193,6 +193,72 @@ func _check_components(gs: Node) -> void:
 		await get_tree().process_frame
 
 	gs.active_consequence = {}
+
+	# FL-D1 / FL-D3 (1.5.1): the reckoning for a death, and Home without the
+	# road that was removed. Both are instantiated HERE rather than staged into
+	# the global screen sweep above, because `game_over = true` would change what
+	# every other screen renders and this is a check about two screens.
+	var kind_before: String = str(gs.game_over_kind)
+	var over_before: bool = bool(gs.game_over)
+	gs.game_over = true
+	gs.game_over_kind = "dead"
+	gs.game_over_reason = "On the ground, with what you had on you. Nobody calls it in."
+	var reckoning: PackedScene = load("res://ui/screens/game_over.tscn")
+	if reckoning != null:
+		var dead_screen: Node = reckoning.instantiate()
+		add_child(dead_screen)
+		await get_tree().process_frame
+		if dead_screen.has_method("refresh"):
+			dead_screen.refresh()
+		await get_tree().process_frame
+		var head := dead_screen.get_node_or_null("Pad/V/Head") as Label
+		checks += 1
+		if head == null or str(head.text) != "IT ENDS HERE":
+			printerr("COMPONENT FAILED: the death reckoning does not say so (%s)"
+				% ("<no head>" if head == null else str(head.text)))
+			failed += 1
+		# The reckoning has to fit the phone like everything else.
+		var width_result: Array = _check_width_fit(dead_screen, "game_over.tscn(dead)")
+		checks += 1
+		if not (width_result[1] as Array).is_empty():
+			for violation in width_result[1]:
+				printerr("COMPONENT FAILED: %s" % str(violation))
+			failed += 1
+		dead_screen.queue_free()
+		await get_tree().process_frame
+	gs.game_over = over_before
+	gs.game_over_kind = kind_before
+	gs.game_over_reason = ""
+
+	# FL-D3: Home renders no cash-out card at the rank that used to show it or
+	# at the rank that used to open it, however much clean money is on the run.
+	var cash_before: int = int(gs.clean_cash)
+	gs.clean_cash = 1000000
+	var home_packed: PackedScene = load("res://ui/screens/home.tscn")
+	if home_packed != null:
+		for rank_id in ["connected", "boss"]:
+			_stage_smoke_rank(gs, str(rank_id))
+			var home: Node = home_packed.instantiate()
+			add_child(home)
+			await get_tree().process_frame
+			if home.has_method("refresh"):
+				home.refresh()
+			await get_tree().process_frame
+			var content := home.get_node_or_null("Shell/Scroll/Pad/Content")
+			checks += 1
+			var found := 0
+			if content != null:
+				for child in content.get_children():
+					if str(child.name) == "WayOut":
+						found += 1
+			if found != 0:
+				printerr("COMPONENT FAILED: Home at %s still renders a cash-out card" % str(rank_id))
+				failed += 1
+			home.queue_free()
+			await get_tree().process_frame
+	gs.clean_cash = cash_before
+	gs.npc_ledgers = {}
+
 	print("screen smoke: component checks %d/%d passed" % [checks - failed, checks])
 	if failed > 0:
 		get_tree().quit.call_deferred(1)
@@ -444,3 +510,19 @@ func _check_panel_fit(gs: Node) -> void:
 	print("screen smoke: panel checks %d/%d passed" % [checks - failed, checks])
 	if failed > 0:
 		get_tree().quit.call_deferred(1)
+
+## A rank, by the ledger rather than by a number. `Exposure.has_rank()` derives
+## the rank from `npc_ledgers`, so a fixture that wants a rank has to write the
+## evidence for it -- setting an integer somewhere would gate nothing.
+func _stage_smoke_rank(gs: Node, tier_id: String) -> void:
+	var rank := preload("res://data/rank.gd")
+	var want: int = int(rank.by_index(rank.index_of(tier_id))["floor"])
+	var rows: Array = []
+	var have := 0
+	var i := 0
+	while have < want:
+		rows.append({"key": "smoke_rank:%d" % i, "type": "growth", "event": "staged",
+			"location": "north_star_lot", "source": "network", "count": 1, "day": 1})
+		have += 2
+		i += 1
+	gs.npc_ledgers["juan"] = rows

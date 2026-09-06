@@ -24,6 +24,9 @@ func _ready() -> void:
 func _fill() -> void:
 	var ending: Object = gm.system("ending") if gm != null else null
 	var r: Dictionary = ending.reckoning() if ending != null else {}
+	# Legacy only (FL-D3, 1.5.1): `"out"` is the one green ending and no road
+	# produces it any more. Kept so a save that ended that way before 1.5.1 still
+	# renders in its own colours. `"dead"` is deliberately NOT green.
 	var won: bool = str(r.get("kind", "")) == "out"
 	var kicker := get_node_or_null("Pad/V/Kicker") as Label
 	if kicker != null:

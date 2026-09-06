@@ -478,7 +478,7 @@ func reset_to_new_game() -> void:
 	hustles_discovered = []
 	phone_reply_history = {}
 	job_applications = {}
-	rent_due_day = 8
+	rent_due_day = 14
 	rent_missed = 0
 	rent_arrears_day = -1
 	weapon = "hands"
@@ -671,9 +671,20 @@ func job_pay_range(job_id: String) -> Dictionary:
 const WEEKLY_RENT := 150
 const PHONE_BILL := 75
 
-## TU-D1 (1.3.0): the first week is free, the way Yalonda says it is. The
-## first rent is due on day 8, the day after the week she gave you.
-var rent_due_day: int = 8
+## TU-D1 (1.3.0), corrected by FL-D4 (1.5.1): the first week is free, the way
+## Yalonda says it is.
+##
+## It was day 8 -- "the day after the week she gave you" -- and the playtest
+## called that wrong, because a player who arrives on day 1 and is told the
+## first week is free counts seven free days and is charged on the eighth.
+## Day 14 is the first rent, `RENT_PERIOD_DAYS` (7) carries it from there
+## (14, 21, 28 ...), and the free week is a whole week.
+##
+## **Every surface reads this field.** Yalonda's intro sheet, her first text,
+## Juan's sheet, the day-break sheet, the Phone's bills page and Dre's
+## rent-pressure window all derive from it, so this literal is the only place
+## the date is authored -- which is why moving it needed no copy change.
+var rent_due_day: int = 14
 var rent_missed: int = 0
 ## OG-D1 (1.0.0, v29): the due day that passed unpaid and has not been paid
 ## since, or -1. The escalation clock reads days late off it; paying

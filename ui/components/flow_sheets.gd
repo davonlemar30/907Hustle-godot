@@ -117,16 +117,25 @@ static func build_first_morning(gs: Node) -> VBoxContainer:
 	content.add_child(_dismiss_button("BET"))
 	return content
 
-static func _first_morning_copy(gs: Node) -> String:
+## FL-D5 (1.5.1): Juan says who he is and how a day goes, and stops there.
+##
+## He used to carry four beats, and three of them were somebody else's. The
+## phone beat and the Wash & Go beat restated Yalonda's intro sheet and her
+## first text, which the player has already read on the same morning, and the
+## rent beat printed a number and a due day that her sheet and her text both
+## already carry -- so the first thing the game did after the tutorial was
+## repeat the tutorial in a roommate's voice.
+##
+## Three beats now: his name and that she said you got in late; the four parts
+## of a day; and one line, in his register, that his mother does not play
+## about rent. **No number and no due day** -- that is hers to say, and she
+## says it twice already.
+static func _first_morning_copy(_gs: Node) -> String:
 	return ("Juan. She said you got in late.\n\n" \
 		+ "Day's four parts out here. Morning, afternoon, evening, night. " \
 		+ "Everything you do takes one, then it's the next one. Four things " \
 		+ "a day, that's it, so pick.\n\n" \
-		+ "Phone buzzes when somebody wants something. Answer it or don't. " \
-		+ "People notice either way. Rent's $%d on day %d. She meant that.\n\n" \
-		+ "Wash & Go is on the corner if you want a check. Everything else " \
-		+ "you find by walking. Walk the block.") \
-		% [int(gs.WEEKLY_RENT), int(gs.rent_due_day)]
+		+ "And she don't play about rent. That's all I'm saying.")
 
 ## TU-D1 (1.3.0): the day break. The playtest kept missing shifts because
 ## nothing divided one day from the next. This is the divider: the day,

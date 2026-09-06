@@ -2189,6 +2189,72 @@ which is the one existing mitigation and is unchanged.
   the kind is `dead`, so the rule's real guarantee (the room invents no ending
   of its own) is stronger than the literal it replaced.
 
+### The rulings PR 2 depends on
+
+**FL-D4 — The first week is free, so the first rent is day 14.** `rent_due_day`
+initialises to 14, not 8. A player who arrives on day 1 and is told the first
+week is free counts seven free days and is charged on the eighth, which is what
+the playtest called wrong. `RENT_PERIOD_DAYS` stays 7, so the calendar is
+14, 21, 28. **Every surface derives from the field** — Yalonda's intro sheet,
+her first text, Juan's sheet, the day-break sheet, the Phone's bills page and
+Dre's rent-pressure window — so moving the literal moved the copy, and the one
+duplicate literal found (a parity phone fixture) now derives too. D-31's TU-D1
+paragraph gains a dated amendment pointing here rather than a rewrite.
+
+**FL-D5 — Juan says who he is and how a day goes.** Three beats: his name and
+that she said you got in late; the four parts of a day; and one line, in his
+register, that his mother does not play about rent — **no number and no due
+day**. The phone beat and the Wash & Go beat are deleted: they restated
+Yalonda's sheet and her text, which the player read on the same morning, so
+the first thing the game did after the tutorial was repeat the tutorial in a
+roommate's voice.
+
+**FL-D6 — A card is biography.** Four deletions on the People card: the
+`Relationship score: %+.2f` line, the `(channel)` tag on every evidence row,
+the "Reads backwards" note on Curtis, and the row count on VIEW HISTORY. None
+is something a person would know about another person — a disposition float,
+an internal propagation channel, a lens property, a ledger length. The
+evidence rows **stay**, with the count folded as "x3", because they are what
+keeps the band from being an assertion. Turning 110 distinct observation event
+strings into sentences a person would say is real copy work and its own PR;
+until then a row prints the event words with underscores stripped.
+
+**FL-D7 — The board is earned at KNOWN; what is on it stays earned by its own
+gate.** The owner's ruling: the player may see the Turf board once they reach
+KNOWN, while individual territory, business and organizational actions go on
+enforcing their own higher requirements — the system becomes visible as an
+earned layer before every capability inside it is available. `MENU_TURF` is
+`MODE_LOCKED` on `rank_min known` with the hint "Get a name on the block
+first"; `turf.tscn` joins `ROUTE_GATES`; More's Operations row is parented
+first and gated second. **No verb's requirement moved** — soldiers still need
+KNOWN, corners still need PLAYER, a business ASK still needs the owner warm.
+LOCKED rather than hidden (owner default 2): a padlock is a promise, and it is
+the shape the Crew row already uses.
+
+### Measured — what the rent move did to the economy
+
+Moving the first rent to day 14 changes two things at once, and the driven
+sweep separates them.
+
+**The denominator rose.** `legal_worker` keeps a week's rent it used to pay:
+net worth 1,242 → **1,392**. Every `pct_of_job` in `ECON_CORRIDORS` therefore
+falls about 12% for free, with no profile having got worse. `best_job_worker`
+is the clean example — net worth 1,609 → 1,759, percentage 130 → 126.
+
+**The calendar reshuffled the drivers.** When cash leaves changes what a driver
+can afford next and therefore which action it takes, so every downstream keyed
+roll moves. `flipper` measured 195% (was 270). Two corridor floors were
+lowered to the measured margins and **disclosed rather than tuned back**, the
+same way every prior entry was.
+
+**The settler now dies in every seed.** 158% with a 50% game-over rate after
+PR 1 became **60% with a 100% game-over rate** after the rent move: the extra
+early cash buys more walking, and more walking on a driver that never heals is
+more damage. **That corridor is now measuring truncated runs** — what a settler
+earns before dying rather than what the strategy is worth — and it is flagged
+in place for revisit when an injury/recovery pressure loop exists. It is not
+this build's to fix (FL-D2).
+
 ### What this binds
 
 Nothing beyond the ending. Eviction and Curtis-at-the-door ship exactly as
@@ -2688,6 +2754,12 @@ of the night's feed and today's obligations, never a write. The first
 rent on day eight because Yalonda said the first week was free. Bills
 payable ahead, the due day moving out from where it stood. Rejected: a
 clock (the game's time is four parts; a divider names them).
+
+> **Amended 2026-09-06 (FL-D4, D-34): the first rent is day 14, not day 8.**
+> "The day after the week she gave you" was the wrong reading of its own
+> premise — a player who arrives on day 1 and is told the first week is free
+> counts seven free days and is charged on the eighth. Everything else in
+> TU-D1 stands; only the literal moved.
 
 **TU-D2 — a thing counts once.** Rank folds observation rows by key
 across ledgers; presence is capped; money weighs two. The cards earn the

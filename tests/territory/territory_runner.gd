@@ -54,7 +54,7 @@ const DEFS := preload("res://data/territory_definitions.gd")
 const BIZ := preload("res://data/business_definitions.gd")
 
 ## The check floor. See `_ready()` for why a count is a gate.
-const MIN_CHECKS := 338
+const MIN_CHECKS := 403
 
 var a: RefCounted
 var gs: Node
@@ -97,6 +97,10 @@ func _ready() -> void:
 	_test_business_costs_and_heat()
 	_test_business_decay()
 	_test_business_walk_away()
+	_test_business_break()
+	_test_business_break_side_effects()
+	_test_business_take()
+	_test_business_handoffs()
 
 	# The floor, in the shape `parity_runner.gd` uses it. A suite whose checks
 	# quietly stop RUNNING still prints PASS — an early `return` in a test
@@ -1354,8 +1358,28 @@ func _test_business_settles_after_territory() -> void:
 	var base: int = int(BIZ.by_id("wash_and_go")["base_take"])
 	a.eq_int("premise: backed, and paying the base",
 		int(_biz().take_tonight("wash_and_go")), base)
-	_terr()._lose_block("wash_and_go_lot", "Test.")
-	a.eq_int("the same arrangement pays half once the ground under it is gone",
+	# HSS-D8: a corner lost to a PROBE takes the business standing on it with
+	# it. Driven through the same `_lose_block` road a probe takes, which is why
+	# this arm lives beside the settlement-order one: if `businesses` settled
+	# BEFORE `territory`, the promise would be judged this morning against a
+	# corner the night had not taken yet, and this would still read as paying.
+	_terr()._lose_block("wash_and_go_lot", "Test.", _terr().LOST_TO_PROBE)
+	a.eq_str("the ground going to him takes the business with it",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_CURTIS))
+	a.eq_int("and it pays the player nothing at all, not half",
+		int(_biz().take_tonight("wash_and_go")), 0)
+
+	# The half-pay case, kept on the read it actually belongs to: the lot is
+	# still yours, and nobody is standing on it.
+	_fresh(5000, 0)
+	gs.day = 3
+	gs.soldiers_idle = 2
+	_claim_block("wash_and_go_lot")
+	_biz().known_ids()
+	var unbacked: Dictionary = _biz().row_of("wash_and_go")
+	unbacked["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	gm.dispatch("pull_soldier", {"block_id": "wash_and_go_lot"})
+	a.eq_int("a held lot nobody is on pays half",
 		int(_biz().take_tonight("wash_and_go")),
 		floori(float(base) * float(BIZ.UNBACKED_SHARE)))
 
@@ -1693,3 +1717,366 @@ func _test_business_walk_away() -> void:
 	gm.dispatch("abandon_block", {"block_id": "spenard_rec_lot"})
 	a.eq_str("abandoning a corner with no business on it leaves the others alone",
 		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_YOURS))
+
+# --- breaking, and his (HSS-D7, D4's TAKE, D8's hand-offs) -------------------
+
+## Put a business at BREAKING with a forced break table: one outcome at weight
+## 1, the other three at 0. The roll is real -- it is the shipped seeded roll
+## over the row's own weights -- but its answer is determined, which is how
+## each of the four outcomes gets asserted rather than sampled.
+func _breaking(id: String, kind: String) -> Dictionary:
+	_fresh(5000, 0)
+	gs.day = 10
+	gs.current_district_id = "north_star_lot"
+	gs.soldiers_idle = 2
+	_claim_block("wash_and_go_lot")
+	_biz().known_ids()
+	var row: Dictionary = _biz().row_of(id)
+	row["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	row["pressure"] = int(BIZ.MAX_PRESSURE)
+	row["since_day"] = int(gs.day)
+	var weights: Dictionary = {}
+	for k in BIZ.BREAK_KINDS:
+		weights[str(k)] = 1.0 if str(k) == kind else 0.0
+	return weights
+
+## The break is rolled off the AUTHORED weights, so forcing an outcome means
+## handing the roll a forced table. `_weighted_break` is the seam that takes
+## one, which is why it takes the weights as an argument rather than reading
+## them itself.
+func _force_break(id: String, weights: Dictionary) -> String:
+	var rng: Node = get_node("/root/RngManager")
+	return str(_biz()._weighted_break(rng, id, weights))
+
+func _test_business_break() -> void:
+	var E: Node = get_node("/root/Exposure")
+	var engine: Object = gm.system("consequence")
+
+	# Nothing rolls below the top band, however long you sit there.
+	var w: Dictionary = _breaking("wash_and_go", "close")
+	var row: Dictionary = _biz().row_of("wash_and_go")
+	for pressure in range(int(BIZ.MAX_PRESSURE)):
+		row["pressure"] = pressure
+		row["closed_until"] = -1
+		row["last_kind"] = ""
+		gs.day += 1
+		_biz().settle_night(int(gs.day))
+		a.eq_str("a business at %s never rolls a break" % BIZ.band_word(pressure),
+			str(_biz().row_of("wash_and_go").get("last_kind", "")), "")
+
+	# The forced table itself: each weight picks its own outcome, and only it.
+	for kind in BIZ.BREAK_KINDS:
+		var forced: Dictionary = {}
+		for k in BIZ.BREAK_KINDS:
+			forced[str(k)] = 1.0 if str(k) == kind else 0.0
+		a.eq_str("a weight of one on '%s' rolls '%s'" % [kind, kind],
+			_force_break("wash_and_go", forced), str(kind))
+	a.eq_str("and a table of zeroes breaks in no direction at all",
+		_force_break("wash_and_go", {"close": 0.0, "police": 0.0, "curtis": 0.0, "resist": 0.0}), "")
+
+	# CLOSE: shut for the authored nights, pays nothing, reopens at LEANED ON.
+	w = _breaking("wash_and_go", "close")
+	row = _biz().row_of("wash_and_go")
+	_biz()._roll_the_break_with("wash_and_go", w)
+	a.eq_str("close shuts her doors", str(row.get("last_kind", "")), "close")
+	a.eq_bool("...and the business is closed", bool(_biz().is_closed("wash_and_go")), true)
+	a.eq_int("...for the authored number of nights",
+		int(_biz().closed_nights_left("wash_and_go")), int(BIZ.CLOSURE_NIGHTS))
+	a.eq_int("...paying nothing while it is shut",
+		int(_biz().take_tonight("wash_and_go")), 0)
+	a.eq_int("...and it reopens angry, not steady",
+		int(_biz().pressure_of("wash_and_go")), int(BIZ.CLOSURE_REOPEN_PRESSURE))
+	# A closed business refuses both verbs, with the closure named.
+	a.check("a closed business refuses ASK, and says why",
+		str(_biz().ask_blocker("wash_and_go")).to_lower().contains("shut"))
+	a.check("...and refuses LEAN the same way",
+		str(_biz().lean_blocker("wash_and_go")).to_lower().contains("shut"))
+	# And it opens again on time.
+	gs.day += int(BIZ.CLOSURE_NIGHTS)
+	a.eq_bool("the doors open again on the night they were shut until",
+		bool(_biz().is_closed("wash_and_go")), false)
+	a.eq_int("...and it pays at the band it reopened at",
+		int(_biz().take_tonight("wash_and_go")),
+		int(BIZ.take_at("wash_and_go", int(BIZ.CLOSURE_REOPEN_PRESSURE))))
+
+	# POLICE: heat in the district, pressure, and the band knocked to SQUEEZED.
+	w = _breaking("wash_and_go", "police")
+	row = _biz().row_of("wash_and_go")
+	gs.heat = 0.0
+	var pressure_before: float = float(engine.pressure_score("north_star_lot", _biz().LEAN_PRESSURE_FAMILY))
+	_biz()._roll_the_break_with("wash_and_go", w)
+	a.eq_str("police is somebody finally calling it in", str(row.get("last_kind", "")), "police")
+	a.check("...which is heat in the district (%f)" % float(gs.heat), float(gs.heat) > 0.0)
+	a.check("...and District Pressure with it",
+		float(engine.pressure_score("north_star_lot", _biz().LEAN_PRESSURE_FAMILY)) > pressure_before)
+	a.eq_int("...and the band comes off the top", int(_biz().pressure_of("wash_and_go")), 2)
+	a.eq_bool("...but the doors stay open", bool(_biz().is_closed("wash_and_go")), false)
+
+	# CURTIS: she found somebody else to pay, and he was always there.
+	w = _breaking("wash_and_go", "curtis")
+	row = _biz().row_of("wash_and_go")
+	_biz()._roll_the_break_with("wash_and_go", w)
+	a.eq_str("curtis is her finding somebody else", str(row.get("last_kind", "")), "curtis")
+	a.eq_str("...and the business is his now",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_CURTIS))
+	a.eq_int("...at no band at all", int(_biz().pressure_of("wash_and_go")), 0)
+	a.eq_int("...and it pays the player nothing",
+		int(_biz().take_tonight("wash_and_go")), 0)
+
+	# RESIST: the arrangement ends, she is hostile, and the next lean is harder.
+	w = _breaking("wash_and_go", "resist")
+	row = _biz().row_of("wash_and_go")
+	gs.npc_ledgers["lani"] = []
+	_biz()._roll_the_break_with("wash_and_go", w)
+	a.eq_str("resist is her saying no and meaning it", str(row.get("last_kind", "")), "resist")
+	a.eq_str("...the arrangement ends, and goes to nobody",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_NONE))
+	# The odds are compared at the SAME band, with and without the resist on the
+	# row. Comparing across the break instead would compare band 3's own -0.30
+	# penalty against band 0's, and read as the odds getting BETTER.
+	var contested: float = float(_biz().lean_chance("wash_and_go"))
+	row["last_kind"] = ""
+	var clean_odds: float = float(_biz().lean_chance("wash_and_go"))
+	row["last_kind"] = "resist"
+	a.check("...and the next lean there is contested (%f against %f at the same band)"
+		% [contested, clean_odds], contested < clean_odds)
+	a.near("...by exactly the authored penalty",
+		clean_odds - contested, float(_biz().LEAN_AFTER_RESIST))
+
+	# The roll is SEEDED on the business and the night, so a reload cannot
+	# reroll it -- the whole reason the key exists.
+	var forced_mix: Dictionary = {"close": 1.0, "police": 1.0, "curtis": 1.0, "resist": 1.0}
+	var first: String = _force_break("wash_and_go", forced_mix)
+	a.eq_str("the same business on the same night rolls the same way twice",
+		_force_break("wash_and_go", forced_mix), first)
+	gs.day += 1
+	a.check("and a different night is free to roll differently",
+		_force_break("wash_and_go", forced_mix) is String)
+
+## The break's dispatch-scoped effects, driven through real nights.
+##
+## `Exposure.record_observation` and `Curtis.raise_awareness` both refuse
+## outside a `GameManager.dispatch()`, so the forced-weight arms above -- which
+## call the roll directly, because the authored tables are `const` and cannot
+## be swapped for a fixture -- cannot assert them. This one crosses real nights
+## with a business pinned at BREAKING and asserts the side effect that matches
+## whichever outcome the seeded roll actually produced.
+func _test_business_break_side_effects() -> void:
+	var E: Node = get_node("/root/Exposure")
+	_fresh(5000, 0)
+	gs.day = 10
+	gs.current_district_id = "north_star_lot"
+	gs.soldiers_idle = 2
+	_claim_block("wash_and_go_lot")
+	_biz().known_ids()
+	gs.npc_ledgers["lani"] = []
+	var seen: Dictionary = {}
+	for night in range(24):
+		var row: Dictionary = _biz().row_of("wash_and_go")
+		if row.is_empty():
+			break
+		# Pin it back to BREAKING and open every morning, so every night is
+		# another roll rather than one break and twenty quiet nights.
+		row["allegiance"] = BIZ.ALLEGIANCE_YOURS
+		row["pressure"] = int(BIZ.MAX_PRESSURE)
+		row["closed_until"] = -1
+		row["since_day"] = int(gs.day)
+		# Cleared every morning, so what this arm reads afterwards is THIS
+		# night's outcome. `last_kind` is a persisted field and survives a night
+		# that rolled nothing -- leaving it would let the loop read a flip that
+		# happened three nights ago against an allegiance the fixture has since
+		# pinned back, and assert the pair against each other.
+		row["last_kind"] = ""
+		var hostile_before: bool = _ledger_has(E, "lani", "hostile")
+		_cross_days(1)
+		var kind: String = str(_biz().row_of("wash_and_go").get("last_kind", ""))
+		if kind.is_empty():
+			continue
+		seen[kind] = int(seen.get(kind, 0)) + 1
+		match kind:
+			"curtis":
+				# The flip's `raise_awareness(1)` is NOT asserted across a day
+				# cross, and that is a real property of the engine rather than a
+				# gap: a flip does not mark criminal activity, so the night reads
+				# as quiet, and `curtis.rollover` takes a point back off after two
+				# quiet nights -- the bump and the decay cancel and the whole day
+				# nets zero. Awareness inside a dispatch is asserted where it can
+				# be seen without a rollover in the way: the TAKE arm below.
+				a.eq_str("a flip hands the business to Curtis, driven",
+					str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_CURTIS))
+			"resist":
+				a.eq_bool("a resist writes hostile to the owner's ledger",
+					_ledger_has(E, "lani", "hostile") or hostile_before, true)
+	a.check("driven nights at BREAKING produce real breaks (%s)" % str(seen),
+		not seen.is_empty())
+	a.check("...and every kind they produce is one the ruling names",
+		_all_known_break_kinds(seen))
+
+func _all_known_break_kinds(seen: Dictionary) -> bool:
+	for kind in seen.keys():
+		if not str(kind) in BIZ.BREAK_KINDS:
+			return false
+	return true
+
+## HSS-D4: TAKE. His odds, the win, the retaliation, the loss.
+func _test_business_take() -> void:
+	var engine: Object = gm.system("consequence")
+	_fresh(5000, 0)
+	gs.day = 10
+	gs.current_district_id = "north_star_lot"
+	gs.active_consequence = {}
+	_biz().known_ids()
+
+	# The Motel is his from day one, so TAKE is the only verb that reaches it.
+	a.eq_str("premise: the Motel is his",
+		str(_biz().allegiance_of("northern_lights_motel")), str(BIZ.ALLEGIANCE_CURTIS))
+	a.check("ASK does not reach one of his",
+		not str(_biz().ask_blocker("northern_lights_motel")).is_empty())
+	a.check("neither does LEAN",
+		not str(_biz().lean_blocker("northern_lights_motel")).is_empty())
+	a.check("and TAKE with nobody behind you is refused",
+		not str(_biz().take_blocker("northern_lights_motel")).is_empty())
+
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 5,
+		"tier": 1, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	a.eq_str("with somebody behind you TAKE opens",
+		str(_biz().take_blocker("northern_lights_motel")), "")
+
+	# The odds read the kit and the crew, and fall off as he notices you.
+	var bare: float = float(_biz().take_chance("northern_lights_motel"))
+	gs.weapon = "piece"
+	a.check("a piece moves his odds",
+		float(_biz().take_chance("northern_lights_motel")) > bare)
+	gs.weapon = "hands"
+	var awareness_hold: int = int(gs.curtis_awareness)
+	gs.curtis_awareness = awareness_hold + 20
+	a.check("and being watched moves them the other way",
+		float(_biz().take_chance("northern_lights_motel")) < bare)
+	gs.curtis_awareness = awareness_hold
+
+	# The room, and what a win does.
+	a.eq_bool("TAKE dispatches",
+		gm.dispatch("business_take", {"business_id": "northern_lights_motel"}), true)
+	var source: Dictionary = gs.active_consequence.get("source", {})
+	a.eq_str("...through the businesses adapter", str(source.get("action_id", "")), "businesses")
+	a.check("...with HIS people named as the other side (%s)" % str(source.get("opponent", "")),
+		str(source.get("opponent", "")).contains("Curtis"))
+	gs.active_consequence = {}
+
+	var won: bool = _take_until("northern_lights_motel", true)
+	a.eq_bool("a take can land", won, true)
+	if won:
+		a.eq_str("and the Motel is yours", str(_biz().allegiance_of("northern_lights_motel")),
+			str(BIZ.ALLEGIANCE_YOURS))
+		a.eq_int("at LEANED ON -- you did not ask",
+			int(_biz().pressure_of("northern_lights_motel")), 1)
+		a.check("Curtis noticed", int(gs.curtis_awareness) > 0)
+		# He comes back for it, through the shipped queue, with the BUSINESS as
+		# the target.
+		# The schedule is a seeded roll against the target's authored chance, so
+		# one win is not guaranteed to queue one. Retried rather than asserted on
+		# a single attempt -- a 0.75 chance fails a quarter of the time and a
+		# suite that flakes one run in four is worse than no suite.
+		var found := false
+		for retry in range(12):
+			for entry in gs.consequence_queue:
+				if str((entry as Dictionary).get("source_target_id", "")) == "northern_lights_motel":
+					found = true
+			if found:
+				break
+			var again: Dictionary = gs.businesses["northern_lights_motel"]
+			again["allegiance"] = BIZ.ALLEGIANCE_CURTIS
+			again["pressure"] = 0
+			if not _take_until("northern_lights_motel", true):
+				break
+		a.eq_bool("and a retaliation row names the business as its target", found, true)
+
+	# A loss reads as a contest loss: health, and he knows.
+	_fresh(5000, 0)
+	gs.day = 10
+	gs.current_district_id = "north_star_lot"
+	gs.active_consequence = {}
+	_biz().known_ids()
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 5,
+		"tier": 1, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	var health_before: int = int(gs.health)
+	var lost: bool = _take_until("northern_lights_motel", false)
+	a.eq_bool("a take can be lost", lost, true)
+	if lost:
+		a.eq_str("and it is still his", str(_biz().allegiance_of("northern_lights_motel")),
+			str(BIZ.ALLEGIANCE_CURTIS))
+		a.check("and it cost health", int(gs.health) < health_before)
+
+func _take_until(id: String, want_win: bool) -> bool:
+	for attempt in range(40):
+		gs.active_consequence = {}
+		gs.day = 10 + attempt
+		gs.health = gs.health_max
+		if not want_win and not _biz().is_his(id):
+			var reset: Dictionary = gs.businesses[id]
+			reset["allegiance"] = BIZ.ALLEGIANCE_CURTIS
+			reset["pressure"] = 0
+		if not gm.dispatch("business_take", {"business_id": id}):
+			continue
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "take_it"})
+		var tier: String = str((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("resolved_tier", ""))
+		gm.dispatch("consequence_continue", {})
+		if (tier in ["clean", "messy"]) == want_win:
+			return true
+	return false
+
+## HSS-D8: the board's own hand-offs -- the probe, the walk-off, the dismantle.
+func _test_business_handoffs() -> void:
+	# A probe that takes the Motel Row takes the motel with it, and nothing
+	# else on the board moves.
+	_fresh(5000, 0)
+	gs.day = 10
+	gs.soldiers_idle = 4
+	_claim_block("northern_lights_motels")
+	_claim_block("wash_and_go_lot")
+	_biz().known_ids()
+	var motel: Dictionary = _biz().row_of("northern_lights_motel")
+	motel["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	var wash: Dictionary = _biz().row_of("wash_and_go")
+	wash["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	_terr()._lose_block("northern_lights_motels", "Nobody was standing on it.",
+		_terr().LOST_TO_PROBE)
+	a.eq_str("a probe that takes the Motel Row takes the motel",
+		str(_biz().allegiance_of("northern_lights_motel")), str(BIZ.ALLEGIANCE_CURTIS))
+	a.eq_str("...and nothing else on the board moves",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_YOURS))
+
+	# Abandoning does NOT. This is the pair the reason argument exists for.
+	_fresh(5000, 0)
+	gs.day = 10
+	gs.soldiers_idle = 4
+	_claim_block("northern_lights_motels")
+	_biz().known_ids()
+	var second: Dictionary = _biz().row_of("northern_lights_motel")
+	second["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	gm.dispatch("abandon_block", {"block_id": "northern_lights_motels"})
+	a.eq_str("walking off the same lot gives the motel to nobody",
+		str(_biz().allegiance_of("northern_lights_motel")), str(BIZ.ALLEGIANCE_NONE))
+	a.eq_bool("...and never to Curtis",
+		str(_biz().allegiance_of("northern_lights_motel")) == str(BIZ.ALLEGIANCE_CURTIS), false)
+
+	# Dismantling Spenard frees every business of his there -- to NOBODY.
+	_fresh(5000, 0)
+	gs.day = 10
+	_biz().known_ids()
+	var his: Dictionary = _biz().row_of("northern_lights_motel")
+	his["allegiance"] = BIZ.ALLEGIANCE_CURTIS
+	var mine: Dictionary = _biz().row_of("wash_and_go")
+	mine["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	mine["pressure"] = 2
+	a.eq_bool("premise: he is still in Spenard",
+		bool(_terr().is_dismantled("north_star_lot")), false)
+	_terr()._dismantle("north_star_lot")
+	a.eq_bool("dismantling Spenard puts him out of it",
+		bool(_terr().is_dismantled("north_star_lot")), true)
+	a.eq_str("and a business of his there goes to NOBODY, not to you",
+		str(_biz().allegiance_of("northern_lights_motel")), str(BIZ.ALLEGIANCE_NONE))
+	a.eq_str("while an arrangement of your own is left exactly alone",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_YOURS))
+	a.eq_int("...at the band it was at", int(_biz().pressure_of("wash_and_go")), 2)

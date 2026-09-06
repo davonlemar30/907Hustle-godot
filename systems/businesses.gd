@@ -92,6 +92,43 @@ const LEAN_PRESSURE_FAMILY := "stick"
 const LEAN_PRESSURE := 1.0
 const LEAN_PRESSURE_DAILY_CAP := 2.0
 
+## HSS-D7: the break. At BREAKING, one seeded roll a night over the row's own
+## `break_weights`.
+##
+## **The DAY goes first in the key, and that is not a style preference.**
+## `rng_manager.gd`'s own header states the contract: FNV-1a's high bits barely
+## move when a small counter is appended to the tail, and `seeded_random` reads
+## exactly those high bits. Keyed as `business_break:<id>:<day>` the nightly
+## rolls clustered hard -- a live run produced 0.356, 0.360, 0.333, 0.337,
+## 0.340, 0.344 on six consecutive nights, which is the same break outcome six
+## times running rather than a roll. `seeded_shuffle` puts its varying index at
+## the front for this reason and calls it part of the parity contract; this
+## does the same.
+const BREAK_KEY := "%d:business_break:%s"
+## What each outcome does, in the currencies the game already has.
+const BREAK_CLOSE_HEAT := 0.0
+const BREAK_POLICE_HEAT := 3.0
+const BREAK_POLICE_PRESSURE := 1.0
+const BREAK_POLICE_PRESSURE_CAP := 1.0
+const BREAK_CURTIS_AWARENESS := 1
+## An owner who fought you off once is harder to lean on again, and that is
+## what "contested odds" means on a row that has already resisted.
+const LEAN_AFTER_RESIST := 0.25
+
+## HSS-D4: TAKE. A lean at one of Curtis's, on his odds rather than hers --
+## the same shape `territory.contest_chance` uses, because it is the same
+## fight: your crew and your kit against whoever he left standing in there.
+const TAKE_BASE := 0.35
+const TAKE_PER_CREW := 0.08
+const TAKE_PER_SOLDIER := 0.04
+const TAKE_AWARENESS := 0.02
+const TAKE_MIN := 0.10
+const TAKE_MAX := 0.85
+## A win is loud. Priced at Territory's own number rather than a second one.
+const TAKE_WIN_AWARENESS := 2
+const TAKE_LOSS_AWARENESS := 3
+const TAKE_LOSS_HEALTH := 8
+
 var gs: Node
 var gm: Node
 
@@ -103,7 +140,8 @@ func setup(game_state: Node, manager: Node) -> void:
 ## everything else and pays a little more. There is no third verb for the crew
 ## -- the lean's odds already read them, the way a contest's do.
 func can_handle(action: String) -> bool:
-	return action in ["business_ask", "business_lean", "business_walk_away"]
+	return action in ["business_ask", "business_lean", "business_walk_away",
+		"business_take"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
 	var id: String = str(payload.get("business_id", ""))
@@ -114,6 +152,8 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 			return _lean(id)
 		"business_walk_away":
 			return _walk_away(id)
+		"business_take":
+			return _take(id)
 	return {"ok": false, "reason": "Unknown business action."}
 
 func _wallet() -> Object:
@@ -560,6 +600,11 @@ func lean_chance(id: String) -> float:
 	chance += LEAN_PER_SOLDIER * float(gs.soldiers_idle)
 	chance += float(gs.weapon_def().get("fight_bonus", 0.0))
 	chance -= LEAN_PER_BAND * float(pressure_of(id))
+	# HSS-D7: an owner who fought you off once has decided something about you,
+	# and the next conversation starts from there. This is what "the next lean
+	# shows contested odds" means on a row that has already resisted.
+	if str(row_of(id).get("last_kind", "")) == "resist":
+		chance -= LEAN_AFTER_RESIST
 	return clampf(chance, LEAN_MIN, LEAN_MAX)
 
 ## The engine's seam. `record_receipt` guards every effect so a chain resolved
@@ -575,7 +620,31 @@ func resolve_consequence(chain: Dictionary, choice_id: String) -> Dictionary:
 	var tier := "deterministic"
 	var health := 0
 
-	if choice_id == "lean_on":
+	if choice_id == "take_it":
+		# HSS-D4: TAKE. His odds, his people, and a night he comes back for it.
+		var resolver: Object = gm.system("outcome_resolver")
+		var attributes: Object = gm.system("attributes")
+		var key := "%d:%d:business_take:%s" % [gs.day, gs.time_slots_today, id]
+		tier = "failure"
+		if resolver != null:
+			tier = str((resolver.resolve_action("confrontation", take_chance(id),
+				int(attributes.effective("combat")) if attributes != null else 1,
+				gs.run_seed, key) as Dictionary)["tier"])
+		if tier in ["clean", "messy"]:
+			if engine.record_receipt(cause_id, "business_take:won"):
+				_take_won(id, cause_id)
+			if tier == "messy":
+				health = TAKE_LOSS_HEALTH / 2
+		else:
+			if engine.record_receipt(cause_id, "business_take:lost"):
+				_take_lost(id)
+			health = TAKE_LOSS_HEALTH if tier == "failure" else TAKE_LOSS_HEALTH * 2
+	elif choice_id == "back_off":
+		var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
+		if curtis != null and engine.record_receipt(cause_id, "business_take:walked"):
+			curtis.raise_awareness(1)
+		gs.log_activity("You look at %s for a while and walk. His people watch you do it." % place, AMBER)
+	elif choice_id == "lean_on":
 		var resolver: Object = gm.system("outcome_resolver")
 		var attributes: Object = gm.system("attributes")
 		var key := "%d:%d:business_lean:%s" % [gs.day, gs.time_slots_today, id]
@@ -749,6 +818,8 @@ func _say_on_change(id: String, what: String) -> void:
 			text = _voice(owner_id, "unbacked")
 		"first_paid":
 			text = _voice(owner_id, "first_paid")
+		"closed", "police", "flipped", "resisted":
+			text = _voice(owner_id, what)
 	if text.is_empty():
 		return
 	phone.push_text(who, text, "business:%s" % id)
@@ -766,24 +837,40 @@ const OWNER_VOICE := {
 		"squeezed": "that's more than we said, baby. i heard you the first time",
 		"unbacked": "nobody's been by in a minute. that's all i'm saying",
 		"first_paid": "it's counted. don't make me hold it all week",
+		"closed": "i'm closed a few days baby. don't come by, there's nothing to come by for",
+		"police": "a car sat on my lot this morning. somebody called them and it wasn't me",
+		"flipped": "somebody else came and asked nicer. that's all i'm going to say",
+		"resisted": "no. i'm done. you can tell whoever you want i said it",
 	},
 	"marcus": {
 		"opened": "fine. fridays.",
 		"squeezed": "you moved the number.",
 		"unbacked": "nobody came.",
 		"first_paid": "it's ready.",
+		"closed": "shut til friday.",
+		"police": "they took a report.",
+		"flipped": "i pay somebody else now.",
+		"resisted": "no more.",
 	},
 	"bev": {
 		"opened": "you and everybody else. it'll be at the desk.",
 		"squeezed": "you're going to price yourself out of a motel.",
 		"unbacked": "i've had two nights nobody covered. you know that.",
 		"first_paid": "front desk. ask for the envelope, don't say my name.",
+		"closed": "no vacancy, and no envelope. i'll call you when the doors open",
+		"police": "there was a cruiser in my lot at six in the morning. thanks for that",
+		"flipped": "curtis's people never stopped coming. so.",
+		"resisted": "i ran this row before you and i'll run it after. we're done",
 	},
 	"vic": {
 		"opened": "yeah alright. i'm under a truck til six, leave it with the kid",
 		"squeezed": "you keep coming back and it keeps costing me the same shop",
 		"unbacked": "had a window go out tuesday. wasn't anybody around",
 		"first_paid": "it's in the drawer, come get it",
+		"closed": "shops shut. tell whoever asks it's a parts thing",
+		"police": "cops came out about the window. wrote it all down this time",
+		"flipped": "somebody else is covering me now. it wasn't personal",
+		"resisted": "got six guys here with wrenches. don't come back",
 	},
 }
 
@@ -831,7 +918,13 @@ func settle_night(_ended_day: int) -> void:
 			_heat().apply_gain(raw, _heat().FAMILY_NONE, district,
 				{"source_id": "business_pressure"})
 
-	# 3. The bands cool off. AFTER the night is paid, so a band the player held
+	# 3. HSS-D7: the break. Rolled AFTER the night is paid, so a business that
+	#    shuts its doors tonight still paid for the day it worked, and before the
+	#    decay, because an outcome that moves the band is not a quiet night.
+	for id in known_ids():
+		_roll_the_break(id)
+
+	# 4. The bands cool off. AFTER the night is paid, so a band the player held
 	#    all day still pays what it was worth today and settles back tomorrow.
 	for id in known_ids():
 		_decay(id)
@@ -955,3 +1048,227 @@ func odds_word(id: String) -> String:
 	if chance >= 0.25:
 		return "she probably does not"
 	return "she will not"
+
+# --- HSS-D4: TAKE, the third way in -----------------------------------------
+
+## Taking one off Curtis. Gated on a crew and on the business actually being
+## his; the room is the same chain the lean opens, with his people on the other
+## side of it and his odds on the button.
+func take_requirements(id: String) -> Array:
+	return [
+		{"type": "crew_count_min", "min": 1},
+		{"type": "business_allegiance", "business_id": id,
+			"allowed": [DEFS.ALLEGIANCE_CURTIS]},
+	]
+
+func take_blocker(id: String) -> String:
+	var hard := _hard_blocker(id)
+	if not hard.is_empty():
+		return hard
+	return _first_blocker(id, take_requirements(id))
+
+## HSS-D4: his odds, not hers. Reads the crew, the soldiers and the kit the way
+## `territory.contest_chance` does, and falls off as he notices you more.
+func take_chance(id: String) -> float:
+	var chance: float = TAKE_BASE
+	chance += TAKE_PER_CREW * float(gs.recruited_crew().size())
+	chance += TAKE_PER_SOLDIER * float(gs.soldiers_idle)
+	chance += float(gs.weapon_def().get("fight_bonus", 0.0))
+	chance -= TAKE_AWARENESS * float(gs.curtis_awareness)
+	return clampf(chance, TAKE_MIN, TAKE_MAX)
+
+func take_odds_word(id: String) -> String:
+	var chance: float = take_chance(id)
+	if chance >= 0.70:
+		return "they fold"
+	if chance >= 0.55:
+		return "they probably fold"
+	if chance >= 0.40:
+		return "even money"
+	if chance >= 0.25:
+		return "they probably do not"
+	return "they will not"
+
+func _take(id: String) -> Dictionary:
+	var blocked := take_blocker(id)
+	if not blocked.is_empty():
+		return {"ok": false, "reason": blocked}
+	var engine: Object = gm.system("consequence")
+	if engine == null:
+		return {"ok": false, "reason": "Not now."}
+	var definition: Dictionary = DEFS.by_id(id)
+	var place := str(definition["name"])
+	gs.log_activity("%s pays Curtis. His people are in there tonight, and they were told you might come."
+		% place, AMBER)
+	engine.open_chain(engine.KIND_CONFRONTATION, {
+		"district_id": str(definition["district"]),
+		"return_route": "TURF",
+		"source": {"family": "businesses", "kind": "business_take", "action_id": "businesses",
+			"target_id": id, "target_name": place,
+			"opponent": "Curtis's people at %s" % place},
+		"decision": {
+			"allowed_choices": ["take_it", "back_off"],
+			"deterministic_choices": ["back_off"],
+			"shown_probabilities": {"take_it": take_chance(id)},
+		},
+	})
+	return {"ok": true}
+
+## A take that landed: the business is yours at LEANED ON -- you did not ask --
+## Curtis knows, and his people are coming back for it.
+func _take_won(id: String, cause_id: String) -> void:
+	_open_arrangement(id, 1, "leaned")
+	var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
+	if curtis != null:
+		curtis.raise_awareness(TAKE_WIN_AWARENESS)
+	# HSS-D4: he comes back for it, through the shipped queue. The business is
+	# the TARGET -- `consequence_rules.gd` carries its row, keyed by the
+	# business id, next to the tills and the dice game. No new tier.
+	var retaliation: Object = gm.system("retaliation")
+	if retaliation != null and not cause_id.is_empty():
+		retaliation.schedule(id, "clean", cause_id, str(DEFS.by_id(id)["district"]))
+
+func _take_lost(id: String) -> void:
+	var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
+	if curtis != null:
+		curtis.raise_awareness(TAKE_LOSS_AWARENESS)
+	gs.log_activity("You do not take %s off him. His people make sure you remember trying."
+		% str(DEFS.by_id(id)["name"]), RED)
+
+# --- HSS-D7: breaking -------------------------------------------------------
+
+## One seeded roll a night at BREAKING, over the row's own authored weights.
+##
+## This is the tooth under the top band. Without it BREAKING pays 1.3x for
+## nothing but heat, and the owner's rule -- that the highest band is a
+## business being pushed toward failure and never a tier worth keeping -- is a
+## sentence rather than a mechanic.
+func _roll_the_break(id: String) -> void:
+	var definition: Dictionary = DEFS.by_id(id)
+	if definition.is_empty():
+		return
+	_roll_the_break_with(id, definition.get("break_weights", {}))
+
+## The same roll against a GIVEN table. The authored weights are the caller's
+## argument rather than something this function reaches for, which is what lets
+## the suite force one outcome at a time (`{x: 1, others: 0}`) and assert all
+## four -- the definitions are `const` and cannot be mutated for a fixture.
+func _roll_the_break_with(id: String, weights: Dictionary) -> void:
+	if not is_yours(id) or is_closed(id):
+		return
+	if pressure_of(id) < int(DEFS.MAX_PRESSURE):
+		return
+	var rng: Node = Engine.get_main_loop().root.get_node_or_null("/root/RngManager")
+	if rng == null:
+		return
+	var definition: Dictionary = DEFS.by_id(id)
+	var kind := _weighted_break(rng, id, weights)
+	if kind.is_empty():
+		return
+	var row: Dictionary = gs.businesses[id]
+	row["last_kind"] = kind
+	var place := str(definition["name"])
+	match kind:
+		"close":
+			# She shuts the doors. Pays nothing while they are shut, and opens
+			# again angry rather than steady.
+			row["closed_until"] = int(gs.day) + int(DEFS.CLOSURE_NIGHTS)
+			row["pressure"] = int(DEFS.CLOSURE_REOPEN_PRESSURE)
+			row["since_day"] = int(gs.day)
+			gs.log_activity("%s is dark. A sheet of paper on the glass and no date on it. Nothing comes off it for %d nights."
+				% [place, int(DEFS.CLOSURE_NIGHTS)], RED)
+			_say_on_change(id, "closed")
+		"police":
+			var district := str(definition["district"])
+			_heat().apply_gain(BREAK_POLICE_HEAT, _heat().FAMILY_NONE, district,
+				{"source_id": "business_break_police"})
+			var engine: Object = gm.system("consequence")
+			if engine != null:
+				engine.add_capped_pressure(district, LEAN_PRESSURE_FAMILY,
+					BREAK_POLICE_PRESSURE, BREAK_POLICE_PRESSURE_CAP)
+			row["pressure"] = 2
+			row["since_day"] = int(gs.day)
+			gs.log_activity("Somebody at %s finally called it in. There is a cruiser on the lot in the morning and a report with a date on it."
+				% place, RED)
+			_say_on_change(id, "police")
+		"curtis":
+			# She found somebody else to pay. That somebody has been in the
+			# neighbourhood the whole time.
+			row["allegiance"] = DEFS.ALLEGIANCE_CURTIS
+			row["pressure"] = 0
+			row["since_day"] = int(gs.day)
+			row["let_down"] = false
+			var curtis: Node = Engine.get_main_loop().root.get_node_or_null("/root/Curtis")
+			if curtis != null:
+				curtis.raise_awareness(BREAK_CURTIS_AWARENESS)
+			gs.log_activity("%s pays Curtis now. She did not tell you, and she did not have to."
+				% place, RED)
+			_say_on_change(id, "flipped")
+		"resist":
+			row["allegiance"] = DEFS.ALLEGIANCE_NONE
+			row["pressure"] = 0
+			row["since_day"] = int(gs.day)
+			row["let_down"] = false
+			var E: Node = _exposure()
+			if E != null:
+				E.record_observation(str(definition["owner_id"]), {"type": "defiance",
+					"event": "hostile", "location": id, "source": "witnessed"})
+			gs.log_activity("%s stops paying. Not quietly, and not only to you."
+				% place, RED)
+			_say_on_change(id, "resisted")
+
+## The roll itself, seeded on the business and the night so a reload cannot
+## reroll it. Weights are relative and need not sum to one; a row with no
+## weights, or with nothing but zeroes, breaks in no direction at all.
+func _weighted_break(rng: Node, id: String, weights: Dictionary) -> String:
+	var total := 0.0
+	for kind in DEFS.BREAK_KINDS:
+		total += maxf(0.0, float(weights.get(kind, 0.0)))
+	if total <= 0.0:
+		return ""
+	var roll: float = rng.seeded_random(gs.run_seed, BREAK_KEY % [int(gs.day), id]) * total
+	var running := 0.0
+	for kind in DEFS.BREAK_KINDS:
+		running += maxf(0.0, float(weights.get(kind, 0.0)))
+		if roll < running:
+			return str(kind)
+	return str(DEFS.BREAK_KINDS[DEFS.BREAK_KINDS.size() - 1])
+
+# --- HSS-D8: his side of the hand-offs --------------------------------------
+
+## A node lost to a PROBE hands the business standing on it to Curtis. Called
+## only from `territory._lose_block`, and only on the probe reason -- abandoning
+## the same corner calls `on_node_abandoned` instead and gives it to nobody.
+func on_node_lost_to_curtis(node_id: String) -> void:
+	var definition: Dictionary = DEFS.on_node(node_id)
+	if definition.is_empty():
+		return
+	var id := str(definition["id"])
+	refresh_discovery()
+	if not gs.businesses.has(id) or is_his(id):
+		return
+	var row: Dictionary = gs.businesses[id]
+	row["allegiance"] = DEFS.ALLEGIANCE_CURTIS
+	row["pressure"] = 0
+	row["since_day"] = int(gs.day)
+	row["let_down"] = false
+	gs.log_activity("His people took the lot, and %s came with it."
+		% str(definition["name"]), RED)
+
+## HSS-D8 and the owner's ruling of 2026-09-06: D-30's dismantle gate is
+## untouched, and when he is out of a district every business of his there goes
+## NEUTRAL -- not yours. Nobody inherits an arrangement; the door is simply open
+## again. Called from `territory._dismantle`.
+func on_district_dismantled(district_id: String) -> void:
+	for definition in DEFS.in_district(district_id):
+		var id := str((definition as Dictionary)["id"])
+		if not gs.businesses.has(id) or not is_his(id):
+			continue
+		var row: Dictionary = gs.businesses[id]
+		row["allegiance"] = DEFS.ALLEGIANCE_NONE
+		row["pressure"] = 0
+		row["since_day"] = int(gs.day)
+		row["let_down"] = false
+		gs.log_activity("%s does not pay anybody this morning. The people it used to pay are not in %s any more."
+			% [str((definition as Dictionary)["name"]),
+				str(gs.district_by_id(district_id).get("name", district_id))], GREEN)

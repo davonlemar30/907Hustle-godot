@@ -718,7 +718,7 @@ fresh run at every PR, additive bumps only. Every slice below carries the same
 fields; later slices are lighter on numbers because they are specified against
 phases that have not happened.
 
-### P0 — "One home" (foundation repair)
+### P0 — "One home" (foundation repair) — **shipped 1.4.0 PR 1 (`#171`)**
 
 - **Player-facing purpose.** None visible. The ladder stops lying about
   itself and a promotion can be earned by work.
@@ -751,7 +751,11 @@ phases that have not happened.
 - **Non-goals.** Anything reading rank for scope.
 - **Deferred.** Everything below.
 
-### P1 — "Room to move up" (rank 4, standing briefs)
+### P1 — "Room to move up" (rank 4, standing briefs) — **shipped 1.4.0 PRs 2–3 (`#172`, `#173`)**
+
+_Measured on shipping: territory 170 → 206, save validation 284 → 299,
+parity 14,482 → 14,618; rank-4 payroll on the FS-001 driver $5,700 paid +
+owed against $1,889 of profit over thirty days (rank 3: $5,060 / $2,083)._
 
 - **Player-facing purpose.** A trusted crew member who has done the work can
   be made SPECIALIST LEAD, and then you stop assigning them every morning.

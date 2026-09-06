@@ -98,7 +98,15 @@ extends Node
 ## and clock in, move up, again: experience on the ladder, a word about
 ## money, a moment every shift (TU-D5). MINOR. One schema bump (v34, the
 ## day's buyers).
-const VERSION := "1.3.0"
+## 1.4.0 (Room to Move Up): the crew ladder stops lying about itself. A
+## rank a save can hold (RM-D1), one capability table (RM-D2), proof
+## written where the work settles (RM-D3), promotion as a requirement list
+## with SPECIALIST LEAD reachable by role-specific proof (RM-D4..D6), and
+## the standing brief -- a lead's operation renewing every morning without
+## the player (RM-D7..D9). A new reachable rank and a new kind of
+## delegation are new player-facing behaviour: MINOR. No schema bump:
+## proofs and the brief ride dictionaries the save already carried.
+const VERSION := "1.4.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

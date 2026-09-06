@@ -7,7 +7,7 @@ until this file, added in Batch 18 PR 5 (`86bbjxtmr`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this
 project does not cut version tags per merge, so entries are grouped by batch
 instead of by version number. `autoload/version.gd` carries the one build
-version string (currently `1.3.0`); it moves on its own schedule (MAJOR/MINOR/
+version string (currently `1.4.0`); it moves on its own schedule (MAJOR/MINOR/
 PATCH per that file's own header), not once per entry here.
 
 **This file starts at Batch 18, not at the beginning of the project.**
@@ -17,6 +17,56 @@ narrative entries there already say what changed and why, in more depth than
 a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
+
+## 1.4.0 — Room to Move Up: one home, rank four, the standing brief (2026-09-06)
+
+The first build of the organized-crime initiative
+(`docs/ORGANIZED_CRIME_ECONOMY_DESIGN_PLAN.md`, phases P0 and P1). The crew
+ladder had been authored to six ranks and reachable to three since FS-001.5,
+and a validator clamp would have repaired any higher rank back down on
+load. Three PRs and a close-out, each green before the next. Rulings are
+D-32 (RM-D1..D9). No schema bump.
+
+### PR 1 — One home for rank (`#171`)
+
+- The save validator clamps crew tier to `MAX_CREW_RANK`, not a literal 3.
+- `CREW_CAPABILITIES` covers all six delegated operations; Tone's
+  put-it-down curve moves in from the adapter at identical values.
+- Every adapter writes one proof per night of real work
+  (`crew.record_proof`), nothing for an idle night.
+- The territory suite gains its first arms for the hold and put-it-down.
+
+### PR 2 — Move up: rank 4 by proof (`#172`)
+
+- Promotion is a requirement list; tiers 2 and 3 unchanged to the string.
+- **SPECIALIST LEAD is reachable**: loyalty 8, twenty days, and a
+  role-specific proof — Pherris 5 boards run, Eli 4 bags run, Deshawn 4
+  blocks cooled, Tone 3 nights held (starting targets, tuned by
+  playtesting). The Crew screen says what is missing in words.
+- A fourth wage entry per member, Eli included; ranks 1–3 pay what they
+  paid. Payroll impact measured on the FS-001 driver and reported.
+
+### PR 3 — The standing brief (`#173`)
+
+- A lead's operation renews every morning through the existing gates
+  (`crew_briefs` day-start step, `crew_rank_min` in use). Suspends with one
+  text, resumes without one; ends by END BRIEF, departure, or two idle
+  nights. Feed nightly, phone on change.
+- Crew screen: STANDING chip, END BRIEF, STAND per operation at rank 4+.
+
+### PR 4 — Close-out
+
+- Version 1.4.0, D-32, this entry, the build log, HANDOFF, a one-line
+  correction to D-28, the design plan's P0/P1 marked shipped.
+
+### Measured across the build
+
+Parity 14,482 → 14,618; territory 170 → 206 (first move since 0.6.0);
+save validation 284 → 299; smoke touch 1,137 → 1,160 and width
+2,764 → 2,834. Confrontation 4,429, dre 427, tips 93 unchanged. Wages at
+rank 4 on the thirty-day driver: $5,700 paid + owed against $1,889 of
+Pherris's profit (rank 3: $5,060 against $2,083) — payroll pressure as
+ruled, reported rather than tuned.
 
 ## 1.3.0 — Tighten It Up: the 1.2.0 playtest, answered (2026-09-04)
 

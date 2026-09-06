@@ -12,7 +12,7 @@ to `main`. Roughly a 13MB first load, cached after.
 
 ## Version
 
-**Current: `1.3.0`** — shown bottom-right on the title screen, and stamped into
+**Current: `1.4.0`** — shown bottom-right on the title screen, and stamped into
 the deployed page's `<title>` by the web-export workflow.
 
 `MAJOR.MINOR.PATCH`, and each part means one thing here:
@@ -34,6 +34,18 @@ the first time somebody bumps one copy.
 
 *Full technical detail in [`CHANGELOG.md`](CHANGELOG.md) and
 [`docs/BUILD_LOG.md`](docs/BUILD_LOG.md); this is the short version.*
+
+### 1.4.0 — Room to Move Up: one home, rank four, the standing brief
+
+**Somebody worth promoting.** A trusted crew member who has done the work
+in their own role — boards run, bags run, blocks cooled, nights held — can
+be made SPECIALIST LEAD, and the Crew screen says exactly what is still
+missing. A lead costs more every night.
+
+**The standing brief.** A lead's operation renews every morning without
+you: it stops when they are unpaid or unsure of you, and tells you once;
+it ends when you end it, when they walk, or when two nights running had
+nothing to do. The phone hears about a change, not about every night.
 
 ### 1.3.0 — Tighten It Up: the 1.2.0 playtest, answered
 

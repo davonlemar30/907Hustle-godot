@@ -28,6 +28,59 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 1.4.0 — Room to Move Up: three PRs and a close-out (added 2026-09-06)
+
+Source: `docs/ORGANIZED_CRIME_ECONOMY_DESIGN_PLAN.md` (phases P0 and P1),
+`BUILD_ROOM_TO_MOVE_UP_PROMPT.md` and the owner's addendum; ClickUp
+ORG-001 / ORG-001.1 / ORG-001.2; FS-001 Revision 2. Rulings: `D-32`
+(RM-D1..D9). PRs `#171` through `#173`, then the close-out.
+
+### What this build actually was
+
+The first slice of the organized-crime initiative, and deliberately the
+smallest one with no prerequisite: repair the foundation the rank ladder
+stood on, then make the fourth rung real. The design pass had found that
+`save_validator.gd` clamped every loaded crew tier to a literal 3, so no
+promotion above TRUSTED could ever have survived a load; that Tone's
+relief curve lived in an adapter while three operations had no capability
+row; and that the proof vocabulary `requirements.gd` evaluates had never
+been written by anything. PR 1 fixed those three with no player-facing
+change. PR 2 turned promotion into a requirement list and made SPECIALIST
+LEAD reachable by role-specific proof, with the Crew screen saying what is
+missing in words. PR 3 gave the rung its scope: a standing brief that
+renews every morning through the same gates the morning tap uses.
+
+### What it cost, and what was measured
+
+No schema bump. Parity 14,482 → 14,618; territory 170 → 206, the first
+move since 0.6.0; save validation 284 → 299; smoke touch 1,137 → 1,160 and
+width 2,764 → 2,834. Payroll at rank 4 on the FS-001 thirty-day driver:
+$5,700 paid + owed against $1,889 of Pherris's profit, versus $5,060 and
+$2,083 at rank 3 — the rung is pressure, as ruled, and the board's return
+at higher rank is the standing 86bbjkccu question, reported not tuned.
+
+### Gotchas worth the next reader's time
+
+- `curve_value_for_rank` clamps up. Effect and capability curves are
+  meant to; wages are not, and `crew_wage_for` indexes the array, so a
+  missing fourth entry silently underpays. Assert every wage at every rank.
+- A brief lives on the assignment record and `_assign` must carry it
+  forward when it writes a fresh day-scoped record; the day scope stays
+  load-bearing and nothing reads a stale claim.
+- "Nothing to do" needs no per-adapter rule: a night that wrote no proof
+  is an idle night, RM-D3 read backwards.
+- The parity lifecycle test pins the whole phase sequence literally; a new
+  `DAY_START_ORDER` step moves it.
+- `_ = x` is not GDScript. A parse error in a system script makes every
+  suite fail with unrelated-looking null-instance errors; `--check-only
+  --script` names the line.
+- `project_run` with autosave persists the editor's open scene; if that
+  scene is the stray `ui/screens/opening.tscn`, the smoke suite logs three
+  load errors. Run with `autosave=false` and move the stray aside.
+- A live game keeps the scripts it loaded; editing a screen script that
+  calls a new system method breaks the running game at the seam. Stop and
+  relaunch before probing new code.
+
 ## 1.3.0 — Tighten It Up: five PRs (added 2026-09-04)
 
 Source: the creative director's 1.2.0 playtest (ClickUp doc "Playtest

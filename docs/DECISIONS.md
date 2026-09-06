@@ -2159,6 +2159,123 @@ recorded rather than silently taken:
 rather than a new `let_down` synonym. Reuse over a second name for the same
 thing; the behaviour the ruling describes is unchanged.
 
+### The rulings PR 2 depends on
+
+**HSS-D4 — Two ways in.** Every verb is a dispatch through the registered
+`businesses` system, every gate a requirement row, facts built by the system's
+own `_facts()`. Two new requirement types and no more:
+`business_allegiance {business_id, allowed}` (membership in an allowed set:
+ASK wants nobody's, LEAN wants nobody's-or-mine, TAKE wants his) and
+`npc_band_min {npc_id, min_band}` (a floor on the band WORD, so a blocker can
+say "she has to want you there" without `requirements.gd` knowing what a
+disposition is). The band ORDER is not authored in the evaluator — Exposure
+owns it and the caller passes it in `band_order`, which keeps that file pure
+and keeps one source of truth for what "warm" is better than.
+
+**ASK** — the owner at WARM or better, nobody's yet, not shut. No room and no
+roll, because she was going to say yes; it opens at STEADY and costs one slot.
+**LEAN** — one crew member, nobody's or already yours, not shut. Opens
+`KIND_CONFRONTATION` at the business with `action_id "businesses"`, choices
+`lean_on` / `walk_away`, `walk_away` deterministic, and shown odds in the
+`contest_chance` shape. A win opens the arrangement at LEANED ON or moves an
+open one up a band; a loss is a contest loss (health, awareness) and writes
+`resisted` to the owner's ledger. No buy-in, and no crew verb: the odds already
+read them.
+
+**HSS-D5 — The take is bounded.** Bands: STEADY / LEANED ON / SQUEEZED /
+BREAKING. Take per night is `base_take × [1.0, 1.15, 1.3, 1.3][pressure]`,
+credited dirty under `source_id "business_take"` and `record_earning("businesses")`,
+one feed line for all businesses per night. A band decays one step per four
+nights with no lean; the band comes back to STEADY, the owner's ledger does not.
+
+**The take is floored, not rounded to nearest, and that is part of the ruling.**
+The bound is `EV(2) ≤ 1.3 × EV(0)`, and rounding to nearest breaches it on any
+base take whose 1.3× lands on a half dollar — $35 × 1.3 is 45.5, which rounds
+to 46 and pays 1.314×. Flooring makes the bound hold for every base take rather
+than for the ones somebody happened to check. See "real bugs" below.
+
+**HSS-D6 — Pressure costs before it breaks.** Every lean, whether or not it
+lands, writes `leaned_on` to the owner's ledger, adds District Pressure in
+Spenard through `add_capped_pressure` under the shipped **`stick`** family, and
+calls `mark_criminal_activity()`. The costs land on the ATTEMPT and not on the
+win: standing in somebody's shop until the counter is yours is the thing the
+block saw, and it saw it whether or not she agreed. At band ≥ 2 the business
+lands `heat_by_band[pressure]` per night through `apply_gain(…, FAMILY_NONE,
+district)` — its OWN line, deliberately not folded into
+`territory.nightly_heat()`, which Turf's district card reads and would
+otherwise count twice.
+
+`stick` rather than a new family or `FAMILY_NONE`: a lean is a robbery in slow
+motion and the police read it that way, it is the family whose district read
+already exists, and the alternative would have made the squeeze free in the one
+currency the city uses to answer it.
+
+**HSS-D8 (the part that ships here) — The promise.** An arrangement is
+**backed** when its node is yours and somebody is standing on it (a posted
+soldier, or HS-D2's hold), or — off the board — when you hold at least one
+block in the district. An unbacked arrangement pays half and writes
+`let_them_down` to the owner's ledger **once per unbacked stretch**, cleared the
+night somebody turns up again (`let_down` on the row). Abandoning the ground
+under a business ends the arrangement and gives it to **nobody**; the probe
+hand-off that gives it to Curtis is a different call site, deliberately, so the
+two roads can never be confused. WALK AWAY from the row is the same outcome
+reached from the other side.
+
+**HSS-D10 — Reuse the authored moment.** `wt_protection` gains an
+`opens_business` hook rather than a second event. Its line, its `once`, its
+day-20 / one-crew gate and its observation on **Curtis's** ledger are
+unchanged. There is no band gate on this road: she is the one asking, and the
+card's own requirements are the gate — she asks because you have people.
+
+### Measured (MEAS-D1), thirty driven nights per policy
+
+| Policy | Take | Per night | Heat/night | Meter pegged |
+|---|---|---|---|---|
+| STEADY (0) | $1,050 | $35 | 0.0 | never |
+| SQUEEZED (2) | $1,350 | $45 | 0.5 | night 30 |
+| BREAKING (3) | $1,350 | $45 | 1.0 | night 15 |
+
+`EV(2) ≤ 1.3 × EV(0)` holds: $1,350 against a $1,365 ceiling.
+
+**`EV(3) < EV(0)` does not hold yet, and is deliberately not asserted in this
+slice.** The mechanism that makes the top band lose is HSS-D7's break — one
+roll a night over close / police / curtis / resist — which is PR 3. On take
+alone the top band pays 1.3× by construction, which is precisely why the ruling
+puts a failure roll under it. The driver is written now so PR 3 turns the bar on
+rather than inventing a measurement that passes it. What IS live here is the
+cost half: STEADY brings no heat at all, BREAKING pegs the heat meter in
+**half the nights** SQUEEZED takes to peg it.
+
+### Real bugs PR 2 caught
+
+- **The take's rounding could breach its own ruling.** With base $35 and the
+  1.3 multiplier, round-to-nearest paid $46 a night — 1.314× — and the driven
+  table failed the owner's bound by $15 over thirty nights. Caught by the
+  measurement rather than by review, which is the argument for driving the
+  table at all. Fixed by flooring, which holds the bound for every base take
+  rather than for the authored ones.
+- **A parity arm that asserts receipts after CONTINUE asserts nothing.**
+  `prune_settled` correctly drops the history row for a cause with no live
+  chain, so "the guard did not work" and "the chain closed" look identical from
+  after the fact. The exactly-once assertions moved to while the Cause is live.
+- **A driven EV table with no rank stages an unbacked arrangement.** The first
+  version of the driver never called `_stage_rank`, so `claim_block` was refused
+  and every policy silently measured HSS-D8's half pay. It now asserts both the
+  claim and the backing as premises before it measures anything.
+- **Heat saturates, so a thirty-night heat total measures the ceiling.** Bands
+  2 and 3 both read exactly `heat_max` and the naive assertion compared 15.0
+  with 15.0. The measurement moved to how fast each band pegs the meter, which
+  is the number that survives the clamp.
+- **`wt_protection`'s hook was wired where an ambient card never reaches, and
+  a green test hid it.** The `opens_business` call went into
+  `_play_encounter`; `wt_protection` has no `encounter` block, so that function
+  hands the card straight back to `_play_ambient` before any of its own hooks
+  run. She asked and nothing happened. The parity arm passed anyway because it
+  called `open_from_event` **directly** — a test that calls the seam under test
+  proves the seam works and never that anything reaches it. Found by the live
+  run required by this PR, which is the entire argument for requiring one. The
+  hook moved to `_play_ambient` and the arm now drives the card's own play path.
+
 ### Real bugs this caught
 
 - **Parity's "every lens NPC has a face" loop was accidentally true.** It held

@@ -1415,6 +1415,10 @@ func _validate_businesses(state: Dictionary, repairs: Array[String]) -> void:
 		# Turf renders it and the feed already said it once.
 		_string(clean_row, "last_kind", "", path + ".last_kind", repairs)
 		_bool(clean_row, "history_seeded", false, path + ".history_seeded", repairs)
+		# HSS-D8: whether the current unbacked stretch has already been written to
+		# the owner's ledger. Inside the row, not beside it -- the same rule the
+		# band and the closure follow.
+		_bool(clean_row, "let_down", false, path + ".let_down", repairs)
 		cleaned[str(business_id)] = clean_row
 	state["businesses"] = cleaned
 

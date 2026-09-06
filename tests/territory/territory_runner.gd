@@ -54,7 +54,7 @@ const DEFS := preload("res://data/territory_definitions.gd")
 const BIZ := preload("res://data/business_definitions.gd")
 
 ## The check floor. See `_ready()` for why a count is a gate.
-const MIN_CHECKS := 277
+const MIN_CHECKS := 338
 
 var a: RefCounted
 var gs: Node
@@ -92,6 +92,11 @@ func _ready() -> void:
 	_test_business_settlement()
 	_test_business_backing()
 	_test_business_settles_after_territory()
+	_test_business_ask()
+	_test_business_lean()
+	_test_business_costs_and_heat()
+	_test_business_decay()
+	_test_business_walk_away()
 
 	# The floor, in the shape `parity_runner.gd` uses it. A suite whose checks
 	# quietly stop RUNNING still prints PASS — an early `return` in a test
@@ -1223,7 +1228,7 @@ func _test_business_settlement() -> void:
 		row["pressure"] = pressure
 		a.eq_int("band %s pays base x its authored multiplier" % BIZ.band_word(pressure),
 			int(_biz().take_tonight("wash_and_go")),
-			int(round(float(base) * float(BIZ.BAND_MULTIPLIERS[pressure]))))
+			floori(float(base) * float(BIZ.BAND_MULTIPLIERS[pressure])))
 	row["pressure"] = 0
 
 	# The owner's rule, asserted on the table itself rather than on a run: the
@@ -1265,7 +1270,7 @@ func _test_business_backing() -> void:
 	a.eq_bool("holding nothing backs nothing", bool(_biz().is_backed("wash_and_go")), false)
 	a.eq_int("and an unbacked arrangement pays half",
 		int(_biz().take_tonight("wash_and_go")),
-		int(round(float(base) * float(BIZ.UNBACKED_SHARE))))
+		floori(float(base) * float(BIZ.UNBACKED_SHARE)))
 
 	gs.soldiers_idle = 2
 	_claim_block("wash_and_go_lot")
@@ -1316,7 +1321,7 @@ func _test_business_backing() -> void:
 		bool(_biz().is_backed("arctic_auto")), false)
 	a.eq_int("so it pays half",
 		int(_biz().take_tonight("arctic_auto")),
-		int(round(float(int(BIZ.by_id("arctic_auto")["base_take"])) * float(BIZ.UNBACKED_SHARE))))
+		floori(float(int(BIZ.by_id("arctic_auto")["base_take"])) * float(BIZ.UNBACKED_SHARE)))
 
 ## HSS-D1: the step runs, and it runs after territory. The reason is in the
 ## constant's own comment: Curtis's probes land inside Territory's settlement,
@@ -1352,4 +1357,339 @@ func _test_business_settles_after_territory() -> void:
 	_terr()._lose_block("wash_and_go_lot", "Test.")
 	a.eq_int("the same arrangement pays half once the ground under it is gone",
 		int(_biz().take_tonight("wash_and_go")),
-		int(round(float(base) * float(BIZ.UNBACKED_SHARE))))
+		floori(float(base) * float(BIZ.UNBACKED_SHARE)))
+
+# --- the two ways in (HSS-D4, D5, D6, D8) -----------------------------------
+
+## Warm an owner up by hand. Written straight into the ledger rather than
+## through `record_observation`, which is a no-op outside a dispatch -- this is
+## fixture setup, and it is the same shape the save/load path restores.
+func _warm(owner_id: String, rows: int) -> void:
+	var E: Node = get_node("/root/Exposure")
+	var ledger: Array = []
+	for i in range(rows):
+		ledger.append({"key": "warm:%d" % i, "type": "presence", "event": "",
+			"location": "north_star_lot", "source": "witnessed", "count": 1, "day": 1})
+	gs.npc_ledgers[owner_id] = ledger
+	# The premise this fixture exists to create, asserted rather than assumed.
+	a.check("fixture: %s reads %s" % [owner_id, E.band_of(owner_id)], true)
+
+## HSS-D4: ASK is gated on the owner's band and on the place being nobody's.
+func _test_business_ask() -> void:
+	var E: Node = get_node("/root/Exposure")
+	_fresh(5000, 0)
+	gs.day = 3
+	_biz().known_ids()
+
+	# Cold: refused, and the blocker says whose read is the problem.
+	gs.npc_ledgers["lani"] = []
+	a.eq_str("Lani starts neutral", str(E.band_of("lani")), "neutral")
+	var blocked: String = str(_biz().ask_blocker("wash_and_go"))
+	a.check("ASK below WARM is refused", not blocked.is_empty())
+	a.check("and the blocker names her, in words (%s)" % blocked,
+		blocked.contains("Lani"))
+	a.eq_bool("and the dispatch is refused too",
+		gm.dispatch("business_ask", {"business_id": "wash_and_go"}), false)
+	a.eq_str("so nothing changed hands",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_NONE))
+
+	# Warm: accepted, at STEADY, and it costs a part of the day.
+	_warm("lani", 4)
+	a.eq_str("four presence rows read her WARM", str(E.band_of("lani")), "warm")
+	a.eq_str("ASK at WARM has no blocker", str(_biz().ask_blocker("wash_and_go")), "")
+	var slots_before: int = int(gs.time_slots_today)
+	a.eq_bool("and the ask lands", gm.dispatch("business_ask", {"business_id": "wash_and_go"}), true)
+	a.eq_str("the arrangement is yours",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_YOURS))
+	a.eq_int("at STEADY", int(_biz().pressure_of("wash_and_go")), 0)
+	a.check("and it cost a part of the day", int(gs.time_slots_today) > slots_before)
+
+	# And it pays the authored base, backed.
+	gs.soldiers_idle = 2
+	_claim_block("wash_and_go_lot")
+	a.eq_int("a business you asked pays the base",
+		int(_biz().take_tonight("wash_and_go")),
+		int(BIZ.by_id("wash_and_go")["base_take"]))
+
+	# Asking twice is refused: it is already yours.
+	a.check("asking again is refused", not str(_biz().ask_blocker("wash_and_go")).is_empty())
+
+	# ASK never reaches a business of Curtis's -- that is a different verb.
+	a.check("ASK at one of his is refused",
+		not str(_biz().ask_blocker("northern_lights_motel")).is_empty())
+
+## HSS-D4: LEAN opens a room, and the room moves the band.
+func _test_business_lean() -> void:
+	var E: Node = get_node("/root/Exposure")
+	var engine: Object = gm.system("consequence")
+
+	# No crew: refused, and the blocker says so.
+	_fresh(5000, 0)
+	gs.day = 3
+	_biz().known_ids()
+	gs.active_consequence = {}
+	var blocked: String = str(_biz().lean_blocker("wash_and_go"))
+	a.check("a lean with nobody behind you is refused", not blocked.is_empty())
+	a.check("and the blocker says you would be alone (%s)" % blocked,
+		blocked.to_lower().contains("alone"))
+
+	# One crew member is the gate, and the chain opens on the loop.
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 5,
+		"tier": 1, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	a.eq_str("with somebody behind you there is no blocker",
+		str(_biz().lean_blocker("wash_and_go")), "")
+	a.eq_bool("the lean dispatches", gm.dispatch("business_lean", {"business_id": "wash_and_go"}), true)
+	a.eq_bool("and opens a chain", not gs.active_consequence.is_empty(), true)
+	var source: Dictionary = gs.active_consequence.get("source", {})
+	a.eq_str("whose adapter is this system", str(source.get("action_id", "")), "businesses")
+	a.eq_str("and whose target is the business", str(source.get("target_id", "")), "wash_and_go")
+	a.check("with the owner's people named as the other side (%s)"
+		% str(source.get("opponent", "")), str(source.get("opponent", "")).contains("Lani"))
+	var labels: Array = []
+	for row in engine.choice_summaries():
+		labels.append(str((row as Dictionary).get("label", "")))
+	a.check("the room offers a lean and a way out (%s)" % str(labels),
+		"LEAN ON HER" in labels and "LEAVE IT" in labels)
+
+	# LEAVE IT is deterministic and changes nothing.
+	a.eq_bool("LEAVE IT commits",
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "walk_away"}), true)
+	gm.dispatch("consequence_continue", {})
+	a.eq_str("and nobody starts paying",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_NONE))
+
+	# A WIN opens the arrangement at LEANED ON. The roll is forced by driving
+	# the odds to their ceiling rather than by reaching into the resolver.
+	_fresh(5000, 0)
+	gs.day = 3
+	_biz().known_ids()
+	gs.active_consequence = {}
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 5,
+		"tier": 1, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	var won: bool = _lean_until("wash_and_go", true)
+	a.eq_bool("a lean that lands opens the arrangement", won, true)
+	if won:
+		a.eq_str("and it is yours", str(_biz().allegiance_of("wash_and_go")),
+			str(BIZ.ALLEGIANCE_YOURS))
+		a.eq_int("at LEANED ON, not at STEADY", int(_biz().pressure_of("wash_and_go")), 1)
+		# A second win moves it up a band rather than opening it again.
+		var again: bool = _lean_until("wash_and_go", true)
+		a.eq_bool("a second lean lands", again, true)
+		if again:
+			a.eq_int("and moves the band up rather than reopening",
+				int(_biz().pressure_of("wash_and_go")), 2)
+
+	# A LOSS writes `resisted` to her ledger.
+	_fresh(5000, 0)
+	gs.day = 3
+	_biz().known_ids()
+	gs.active_consequence = {}
+	gs.npc_ledgers["lani"] = []
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 5,
+		"tier": 1, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+	var lost: bool = _lean_until("wash_and_go", false)
+	a.eq_bool("a lean can be lost", lost, true)
+	if lost:
+		a.eq_bool("and she is the one who said no, on her own ledger",
+			_ledger_has(E, "lani", "resisted"), true)
+		a.eq_str("and nothing changed hands",
+			str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_NONE))
+
+## Drive leans until one resolves the way the caller asked for, or give up.
+## The outcome is a seeded roll off the day and the slot, so moving the day is
+## what moves the roll -- no reach into the resolver, and no reroll of the same
+## key twice.
+func _lean_until(id: String, want_win: bool) -> bool:
+	for attempt in range(40):
+		gs.active_consequence = {}
+		gs.day = 3 + attempt
+		# Hunting for a LOSS means resetting the row between attempts: an earlier
+		# attempt that happened to land leaves the business yours, and every lean
+		# after it moves a band instead of opening one. Without this the hunt
+		# measures "a lean at a business I already own", which is a different
+		# test and passes for the wrong reason.
+		if not want_win and gs.businesses.has(id):
+			var reset: Dictionary = gs.businesses[id]
+			reset["allegiance"] = BIZ.ALLEGIANCE_NONE
+			reset["pressure"] = 0
+		var before_allegiance: String = str(_biz().allegiance_of(id))
+		var before_pressure: int = int(_biz().pressure_of(id))
+		if not gm.dispatch("business_lean", {"business_id": id}):
+			continue
+		gm.dispatch("resolve_consequence_choice", {"choice_id": "lean_on"})
+		var tier: String = str((gs.active_consequence.get("decision", {}) as Dictionary)
+			.get("resolved_tier", ""))
+		gm.dispatch("consequence_continue", {})
+		var landed: bool = tier in ["clean", "messy"]
+		if landed == want_win:
+			# The premise: a win moved something, a loss moved nothing.
+			if want_win:
+				return str(_biz().allegiance_of(id)) == BIZ.ALLEGIANCE_YOURS \
+					and int(_biz().pressure_of(id)) > before_pressure
+			return str(_biz().allegiance_of(id)) == before_allegiance
+	return false
+
+func _ledger_has(E: Node, npc_id: String, event: String) -> bool:
+	for row in E.ledger_of(npc_id):
+		if str((row as Dictionary).get("event", "")) == event:
+			return true
+	return false
+
+## HSS-D6: three costs per lean, and heat per night above the squeeze.
+func _test_business_costs_and_heat() -> void:
+	var E: Node = get_node("/root/Exposure")
+	var engine: Object = gm.system("consequence")
+	_fresh(5000, 0)
+	gs.day = 3
+	gs.current_district_id = "north_star_lot"
+	_biz().known_ids()
+	gs.active_consequence = {}
+	gs.npc_ledgers["lani"] = []
+	gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 5,
+		"tier": 1, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1}
+
+	var pressure_before: float = float(engine.pressure_score("north_star_lot",
+		_biz().LEAN_PRESSURE_FAMILY))
+	var curtis: Node = get_node("/root/Curtis")
+	var quiet_before: int = int(gs.curtis_quiet_streak)
+
+	gm.dispatch("business_lean", {"business_id": "wash_and_go"})
+	gm.dispatch("resolve_consequence_choice", {"choice_id": "lean_on"})
+	gm.dispatch("consequence_continue", {})
+
+	# 1. Her ledger. Priced by her own event weight, not by the category.
+	a.eq_bool("a lean is on the owner's ledger, however it went",
+		_ledger_has(E, "lani", "leaned_on"), true)
+	a.check("and it cost her something",
+		float(E.disposition("lani")) < 0.0)
+	# 2. District Pressure, under the shipped family, in Spenard.
+	var pressure_after: float = float(engine.pressure_score("north_star_lot",
+		_biz().LEAN_PRESSURE_FAMILY))
+	a.check("a lean adds District Pressure in Spenard (%f -> %f)"
+		% [pressure_before, pressure_after], pressure_after > pressure_before)
+	a.eq_str("under the shipped stick family, not a new one",
+		str(_biz().LEAN_PRESSURE_FAMILY), "stick")
+	# 3. Curtis's attention: the quiet streak is broken.
+	a.check("and the night stops being a quiet one for Curtis",
+		int(gs.curtis_quiet_streak) <= quiet_before)
+
+	# Heat per night: nothing below the squeeze, something at and above it.
+	_fresh(5000, 0)
+	gs.day = 3
+	gs.soldiers_idle = 2
+	_claim_block("wash_and_go_lot")
+	_biz().known_ids()
+	var row: Dictionary = _biz().row_of("wash_and_go")
+	row["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	for pressure in range(int(BIZ.MAX_PRESSURE) + 1):
+		row["pressure"] = pressure
+		var raw: float = float(BIZ.heat_at("wash_and_go", pressure))
+		gs.heat = 0.0
+		_biz().settle_night(int(gs.day))
+		if pressure < 2:
+			a.near("a business at %s brings no heat" % BIZ.band_word(pressure),
+				float(gs.heat), 0.0)
+			a.near("...and the table says so too", raw, 0.0)
+		else:
+			a.check("a business at %s brings heat (%f)"
+				% [BIZ.band_word(pressure), float(gs.heat)], float(gs.heat) > 0.0)
+			a.check("...and more of it than the band below",
+				raw >= float(BIZ.heat_at("wash_and_go", pressure - 1)))
+
+	# The take is DIRTY at every band -- never reclassified by pressure.
+	row["pressure"] = 3
+	var clean_before: int = int(gs.clean_cash)
+	_biz().settle_night(int(gs.day))
+	a.eq_int("even at BREAKING the money is dirty", int(gs.clean_cash), clean_before)
+
+## HSS-D5: a band decays after four quiet nights, and its owner's ledger does
+## not decay with it.
+func _test_business_decay() -> void:
+	var E: Node = get_node("/root/Exposure")
+	_fresh(5000, 0)
+	gs.day = 10
+	gs.soldiers_idle = 2
+	_claim_block("wash_and_go_lot")
+	_biz().known_ids()
+	var row: Dictionary = _biz().row_of("wash_and_go")
+	row["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	row["pressure"] = 2
+	row["since_day"] = int(gs.day)
+	gs.npc_ledgers["lani"] = [{"key": "violence|leaned_on|wash_and_go", "type": "violence",
+		"event": "leaned_on", "location": "wash_and_go", "source": "witnessed",
+		"count": 2, "day": 10}]
+	var owed_before: float = float(E.disposition("lani"))
+
+	# Three quiet nights are not enough.
+	for i in range(int(BIZ.DECAY_NIGHTS) - 1):
+		gs.day += 1
+		_biz().settle_night(int(gs.day))
+	a.eq_int("three quiet nights do not move the band",
+		int(_biz().pressure_of("wash_and_go")), 2)
+
+	# The fourth is.
+	gs.day += 1
+	_biz().settle_night(int(gs.day))
+	a.eq_int("the fourth settles it back one band",
+		int(_biz().pressure_of("wash_and_go")), 1)
+
+	# And again, all the way home.
+	for i in range(int(BIZ.DECAY_NIGHTS)):
+		gs.day += 1
+		_biz().settle_night(int(gs.day))
+	a.eq_int("and it can come all the way back to STEADY",
+		int(_biz().pressure_of("wash_and_go")), 0)
+	a.eq_str("which is a word the row can say again",
+		str(BIZ.band_word(int(_biz().pressure_of("wash_and_go")))), "STEADY")
+
+	# Her ledger did not come back with it.
+	a.near("but the ledger does not decay with the band",
+		float(E.disposition("lani")), owed_before)
+
+## HSS-D8: walking away, from the row and from the ground under it. Both end
+## the arrangement and give the business to NOBODY.
+func _test_business_walk_away() -> void:
+	# From the row.
+	_fresh(5000, 0)
+	gs.day = 3
+	gs.soldiers_idle = 2
+	_claim_block("wash_and_go_lot")
+	_biz().known_ids()
+	var row: Dictionary = _biz().row_of("wash_and_go")
+	row["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	row["pressure"] = 2
+	a.eq_bool("walking away from the row dispatches",
+		gm.dispatch("business_walk_away", {"business_id": "wash_and_go"}), true)
+	a.eq_str("and the business is nobody's -- not his",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_NONE))
+	a.eq_int("and the band is gone with it",
+		int(_biz().pressure_of("wash_and_go")), 0)
+	a.eq_bool("the row still exists, because the player still knows the place",
+		gs.businesses.has("wash_and_go"), true)
+
+	# From the ground.
+	_fresh(5000, 0)
+	gs.day = 3
+	gs.soldiers_idle = 2
+	_claim_block("wash_and_go_lot")
+	_biz().known_ids()
+	var second: Dictionary = _biz().row_of("wash_and_go")
+	second["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	a.eq_bool("giving up the lot dispatches",
+		gm.dispatch("abandon_block", {"block_id": "wash_and_go_lot"}), true)
+	a.eq_str("and the business on it stops paying anybody",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_NONE))
+	a.eq_bool("abandoning never hands a business to Curtis",
+		str(_biz().allegiance_of("wash_and_go")) == str(BIZ.ALLEGIANCE_CURTIS), false)
+
+	# Abandoning a corner with no business on it touches nothing.
+	_fresh(5000, 0)
+	gs.day = 3
+	gs.soldiers_idle = 2
+	_claim_block("spenard_rec_lot")
+	_biz().known_ids()
+	var third: Dictionary = _biz().row_of("wash_and_go")
+	third["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	gm.dispatch("abandon_block", {"block_id": "spenard_rec_lot"})
+	a.eq_str("abandoning a corner with no business on it leaves the others alone",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_YOURS))

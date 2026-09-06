@@ -323,7 +323,39 @@ func _business_row(sys: Object, definition: Dictionary) -> Control:
 			v.add_child(label("Nobody of yours holds anything around here. It pays half until somebody does.", "Muted", 11, AMBER, true))
 		else:
 			v.add_child(label("Nobody is standing on the lot. It pays half until somebody is.", "Muted", 11, AMBER, true))
+
+	# HSS-D9: the verbs. A gate that fails prints its reason IN PLACE OF the
+	# button, in words -- hidden-not-disabled where the reason is absence, so a
+	# player is never shown a door they have no way to open yet.
+	if not closed and not his:
+		var ask_blocked: String = str(sys.ask_blocker(id))
+		var lean_blocked: String = str(sys.lean_blocker(id))
+		if ask_blocked.is_empty():
+			v.add_child(button("ASK HER  ·  one part of the day", true, _on_business_ask.bind(id), 46))
+		elif not yours:
+			v.add_child(label(ask_blocked, "Muted", 11, MUTED, true))
+		if lean_blocked.is_empty():
+			v.add_child(button("LEAN ON HER  ·  %s" % str(sys.odds_word(id)).to_upper(),
+				true, _on_business_lean.bind(id), 46))
+		else:
+			v.add_child(label(lean_blocked, "Muted", 11, MUTED, true))
+	if yours and not closed:
+		v.add_child(button("WALK AWAY", false, _on_business_walk.bind(id), 44))
 	return c
+
+func _on_business_ask(id: String) -> void:
+	if _gm.dispatch("business_ask", {"business_id": id}):
+		nav.show_toast("She is on your side of the street.")
+
+func _on_business_lean(id: String) -> void:
+	_gm.dispatch("business_lean", {"business_id": id})
+
+## HSS-D8: the player's own walk-off, from the business rather than from the
+## ground. Ends the arrangement and gives it to nobody, the same as abandoning
+## the lot under it does.
+func _on_business_walk(id: String) -> void:
+	if _gm.dispatch("business_walk_away", {"business_id": id}):
+		nav.show_toast("You stop coming by.")
 
 ## The owners' display names, shared with the People screen. Kept here rather
 ## than reached across because a screen does not read another screen.

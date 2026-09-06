@@ -612,6 +612,13 @@ func _abandon(block_id: String) -> Dictionary:
 	# The soldiers come back; the claim cost does not.
 	gs.soldiers_idle += int(rec.get("soldiers", 0))
 	gs.territory_nodes.erase(block_id)
+	# HSS-D8: walking off the ground ends the arrangement on the business
+	# standing on it, and gives it to nobody. Losing the ground to a probe is
+	# the other case and hands it to Curtis -- PR 3, and deliberately NOT this
+	# call site, so the two roads can never be confused for one another.
+	var businesses: Object = gm.system("businesses")
+	if businesses != null:
+		businesses.on_node_abandoned(block_id)
 	gs.log_activity("You walk off %s and somebody else is standing there by dark." % _block_name(block_id), AMBER)
 	# Giving up a corner takes 2 off the cap with it, and the roster does not
 	# get to stay above the cap because the corner it was sized for is gone

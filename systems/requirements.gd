@@ -374,6 +374,46 @@ func evaluate_requirement(requirement: Variant, facts: Dictionary = {}) -> Dicti
 			var disposition: float = _num(facts.get("dre_disposition"))
 			return _result(req, disposition >= min_value, disposition, min_value)
 
+		# HSS-D4 (1.5.0). Where a business stands right now, as membership in an
+		# allowed set rather than as a threshold: ASK wants "nobody's", LEAN
+		# wants "nobody's or already mine", and TAKE wants "his". Absent reads
+		# as the empty string, which is in no allowed set, so a business the
+		# facts do not mention fails closed the same as everything else here.
+		"business_allegiance":
+			var allegiances: Variant = facts.get("business_allegiances")
+			var business_id := str(req.get("business_id", ""))
+			var standing := ""
+			if allegiances is Dictionary:
+				standing = str((allegiances as Dictionary).get(business_id, ""))
+			var allowed: Variant = req.get("allowed", [])
+			var allowed_list: Array = allowed if allowed is Array else []
+			return _result(req, standing in allowed_list, standing, allowed_list)
+
+		# HSS-D4. How somebody reads you, as a floor on the band word rather
+		# than on the raw score -- the same thing People shows, so a blocker can
+		# say "she has to be warm on you" without this file knowing what a
+		# disposition is.
+		#
+		# The band ORDER is not authored here. `Exposure` owns it, and the
+		# caller hands it over in `band_order` (best first), which keeps this
+		# file pure and keeps one source of truth for what "warm" is better
+		# than. A missing order, an unknown band or an unknown NPC all fail
+		# closed, the same direction as every other type.
+		"npc_band_min":
+			var bands: Variant = facts.get("npc_bands")
+			var order: Variant = facts.get("band_order")
+			var npc_id := str(req.get("npc_id", ""))
+			var want_band := str(req.get("min_band", ""))
+			if not (bands is Dictionary and order is Array):
+				return _result(req, false, null, want_band)
+			var have_band := str((bands as Dictionary).get(npc_id, ""))
+			var have_at: int = (order as Array).find(have_band)
+			var want_at: int = (order as Array).find(want_band)
+			if have_at < 0 or want_at < 0:
+				return _result(req, false, have_band, want_band)
+			# Best first, so a SMALLER index is a warmer read.
+			return _result(req, have_at <= want_at, have_band, want_band)
+
 	return {
 		"ok": false,
 		"blocker_code": "unsupported_requirement",

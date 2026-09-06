@@ -39,10 +39,12 @@ extends RefCounted
 ## capture already happened, off camera, and must not be undone. See
 ## `territory_fronts` on `GameState` and the v15 → v16 arm.
 ##
-## This is a scope call the ticket's own ClickUp comment may specify
-## differently — that comment could not be read in this session (the connector
-## is unauthenticated) — and it is recorded as such in `docs/DECISIONS.md`
-## rather than silently assumed.
+## This was a scope call made without reading the ticket's own ClickUp comment
+## (the connector was unauthenticated in the session that wrote FS-002.3), and
+## it was recorded as such in `docs/DECISIONS.md` rather than silently assumed.
+## The connector has been authenticated since; the note is history, not a
+## standing limitation, and the call stood -- FS-002.5 (OG-D6) gave
+## `starting_owner` its gameplay meaning.
 
 const OWNER_NEUTRAL := "neutral"
 const OWNER_CURTIS := "curtis"

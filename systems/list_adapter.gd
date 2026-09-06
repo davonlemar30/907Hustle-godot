@@ -299,6 +299,12 @@ func settle(_crew_id: String, assignment: Dictionary, _ended_day: int) -> Dictio
 		})
 		guard += 1
 
+	# RM-D3 (1.4.0): a board she actually closed something on is proof. A
+	# night with nothing ready to close is not.
+	if not results.is_empty():
+		var crew: Object = gm.system("crew") if gm != null else null
+		if crew != null:
+			crew.record_proof("pherris", OPERATION_ID)
 	return {
 		"settled_count": results.size(),
 		"gross": gross,

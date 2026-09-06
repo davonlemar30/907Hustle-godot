@@ -51,7 +51,7 @@ const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
 const DEFS := preload("res://data/territory_definitions.gd")
 
 ## The check floor. See `_ready()` for why a count is a gate.
-const MIN_CHECKS := 170
+const MIN_CHECKS := 206
 
 var a: RefCounted
 var gs: Node
@@ -83,6 +83,7 @@ func _ready() -> void:
 	_test_v16_migration()
 	_test_v16_migration_capacity_hazard()
 	_test_upkeep()
+	_test_crew_rank_on_the_board()
 
 	# The floor, in the shape `parity_runner.gd` uses it. A suite whose checks
 	# quietly stop RUNNING still prints PASS — an early `return` in a test
@@ -912,6 +913,54 @@ func _test_v16_migration_capacity_hazard() -> void:
 	_fresh(100000, 0)
 
 # --- D-1: the recurring cost Territory never had (Batch 18 PR 4) ------------
+
+## RM-D2 / RM-D3 (1.4.0): the first arms this suite has ever had for HS-D2's
+## hold and BR-D6's put-it-down. At every authored rank: Tone on a district
+## reads `PROBE_HELD_DOWN` at probe time; his relief comes through the one
+## capability table at the values the adapter used to carry; and the night
+## writes a proof on his record for the corner he actually held.
+func _test_crew_rank_on_the_board() -> void:
+	var ops: Object = gm.system("crew_operations")
+	var enforcer: Object = gm.system("enforcer_adapter")
+	var crew: Object = gm.system("crew")
+	for rank in [1, 2, 3]:
+		_fresh(100000, 0)
+		gs.districts_unlocked = ["north_star_lot", "downtown"]
+		gs.current_district_id = "downtown"
+		gs.day = 12
+		gs.time_slots_today = 0
+		gs.territory_nodes = {"downtown_transit_center": {"soldiers": 0}}
+		gs.territory_fronts = {}
+		gs.crew_records["tone"] = {"recruited": true, "status": "active", "loyalty": 6,
+			"tier": rank, "wage_due": 0, "wage_missed_since": -1, "recruited_day": 1, "proofs": {}}
+		ops.reconcile()
+		a.near("rank %d: an empty venue probes at the undefended rate before Tone" % rank,
+			float(_terr().probe_chance("downtown_transit_center")), float(_terr().PROBE_UNDEFENDED))
+		a.eq_bool("rank %d: Tone takes the district" % rank,
+			gm.dispatch("assign_crew_operation", {"crew_id": "tone", "operation_id": "hold_it_down",
+				"params": {"district_id": "downtown"}}), true)
+		a.eq_str("rank %d: ...and is on Downtown tonight" % rank, str(_terr().held_down_district()), "downtown")
+		a.near("rank %d: ...so the venue is all but safe" % rank,
+			float(_terr().probe_chance("downtown_transit_center")), float(_terr().PROBE_HELD_DOWN))
+		# The relief he would bring to a problem, through the table, not a
+		# constant in the adapter -- and the table agrees with itself.
+		var expected_relief: float = float(gs.crew_capability_value("tone", "put_it_down", "relief_by_rank", rank, 0.0))
+		a.near("rank %d: put-it-down relief reads through the capability table" % rank,
+			float(enforcer.relief_amount()), expected_relief)
+		a.near("rank %d: ...at the value BR-D6 authored" % rank, expected_relief, [3.0, 4.0, 5.0][rank - 1])
+		# The night: the hold settles and writes exactly one proof.
+		a.eq_int("rank %d: no proof before the night" % rank, int(crew.crew_proofs("tone").get("hold_it_down", 0)), 0)
+		a.market_cursor_unchanged("rank %d: settling the hold does not move the market stream" % rank, gs,
+			func() -> void: gs.day_ending.emit(int(gs.day)))
+		a.eq_int("rank %d: a corner held is one proof" % rank, int(crew.crew_proofs("tone").get("hold_it_down", 0)), 1)
+		a.eq_int("rank %d: ...and only that counter" % rank, crew.crew_proofs("tone").size(), 1)
+	# Every operation has a row for its own person, so a rank that confers
+	# scope has one place to ask (RM-D2).
+	for operation_id in ops.OPERATION_CAPABILITY.keys():
+		var expected: Dictionary = ops.OPERATION_CAPABILITY[operation_id]
+		a.eq_bool("%s has a capability row" % str(operation_id),
+			gs.crew_has_capability(str(expected["crew_id"]), str(expected["capability_id"]), 1), true)
+	_fresh(100000, 0)
 
 func _test_upkeep() -> void:
 	# The computation, derived through the rule rather than memorised — same

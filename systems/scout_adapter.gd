@@ -56,6 +56,11 @@ func settle(_crew_id: String, assignment: Dictionary, _ended_day: int) -> Varian
 			if str((entry as Dictionary).get("district_id", "")) == district_id:
 				route = entry
 				break
+	# RM-D3 (1.4.0): a district actually scouted is proof. The null path
+	# above -- a district that does not exist -- writes nothing.
+	var crew: Object = gm.system("crew") if gm != null else null
+	if crew != null:
+		crew.record_proof("eli", OPERATION_ID)
 	return {"district_id": district_id, "open": open, "curtis": curtis, "yours": yours,
 		"police": int(district.get("police", 0)), "rival": int(district.get("rival", 0)),
 		"route": route}

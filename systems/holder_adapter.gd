@@ -47,6 +47,12 @@ func settle(_crew_id: String, assignment: Dictionary, _ended_day: int) -> Varian
 		for block_id in (territory.contested_blocks() as Array):
 			if str(gs.TERRITORY_DEFS.district_of(str(block_id))) == district:
 				contested += 1
+	# RM-D3 (1.4.0): a night with corners to sit on is proof; a district with
+	# nothing of yours in it is not.
+	if held > 0:
+		var crew: Object = gm.system("crew") if gm != null else null
+		if crew != null:
+			crew.record_proof("tone", OPERATION_ID)
 	return {"district_id": district, "held": held, "contested": contested}
 
 func sender() -> String:

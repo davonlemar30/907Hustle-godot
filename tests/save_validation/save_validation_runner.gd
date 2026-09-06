@@ -80,6 +80,31 @@ func _test_crew_records() -> void:
 	_check("crew unknown key survives", record.get("unknown", "") == "keep")
 	_check("input is not mutated", not (original["crew_records"]["eli"] as Dictionary).has("status"))
 
+	# RM-D1 (1.4.0): a rank the game can author is a rank a save can hold.
+	# This clamped to a literal 3 from FS-001.5 through 1.3.0, so a promotion
+	# above TRUSTED was repaired back down on every load.
+	var gs_script := preload("res://autoload/game_state.gd")
+	for entry in [[4, 4], [6, 6], [0, 1], [9, int(gs_script.MAX_CREW_RANK)], [-3, 1]]:
+		var tiered := _fixed(_state("crew_records", {"tone": {"recruited": true, "tier": int(entry[0])}}))
+		_check("crew tier %d loads as %d" % [int(entry[0]), int(entry[1])],
+			int((tiered["crew_records"]["tone"] as Dictionary).get("tier", -1)) == int(entry[1]))
+	_check("the ceiling is the table's, not a literal", int(gs_script.MAX_CREW_RANK) == 6)
+	# RM-D3: proofs are written at settlement now. A counter survives; junk is
+	# repaired to empty; an absent key stays absent (a legacy record takes no
+	# repair line for a field that did not exist when it was saved).
+	var proven := _fixed(_state("crew_records", {"pherris": {"recruited": true, "tier": 3,
+		"proofs": {"907list_run_board": 5, "unknown_key": 2}}}))
+	var proofs: Dictionary = (proven["crew_records"]["pherris"] as Dictionary).get("proofs", {})
+	_check("a proof counter survives the validator", int(proofs.get("907list_run_board", 0)) == 5)
+	_check("an unknown proof key survives too", int(proofs.get("unknown_key", 0)) == 2)
+	var junked := _fixed(_state("crew_records", {"pherris": {"recruited": true, "proofs": "five"}}))
+	_check("junk proofs repair to an empty table",
+		(junked["crew_records"]["pherris"] as Dictionary).get("proofs", null) is Dictionary
+		and ((junked["crew_records"]["pherris"] as Dictionary)["proofs"] as Dictionary).is_empty())
+	var legacy := _result(_state("crew_records", {"eli": {"recruited": true, "tier": 2}}))
+	_check("a legacy record without proofs stays without them",
+		not ((legacy["state"] as Dictionary)["crew_records"]["eli"] as Dictionary).has("proofs"))
+
 func _test_markets() -> void:
 	var fixed := _fixed(_state("markets", {"downtown": null, "unknown": {"keep": true}}))
 	_check("null market entry is repaired", fixed["markets"]["downtown"] is Dictionary)

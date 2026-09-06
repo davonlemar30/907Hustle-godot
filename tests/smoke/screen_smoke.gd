@@ -277,10 +277,17 @@ func _stage_long_lines(gs: Node) -> void:
 		"since_day": 1, "closed_until": -1, "last_kind": "", "history_seeded": true}
 	gs.businesses["northern_lights_motel"] = {"allegiance": "curtis", "pressure": 0,
 		"since_day": 1, "closed_until": -1, "last_kind": "", "history_seeded": true}
-	# HSS-D3: an owner appears on People the day her row exists, so Lani's row
-	# above is also what puts her on that screen with a name and a band. Vic
-	# stays off both screens -- `arctic_auto` is deliberately absent, and no
-	# producer fires for it on a day-one board.
+	# HSS-D7: a CLOSED row at 375 -- the longest line the section writes, and the
+	# state where both verbs are refused with the closure named. The garage is
+	# the one row nothing else in this fixture uses, so it carries the closure.
+	gs.businesses["arctic_auto"] = {"allegiance": "yours", "pressure": 1,
+		"since_day": 1, "closed_until": gs.day + 3, "last_kind": "close",
+		"history_seeded": true, "let_down": false}
+	# HSS-D3: an owner appears on People the day her row exists, so the four rows
+	# above are also what put Lani, Marcus, Bev and Vic on that screen with names
+	# and bands. The rows are written directly rather than discovered, so the
+	# beater's own producer is turned off here -- this fixture wants a stated
+	# board, not whichever one a cold morning would have produced.
 	gs.beater_dead_today = false
 	# HSS-D9: the verbs and their blockers at 375. Tone is already on the roster
 	# from the RM-D7 staging above, which is the crew_count_min LEAN needs; a

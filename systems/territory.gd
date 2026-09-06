@@ -304,6 +304,13 @@ func _settle_dismantling() -> void:
 func _dismantle(district: String) -> void:
 	gs.curtis_dismantled.append(district)
 	gs.curtis_dismantle_hold.erase(district)
+	# HSS-D8 (owner ruling, 2026-09-06): the gate itself is untouched -- his
+	# businesses do not extend or shorten the condition for putting him out --
+	# but a district he is out of has no businesses of his in it. They go
+	# NEUTRAL, not yours: nobody inherits an arrangement, the door is just open.
+	var businesses: Object = gm.system("businesses")
+	if businesses != null:
+		businesses.on_district_dismantled(district)
 	var name := _district_name(district)
 	gs.log_activity("Curtis is out of %s. His people stopped coming, then stopped being his. The corners here are yours the way the block is." % name, GREEN)
 	var phone: Object = gm.system("phone") if gm != null else null
@@ -544,7 +551,7 @@ func _curtis_probes(ended_day: int) -> void:
 			continue
 		var soldiers: int = int((gs.territory_nodes[block_id] as Dictionary).get("soldiers", 0))
 		if soldiers <= 0:
-			_lose_block(block_id, "Nobody was standing on it.")
+			_lose_block(block_id, "Nobody was standing on it.", LOST_TO_PROBE)
 		else:
 			var rec: Dictionary = gs.territory_nodes[block_id]
 			rec["soldiers"] = soldiers - 1
@@ -566,11 +573,23 @@ func _front_survived(block_id: String) -> void:
 		return
 	gs.territory_fronts[block_id] = front
 
+## Why a block left your hands. An explicit argument rather than a match on the
+## `why` prose: HSS-D8 makes a block LOST to a probe hand the business on it to
+## Curtis, while a block ABANDONED gives that business to nobody, and keying
+## that difference on a human-readable sentence would break the first time
+## somebody rewrote the sentence.
+const LOST_TO_PROBE := "probe"
+
 ## A block Curtis takes back.
-func _lose_block(block_id: String, why: String) -> void:
+func _lose_block(block_id: String, why: String, reason: String = LOST_TO_PROBE) -> void:
 	var name: String = _block_name(block_id)
 	gs.territory_nodes.erase(block_id)
 	gs.territory_fronts.erase(block_id)
+	# HSS-D8: the ground went to him, so what stands on it went with it.
+	if reason == LOST_TO_PROBE:
+		var businesses: Object = gm.system("businesses")
+		if businesses != null:
+			businesses.on_node_lost_to_curtis(block_id)
 	_discharge_over_capacity()
 	gs.log_activity("%s is Curtis's again. %s By morning his people are on it like they never left." % [name, why], RED)
 	_probe_text("Curtis took %s back last night. %s" % [name, why])

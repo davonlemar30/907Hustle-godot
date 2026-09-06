@@ -2246,6 +2246,82 @@ rather than inventing a measurement that passes it. What IS live here is the
 cost half: STEADY brings no heat at all, BREAKING pegs the heat meter in
 **half the nights** SQUEEZED takes to peg it.
 
+### The rulings PR 3 depends on
+
+**HSS-D7 — Breaking.** At BREAKING, one seeded roll a night over the row's own
+authored `break_weights`, in the fixed order `["close", "police", "curtis",
+"resist"]` (fixed because Dictionary iteration order is not promised, and a
+seeded roll that depends on it is not seeded). The roll happens **after** the
+night is paid — a business that shuts its doors tonight still paid for the day
+it worked — and **before** the decay, because an outcome that moves the band is
+not a quiet night.
+
+- **close** — shut for `CLOSURE_NIGHTS` (3), pays nothing, reopens at LEANED ON
+  rather than STEADY. Both verbs refuse with the closure named.
+- **police** — Heat +3 in the district, District Pressure +1 (capped), band
+  knocked to SQUEEZED, doors stay open.
+- **curtis** — allegiance flips to his, band 0, his awareness +1.
+- **resist** — the arrangement ends and goes to **nobody**, `hostile` on the
+  owner's ledger, and the next lean there is contested: `last_kind == "resist"`
+  costs `LEAN_AFTER_RESIST` (0.25) off the odds, compared at the same band.
+
+**The break is the tooth under the top band.** Without it BREAKING pays 1.3×
+for nothing but heat and the owner's rule is a sentence rather than a mechanic.
+
+**HSS-D4's third way — TAKE.** A lean at a Curtis-protected business: the same
+chain, `opponent "Curtis's people at <name>"`, and **his** odds (`take_chance`,
+the `contest_chance` shape — crew, soldiers, kit, less his awareness). A win
+makes it yours at LEANED ON (you did not ask), raises awareness by
+`TAKE_WIN_AWARENESS`, and schedules a retaliation with the **business** as the
+target. That is a target row in `consequence_rules.gd` next to the tills and
+the dice game — **not a new tier**; the qualifying-tier set and the whole
+schedule/expiry machinery are untouched. A loss reads as a contest loss.
+
+**HSS-D8 (the rest) — whose ground it is.** A node lost to a **probe** hands
+the business standing on it to Curtis. `_lose_block` gained an explicit
+`reason` argument (`LOST_TO_PROBE`) rather than matching on the `why` prose,
+which the danger list called out and which would have broken the first time
+somebody rewrote the sentence. Abandoning the same corner calls
+`on_node_abandoned` and gives the business to nobody. When `is_dismantled`
+becomes true for a district, every Curtis-held business there goes **neutral,
+not yours** — nobody inherits an arrangement, the door is simply open again.
+D-30's gate is untouched: his businesses neither extend nor shorten the
+condition for putting him out.
+
+### Measured with the break live (MEAS-D1, final)
+
+| Policy | Take over 30 nights | Per night |
+|---|---|---|
+| STEADY (0) | $1,050 | $35 |
+| SQUEEZED (2) | $1,350 | $45 |
+| BREAKING (3) | **$810** | **$27** |
+
+**The owner's bar is met**: `EV(3) $810 < EV(0) $1,050`, and `EV(2) $1,350 ≤
+1.3 × EV(0) $1,365`. The driver gives band 3 the most generous possible
+reading — re-opening after a flip or a resist is free, with no slot and no
+room — and it still loses. Both halves of the bar are now asserted in parity.
+
+### Real bugs PR 3 caught
+
+- **The break's seeded key clustered, and would have shipped the same outcome
+  night after night.** Keyed as `business_break:<id>:<day>`, six consecutive
+  nights rolled 0.356, 0.360, 0.333, 0.337, 0.340, 0.344 — one outcome, five
+  times running, on a table that authors four. `rng_manager.gd`'s own header
+  states the contract and the reason: FNV-1a's high bits barely move when a
+  small counter is appended to the tail, and `seeded_random` reads exactly
+  those bits; `seeded_shuffle` puts its varying index at the FRONT and calls
+  that part of the parity contract. The key is now
+  `<day>:business_break:<id>`, and 100 driven nights land close/police/curtis/
+  resist at 27/39/15/19 against authored 25/40/15/20. **Found only by the live
+  run** — every suite was green with the clustered key, because a forced-weight
+  test asserts which outcome a table picks and never that the roll varies.
+- **A PR 1 assertion encoded the pre-HSS-D8 world.** "The same arrangement pays
+  half once the ground under it is gone" was true when losing a node only
+  removed backing; the probe hand-off now correctly gives the business to
+  Curtis, so it pays nothing. The arm was updated to assert the new ruling, and
+  the half-pay case moved to the read it actually belongs to — a held lot with
+  nobody standing on it.
+
 ### Real bugs PR 2 caught
 
 - **The take's rounding could breach its own ruling.** With base $35 and the

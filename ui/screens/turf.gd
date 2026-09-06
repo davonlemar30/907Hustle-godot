@@ -299,6 +299,16 @@ func _business_row(sys: Object, definition: Dictionary) -> Control:
 	elif his:
 		head.add_child(label("--", "Mono", 12, MUTED))
 		v.add_child(label("Curtis's people are in it. Whatever it makes, it makes for him.", "Muted", 11, RED, true))
+		# HSS-D4: TAKE. The odds in words, never a number, the way a Curtis block
+		# reads on the row above.
+		var take_blocked: String = str(sys.take_blocker(id))
+		v.add_child(label("Taking it off him is a fight, your crew and your kit against his people: %s. He will come back for it."
+			% str(sys.take_odds_word(id)).to_lower(), "Muted", 11, RED, true))
+		if take_blocked.is_empty():
+			v.add_child(button("TAKE IT OFF HIM  ·  %s" % str(sys.take_odds_word(id)).to_upper(),
+				true, _on_business_take.bind(id), 46))
+		else:
+			v.add_child(label(take_blocked, "Muted", 11, MUTED, true))
 	elif yours:
 		head.add_child(label("$%d" % int(sys.take_tonight(id)), "Mono", 12, GREEN))
 		v.add_child(label("$%d a night." % int(sys.take_tonight(id)), "Muted", 11, GREEN))
@@ -349,6 +359,9 @@ func _on_business_ask(id: String) -> void:
 
 func _on_business_lean(id: String) -> void:
 	_gm.dispatch("business_lean", {"business_id": id})
+
+func _on_business_take(id: String) -> void:
+	_gm.dispatch("business_take", {"business_id": id})
 
 ## HSS-D8: the player's own walk-off, from the business rather than from the
 ## ground. Ends the arrangement and gives it to nobody, the same as abandoning

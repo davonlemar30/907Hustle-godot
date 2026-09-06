@@ -21451,6 +21451,14 @@ func _check_her_side_of_the_street(gs: Node, gm: Node) -> void:
 			"ceiling3": int((table[2] as Dictionary)["nights_to_ceiling"])}))
 
 	_expect_true("thirty nights at STEADY pay something ($%d)" % ev0, ev0 > 0)
+	# HSS-D5, the owner's acceptance bar, live from PR 3. Band 3 pays 1.3x a
+	# night by construction; what makes it lose is HSS-D7's break underneath it,
+	# and the only honest way to know that it does is to drive it. Asserted here
+	# rather than reasoned about.
+	_expect_true("the squeeze never wins: BREAKING earns less than STEADY over thirty nights ($%d vs $%d)"
+		% [ev3, ev0], ev3 < ev0)
+	_expect_true("...and less than SQUEEZED, the band below it ($%d vs $%d)" % [ev3, ev2],
+		ev3 < ev2)
 	# The owner's bound, asserted against the ruling's own number rather than a
 	# literal copied here.
 	_expect_true("SQUEEZED never pays more than 1.3x STEADY ($%d vs $%d)" % [ev2, ev0],
@@ -21478,7 +21486,69 @@ func _check_her_side_of_the_street(gs: Node, gm: Node) -> void:
 			<= float(business_defs.BAND_MULTIPLIERS[2]))
 
 	_check_she_asks_first(gs, gm, businesses)
+	_check_he_comes_back_for_it(gs, gm, businesses)
 	gs.reset_to_new_game()
+
+## HSS-D4 (1.5.0): the retaliation queue accepts a BUSINESS as a target and
+## surfaces it through the shipped presence gate. A target row in
+## `consequence_rules.gd`, not a new tier and not a second queue.
+func _check_he_comes_back_for_it(gs: Node, gm: Node, businesses: Object) -> void:
+	var rules := preload("res://data/consequence_rules.gd").new()
+	var engine: Object = gm.system("consequence")
+	var retaliation: Object = gm.system("retaliation")
+
+	_expect_true("the motel is a retaliation target like the tills are",
+		not rules.retaliation_row("northern_lights_motel").is_empty())
+	_expect_true("...with somebody of his behind it",
+		not str(rules.retaliation_actor_id("northern_lights_motel")).is_empty())
+	# No new tier: the qualifying set is the shipped one, and a plain failure
+	# still buys nobody a reason to come looking.
+	_expect_true("a won take qualifies for retaliation",
+		rules.retaliation_chance("northern_lights_motel", "clean") > 0.0)
+	_expect_true("...and a fumbled one does not",
+		is_zero_approx(rules.retaliation_chance("northern_lights_motel", "failure")))
+
+	_frozen_ready(gs)
+	gs.day = 10
+	gs.businesses = {}
+	gs.consequence_queue = []
+	gs.consequence_history = {}
+	businesses.known_ids()
+	# Scheduled directly against a Cause, the way the take's win does it.
+	var row: Dictionary = {}
+	for attempt in range(20):
+		var cause_id: String = engine.allocate_cause_id()
+		engine.history_for(cause_id)
+		row = retaliation.schedule("northern_lights_motel", "clean", cause_id, "north_star_lot")
+		if not row.is_empty():
+			break
+		gs.day += 1
+	_expect_true("the queue takes a business target", not row.is_empty())
+	if row.is_empty():
+		return
+	_expect_str("...and remembers which business it was",
+		str(row.get("source_target_id", "")), "northern_lights_motel")
+	_expect_str("...in the district the business stands in",
+		str(row.get("district_id", "")), "north_star_lot")
+	_expect_true("...as a pending row on the shipped queue",
+		str(row.get("status", "")) == "pending")
+	var queued := false
+	for entry in gs.consequence_queue:
+		if str((entry as Dictionary).get("source_target_id", "")) == "northern_lights_motel":
+			queued = true
+	_expect_true("...which is actually on the queue", queued)
+
+	# The shipped presence gate surfaces it: his people come looking where the
+	# business is, on the day the row says, and nowhere else.
+	gs.current_district_id = "north_star_lot"
+	gs.day = int(row.get("trigger_day", gs.day))
+	var here: int = int(retaliation.push_ambient_warnings(int(gs.day)))
+	gs.current_district_id = "downtown"
+	var elsewhere: int = int(retaliation.push_ambient_warnings(int(gs.day)))
+	_expect_true("the presence gate surfaces it where the business is (%d)" % here, here >= 0)
+	_expect_true("...and does not follow the player to another district (%d)" % elsewhere,
+		elsewhere == 0)
+	gs.current_district_id = "north_star_lot"
 
 ## HSS-D10: `wt_protection` is the ask, wired to the thing it was describing.
 ## Its line, its gate and its observation on CURTIS's ledger are unchanged --
@@ -21582,8 +21652,20 @@ func _drive_business_policy(gs: Node, gm: Node, businesses: Object, policy: int)
 		# Holding a band means leaning as often as the decay requires. Pinning
 		# `since_day` to today is exactly that: the player was by, so nothing
 		# settles back.
-		row["pressure"] = policy
-		row["since_day"] = int(gs.day)
+		#
+		# HSS-D7: the break is LIVE from PR 3, and a policy has to survive it to
+		# be a policy. A business that shut its doors is left shut -- the player
+		# cannot pin a band on a closed shop -- and one that flipped to Curtis or
+		# walked away is re-opened, because a player committed to this band would
+		# go back. Re-opening is given away FREE here, with no slot and no room,
+		# which makes this the most GENEROUS possible reading of the top band. It
+		# still loses.
+		if not businesses.is_closed("wash_and_go"):
+			if not businesses.is_yours("wash_and_go"):
+				row["allegiance"] = "yours"
+				row["closed_until"] = -1
+			row["pressure"] = policy
+			row["since_day"] = int(gs.day)
 		businesses.settle_night(int(gs.day))
 		if nights_to_ceiling < 0 and float(gs.heat) >= ceiling - 0.0001:
 			nights_to_ceiling = night + 1
@@ -22799,7 +22881,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14716
+const MIN_CHECKS := 14729
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

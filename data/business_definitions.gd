@@ -78,6 +78,12 @@ const DECAY_NIGHTS := 4
 const CLOSURE_NIGHTS := 3
 const CLOSURE_REOPEN_PRESSURE := 1
 
+## HSS-D7: the four ways a business at BREAKING comes apart, in a fixed order
+## so the weighted roll is deterministic across payloads -- Dictionary
+## iteration order is not promised, and a seeded roll that depends on it is not
+## seeded at all.
+const BREAK_KINDS: Array[String] = ["close", "police", "curtis", "resist"]
+
 ## HSS-D8: an arrangement nobody is backing pays this share. The promise is the
 ## product; an unbacked promise is half a product.
 const UNBACKED_SHARE := 0.5

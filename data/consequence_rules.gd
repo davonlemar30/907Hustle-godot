@@ -1191,6 +1191,14 @@ const RETALIATION_SCHEDULE := {
 		"chance": 1.00, "actor_id": "goodie",
 		"actor_label": "Goodie's people",
 	},
+	# HSS-D4 (1.5.0): a business taken off Curtis. A TARGET row, not a new tier
+	# -- the qualifying tiers and the whole schedule/expiry machinery above are
+	# untouched. He comes back for a motel on his own row harder than a till
+	# crew comes back for a till.
+	"northern_lights_motel": {
+		"chance": 0.75, "actor_id": "curtis_motel_crew",
+		"actor_label": "Curtis's people from the Motel Row",
+	},
 }
 
 ## TI-003 §16. **Talk is absent, and that is the definition rather than an

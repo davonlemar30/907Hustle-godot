@@ -28,6 +28,78 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 1.5.0 — Her Side of the Street: three PRs and a close-out (added 2026-09-06)
+
+**P6 of the organized-crime plan.** Territory has been a board of ground since
+FS-002.3. A corner pays in twenties because you are standing on it, Curtis
+tests it at night, and nothing standing on that ground has a name, a face, or a
+reason to pay you other than that you are there. This build adds the second
+axis: a **business** is a person with a till and a ledger on the same board,
+and whether the Wash & Go Lot is yours and whether Lani pays you are two
+different questions that do not settle each other.
+
+**The constraint that shaped the whole build.** The audit found that every
+Spenard establishment already exists under three or four shipped ids with
+nothing joining them — the Wash & Go is the job `wash_go`, the stickup target
+`washgo_regular`, the territory node `wash_and_go_lot` and the manager `lani`;
+the Chevron is the Boost target `spenard_fuel`, the stickup target
+`spenard_fuel_till` and the manager `marcus`. A save already carried a history
+with these places and nothing read it as one place. So the work was not "add
+businesses" but "add one new identity without renaming, migrating or
+duplicating anything already shipped". `data/business_definitions.gd` is that
+identity and its `links` map is the one join.
+
+**PR 1 (`#176`) — One place.** The four authored rows (two on a territory node,
+two standing off the board), `gs.businesses` at save **v35**, the `businesses`
+system registered and settling immediately after `territory`, four owners on
+the Exposure roster, and a read-only BUSINESSES section on Turf. Presence in
+the row dictionary means known, the way a `territory_nodes` key means held — so
+a v34 save loads with `{}` and discovers its businesses from latches it already
+carries. No verb shipped; a test placing an arrangement in the row is what
+proved the settlement before the verbs that produce it existed.
+
+**PR 2 (`#177`) — Her side of the street.** ASK (the owner at WARM, no room and
+no roll — she was going to say yes) and LEAN (a confrontation chain on the
+shipped chassis with her people on the other side), two new requirement types
+and no more, the bands and the bounded take, decay after four quiet nights, the
+three costs per lean, heat above the squeeze on its own line, the promise
+(unbacked pays half), and `wt_protection` — authored in 0.9.0 and doing nothing
+ever since — finally wired to the conversation it had always been describing.
+
+**PR 3 (`#178`) — Breaking, and his.** The nightly roll under the top band, its
+four outcomes and the closure state; TAKE, on Curtis's odds, with a retaliation
+queued against the business itself; and the board's hand-offs — a corner lost to
+a probe takes the business on it, abandoning does not, and dismantling a
+district frees his businesses there to nobody.
+
+**What was deliberately not built:** buying a business (ownership is the seed of
+every P7 capability and ships with them), any capability at all, businesses
+outside Spenard, the Night Owl, Curtis's named people, a crew verb, and any
+change to the dismantle gate. The take is dirty on purpose — the reason
+laundering is a want in 1.6.0 is that this money is not clean.
+
+**Three real bugs, each caught by a different discipline.** The take's
+round-to-nearest breached the ruling's own 1.3× bound at a $35 base, found by
+the driven EV table and not by review. `wt_protection`'s hook was wired into
+`_play_encounter`, which an ambient card never reaches, while a parity arm that
+called the hook directly passed green over it — found by the live run, and the
+clearest argument this project has for requiring one. And the break's seeded key
+clustered: keyed `business_break:<id>:<day>`, six consecutive nights rolled
+0.356, 0.360, 0.333, 0.337, 0.340, 0.344, which is one outcome five times
+running on a table that authors four. `rng_manager.gd` already documented the
+contract — FNV-1a's high bits barely move when a counter is appended to the
+tail — and `seeded_shuffle` already put its varying index at the front for the
+same reason. Every suite was green with the clustered key.
+
+**Measured.** Parity 14,618 → 14,729; territory 206 → 403, its largest move
+ever and the reason this build put its coverage there rather than in parity;
+confrontation 4,429 → 4,447; save validation 299 → 323; smoke touch 1,160 →
+1,236, width 2,834 → 2,910. The owner's acceptance bar, driven thirty nights per
+policy: STEADY $1,050, SQUEEZED $1,350, BREAKING **$810** — `EV(3) < EV(0)`
+holds with re-opening given away free, and both halves of the bar are asserted.
+
+Rulings: **D-33** (HSS-D1..D10). Schema v34 → v35, additive.
+
 ## 1.4.0 — Room to Move Up: three PRs and a close-out (added 2026-09-06)
 
 Source: `docs/ORGANIZED_CRIME_ECONOMY_DESIGN_PLAN.md` (phases P0 and P1),

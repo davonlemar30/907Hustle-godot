@@ -732,9 +732,12 @@ P0  Foundation repair: validator clamp → MAX_CREW_RANK; capability table total
 string already persisted); P3 v36 additive (`armor`, `armory`); P4 none
 (opportunities are persisted instances); P5 none (nested `kit`, per-district
 readiness in a persisted dict — one bump if a new top-level dict is preferred);
-P6 **v35** additive (`businesses` — renumbered 2026-09-06: P6 ships before
-P3); P7 none; P8 v37 additive (`rival_people_known`,
-per-person state); P9 none; P10 none (a brief on `crew_assignments`).
+P6 **v35** additive (`businesses` — renumbered 2026-09-06 because P6 ships
+before P3; **SHIPPED 1.5.0**, and the live `SAVE_VERSION` is now 35, so every
+later phase below counts from v36); P7 none (capabilities read the `businesses`
+rows v35 already carries; buy-in spends the wallet, which persists); P8 v37
+additive (`rival_people_known`, per-person state); P9 none; P10 none (a brief
+on `crew_assignments`).
 
 ---
 
@@ -855,19 +858,47 @@ introductions; a Phone contact per source. No schema. Needs P3.
 `kit` per member (rank-gated), per-district readiness word, probe rates read
 it, losses degrade it. Needs P2, P3, P4.
 
-### P6 — Businesses — **next: 1.5.0 "Her Side of the Street"**
+### P6 — Businesses — **shipped 1.5.0 "Her Side of the Street" (`#176`–`#178`)**
 
 Definitions, runtime rows (**v35**), owner ledgers, three routes (ASK, LEAN,
-TAKE; buy-in moves to P7), a `businesses` settle step after territory, bands
+TAKE; buy-in moved to P7), a `businesses` settle step after territory, bands
 and a bounded take, overpressure outcomes, the promise (backing) and the
-probe/abandon/dismantle hand-offs, Turf rows under the district. Parallel to
-P3. ORG-Q3 ruled 2026-09-06; the full rulings are in §6.5 and the prompt
-`BUILD_HER_SIDE_OF_THE_STREET_PROMPT.md` (HSS-D1..D10, four PRs).
+probe/abandon/dismantle hand-offs, Turf rows under the district. ORG-Q3 ruled
+2026-09-06; the rulings are **D-33 (HSS-D1..D10)** in `docs/DECISIONS.md`.
 
-### P7 — Infrastructure
+**Shipped, with the numbers.** Four Spenard businesses — Wash & Go, Spenard
+Chevron, Northern Lights Motel (starts Curtis's) and Arctic Auto & Tire — two
+authored against a territory node and two standing off the board, each joining
+the shipped ids its door already had through a `links` map. Nothing shipped was
+renamed. Save v35 is additive in the strongest sense: a v34 save loads with
+`{}` and discovers its businesses from latches it already carries.
+
+The acceptance bar (§6.5: "over thirty driven nights, EV(band 3) < EV(band 0)")
+is **met and asserted in parity**: STEADY $1,050 ($35/night, no heat),
+SQUEEZED $1,350 ($45/night, pegs the heat meter night 30), BREAKING **$810**
+($27/night, pegs it night 13). `EV(2) ≤ 1.3 × EV(0)` holds at $1,350 against a
+$1,365 ceiling. The take is **floored** rather than rounded to nearest, because
+rounding to nearest breaches the 1.3× bound at a $35 base — a ruling a rounding
+mode can breach is not a ruling.
+
+Suites: parity 14,618 → 14,729, territory 206 → 403, confrontation 4,429 →
+4,447, save validation 299 → 323, smoke touch 1,160 → 1,236 and width 2,834 →
+2,910.
+
+**What P6 deliberately did NOT ship, and P7 inherits:** no capability of any
+kind, and no buy-in. `allegiance: yours` rows, the `kind` column (`laundromat`,
+`station`, `motel`, `garage`) and the four owners are the substrate P7's
+one-seam capabilities hang off. Business income is **dirty**, on purpose —
+that is what makes laundering a want rather than a feature.
+
+### P7 — Infrastructure — **next**
 
 Capabilities as one-seam effects; **safehouse raises `crew_capacity()`**;
-laundering through the wallet; gun connection unlocks a P4 channel. Needs P6.
+laundering through the wallet; gun connection unlocks a P4 channel. P6 is
+shipped, so this is unblocked. It inherits `businesses[*].allegiance == yours`
+as the "do you have this holding" read, `kind` as the "which capability" read,
+and the owners as the people a capability is negotiated with. Buy-in with clean
+money moves here with the capabilities it seeds. Schema from **v36**.
 
 ### P8 — Rival personnel
 

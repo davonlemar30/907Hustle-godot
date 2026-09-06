@@ -106,7 +106,19 @@ extends Node
 ## the player (RM-D7..D9). A new reachable rank and a new kind of
 ## delegation are new player-facing behaviour: MINOR. No schema bump:
 ## proofs and the brief ride dictionaries the save already carried.
-const VERSION := "1.4.0"
+## 1.5.0 (Her Side of the Street): a business is a second axis over the
+## same board -- a person with a till and a ledger, whose allegiance is a
+## different question from whose ground it stands on. One identity joining
+## the shipped ids a Spenard door already had (HSS-D1), a row whose presence
+## means known (HSS-D2), four owners on the Exposure roster (HSS-D3), and
+## three ways in: ASK, LEAN and TAKE (HSS-D4). Bands raise the take a
+## little and every cost a lot (HSS-D5, D6), the top one has a nightly
+## failure roll under it (HSS-D7), an arrangement nobody backs pays half
+## (HSS-D8), and the board says all of it in words on Turf (HSS-D9).
+## New player-facing behaviour and a new economy: MINOR. One schema bump
+## (v35, `businesses`), additive -- an older save discovers its businesses
+## from the history it already carries.
+const VERSION := "1.5.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

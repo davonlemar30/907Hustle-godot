@@ -18,6 +18,84 @@ a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
 
+## 1.5.0 — Her Side of the Street: businesses, the arrangement, the lean (2026-09-06)
+
+The second build of the organized-crime initiative
+(`docs/ORGANIZED_CRIME_ECONOMY_DESIGN_PLAN.md`, phase P6). Territory is a
+board of ground, and nothing standing on it had a name or a reason to pay
+you. A business is the second axis over the same board: whether the Wash &
+Go Lot is yours and whether Lani pays you are two different questions.
+
+Every Spenard door already existed under three or four shipped ids with
+nothing joining them. One new identity does the joining; nothing shipped
+was renamed. Three PRs and a close-out, each green before the next.
+Rulings are D-33 (HSS-D1..D10). Schema v34 → v35, additive.
+
+### PR 1 — One place (`#176`)
+
+- `data/business_definitions.gd`: four authored Spenard businesses, two on
+  a territory node and two standing off the board, each with a `links` map
+  naming the shipped job / Boost / stickup / manager ids it joins.
+- `gs.businesses`, save **v35**. Presence means known, the way a
+  `territory_nodes` key means held. A v34 save loads with `{}` and
+  discovers its businesses from the latches it already carries.
+- A `businesses` system, settling immediately after `territory` so the
+  night's probes have landed before the promise on the ground is judged.
+- Four owners on the Exposure roster, with `has_met` placed ahead of the
+  fall-through that returns true for any id it does not name.
+- Turf gains a read-only BUSINESSES section under the district card.
+
+### PR 2 — Her side of the street (`#177`)
+
+- **ASK** (the owner at WARM, no room, no roll) and **LEAN** (a
+  confrontation chain on the shipped chassis, her people on the other
+  side). Two new requirement types and no more.
+- Bands, a bounded take, and a decay of one band per four quiet nights.
+- Three costs per lean, on the attempt and not the win: her ledger,
+  District Pressure under the shipped `stick` family, and his attention.
+  Heat per night above the squeeze, on its own line.
+- The promise: an arrangement nobody backs pays half.
+- `wt_protection` — authored in 0.9.0 and doing nothing since — becomes
+  the laundromat's ask.
+
+### PR 3 — Breaking, and his (`#178`)
+
+- At BREAKING, one seeded roll a night: she shuts the doors, calls the
+  police, finds somebody else to pay, or says no and means it.
+- **TAKE**: a lean at one of Curtis's, on his odds, with a retaliation
+  queued against the business itself.
+- A corner lost to a probe takes the business on it; abandoning does not;
+  dismantling a district frees his businesses there to nobody.
+
+### PR 4 — Close-out
+
+- Version 1.5.0, D-33, this entry, the build log, HANDOFF, the design
+  plan's P6 marked shipped.
+
+### Measured across the build
+
+Parity 14,618 → 14,729; territory 206 → 403 (its second move ever, and its
+largest); confrontation 4,429 → 4,447; save validation 299 → 323; smoke
+touch 1,160 → 1,236 and width 2,834 → 2,910. Dre 427 and tips 93
+unchanged.
+
+The owner's acceptance bar, driven over thirty nights per policy: STEADY
+$1,050 ($35/night, no heat), SQUEEZED $1,350 ($45/night, pegs the heat
+meter on night 30), BREAKING **$810** ($27/night, pegs it on night 13).
+`EV(3) < EV(0)` and `EV(2) ≤ 1.3 × EV(0)` both hold and are both asserted.
+
+### Real bugs caught
+
+Three, each recorded in D-33. The take's round-to-nearest breached the
+ruling's own 1.3× bound at a $35 base and was caught by the driven table.
+`wt_protection`'s hook was wired into a code path ambient cards never
+reach, while a parity arm that called the hook directly passed green over
+it. And the break's seeded key clustered — six consecutive nights rolling
+0.356, 0.360, 0.333, 0.337, 0.340, 0.344, which is one outcome five times
+running on a table that authors four; `rng_manager.gd` already documented
+the contract, and the key now leads with the day. The last two were found
+only by live runs.
+
 ## 1.4.0 — Room to Move Up: one home, rank four, the standing brief (2026-09-06)
 
 The first build of the organized-crime initiative

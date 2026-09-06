@@ -2067,7 +2067,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
 	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
 	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
-	_expect_int("save version is 34", saves.SAVE_VERSION, 34)
+	_expect_int("save version is 35", saves.SAVE_VERSION, 35)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -5505,7 +5505,11 @@ func _check_dispatch_ownership(gs: Node, gm: Node) -> void:
 ## order stops being an implementation detail and becomes the interface.
 const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	"PRE_SETTLE",
-	"SETTLE:crew", "SETTLE:territory", "SETTLE:shark", "SETTLE:dre",
+	"SETTLE:crew", "SETTLE:territory",
+	# HSS-D1 (1.5.0): businesses settle after territory, so the night's probes
+	# have landed before the promise on the ground is judged.
+	"SETTLE:businesses",
+	"SETTLE:shark", "SETTLE:dre",
 	"SETTLE:jobs", "SETTLE:obligations",
 	# Street Opportunity and Mission System PR C appends `opportunities` last:
 	# its settlement-fact objectives read what every other system's own
@@ -5604,7 +5608,8 @@ func _check_lifecycle_trace(gs: Node, gm: Node, lifecycle: RefCounted) -> void:
 	# The declared order is the one the code walks, not a copy of it kept here.
 	_expect_str("lifecycle settle order is declared",
 		str(lifecycle.SETTLE_ORDER),
-		str(["crew", "territory", "shark", "dre", "jobs", "obligations", "opportunities"]))
+		str(["crew", "territory", "businesses", "shark", "dre", "jobs", "obligations",
+			"opportunities"]))
 	for system_name in lifecycle.SETTLE_ORDER:
 		var system: Object = gm.system(str(system_name))
 		_expect_true("lifecycle settler %s exists" % str(system_name), system != null)
@@ -13921,7 +13926,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v34", saves.SAVE_VERSION, 34)
+	_expect_int("the schema is v35", saves.SAVE_VERSION, 35)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -20304,6 +20309,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_rent_escalation(gs, gm)
 	_check_earn_your_name(gs, gm)
 	_check_the_kit(gs, gm)
+	_check_one_place(gs, gm)
 	_check_the_beater_on_the_street(gs, gm)
 	_check_mina_vale(gs, gm)
 	_check_the_house_talks_back(gs, gm)
@@ -21301,13 +21307,136 @@ func _check_the_beater_on_the_street(gs: Node, gm: Node) -> void:
 	_expect_true("a piece has its own", str(wander_sys.weapon_beat_line(0)).contains("piece"))
 	gs.reset_to_new_game()
 
+## HSS-D1..D3 (1.5.0). The roster grew from five to nine, and `has_met`'s
+## fall-through arm returns `true` for any id it does not name -- so without
+## the owners' rule ahead of it, four strangers appear on People on day one
+## with a score and a role. This is the arm that notices.
+func _check_one_place(gs: Node, gm: Node) -> void:
+	var business_defs := preload("res://data/business_definitions.gd")
+	var exposure: Node = get_node("/root/Exposure")
+	var people := preload("res://ui/screens/people.gd")
+	var businesses: Object = gm.system("businesses")
+
+	# The roster is nine, and every owner is on it. An observation for an id
+	# `NPC_LENSES` lacks is dropped silently (`exposure.gd`), so a lens row
+	# missing here would make the seeded history quietly write nothing.
+	_expect_int("the Exposure roster is nine people", exposure.NPC_LENSES.size(), 9)
+	for owner_id in business_defs.owner_ids():
+		_expect_true("the roster names %s" % str(owner_id),
+			exposure.NPC_LENSES.has(str(owner_id)))
+		_expect_true("...and gives them a channel to hear on",
+			(exposure.NPC_CHANNELS.get(str(owner_id), []) as Array).size() > 0)
+		_expect_true("...and everyone() reports them",
+			_roster_has(exposure.everyone(), str(owner_id)))
+
+	# `everyone()` lists the whole roster; `has_met` is what gates the screen.
+	# An owner is met when their business row exists, and never before.
+	# The premise, set rather than inherited. This check runs late in a long
+	# sequence, and by the time it does another arm has clocked Boost targets,
+	# killed the beater and moved the day -- all of which are discovery
+	# producers. A day-one board is stated here explicitly so this arm measures
+	# discovery instead of measuring whatever ran before it.
+	_frozen_ready(gs)
+	gs.day = 1
+	gs.businesses = {}
+	gs.boost_targets_discovered = []
+	gs.job_records = {}
+	gs.jobs_discovered = ["wash_go"]
+	gs.beater_dead_today = false
+	gs.current_district_id = "north_star_lot"
+	for owner_id in business_defs.owner_ids():
+		_expect_true("%s is a stranger while their business row is absent" % str(owner_id),
+			not people.has_met(gs, exposure, str(owner_id)))
+	# The fall-through still answers `true` for an id nobody authored, which is
+	# the behaviour the owners' rule has to sit in front of rather than replace.
+	_expect_true("an id the screen does not name still falls through to met",
+		people.has_met(gs, exposure, "somebody_nobody_authored"))
+
+	# Discovery, and the same question again.
+	var known: Array = businesses.known_ids()
+	_expect_true("a fresh run knows the laundromat", known.has("wash_and_go"))
+	_expect_true("...and the Motel Row", known.has("northern_lights_motel"))
+	_expect_true("...but not the Chevron", not known.has("spenard_chevron"))
+	_expect_true("Lani is met the day her row exists",
+		people.has_met(gs, exposure, "lani"))
+	_expect_true("Bev too -- his business is still a business you know about",
+		people.has_met(gs, exposure, "bev"))
+	_expect_true("Marcus is not, because nothing has put the Chevron on the board",
+		not people.has_met(gs, exposure, "marcus"))
+	_expect_true("and neither is Vic",
+		not people.has_met(gs, exposure, "vic"))
+
+	# The Motel is his before any ground is held, and he has no wallet -- it
+	# pays him nothing that this game models, and it pays the player nothing.
+	_expect_str("the Motel starts on his side",
+		str(businesses.allegiance_of("northern_lights_motel")), "curtis")
+	_expect_int("and a business of his pays the player nothing",
+		int(businesses.take_tonight("northern_lights_motel")), 0)
+	_expect_int("nor does a business nobody has an arrangement with",
+		int(businesses.take_tonight("wash_and_go")), 0)
+	_expect_int("so a fresh run's businesses settle to nothing",
+		int(businesses.nightly_take()), 0)
+
+	# One place, many doors: every authored link names a SHIPPED id, and
+	# nothing was renamed to make the join work.
+	var territory_defs := preload("res://data/territory_definitions.gd")
+	for definition in business_defs.BUSINESSES:
+		var links: Dictionary = (definition as Dictionary).get("links", {})
+		var node_id := str((definition as Dictionary).get("node_id", ""))
+		if not node_id.is_empty():
+			_expect_true("%s stands on a real territory node" % str(definition["id"]),
+				territory_defs.has_id(node_id))
+		var job_id := str(links.get("job", ""))
+		if not job_id.is_empty():
+			_expect_true("%s links a shipped job id" % str(definition["id"]),
+				not gs.job_by_id(job_id).is_empty())
+		var boost_id := str(links.get("boost", ""))
+		if not boost_id.is_empty():
+			_expect_true("%s links a shipped Boost target id" % str(definition["id"]),
+				not gs.boost_target_by_id(boost_id).is_empty())
+		var stickup_id := str(links.get("stickup", ""))
+		if not stickup_id.is_empty():
+			_expect_true("%s links a shipped stickup target id" % str(definition["id"]),
+				not gs.stick_target_by_id(stickup_id).is_empty())
+		_expect_true("%s names an owner on the roster" % str(definition["id"]),
+			exposure.NPC_LENSES.has(str(definition["owner_id"])))
+		_expect_true("%s is authored in a real district" % str(definition["id"]),
+			not gs.district_by_id(str(definition["district"])).is_empty())
+	gs.reset_to_new_game()
+
+func _roster_has(roster: Array, npc_id: String) -> bool:
+	for entry in roster:
+		if str((entry as Dictionary).get("id", "")) == npc_id:
+			return true
+	return false
+
 func _check_the_kit(gs: Node, gm: Node) -> void:
 	var portraits := preload("res://data/portraits.gd")
 	var exposure: Node = get_node("/root/Exposure")
 	# Faces: every lens NPC and every manager resolves to a file on disk;
 	# a stranger resolves to nothing, and nothing renders.
+	# HSS-D3 (1.5.0): this loop used to read "every lens NPC has a face", which
+	# was true only because the roster and the portrait table had been authored
+	# together every time. Two of the four business owners ship without art --
+	# Bev and Vic are rows on the Exposure roster and rows on People, and the
+	# People screen already renders "the face, when there is one" (OG-D3).
+	#
+	# The assertion is scoped rather than the roster trimmed, which is the rule:
+	# an NPC the portrait table CLAIMS to have art for must resolve to a file on
+	# disk, and one it does not claim must resolve to nothing without crashing.
+	# That is the property the screens actually depend on, and it is a stronger
+	# check than the old one -- a portrait entry pointing at a missing file used
+	# to fail here only if the id also happened to be on the lens roster.
 	for npc_id in exposure.NPC_LENSES.keys():
-		_expect_true("%s has a face" % str(npc_id), portraits.portrait_for(str(npc_id)) != null)
+		if portraits.PORTRAITS.has(str(npc_id)):
+			_expect_true("%s has the face the table claims" % str(npc_id),
+				portraits.portrait_for(str(npc_id)) != null)
+		else:
+			_expect_true("%s has no face, and renders as nothing" % str(npc_id),
+				portraits.portrait_rect(str(npc_id), 64) == null)
+	for stem in portraits.PORTRAITS.keys():
+		_expect_true("the portrait table's '%s' is a file on disk" % str(stem),
+			portraits.portrait_for(str(stem)) != null)
 	for who in ["Lani", "Marcus", "Sonny", "Denise", "Ray", "Big Mike", "Reggie", "Goodie", "Eli", "Deshawn", "Pherris", "Tone"]:
 		_expect_true("%s has a face" % who, portraits.portrait_for(who) != null)
 	_expect_str("an opponent title finds its face", portraits.npc_for("Curtis's two"), "curtis")
@@ -22484,7 +22613,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14618
+const MIN_CHECKS := 14689
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -23558,7 +23687,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v34", int(saves.SAVE_VERSION), 34)
+	_expect_int("the schema is v35", int(saves.SAVE_VERSION), 35)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -24004,7 +24133,7 @@ func _check_lay_low_cap(gs: Node, gm: Node) -> void:
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v34 for Heat's teeth", int(saves.SAVE_VERSION), 34)
+	_expect_int("the schema is v35 for Heat's teeth", int(saves.SAVE_VERSION), 35)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -24477,7 +24606,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v34 for Wander", int(saves.SAVE_VERSION), 34)
+	_expect_int("the schema is v35 for Wander", int(saves.SAVE_VERSION), 35)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered", "wander_quiet_streak"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)

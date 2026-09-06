@@ -49,9 +49,12 @@ const ASSERTS := preload("res://tests/territory/territory_asserts.gd")
 ## FS-002.3: the authored board, off the canonical data file. `gs.spenard_blocks`
 ## is deleted.
 const DEFS := preload("res://data/territory_definitions.gd")
+## HSS-D1 (1.5.0): the authored businesses. The second axis lands on this
+## surface, so its arms live in this suite rather than in parity.
+const BIZ := preload("res://data/business_definitions.gd")
 
 ## The check floor. See `_ready()` for why a count is a gate.
-const MIN_CHECKS := 206
+const MIN_CHECKS := 277
 
 var a: RefCounted
 var gs: Node
@@ -84,6 +87,11 @@ func _ready() -> void:
 	_test_v16_migration_capacity_hazard()
 	_test_upkeep()
 	_test_crew_rank_on_the_board()
+	_test_business_discovery()
+	_test_business_seeded_history()
+	_test_business_settlement()
+	_test_business_backing()
+	_test_business_settles_after_territory()
 
 	# The floor, in the shape `parity_runner.gd` uses it. A suite whose checks
 	# quietly stop RUNNING still prints PASS — an early `return` in a test
@@ -1023,3 +1031,325 @@ func _test_upkeep() -> void:
 		func() -> void: _terr().settle_night(int(gs.day)))
 
 	_fresh(100000, 0)
+
+# --- businesses (HSS-D1..D3, D5, D8) ----------------------------------------
+
+func _biz() -> Object:
+	return gm.system("businesses")
+
+## Cross whole days by dispatching slots, so everything that happens on a night
+## happens inside a real `GameManager.dispatch()`. This matters for more than
+## realism: `Exposure.record_observation` REFUSES outside a dispatch
+## (`exposure.gd` `_require_dispatch`), so a seeded-history arm driven by
+## calling `settle_night()` directly would assert against a ledger that was
+## never allowed to be written.
+func _cross_days(count: int) -> void:
+	var target: int = int(gs.day) + count
+	var guard := 0
+	while int(gs.day) < target and guard < 200:
+		gm.dispatch("advance_time", {})
+		guard += 1
+
+## HSS-D2: every producer, one at a time, and the row created once.
+func _test_business_discovery() -> void:
+	# A fresh run knows the two places its own starting state already names:
+	# the Wash & Go (the starter job is on the board from day one) and the
+	# Northern Lights Motel (its node stands in the home district, which is
+	# visible on Turf from day one). It does NOT know the other two.
+	_fresh(5000, 0)
+	var known: Array = _biz().known_ids()
+	a.eq_bool("a fresh run knows the Wash & Go -- the starter job is its producer",
+		known.has("wash_and_go"), true)
+	a.eq_bool("and the Motel Row, because its node's district is visible",
+		known.has("northern_lights_motel"), true)
+	a.eq_bool("but not the Chevron, which needs a Boost target clocked",
+		known.has("spenard_chevron"), false)
+	a.eq_bool("and not the garage, which stands off every latch",
+		known.has("arctic_auto"), false)
+
+	# Presence means known, and the authored starting allegiance is what a new
+	# row carries -- his, for the Motel, before any ground is held.
+	a.eq_str("the Motel starts on Curtis's side",
+		str(_biz().allegiance_of("northern_lights_motel")), str(BIZ.ALLEGIANCE_CURTIS))
+	a.eq_str("and the laundromat starts on nobody's",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_NONE))
+	a.eq_int("a business nobody has an arrangement with pays nothing",
+		int(_biz().take_tonight("wash_and_go")), 0)
+	a.eq_int("and his pays the player nothing either",
+		int(_biz().take_tonight("northern_lights_motel")), 0)
+
+	# The Boost producer. The latch is the shipped one-way array, so a save
+	# that clocked the Chevron in any earlier build discovers this row.
+	gs.boost_targets_discovered.append("spenard_fuel")
+	a.eq_bool("clocking the linked Boost target discovers the Chevron",
+		_biz().known_ids().has("spenard_chevron"), true)
+
+	# The garage's two producers, each on its own.
+	_fresh(5000, 0)
+	gs.beater_dead_today = true
+	a.eq_bool("a morning the beater will not start discovers the garage",
+		_biz().known_ids().has("arctic_auto"), true)
+	_fresh(5000, 0)
+	gs.day = int(_biz().GARAGE_WALK_DAY)
+	gs.current_district_id = "north_star_lot"
+	a.eq_bool("and so does an ordinary walk once the run is old enough",
+		_biz().known_ids().has("arctic_auto"), true)
+	_fresh(5000, 0)
+	gs.day = int(_biz().GARAGE_WALK_DAY) - 1
+	a.eq_bool("but not a day before that",
+		_biz().known_ids().has("arctic_auto"), false)
+
+	# The job producer, on its own: a run that has somehow lost the starter
+	# job from the discovery array still knows the place it was hired at.
+	_fresh(5000, 0)
+	gs.jobs_discovered = []
+	gs.businesses = {}
+	a.eq_bool("with no job discovered the laundromat is not known by that road",
+		_biz().row_of("wash_and_go").is_empty()
+			or not gs.jobs_discovered.has("wash_go"), true)
+	gs.job_records["wash_go"] = {"xp": 0.0, "rank": 0, "last_worked_day": 3, "hired_day": 1}
+	gs.businesses.erase("wash_and_go")
+	a.eq_bool("but a job record at the linked job discovers it",
+		_biz().known_ids().has("wash_and_go"), true)
+
+	# Created once and never twice. Discovery is idempotent by construction --
+	# the row's own presence is the guard -- and the proof is that a row the
+	# test has edited survives a hundred refreshes unchanged.
+	_fresh(5000, 0)
+	_biz().known_ids()
+	var row: Dictionary = _biz().row_of("wash_and_go")
+	row["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	row["pressure"] = 2
+	for i in range(100):
+		_biz().refresh_discovery()
+	a.eq_int("a hundred refreshes create no second row", gs.businesses.size(), 2)
+	a.eq_str("and never reset the row that was already there",
+		str(_biz().allegiance_of("wash_and_go")), str(BIZ.ALLEGIANCE_YOURS))
+	a.eq_int("including its pressure band", int(_biz().pressure_of("wash_and_go")), 2)
+
+	# An unknown id is "no such business", the territory_definitions rule.
+	a.eq_bool("an unknown business id reads as no such business",
+		_biz().row_of("no_such_business").is_empty(), true)
+	a.eq_int("and pays nothing", int(_biz().take_tonight("no_such_business")), 0)
+
+## HSS-D3: the owner's ledger is written once from the history the save already
+## carries, and never a second time.
+func _test_business_seeded_history() -> void:
+	var E: Node = get_node("/root/Exposure")
+
+	# A run with a real history at the Chevron: banned from the store, and a
+	# walk paid for at the counter. Both persist by the shipped Boost id.
+	_fresh(5000, 0)
+	gs.day = 3
+	gs.boost_targets_discovered.append("spenard_fuel")
+	gs.boost_store_bans.append("spenard_fuel")
+	gs.boost_bribes_used.append("spenard_fuel")
+	var bribes_before: int = gs.boost_bribes_used.size()
+	a.eq_int("Marcus's ledger starts empty", (E.ledger_of("marcus") as Array).size(), 0)
+	_cross_days(1)
+	var rows: Array = E.ledger_of("marcus")
+	a.eq_int("the seed writes one row per linked record the save carries",
+		rows.size(), 2)
+	a.eq_bool("and the row is marked seeded so it never runs twice",
+		bool(_biz().row_of("spenard_chevron").get("history_seeded", false)), true)
+	# `boost_bribes_used` is 0.1.2's once-per-store latch for a paid walk.
+	# Reading it is fine; consuming it would change that rule.
+	a.eq_int("the bribe latch is read, never consumed",
+		gs.boost_bribes_used.size(), bribes_before)
+
+	# Across more nights, and across a reload, it stays at what it was.
+	_cross_days(3)
+	a.eq_int("more nights do not write it again",
+		(E.ledger_of("marcus") as Array).size(), 2)
+	var save_system: Node = get_node("/root/SaveSystem")
+	var restored: Variant = JSON.parse_string(JSON.stringify(save_system.capture()))
+	save_system._apply(restored as Dictionary)
+	a.eq_bool("the seeded flag survives the round trip",
+		bool(_biz().row_of("spenard_chevron").get("history_seeded", false)), true)
+	_cross_days(2)
+	a.eq_int("and a reloaded run does not seed a second time",
+		(E.ledger_of("marcus") as Array).size(), 2)
+
+	# A run with no history at that place writes nothing, rather than writing
+	# an empty row -- the owner is a stranger, and the ledger says so.
+	_fresh(5000, 0)
+	gs.day = 3
+	gs.boost_targets_discovered.append("spenard_fuel")
+	_cross_days(1)
+	a.eq_int("an owner the player has no history with gets no rows",
+		(E.ledger_of("marcus") as Array).size(), 0)
+
+	# The danger the roster's closed table creates: an observation for an id
+	# `NPC_LENSES` does not name is dropped silently. The four owners are on
+	# the roster, so the write lands.
+	for owner_id in BIZ.owner_ids():
+		a.eq_bool("the roster names the owner '%s', so a write to them lands" % owner_id,
+			E.NPC_LENSES.has(str(owner_id)), true)
+		a.eq_bool("and they listen on at least one channel",
+			(E.NPC_CHANNELS.get(str(owner_id), []) as Array).size() > 0, true)
+
+## HSS-D5: an arrangement placed by the test pays the authored base at STEADY,
+## dirty, under its own earnings key.
+func _test_business_settlement() -> void:
+	_fresh(5000, 0)
+	gs.day = 3
+	# The laundromat, known from day one, with an arrangement and the ground
+	# under it backed so the promise is being kept.
+	gs.soldiers_idle = 2
+	_claim_block("wash_and_go_lot")
+	_biz().known_ids()
+	var row: Dictionary = _biz().row_of("wash_and_go")
+	row["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	a.eq_bool("the promise is backed -- the lot is held and somebody is on it",
+		bool(_biz().is_backed("wash_and_go")), true)
+
+	# Derived from the authored row and the authored multiplier, never typed.
+	var base: int = int(BIZ.by_id("wash_and_go")["base_take"])
+	a.eq_int("a backed arrangement at STEADY pays the authored base",
+		int(_biz().take_tonight("wash_and_go")), base)
+
+	var dirty_before: int = int(gs.dirty_cash)
+	var clean_before: int = int(gs.clean_cash)
+	var earned_before: int = int(gs.run_earnings.get("businesses", 0))
+	_biz().settle_night(int(gs.day))
+	a.eq_int("and the money lands DIRTY", int(gs.dirty_cash), dirty_before + base)
+	a.eq_int("never clean -- a laundromat that paid clean would be P7's capability",
+		int(gs.clean_cash), clean_before)
+	a.eq_int("under its own earnings key",
+		int(gs.run_earnings.get("businesses", 0)), earned_before + base)
+
+	# Every band pays exactly base x multiplier, derived from the table.
+	for pressure in range(int(BIZ.MAX_PRESSURE) + 1):
+		row["pressure"] = pressure
+		a.eq_int("band %s pays base x its authored multiplier" % BIZ.band_word(pressure),
+			int(_biz().take_tonight("wash_and_go")),
+			int(round(float(base) * float(BIZ.BAND_MULTIPLIERS[pressure]))))
+	row["pressure"] = 0
+
+	# The owner's rule, asserted on the table itself rather than on a run: the
+	# squeeze may never be worth more than 1.35x, and the top band may never
+	# beat the one below it.
+	for pressure in range(int(BIZ.MAX_PRESSURE) + 1):
+		a.check("the multiplier at %s stays inside the owner's bound"
+			% BIZ.band_word(pressure), float(BIZ.BAND_MULTIPLIERS[pressure]) <= 1.35)
+	a.check("and the top band buys nothing over the one below it",
+		float(BIZ.BAND_MULTIPLIERS[int(BIZ.MAX_PRESSURE)])
+			<= float(BIZ.BAND_MULTIPLIERS[int(BIZ.MAX_PRESSURE) - 1]))
+
+	# A business that is not yours pays nothing, however the band reads.
+	row["allegiance"] = BIZ.ALLEGIANCE_NONE
+	a.eq_int("an arrangement that ended pays nothing",
+		int(_biz().take_tonight("wash_and_go")), 0)
+	row["allegiance"] = BIZ.ALLEGIANCE_CURTIS
+	a.eq_int("and one that went to Curtis pays the player nothing",
+		int(_biz().take_tonight("wash_and_go")), 0)
+
+	# A night with nothing owed moves no money at all.
+	row["allegiance"] = BIZ.ALLEGIANCE_NONE
+	dirty_before = int(gs.dirty_cash)
+	_biz().settle_night(int(gs.day))
+	a.eq_int("a night with no arrangement credits nothing",
+		int(gs.dirty_cash), dirty_before)
+
+## HSS-D8: the promise. On-node and off-node read backing differently, and an
+## unbacked arrangement pays half.
+func _test_business_backing() -> void:
+	# ON THE BOARD: the lot has to be yours AND somebody has to be on it.
+	_fresh(5000, 0)
+	gs.day = 3
+	_biz().known_ids()
+	var row: Dictionary = _biz().row_of("wash_and_go")
+	row["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	var base: int = int(BIZ.by_id("wash_and_go")["base_take"])
+
+	a.eq_bool("holding nothing backs nothing", bool(_biz().is_backed("wash_and_go")), false)
+	a.eq_int("and an unbacked arrangement pays half",
+		int(_biz().take_tonight("wash_and_go")),
+		int(round(float(base) * float(BIZ.UNBACKED_SHARE))))
+
+	gs.soldiers_idle = 2
+	_claim_block("wash_and_go_lot")
+	a.eq_bool("holding the lot with a soldier on it backs it",
+		bool(_biz().is_backed("wash_and_go")), true)
+	a.eq_int("and it pays the full base again",
+		int(_biz().take_tonight("wash_and_go")), base)
+
+	# A held lot nobody is standing on is not backing anything -- the same rule
+	# that makes an unstaffed corner a pure liability.
+	gm.dispatch("pull_soldier", {"block_id": "wash_and_go_lot"})
+	a.eq_int("premise: the lot is held and empty",
+		int((gs.territory_nodes["wash_and_go_lot"] as Dictionary).get("soldiers", 0)), 0)
+	a.eq_bool("an empty lot backs nothing",
+		bool(_biz().is_backed("wash_and_go")), false)
+
+	# Unless somebody is standing on it tonight (HS-D2's hold).
+	var rec: Dictionary = gs.territory_nodes["wash_and_go_lot"]
+	rec["watch_day"] = int(gs.day)
+	gs.territory_nodes["wash_and_go_lot"] = rec
+	a.eq_bool("but a corner somebody is holding down tonight does",
+		bool(_biz().is_backed("wash_and_go")), true)
+
+	# Holding a DIFFERENT corner in the district does not back an on-node row:
+	# the promise is about that lot.
+	_fresh(5000, 0)
+	gs.day = 3
+	gs.soldiers_idle = 2
+	_claim_block("spenard_rec_lot")
+	_biz().known_ids()
+	var on_node: Dictionary = _biz().row_of("wash_and_go")
+	on_node["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	a.eq_bool("another corner in the district does not back the lot's own business",
+		bool(_biz().is_backed("wash_and_go")), false)
+
+	# OFF THE BOARD: there is no lot to staff, so one block anywhere in the
+	# district is the read. Same run, same held corner, opposite answer.
+	gs.beater_dead_today = true
+	_biz().refresh_discovery()
+	var off_node: Dictionary = _biz().row_of("arctic_auto")
+	a.eq_bool("premise: the garage is known and stands off the board",
+		not off_node.is_empty() and str(BIZ.by_id("arctic_auto")["node_id"]).is_empty(), true)
+	off_node["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	a.eq_bool("one block anywhere in the district backs an off-board business",
+		bool(_biz().is_backed("arctic_auto")), true)
+	gm.dispatch("abandon_block", {"block_id": "spenard_rec_lot"})
+	a.eq_bool("and holding nothing there stops backing it",
+		bool(_biz().is_backed("arctic_auto")), false)
+	a.eq_int("so it pays half",
+		int(_biz().take_tonight("arctic_auto")),
+		int(round(float(int(BIZ.by_id("arctic_auto")["base_take"])) * float(BIZ.UNBACKED_SHARE))))
+
+## HSS-D1: the step runs, and it runs after territory. The reason is in the
+## constant's own comment: Curtis's probes land inside Territory's settlement,
+## so a corner he took back tonight must be gone before the promise on it is
+## judged this morning.
+func _test_business_settles_after_territory() -> void:
+	var lifecycle: Object = gm.system("day_lifecycle")
+	var order: Array = lifecycle.SETTLE_ORDER
+	a.check("SETTLE_ORDER carries businesses", order.has("businesses"))
+	a.check("and settles it after territory",
+		order.find("businesses") > order.find("territory"))
+	a.check("immediately after, with nothing in between",
+		order.find("businesses") == order.find("territory") + 1)
+	a.eq_bool("and the system is registered under that name",
+		gm.system("businesses") != null, true)
+	a.eq_bool("with the settle_night the step calls",
+		gm.system("businesses").has_method("settle_night"), true)
+
+	# Driven, not just declared: a corner lost on the night the promise is paid
+	# has to be lost first. Placed by hand rather than by waiting for a probe --
+	# the probe's own roll is asserted in parity -- but through the same
+	# `_lose_block` road a probe takes.
+	_fresh(5000, 0)
+	gs.day = 3
+	gs.soldiers_idle = 2
+	_claim_block("wash_and_go_lot")
+	_biz().known_ids()
+	var row: Dictionary = _biz().row_of("wash_and_go")
+	row["allegiance"] = BIZ.ALLEGIANCE_YOURS
+	var base: int = int(BIZ.by_id("wash_and_go")["base_take"])
+	a.eq_int("premise: backed, and paying the base",
+		int(_biz().take_tonight("wash_and_go")), base)
+	_terr()._lose_block("wash_and_go_lot", "Test.")
+	a.eq_int("the same arrangement pays half once the ground under it is gone",
+		int(_biz().take_tonight("wash_and_go")),
+		int(round(float(base) * float(BIZ.UNBACKED_SHARE))))

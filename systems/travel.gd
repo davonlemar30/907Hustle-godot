@@ -81,6 +81,12 @@ func day_start_beater(today: int) -> void:
 		return
 	if rng.seeded_int_range(gs.run_seed, "%d:cold_start" % today, 0, 99) < int(COLD_START_CHANCE * 100.0):
 		gs.beater_dead_today = true
+		# HSS-D2: the morning the beater will not start is how a player with a
+		# car meets the garage. One of Arctic Auto's two producers; the other
+		# is an ordinary walk once the run is old enough.
+		var businesses: Object = gm.system("businesses") if gm != null else null
+		if businesses != null:
+			businesses.refresh_discovery()
 		gs.log_activity("Fourteen below. The beater turns over twice and quits. People Mover today.", AMBER)
 
 ## Downtown parking, on arrival by car.

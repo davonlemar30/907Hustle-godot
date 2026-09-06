@@ -6,6 +6,9 @@ extends Node
 ## save, so it is safe to run in isolation and proves validation is load-only.
 
 const VALIDATOR := preload("res://autoload/save_validator.gd")
+## HSS-D2 (1.5.0): the authored businesses, so the v35 arms clamp against the
+## same table the validator repairs against rather than against a literal.
+const BUSINESS_DEFS := preload("res://data/business_definitions.gd")
 var checks := 0
 var failures: Array[String] = []
 
@@ -41,6 +44,7 @@ func _ready() -> void:
 	_test_v32_hot_goods()
 	_test_v33_dismantled()
 	_test_v34_nudges()
+	_test_v35_businesses()
 	_test_standing_brief_round_trip()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
@@ -1153,6 +1157,107 @@ func _test_v33_dismantled() -> void:
 	var migrated: Dictionary = saves._migrate({"save_version": 32, "state": {"day": 2, "cash": 10, "street_name": "L"}})
 	_check("a v32 save arrives with him everywhere he was",
 		not migrated.has("curtis_dismantled") or (migrated.get("curtis_dismantled", []) as Array).is_empty())
+
+## HSS-D2 (1.5.0), v35. Every repair the ruling names, plus the migration arm:
+## a v34 payload loads with no `businesses` at all and discovers its businesses
+## from the history it already carries.
+func _test_v35_businesses() -> void:
+	# An unknown id is dropped whole rather than repaired into a neutral row.
+	# Repairing it would invent a meeting that never happened -- presence in
+	# this dictionary is what "the player knows this place" means.
+	var valid := _fixed(_state("businesses", {
+		"wash_and_go": {"allegiance": "yours", "pressure": 1, "since_day": 0,
+			"closed_until": -1, "last_kind": "", "history_seeded": true},
+		"no_such_place": {"allegiance": "yours", "pressure": 0},
+	}))
+	var rows: Dictionary = valid["businesses"]
+	_check("a known business survives the validator", rows.has("wash_and_go"))
+	_check("...and an id the authored table does not name is dropped",
+		not rows.has("no_such_place"))
+	_check("...keeping the arrangement it carried",
+		str((rows["wash_and_go"] as Dictionary)["allegiance"]) == "yours")
+	_check("...and the band it was at",
+		int((rows["wash_and_go"] as Dictionary)["pressure"]) == 1)
+
+	# A row that is not a Dictionary is dropped, not coerced.
+	var junk := _fixed(_state("businesses", {"wash_and_go": "yours"}))
+	_check("a row of the wrong type is dropped", (junk["businesses"] as Dictionary).is_empty())
+
+	# The whole field of the wrong type defaults to empty, and the run
+	# rediscovers from its latches.
+	var wrong := _fixed(_state("businesses", ["wash_and_go"]))
+	_check("a wrong-type field defaults empty", (wrong["businesses"] as Dictionary).is_empty())
+
+	# Pressure clamps at both ends of the authored band range.
+	var clamped := _fixed(_state("businesses", {
+		"wash_and_go": {"allegiance": "yours", "pressure": 99},
+		"arctic_auto": {"allegiance": "yours", "pressure": -4},
+	}))
+	var high: Dictionary = (clamped["businesses"] as Dictionary)["wash_and_go"]
+	var low: Dictionary = (clamped["businesses"] as Dictionary)["arctic_auto"]
+	_check("a band over the top clamps to the top",
+		int(high["pressure"]) == int(BUSINESS_DEFS.MAX_PRESSURE))
+	_check("...and a negative one clamps to STEADY", int(low["pressure"]) == 0)
+
+	# Allegiance defaults to the AUTHORED start, which is not always neutral:
+	# a corrupted Motel row must not quietly stop being Curtis's.
+	var bad_allegiance := _fixed(_state("businesses", {
+		"northern_lights_motel": {"allegiance": "somebody_else", "pressure": 0},
+		"wash_and_go": {"pressure": 0},
+	}))
+	var motel: Dictionary = (bad_allegiance["businesses"] as Dictionary)["northern_lights_motel"]
+	var wash: Dictionary = (bad_allegiance["businesses"] as Dictionary)["wash_and_go"]
+	_check("an unknown allegiance defaults to the authored start -- his, for the Motel",
+		str(motel["allegiance"]) == "curtis")
+	_check("...and nobody's, for the laundromat", str(wash["allegiance"]) == "none")
+
+	# A closure that has already expired is not a closure.
+	var closure := VALIDATOR.new().validate_state({"day": 20, "cash": 1, "street_name": "T",
+		"businesses": {
+			"wash_and_go": {"allegiance": "yours", "closed_until": 12},
+			"arctic_auto": {"allegiance": "yours", "closed_until": 25},
+		}})["state"] as Dictionary
+	var expired: Dictionary = (closure["businesses"] as Dictionary)["wash_and_go"]
+	var live: Dictionary = (closure["businesses"] as Dictionary)["arctic_auto"]
+	_check("a closure in the past is cleared", int(expired["closed_until"]) == -1)
+	_check("...and one still ahead is left alone", int(live["closed_until"]) == 25)
+
+	# Every field the row is authored with comes back, defaulted where absent.
+	var sparse := _fixed(_state("businesses", {"wash_and_go": {}}))
+	var filled: Dictionary = (sparse["businesses"] as Dictionary)["wash_and_go"]
+	for key in ["allegiance", "pressure", "since_day", "closed_until", "last_kind",
+			"history_seeded"]:
+		_check("a sparse row is repaired to carry '%s'" % key, filled.has(key))
+	_check("...and a row that has never been pushed carries no break outcome",
+		str(filled["last_kind"]) == "")
+	_check("...and is not marked seeded, so its owner's history still gets written",
+		bool(filled["history_seeded"]) == false)
+
+	# The migration. A v34 payload arrives with no `businesses` key at all --
+	# additive, exactly like every bump before it.
+	var saves := get_node("/root/SaveSystem")
+	var migrated: Dictionary = saves._migrate({"save_version": 34,
+		"state": {"day": 2, "cash": 10, "street_name": "L",
+			"boost_targets_discovered": ["spenard_fuel"]}})
+	_check("a v34 save arrives knowing no businesses",
+		not migrated.has("businesses") or (migrated.get("businesses", {}) as Dictionary).is_empty())
+	_check("...and keeps the Boost latch its businesses will be discovered from",
+		(migrated.get("boost_targets_discovered", []) as Array).has("spenard_fuel"))
+
+	# And the discovery that follows the load: the same latch, read by the
+	# system, produces the row the save did not carry.
+	var gs: Node = get_node("/root/GameState")
+	var gm: Node = get_node("/root/GameManager")
+	gs.reset_to_new_game()
+	gs.boost_targets_discovered = ["spenard_fuel"]
+	gs.businesses = {}
+	var businesses: Object = gm.system("businesses")
+	var known: Array = businesses.known_ids()
+	_check("a v34 save discovers the Chevron from boost_targets_discovered",
+		known.has("spenard_chevron"))
+	_check("...at the authored starting allegiance, not at an arrangement",
+		str(businesses.allegiance_of("spenard_chevron")) == "none")
+	gs.reset_to_new_game()
 
 func _test_v32_hot_goods() -> void:
 	var valid := _fixed(_state("hot_goods", [{"kind": "pills", "name": "a bottle", "value": 60, "heat": 1.0, "from": "the pharmacy", "day": 3}, "junk"]))

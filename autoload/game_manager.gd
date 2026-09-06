@@ -234,6 +234,16 @@ func _ready() -> void:
 	territory.setup(_gs, self)
 	register_system("territory", territory)
 
+	# Businesses (HSS-D1, 1.5.0). Built after Territory because the promise it
+	# settles is read off the board Territory owns — though, like everything
+	# else here, it reaches its collaborators through `system()` at call time,
+	# so this ordering is documentation. The ordering that is NOT documentation
+	# is `SETTLE_ORDER`, where `businesses` runs after `territory` so the
+	# night's probes have landed before the promise is judged.
+	var businesses = preload("res://systems/businesses.gd").new()
+	businesses.setup(_gs, self)
+	register_system("businesses", businesses)
+
 	# The arrest owner. Built before the consequence engine because the engine
 	# asks it for booking projections, and after the surfaces whose gates feed it
 	# — though both reach each other through `system()` at call time, so this

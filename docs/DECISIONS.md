@@ -2052,6 +2052,139 @@ with shipped code).
 
 ---
 
+## D-33 — Her Side of the Street: one place, the row, the owner
+
+**Decided** 2026-09-06 · **Ships in** 1.5.0, four PRs (one place; her side of
+the street; breaking, and his; the close-out) · **Source:**
+`docs/ORGANIZED_CRIME_ECONOMY_DESIGN_PLAN.md` §6.5 and §9 (owner rulings
+ORG-Q3, Q4, Q10, Q11, Q12 of 2026-09-06), `BUILD_HER_SIDE_OF_THE_STREET_PROMPT.md`;
+ClickUp ORG-005 / ORG-006 under ORG-000
+
+### The question
+
+Territory is a board of ground. Holding a corner pays in twenties and costs
+soldiers and heat, and Curtis tests it at night — but nothing standing on that
+ground has a name, a face, or a reason to pay you other than that you are
+standing there. The organized-crime plan makes a business a **second axis on
+the same board**: whether the Wash & Go Lot is yours and whether Lani pays you
+are two different questions.
+
+The complication the audit found is that every Spenard establishment already
+exists under three or four shipped ids and **nothing joins them**. The Wash &
+Go is the job `wash_go`, the stickup target `washgo_regular`, the territory
+node `wash_and_go_lot` and the manager `lani`. The Chevron is the Boost target
+`spenard_fuel`, the stickup target `spenard_fuel_till` and the manager
+`marcus`. A save already carries a history with these places, and no row in the
+game reads that history as one place. So the question was not "how do we add
+businesses" — it was how to add one new identity without renaming, migrating or
+duplicating anything already shipped.
+
+This entry records the three rulings PR 1 depends on. HSS-D4..D10 land with the
+code that depends on them in the later PRs of this build.
+
+### The rulings
+
+**HSS-D1 — One place, many doors.** `data/business_definitions.gd` is the only
+new identity: `{id, district, node_id, name, kind, owner_id, base_take,
+heat_by_band, starting_allegiance, break_weights, links}`. `links` is
+`{boost, stickup, job, manager, event}` naming the **shipped** ids, and it is
+the one join — nothing shipped is renamed, aliased in place, or migrated, and a
+reader who wants a place's history goes through `links` to find it. A business
+is authored either against a node (`node_id` names a territory block) or
+against a district (`node_id` is `""`); both shapes ship in the first set on
+purpose, so Arctic Auto proves the off-board shape before a later district
+needs it. `by_id()` returns `{}` for an unknown id and every caller treats that
+as "no such business" — the `territory_definitions.gd` rule.
+
+The first set is the owner's hybrid: **Wash & Go** (Lani, laundromat, on
+`wash_and_go_lot`, $35, neutral), **Spenard Chevron** (Marcus, station, off the
+board, $40, neutral), **Northern Lights Motel** (Bev Halvorsen, motel, on
+`northern_lights_motels`, $90, **starts Curtis's**) and **Arctic Auto & Tire**
+(Vic Salazar, garage, off the board, $50, neutral). Two places the player
+already knows under other ids, two authored for what they are worth in P7.
+
+**HSS-D2 — The row is the latch.** `gs.businesses[id] = {allegiance ∈ {none,
+yours, curtis}, pressure 0..3, since_day, closed_until, last_kind,
+history_seeded}`; **presence means known**, the way a `territory_nodes` key
+means held. A row is created at discovery from the authored
+`starting_allegiance` and never before, so an absent key reads as "the player
+has not met this place" rather than "has met it and has no arrangement" — that
+second state is `allegiance: none` on a row that exists.
+
+Every discovery producer is a latch the game already had: a linked Boost target
+clocked, a linked job discovered or held or recorded, a node's district visible
+on Turf, and — for the garage, which is off every other latch — a morning
+`beater_dead_today` is true or an ordinary walk from day 5. Because all four
+are latches a **v34 save already carries**, save **v35** is additive in the
+strongest sense: a pre-1.5.0 save loads with `{}` and discovers its businesses
+from its own history on the first read. `refresh_discovery()` is idempotent and
+is the only road onto the board. `_validate_businesses` is modelled on
+`_validate_territory_nodes`: an unknown id is **dropped whole** rather than
+repaired into a neutral row (repairing it would invent a meeting that never
+happened), a non-Dictionary row is dropped, pressure is clamped, allegiance
+defaults to the **authored** start (so a corrupted Motel row does not quietly
+stop being Curtis's), and a closure already in the past is cleared.
+
+**HSS-D3 — The owner is a person.** Each owner is one `NPC_LENSES` row
+(CIVILIAN, a handful of overrides) and one `NPC_CHANNELS` row (`direct`,
+`neighborhood`). `has_met` for an owner is "their business row exists", and
+that arm sits **before** `people.gd`'s fall-through — which returns `true` for
+any id it does not name, and would otherwise have put four strangers on the
+People screen on day one with a score and a role.
+
+**Seeded history, once:** when a row is created, `history_seeded` false → read
+the links and write one observation per record the save actually carries, then
+set the flag. Two corrections to the prompt's version of this ruling, both
+recorded rather than silently taken:
+
+- The seed runs on the first tick that can run it, not inline at creation.
+  `Exposure.record_observation` refuses outside a `GameManager.dispatch()` and
+  drops the write silently if called anyway, and discovery can fire from a
+  screen build, which is not a dispatch. The flag makes it exactly-once across
+  a reload either way.
+- **There is no stickup arm, because the repo has no stickup record to read.**
+  The prompt names "a stickup record against the linked target" as a source;
+  `consequence_history` is keyed by an allocated sequence id
+  (`consequence:%08d`), not by target, and no per-target stickup latch is
+  persisted anywhere in `GameState`. Inventing one would be a schema change
+  this build does not have. The job record (`job_records[<job>]`) stands in as
+  the third source and is the better one anyway: being hired somewhere is
+  something the owner was actually present for. `boost_store_bans` and
+  `boost_bribes_used` are the other two, and `boost_bribes_used` is **read
+  only** — it is 0.1.2's once-per-store latch for a paid walk, and consuming it
+  here would change that rule.
+
+**On `let_down`.** HSS-D8's unbacked-arrangement ledger row uses the shipped
+`let_them_down` event key (already priced at −2.0 in `SHARED_EVENT_WEIGHTS`)
+rather than a new `let_down` synonym. Reuse over a second name for the same
+thing; the behaviour the ruling describes is unchanged.
+
+### Real bugs this caught
+
+- **Parity's "every lens NPC has a face" loop was accidentally true.** It held
+  only because the roster and the portrait table had been authored together
+  every time. Two of the four owners ship without art, and the People screen
+  already renders "the face, when there is one" (OG-D3). The assertion was
+  scoped — an NPC the portrait table *claims* art for must resolve to a file,
+  one it does not must render as nothing — and a second loop was added over the
+  portrait table itself. That is strictly stronger: a portrait entry pointing at
+  a missing file used to fail only if the id also happened to be on the lens
+  roster.
+- **A parity arm that inherits its premise measures the arms before it.** The
+  first version of `_check_one_place` ran late in the sequence and read a board
+  where another check had already clocked Boost targets, killed the beater and
+  moved the day — all discovery producers. It now states its day-one premise
+  explicitly instead of inheriting one.
+
+### What this binds
+
+Nothing outside the businesses surface. No shipped id is renamed. The dismantle
+gate (D-30) is untouched. The venue nodes keep their `earning` (ORG-Q3). No
+capability ships — what a laundromat *does* for the organization is P7, and the
+take is dirty on purpose so that laundering is a want in 1.6.0.
+
+---
+
 ## D-32 — Room to Move Up: one home, rank four, the standing brief
 
 **Decided** 2026-09-06 · **Ships in** 1.4.0, four PRs (one home for rank,

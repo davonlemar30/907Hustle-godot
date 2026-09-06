@@ -11,14 +11,21 @@ extends "res://ui/screens/surface_base.gd"
 ## invisible, HOSTILE is the confrontation.
 
 const PORTRAITS := preload("res://data/portraits.gd")
+## HSS-D3: the authored businesses, so `has_met` can ask whether an owner's
+## business row exists rather than carrying a second list of owner ids.
+const BUSINESS_DEFS := preload("res://data/business_definitions.gd")
 
 const NAMES := {
 	"yalonda": "Yalonda", "juan": "Juan", "mina": "Mina",
 	"curtis": "Curtis Foyer", "dre": "Dre Smooth",
+	# HSS-D3 (1.5.0): the business owners.
+	"lani": "Lani", "marcus": "Marcus", "bev": "Bev Halvorsen", "vic": "Vic Salazar",
 }
 const ROLES := {
 	"yalonda": "THE ROOM YOU RENT", "juan": "HOUSEHOLD",
 	"mina": "NIGHT OWL COUNTER", "curtis": "RIVAL", "dre": "THE NOTE",
+	"lani": "WASH & GO", "marcus": "SPENARD CHEVRON",
+	"bev": "NORTHERN LIGHTS MOTEL", "vic": "ARCTIC AUTO & TIRE",
 }
 
 var _expanded: Dictionary = {}
@@ -49,6 +56,14 @@ func _build_body() -> void:
 		_focus_id = str(nav.get_meta("people_focus"))
 		_expanded[_focus_id] = true
 		nav.remove_meta("people_focus")
+	# HSS-D3: refresh the board before reading it. `has_met` for an owner is
+	# "their business row exists", and a row is created by a discovery producer
+	# — so this screen asks the same one road onto the board that Turf asks,
+	# rather than rendering a roster that is one latch behind whichever screen
+	# the player happened to open first.
+	var businesses: Object = _gm.system("businesses")
+	if businesses != null:
+		businesses.refresh_discovery()
 	body.add_child(note("How people see you. Open their history to see why."))
 	var shown := 0
 	for entry in E.everyone():
@@ -79,6 +94,15 @@ func _met(id: String, E: Node) -> bool:
 static func has_met(state: Node, E: Node, id: String) -> bool:
 	if not (E.ledger_of(id) as Array).is_empty():
 		return true
+	# HSS-D3 (1.5.0): an owner is met when their business row exists, and not
+	# before. This arm is FIRST on purpose — the fall-through at the bottom of
+	# this function returns `true` for any id it does not name, so an owner
+	# handled after it would appear on this screen on day one as a stranger
+	# with a score. Presence in `businesses` is the whole test, the same way a
+	# `territory_nodes` key is the whole test for "held".
+	var business: Dictionary = BUSINESS_DEFS.by_owner(id)
+	if not business.is_empty():
+		return (state.businesses as Dictionary).has(str(business["id"]))
 	match id:
 		"yalonda", "juan":
 			return true

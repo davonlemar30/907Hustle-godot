@@ -614,6 +614,11 @@ func _wander(intent: String) -> Dictionary:
 ## the drought is over.
 func _discover(job_id: String) -> Dictionary:
 	gs.jobs_discovered.append(job_id)
+	# HSS-D2: a job going on the map is one of the discovery producers for a
+	# business linked to it. Called here rather than left to the next read so
+	# the row exists on the same tick the latch flipped, which is also the tick
+	# that can write the owner's seeded history (`_seed_pending_history`).
+	_discover_businesses()
 	gs.wander_misses = 0
 	var name := job_id
 	for job in gs.jobs:
@@ -634,6 +639,8 @@ func _discover(job_id: String) -> Dictionary:
 ## done, which is the most anybody would ever say out loud about it.
 func _discover_boost_target(target_id: String) -> Dictionary:
 	gs.boost_targets_discovered.append(target_id)
+	# HSS-D2: the Chevron's producer. Same reasoning as `_discover` above.
+	_discover_businesses()
 	gs.wander_misses = 0
 	var target: Dictionary = gs.boost_target_by_id(target_id)
 	var place: String = str(target.get("name", target_id))
@@ -2029,3 +2036,11 @@ func _room_exit(chain: Dictionary, loop: Dictionary, exit_tier: String,
 	_record_encounter_observation(chain, choice_id, exit_tier)
 	engine.advance_stage(engine.STAGE_RESULT)
 	return {"ok": true, "tier": exit_tier, "arrested": false}
+
+## HSS-D2 (1.5.0): the businesses system's one road onto the board, called from
+## the two discovery latches above. Null-guarded because Wander is constructed
+## before Businesses is registered and a test harness may register neither.
+func _discover_businesses() -> void:
+	var businesses: Object = gm.system("businesses") if gm != null else null
+	if businesses != null:
+		businesses.refresh_discovery()

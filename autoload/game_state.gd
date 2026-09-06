@@ -530,6 +530,11 @@ func reset_to_new_game() -> void:
 	crew_assignments = {}
 	crew_operation_state = {"discovered": [], "adapters": {}}
 	territory_nodes = {}
+	# HSS-D2: nobody's business is known until a producer says so. The Wash & Go
+	# and the Motel Row are discovered on the first read of a fresh run — the
+	# starter job and the home district are both already true — but they are
+	# discovered, not seeded here.
+	businesses = {}
 	territory_fronts = {}
 	soldiers_idle = 0
 	npc_ledgers = {}
@@ -1514,6 +1519,22 @@ const SOLDIER_INCOME_DIMINISH := 0.85
 ## `save_system.gd` for why), and this is the one place either could have been
 ## reintroduced by habit.
 var territory_nodes: Dictionary = {}
+## The businesses the player knows about, and where each one stands — HSS-D2
+## (1.5.0), save v35. business_id -> {allegiance, pressure, since_day,
+## closed_until, last_kind, history_seeded}.
+##
+## **Presence means known**, exactly the way a `territory_nodes` key means
+## held. A row is created the first time a discovery producer fires for it —
+## a linked Boost target clocked, a linked job on the board, the district
+## visible on Turf, a morning the beater will not start — and never before, so
+## an absent key is "the player has not met this place" and not "the player has
+## met it and has no arrangement". That second state is `allegiance: none` on
+## a row that exists.
+##
+## The second axis over the same board: whether the ground is yours lives in
+## `territory_nodes`, whether the business on it pays you lives here, and
+## neither settles the other.
+var businesses: Dictionary = {}
 ## Curtis-relationship bookkeeping for the four Curtis-secure nodes (FS-002.3,
 ## save v16). node_id -> {capture_reward_consumed: bool, conflict_active: bool}.
 ##

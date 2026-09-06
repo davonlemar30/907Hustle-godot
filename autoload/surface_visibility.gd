@@ -94,6 +94,7 @@ const HOME_ACTIONS := "home.actions"
 const HOME_TEXT_MESSAGES := "home.text_messages"
 const HOME_ACTIVITY_FEED := "home.activity_feed"
 const MENU_CREW := "menu.crew"
+const MENU_TURF := "menu.turf"
 const MENU_JOBS := "menu.jobs"
 ## The Hustle hub's six income rows. Jobs already had a gate; batch 14 gives the
 ## other five one each, so the hub opens a surface at a time instead of handing
@@ -131,6 +132,22 @@ const GATES := {
 		"mode": MODE_LOCKED,
 		"requirements": [{"type": "crew_count_min", "min": 1}],
 		"hint": "Recruit your first crew member",
+	},
+	# FL-D7 (1.5.1): the board is earned at KNOWN. The owner's ruling: the
+	# player may SEE the Turf board once they have a name on the block, while
+	# every action inside it goes on enforcing its own higher requirement -- the
+	# system becomes visible as an earned layer before every capability in it is
+	# available. Soldiers still need KNOWN, corners still need PLAYER, a
+	# business ASK still needs the owner warm on you.
+	#
+	# LOCKED rather than hidden (owner default 2): a padlock is a promise, and
+	# this is the shape the Crew row above already uses. Turf was reachable from
+	# the More menu on day one, before there was anything on it a new player
+	# could do.
+	MENU_TURF: {
+		"mode": MODE_LOCKED,
+		"requirements": [{"type": "rank_min", "rank": "known"}],
+		"hint": "Get a name on the block first",
 	},
 	# WS-D1 (0.8.0): the door opens on KNOWING a place that hires, and a
 	# fresh run knows one -- the Wash & Go Yalonda vouches for. It used to
@@ -340,6 +357,7 @@ const GATES := {
 ## and is the reason adding these five is safe today.
 const ROUTE_GATES := {
 	"res://ui/screens/crew.tscn": MENU_CREW,
+	"res://ui/screens/turf.tscn": MENU_TURF,
 	"res://ui/screens/jobs.tscn": MENU_JOBS,
 	"res://ui/screens/market.tscn": HUSTLE_MARKET,
 	"res://ui/screens/nine07list.tscn": HUSTLE_LIST,

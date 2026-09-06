@@ -6,9 +6,27 @@ extends "res://ui/screens/surface_base.gd"
 ## because a lens is how one person reads what everyone can see. Showing the
 ## rows is what makes that legible rather than mysterious.
 ##
-## Curtis reads backwards and the screen says so. On a rival's lens a high score
-## means "no problem to me", so his bands run the other way: NEUTRAL is
-## invisible, HOSTILE is the confrontation.
+## Curtis reads backwards. On a rival's lens a high score means "no problem to
+## me", so his bands run the other way: NEUTRAL is invisible, HOSTILE is the
+## confrontation. The COLOURS still flip for him; the screen no longer explains
+## that it is doing so.
+##
+## ## FL-D6 (1.5.1): a card is biography, not a debug view
+##
+## The playtest found this screen printing its own internals at the player. Four
+## things are deleted: the `Relationship score: %+.2f` line, the `(channel)` tag
+## on every evidence row, the "Reads backwards" note on Curtis, and the row
+## count on VIEW HISTORY. None of them is something a person would know about
+## another person -- a disposition float, an internal propagation channel, a
+## lens property and a ledger length.
+##
+## The evidence rows STAY. They are what keeps the band from being an
+## assertion, and the count still folds as "x3" because that is a thing you
+## would notice. What they do not yet do is read as sentences: there are 110
+## distinct observation event strings across the build, and a table that turns
+## each into a line a person would say is real copy work and its own PR. Until
+## then a row prints the event words with the underscores stripped, which is
+## the honest halfway house -- terse, but nothing a player has to decode.
 
 const PORTRAITS := preload("res://data/portraits.gd")
 ## HSS-D3: the authored businesses, so `has_met` can ask whether an owner's
@@ -263,9 +281,6 @@ func _person_row(E: Node, entry: Dictionary) -> Control:
 
 	v.add_child(label(str(ROLES.get(id, "")), "Muted", 12, MUTED))
 
-	if inverted:
-		v.add_child(label("Reads backwards — for him, quiet is good.", "Muted", 10, MUTED, true))
-
 	if id == "dre":
 		_bind_dre_extras(v)
 
@@ -279,10 +294,9 @@ func _person_row(E: Node, entry: Dictionary) -> Control:
 		return c
 
 	var expanded := bool(_expanded.get(id, false))
-	var history := button(("HIDE HISTORY" if expanded else "VIEW HISTORY") + " · %d" % rows.size(), false, func() -> void: _toggle_evidence.call_deferred(id), 44)
+	var history := button("HIDE HISTORY" if expanded else "VIEW HISTORY", false, func() -> void: _toggle_evidence.call_deferred(id), 44)
 	v.add_child(history)
 	if not expanded: return c
-	v.add_child(label("Relationship score: %+.2f" % float(entry["score"]), "Mono", 11, MUTED))
 	# The evidence, newest first, so the score is never just an assertion.
 	var shown: int = 0
 	for i in range(rows.size() - 1, -1, -1):
@@ -291,7 +305,7 @@ func _person_row(E: Node, entry: Dictionary) -> Control:
 		var row: Dictionary = rows[i]
 		var what: String = str(row["event"]) if not str(row["event"]).is_empty() else str(row["type"])
 		var times: String = "" if int(row["count"]) <= 1 else " x%d" % int(row["count"])
-		v.add_child(label("· %s%s  (%s)" % [what.replace("_", " "), times, str(row["source"])], "Muted", 10, MUTED, true))
+		v.add_child(label("· %s%s" % [what.replace("_", " "), times], "Muted", 10, MUTED, true))
 		shown += 1
 	if rows.size() > shown:
 		v.add_child(button("SHOW MORE HISTORY · %d remaining" % (rows.size() - shown), false, func() -> void: _more_history.call_deferred(id), 44))

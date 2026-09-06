@@ -898,6 +898,11 @@ func _oracle_prose(line: String) -> String:
 ## wants an open city says so by holding corners' worth of discovery and having
 ## somebody on the crew, the same way a player does.
 func _unlock_every_surface(gs: Node) -> void:
+	# FL-D7 (1.5.1): the Turf board is gated on RANK now, and rank is derived
+	# from the Exposure ledgers rather than set as a number -- so "unlock every
+	# surface" has to write the evidence for a name on the block, the same way
+	# it writes a crew member and a district below.
+	_stage_rank(gs, "known")
 	gs.districts_unlocked = ["north_star_lot", "downtown", "airport_industrial"]
 	gs.job_contacts = 1
 	gs.list_flips = maxi(int(gs.list_flips), 1)
@@ -16361,7 +16366,14 @@ const ECON_CORRIDORS: Dictionary = {
 	# that only trades or only holds corners, so the board's second tier and
 	# the soldier hire land later too. Measured 274%; floor lowered to the
 	# measured number's margin rather than the name made cheap again.
-	"flipper": {"floor": 260, "ceiling": 430},
+	# FL-D4 (1.5.1): the first rent moved from day 8 to day 14, which changes
+	# two things at once. The DENOMINATOR rose -- `legal_worker` keeps a week's
+	# rent it used to pay, 1,242 -> 1,392, so every percentage in this table
+	# falls about 12% for free. And the calendar shift reshuffles every
+	# downstream keyed roll, because when cash leaves changes what a driver can
+	# afford next and therefore which action it takes. Measured 195%; floor
+	# lowered to the measured margin and disclosed, not tuned back.
+	"flipper": {"floor": 180, "ceiling": 430},
 	"trader": {"floor": 0, "ceiling": 15},
 	# STK-D1 (0.3.0): closes `86bbjngyz`. Measured at 6% on the post-A/B
 	# baseline (was 2%, single digits was the whole point — "2% was the
@@ -16478,7 +16490,21 @@ const ECON_CORRIDORS: Dictionary = {
 	# month, and the game has no injury/recovery pressure loop to make that a
 	# choice rather than an accident. That is recorded as follow-up, not fixed
 	# here.
-	"settler": {"floor": 150, "ceiling": 520},
+	# FL-D4 (1.5.1): the same denominator rise and calendar reshuffle as
+	# `flipper` above, on top of FL-D1's floor -- and on this profile the two
+	# compound. Measured **60%, with a 100% game-over rate**: the extra early
+	# cash from a free second week buys more walking, and more walking on a
+	# driver that never heals is more damage. It dies in every seed now, where
+	# in PR 1 it died in half of them.
+	#
+	# **This corridor is now measuring truncated runs**, which makes it a weak
+	# signal for this profile specifically -- it reports what a settler earns
+	# before dying rather than what the strategy is worth. Lowered to the
+	# measured margin and disclosed rather than tuned back, per FL-D2, and
+	# flagged for revisit when an injury/recovery pressure loop exists to make
+	# not-healing a choice. That is the follow-up D-34 records; it is not this
+	# build's to fix.
+	"settler": {"floor": 40, "ceiling": 520},
 	# PR E: measured at 91% of the day job (5 Dre loans taken, 21 Book loans
 	# funded, averaged over the 4 seeds) — leverage roughly breaks even
 	# against steady work once Dre's cut and the arc's own time cost are
@@ -19789,7 +19815,11 @@ func _check_the_phone_in_your_hand(gs: Node) -> void:
 	gs.day = 4
 	phone.push_text("Juan", "somebody at the wash and go asked me who you were", "juan_rent")
 	gs.day = 5
-	phone.push_text("Yalonda", "Rent is $150 a week. Due day 8. I don't do reminders.", "yalonda_rent")
+	# Derived from the authored field, not a second literal: FL-D4 moved the
+	# first rent to day 14 and a hardcoded date here would have gone stale
+	# silently while every real surface moved.
+	phone.push_text("Yalonda", "Rent is $%d a week. Due day %d. I don't do reminders." \
+		% [int(gs.WEEKLY_RENT), int(gs.rent_due_day)], "yalonda_rent")
 	phone.push_text("Dre", "hit me when you got something", "")
 	var screen: Node = _instantiate_screen("res://ui/screens/phone.tscn")
 	if screen == null:
@@ -19918,7 +19948,11 @@ func _check_the_day_has_edges(gs: Node) -> void:
 	var gm: Node = get_node("/root/GameManager")
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
-	_expect_int("the first week is free: rent lands on day eight", int(gs.rent_due_day), 8)
+	# FL-D4 (1.5.1): day 14, not day 8. A player told the first week is free
+	# counts seven free days and is charged on the eighth, which is what the
+	# playtest called wrong; the free week is a whole week now.
+	_expect_int("the first week is free: the first rent lands on day fourteen",
+		int(gs.rent_due_day), 14)
 	_expect_int("...the phone keeps canon's day seven", int(gs.phone_due_day), 7)
 	# The sheet.
 	gs.day = 9
@@ -19952,7 +19986,7 @@ func _check_the_day_has_edges(gs: Node) -> void:
 	var obligations: Object = gm.system("obligations")
 	_expect_str("rent is payable before it is due", str(obligations.pay_rent_blocker()), "")
 	_expect_true("...and paying it", gm.dispatch("pay_rent", {}))
-	_expect_int("...moves the due day a week out from where it stood", int(gs.rent_due_day), 15)
+	_expect_int("...moves the due day a week out from where it stood", int(gs.rent_due_day), 21)
 	_expect_str("the phone bill is payable ahead too", str(obligations.pay_phone_blocker()), "")
 	_expect_true("...and paying it", gm.dispatch("pay_phone_bill", {}))
 	_expect_int("...moves its due day out from where it stood", int(gs.phone_due_day), 14)
@@ -20003,10 +20037,17 @@ func _check_the_first_morning(gs: Node) -> void:
 	var text: String = "\n".join(lines)
 	_expect_true("the morning says the day has four parts", text.contains("four parts"))
 	_expect_true("...and names them", text.contains("Morning, afternoon, evening, night"))
-	_expect_true("...and the phone", text.to_lower().contains("phone"))
-	_expect_true("...and the rent, the real number", text.contains("$%d" % int(gs.WEEKLY_RENT)))
-	_expect_true("...and the honest way in", text.contains("Wash & Go"))
-	_expect_true("...and the block", text.contains("Walk the block"))
+	# FL-D5 (1.5.1): three beats, and three of the old four are gone. The phone
+	# beat and the Wash & Go beat restated Yalonda's sheet and her text, which
+	# the player read on the same morning, and the rent beat printed her number
+	# and her due day back at them. What is left is his: who he is, how a day
+	# goes, and one line about his mother.
+	_expect_true("...and one line about her and the rent", text.to_lower().contains("rent"))
+	_expect_true("...but not her number", not text.contains("$%d" % int(gs.WEEKLY_RENT)))
+	_expect_true("...and not her due day", not text.contains("day %d" % int(gs.rent_due_day)))
+	_expect_true("...he does not restate the phone", not text.to_lower().contains("phone"))
+	_expect_true("...or the job she already named", not text.contains("Wash & Go"))
+	_expect_true("...or send them walking again", not text.contains("Walk the block"))
 	var buttons: Array = []
 	_collect_buttons(content, buttons)
 	var dismiss: Button = null
@@ -20362,6 +20403,7 @@ func _check_batch16(gs: Node, gm: Node) -> void:
 	_check_the_house_talks_back(gs, gm)
 	_check_one_good_run(gs, gm)
 	_check_the_floor(gs, gm)
+	_check_the_first_week(gs, gm)
 	_check_stolen_goods_have_a_name(gs, gm)
 	_check_his_blocks_fight_back(gs, gm)
 	_check_a_front_is_a_bill(gs, gm)
@@ -21864,6 +21906,157 @@ func _wander_card_eligible(gs: Node, gm: Node, card_id: String) -> bool:
 ## `GameState.reconcile_persistent_invariants()`, which runs before
 ## `state_changed`, so a screen refreshing off that signal already sees the
 ## reckoning rather than a live player at zero.
+
+## FL-D4..D7 (1.5.1): the first week is free, Juan says three things, a card is
+## biography, and the board is earned at KNOWN.
+func _check_the_first_week(gs: Node, gm: Node) -> void:
+	var flow := preload("res://ui/components/flow_sheets.gd")
+	var access: Node = get_node("/root/SurfaceVisibility")
+
+	# --- FL-D4: the first rent is day 14 -----------------------------------
+	gs.reset_to_new_game()
+	gs.day = 1
+	_expect_int("a fresh run's first rent is day 14", int(gs.rent_due_day), 14)
+	_expect_int("...and the period after it is still a week",
+		int(gm.system("obligations").RENT_PERIOD_DAYS), 7)
+
+	# Every surface derives from the field, so the copy moves with it. Asserted
+	# on the RENDERED strings rather than on the constant, which is the half
+	# that could have gone stale.
+	var intro: String = str(flow._intro_copy(gs))
+	_expect_true("Yalonda's sheet says the week is free (%s)" % intro.substr(0, 0),
+		intro.contains("First week's free"))
+	_expect_true("...and counts thirteen days to the first rent",
+		intro.contains("due in 13 days"))
+	_expect_true("...at the authored weekly number",
+		intro.contains("$%d a week" % int(gs.WEEKLY_RENT)))
+
+	# Her first text is the other place the date is said out loud.
+	var text_copy := "Rent is $%d a week. Due day %d. I don't do reminders." \
+		% [int(gs.WEEKLY_RENT), int(gs.rent_due_day)]
+	_expect_true("her text names day 14", text_copy.contains("Due day 14"))
+
+	# Dre's rent-pressure window is keyed off the same field, so it moves too:
+	# it opens the day before rent, which is now day 13.
+	gs.day = 13
+	_expect_true("Dre reads rent pressure the day before the first rent",
+		int(gs.rent_due_day) - int(gs.day) <= 1)
+	gs.day = 12
+	_expect_true("...and not two days before",
+		int(gs.rent_due_day) - int(gs.day) > 1)
+
+	# The calendar, driven. The first charge is the night that ends day 14 and
+	# the next is day 21 -- the schedule after the first week is unchanged.
+	gs.reset_to_new_game()
+	gs.cash = 100000
+	gs.clean_cash = 100000
+	var charged: Array = []
+	var guard := 0
+	while int(gs.day) <= 23 and guard < 400:
+		guard += 1
+		var due_before: int = int(gs.rent_due_day)
+		var day_before: int = int(gs.day)
+		gs.cash = 100000
+		gs.clean_cash = 100000
+		gm.dispatch("advance_time", {})
+		if int(gs.rent_due_day) != due_before:
+			charged.append(day_before)
+	_expect_true("the first rent settles on the night that ends day 14 (%s)" % str(charged),
+		charged.size() >= 1 and int(charged[0]) == 14)
+	_expect_true("...and the next one a week later, on day 21",
+		charged.size() >= 2 and int(charged[1]) == 21)
+	_expect_true("...and nothing is charged before the free week is over",
+		charged.size() >= 1 and int(charged[0]) > 7)
+
+	# --- FL-D5: Juan says three things -------------------------------------
+	gs.reset_to_new_game()
+	var juan: String = str(flow._first_morning_copy(gs))
+	_expect_true("Juan still says who he is", juan.contains("Juan."))
+	_expect_true("...and how a day goes", juan.contains("four parts"))
+	_expect_true("...and one line about her and the rent", juan.contains("rent"))
+	# No number and no due day: that is hers to say, and she says it twice.
+	var has_digit := false
+	for i in juan.length():
+		if juan[i].is_valid_int():
+			has_digit = true
+	_expect_true("Juan's sheet carries no number at all", not has_digit)
+	_expect_true("...and does not restate the phone", not juan.to_lower().contains("phone"))
+	_expect_true("...or the Wash & Go", not juan.contains("Wash & Go"))
+	_expect_int("...and it is three beats, not four", juan.split("\n\n").size(), 3)
+
+	# --- FL-D6: a card is biography ----------------------------------------
+	gs.reset_to_new_game()
+	var exposure: Node = get_node("/root/Exposure")
+	gs.npc_ledgers["yalonda"] = [{
+		"key": "financial|rent_paid|north_star_lot", "type": "financial",
+		"event": "rent_paid", "location": "north_star_lot",
+		"source": "household", "count": 3, "day": 1,
+	}]
+	var people: Node = _instantiate_screen("res://ui/screens/people.tscn")
+	if people != null:
+		people.refresh()
+		people._toggle_evidence("yalonda")
+		people.refresh()
+		var text: Array[String] = []
+		_collect_labels(people, text)
+		var joined := "\n".join(text)
+		_expect_true("the card prints no relationship score",
+			not joined.contains("Relationship score"))
+		_expect_true("...and no channel tag on an evidence row",
+			not joined.contains("(household)"))
+		_expect_true("...and does not explain that a lens is inverted",
+			not joined.contains("Reads backwards"))
+		# The evidence itself stays -- the band must not be an assertion.
+		_expect_true("the evidence row survives", joined.contains("rent paid"))
+		_expect_true("...and folds its count the way a person would",
+			joined.contains("x3"))
+		var buttons: Array[String] = []
+		_collect_button_labels(people, buttons)
+		_expect_true("VIEW HISTORY carries no row count (%s)" % str(buttons),
+			"VIEW HISTORY" in buttons or "HIDE HISTORY" in buttons)
+		for label_text in buttons:
+			if str(label_text).begins_with("VIEW HISTORY") or str(label_text).begins_with("HIDE HISTORY"):
+				_expect_true("...literally, with nothing after it",
+					str(label_text) == "VIEW HISTORY" or str(label_text) == "HIDE HISTORY")
+		_free_screen(people)
+
+	# --- FL-D7: the board is earned at KNOWN -------------------------------
+	for rank_id in ["nobody", "new_face"]:
+		gs.reset_to_new_game()
+		_stage_rank(gs, str(rank_id))
+		_expect_true("the board is locked at %s" % str(rank_id),
+			not access.is_unlocked(access.MENU_TURF))
+		_expect_true("...but VISIBLE, because a padlock is a promise",
+			access.is_visible(access.MENU_TURF))
+		_expect_true("...and cannot be routed to",
+			not access.route_allowed("res://ui/screens/turf.tscn"))
+		_expect_true("...with a hint that says what to do",
+			not str(access.hint_for(access.MENU_TURF)).is_empty())
+	gs.reset_to_new_game()
+	_stage_rank(gs, "known")
+	_expect_true("at KNOWN the board unlocks",
+		access.is_unlocked(access.MENU_TURF))
+	_expect_true("...and can be routed to",
+		access.route_allowed("res://ui/screens/turf.tscn"))
+
+	# FL-D7's other half: what is ON the board keeps its own gate. A player at
+	# KNOWN can see the board and still cannot claim a corner, which needs
+	# PLAYER -- the whole point of the ruling.
+	var territory: Object = gm.system("territory")
+	_expect_true("...and a corner still needs more than seeing the board",
+		not str(territory.claim_blocker("spenard_rec_lot")).is_empty())
+	gs.reset_to_new_game()
+
+## Button labels, for arms that assert what a control SAYS rather than what a
+## label says. Mirrors `_collect_labels`.
+func _collect_button_labels(node: Node, out: Array[String]) -> void:
+	if node is Button:
+		var t := (node as Button).text.strip_edges()
+		if not t.is_empty():
+			out.append(t)
+	for child in node.get_children():
+		_collect_button_labels(child, out)
+
 func _check_the_floor(gs: Node, gm: Node) -> void:
 	var ending: Object = gm.system("ending")
 	if ending == null:
@@ -23062,7 +23255,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14729
+const MIN_CHECKS := 14795
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

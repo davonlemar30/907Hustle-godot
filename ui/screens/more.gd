@@ -72,11 +72,17 @@ func _build_body() -> void:
 	body.add_child(finance_row)
 	apply_surface_gate(ACCESS.HUSTLE_SHARK, finance_row)
 
-	body.add_child(_menu_row(
+	# FL-D7 (1.5.1): the board is earned at KNOWN. Parented FIRST and gated
+	# second -- the order every other gated surface uses, and the order that
+	# makes the Crew row's old bug (gating an orphan that was never added to the
+	# tree) impossible to repeat.
+	var turf_row: Control = _menu_row(
 		"Operations",
 		_ops_summary(),
 		"Territory, soldiers, and the corners you hold.",
-		nav.TURF))
+		nav.TURF)
+	body.add_child(turf_row)
+	apply_surface_gate(ACCESS.MENU_TURF, turf_row)
 
 	# The Crew row carries the same gate as the Crew route and as Street's
 	# People row, from the same registry entry — three doors, one verdict.

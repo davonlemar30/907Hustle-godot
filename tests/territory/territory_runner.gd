@@ -54,7 +54,7 @@ const DEFS := preload("res://data/territory_definitions.gd")
 const BIZ := preload("res://data/business_definitions.gd")
 
 ## The check floor. See `_ready()` for why a count is a gate.
-const MIN_CHECKS := 403
+const MIN_CHECKS := 404
 
 var a: RefCounted
 var gs: Node

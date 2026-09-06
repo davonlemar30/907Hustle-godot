@@ -41,6 +41,7 @@ func _ready() -> void:
 	_test_v32_hot_goods()
 	_test_v33_dismantled()
 	_test_v34_nudges()
+	_test_standing_brief_round_trip()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
 	_test_load_pipeline()
@@ -1099,6 +1100,34 @@ func _test_v31_ending() -> void:
 
 ## v32 (OG-D5): hot goods ride the save; junk drops; a hot holding keeps
 ## its name.
+## RM-D7 (1.4.0): a standing brief rides `crew_assignments`, which persists
+## whole; the validator leaves it alone and an in-memory round trip keeps
+## every key. No schema bump, by the same argument `proofs` made.
+func _test_standing_brief_round_trip() -> void:
+	var brief := {"operation_id": "hold_it_down", "params": {"district_id": "downtown"},
+		"spend_limit": -1, "since_day": 12, "idle_nights": 1, "suspended": "", "last_kind": "worked"}
+	var record := {"day": 14, "operation_id": "hold_it_down", "settled": false, "result": null,
+		"spend_limit": -1, "params": {"district_id": "downtown"}, "selection": null,
+		"assigned_district_id": "downtown", "brief": brief}
+	var fixed := _fixed(_state("crew_assignments", {"tone": record}))
+	var kept: Dictionary = (fixed["crew_assignments"] as Dictionary).get("tone", {})
+	_check("a brief survives the validator", kept.get("brief", null) is Dictionary)
+	_check("...with its operation", str((kept.get("brief", {}) as Dictionary).get("operation_id", "")) == "hold_it_down")
+	_check("...and its counters", int((kept.get("brief", {}) as Dictionary).get("idle_nights", -1)) == 1)
+	# The in-memory round trip the game itself takes on every autosave.
+	var gs := get_node("/root/GameState")
+	var saves := get_node("/root/SaveSystem")
+	gs.street_name = "SaveValidation"
+	gs.reset_to_new_game()
+	gs.crew_assignments = {"tone": record.duplicate(true)}
+	var captured: Dictionary = saves.capture()
+	gs.crew_assignments = {}
+	saves._apply(captured)
+	var back: Dictionary = (gs.crew_assignments as Dictionary).get("tone", {})
+	_check("a brief round-trips through capture/apply", (back.get("brief", {}) as Dictionary).get("since_day", -1) == 12)
+	_check("...key for key", (back.get("brief", {}) as Dictionary).size() == brief.size())
+	gs.reset_to_new_game()
+
 func _test_v34_nudges() -> void:
 	var valid := _fixed(_state("market_nudges", {"downtown": {"weed": {"pct": 0.9, "day": 4}, "junk": "x"}, "nowhere": {"weed": {"pct": 0.1, "day": 1}}}))
 	var nudges: Dictionary = valid["market_nudges"]

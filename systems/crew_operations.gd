@@ -261,12 +261,161 @@ func register_adapter(operation_id: String, adapter: Object) -> void:
 	_adapters[operation_id] = adapter
 
 func can_handle(action: String) -> bool:
-	return action == "assign_crew_operation"
+	return action in ["assign_crew_operation", "end_crew_brief"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
-	if action != "assign_crew_operation":
-		return {"ok": false, "reason": "Unknown crew operation action."}
-	return _assign(str(payload.get("crew_id", "")), str(payload.get("operation_id", "")), payload)
+	match action:
+		"assign_crew_operation":
+			return _assign(str(payload.get("crew_id", "")), str(payload.get("operation_id", "")), payload)
+		"end_crew_brief":
+			return end_brief(str(payload.get("crew_id", "")))
+	return {"ok": false, "reason": "Unknown crew operation action."}
+
+# --- RM-D7..D9 (1.4.0): the standing brief -------------------------------------
+#
+# What a SPECIALIST LEAD is for. A member at rank 4 or above can be given a
+# brief -- their operation, its params and spend limit -- and every morning
+# the day-start step claims their day through the same `_assign` path the
+# morning tap uses, against the same `ASSIGNMENT_REQUIREMENTS`. The player
+# stops re-making a decision they already made, which is the scarce thing
+# DD-001 says the organizational layer exists to free.
+#
+# The brief lives ON the assignment record (`crew_assignments[id].brief`)
+# and `_assign` carries it forward when it writes a fresh day-scoped record,
+# so the day scope stays load-bearing and nothing reads a stale claim to make
+# the brief work. No schema bump: `crew_assignments` already persists whole
+# and the validator leaves its keys alone.
+#
+# A brief SUSPENDS when its gate fails (loyalty, payroll, a member who is
+# not active) -- one text naming the reason, once per suspension, and a
+# silent resumption the first morning the gate passes again. It ENDS three
+# ways only (RM-D8): the player ends it, the member departs, or two nights
+# running wrote no proof (a night with nothing to do IS a night that wrote
+# no proof -- RM-D3's rule read backwards, so "idle" needs no per-adapter
+# definition). A manual assignment to a DIFFERENT operation while a brief
+# stands is refused with the brief named; ending it first is the road.
+
+## The rank a brief needs, as a requirement row -- the first use of
+## `crew_rank_min` in the build. Evaluated before the operation's own rows so
+## "not a lead yet" outranks "it is the afternoon".
+const BRIEF_RANK_MIN := 4
+const BRIEF_IDLE_NIGHTS := 2
+
+func brief_for(crew_id: String) -> Dictionary:
+	var entry: Variant = gs.crew_assignments.get(crew_id)
+	if not (entry is Dictionary):
+		return {}
+	var brief: Variant = (entry as Dictionary).get("brief")
+	return brief if brief is Dictionary else {}
+
+func has_brief(crew_id: String) -> bool:
+	return not brief_for(crew_id).is_empty()
+
+## Why this person cannot be given a brief right now, or null. Rank first,
+## then whatever the operation itself would say this morning.
+func brief_blocker(crew_id: String, operation_id: String) -> Variant:
+	var verdict: Dictionary = requirements.evaluate_requirement(
+		{"type": "crew_rank_min", "crew_id": crew_id, "min": BRIEF_RANK_MIN}, _facts())
+	if not bool(verdict["ok"]):
+		return verdict
+	return assignment_blocker(operation_id)
+
+func _write_brief(crew_id: String, brief: Dictionary) -> void:
+	var entry: Variant = gs.crew_assignments.get(crew_id)
+	var record: Dictionary = entry if entry is Dictionary else {}
+	record["brief"] = brief
+	gs.crew_assignments[crew_id] = record
+
+func _erase_brief(crew_id: String) -> void:
+	var entry: Variant = gs.crew_assignments.get(crew_id)
+	if entry is Dictionary and (entry as Dictionary).has("brief"):
+		(entry as Dictionary).erase("brief")
+		gs.crew_assignments[crew_id] = entry
+
+## END BRIEF. Stops renewal from tomorrow; today's claim stands, because a
+## claimed day is a claimed day.
+func end_brief(crew_id: String) -> Dictionary:
+	if not has_brief(crew_id):
+		return {"ok": false, "reason": "They are not on a brief."}
+	_erase_brief(crew_id)
+	gs.log_activity("%s is off the brief. Tomorrow is a morning decision again." % _first_name(crew_id), AMBER)
+	return {"ok": true}
+
+func _first_name(crew_id: String) -> String:
+	return str(gs.crew_member_by_id(crew_id).get("name", crew_id)).split(" ")[0]
+
+## Day start, before the ideas step: every standing brief either claims the
+## day, suspends with a reason, stands down, or goes with a departed member.
+func day_start_briefs(_today: int) -> void:
+	if gs.game_over:
+		return
+	for crew_key in gs.crew_assignments.keys().duplicate():
+		var crew_id := str(crew_key)
+		var brief: Dictionary = brief_for(crew_id)
+		if brief.is_empty():
+			continue
+		# RM-D8: the member walked (loyalty zero, or dismissed). The brief
+		# goes with them, quietly -- the departure already said everything.
+		if not gs.is_recruited(crew_id):
+			_erase_brief(crew_id)
+			continue
+		# A save loaded mid-morning: the day is already claimed. Nothing to
+		# renew, and renewing would double-claim it.
+		if not assignment_for(crew_id).is_empty():
+			continue
+		# RM-D8: two nights running with nothing to do. They say so, once,
+		# and the brief ends.
+		if int(brief.get("idle_nights", 0)) >= BRIEF_IDLE_NIGHTS:
+			_erase_brief(crew_id)
+			_brief_text(crew_id, str(brief.get("operation_id", "")), "stand_down")
+			gs.log_activity("%s stood down. Two nights with nothing to do is two too many." % _first_name(crew_id), AMBER)
+			continue
+		var operation_id := str(brief.get("operation_id", ""))
+		var blocker: Variant = assignment_blocker(operation_id)
+		if blocker != null:
+			# RM-D7: suspended, not ended. One text per suspension, named by
+			# the evaluator's own code; the next morning the gate passes, the
+			# brief resumes without a word.
+			var code := str((blocker as Dictionary).get("blocker_code", ""))
+			if str(brief.get("suspended", "")) != code:
+				brief["suspended"] = code
+				_write_brief(crew_id, brief)
+				_brief_text(crew_id, operation_id, code)
+			continue
+		if not str(brief.get("suspended", "")).is_empty():
+			brief["suspended"] = ""
+			_write_brief(crew_id, brief)
+		var payload: Dictionary = {"params": brief.get("params", {}), "spend_limit": int(brief.get("spend_limit", -1)),
+			"_from_brief": true}
+		var result: Dictionary = _assign(crew_id, operation_id, payload)
+		if not bool(result.get("ok", false)):
+			# The gate passed and the claim still failed (a category error
+			# the tables cannot produce). Say so in the feed rather than
+			# silently skipping a morning.
+			gs.log_activity("%s could not take the brief this morning: %s" % [_first_name(crew_id), str(result.get("reason", ""))], AMBER)
+
+## The brief's own texts, in the member's name. Short, and never the same
+## complaint twice in a row.
+func _brief_text(crew_id: String, operation_id: String, code: String) -> void:
+	var phone: Object = _phone()
+	if phone == null:
+		return
+	var line := ""
+	match code:
+		"stand_down":
+			line = "two nights with nothing to do. im standing down. point me somewhere when theres something"
+		"crew_loyalty_min":
+			# The standing complaint (`_reconcile_callbacks`) already speaks
+			# once per loyalty episode; a second text saying the same thing
+			# in the same voice is the clutter TU-D3 forbids.
+			return
+		"payroll_not_delinquent":
+			line = "brief's on hold till I'm paid. that's not a threat, that's arithmetic"
+		"crew_active":
+			return
+		_:
+			line = "brief's on hold. %s" % _blocker_copy({"blocker_code": code}).to_lower()
+	phone.push_text(_sender_for(operation_id), line, "")
 
 # --- facts -----------------------------------------------------------------
 
@@ -540,6 +689,24 @@ func _settlement_callback(assignment: Dictionary) -> void:
 		_adapter_copy(operation_id, "settlement_text", [assignment],
 			_settlement_text(assignment)))
 
+## The feed gets every night of a brief; the phone gets the change.
+func _settlement_feed(assignment: Dictionary) -> void:
+	if not (assignment.get("result") is Dictionary):
+		return
+	var operation_id := str(assignment.get("operation_id", ""))
+	gs.log_activity("%s: %s" % [_sender_for(operation_id),
+		_adapter_copy(operation_id, "settlement_text", [assignment], _settlement_text(assignment))], AMBER)
+
+## Every proof on a record, summed. What a night "did" is measured by
+## whether this moved -- RM-D3's producers are the one definition of work.
+func _proof_total(crew_id: String) -> int:
+	var total := 0
+	var proofs: Variant = gs.crew_record(crew_id).get("proofs", {})
+	if proofs is Dictionary:
+		for value in (proofs as Dictionary).values():
+			total += int(value)
+	return total
+
 # --- eligibility -----------------------------------------------------------
 
 ## The first reason this cannot be assigned right now, or null if it can.
@@ -581,6 +748,24 @@ func _assign(crew_id: String, operation_id: String, payload: Dictionary = {}) ->
 	# blocker to explain, it is a category error.
 	if crew_id != str(expected["crew_id"]):
 		return {"ok": false, "reason": "That is not their work."}
+	# RM-D7/D8: a standing brief. Rank-gated before the operation's own rows;
+	# a member already on a brief for something ELSE is refused until it is
+	# ended, unless this is the brief itself renewing.
+	var standing: bool = bool(payload.get("standing", false))
+	var from_brief: bool = bool(payload.get("_from_brief", false))
+	var existing: Dictionary = brief_for(crew_id)
+	if standing:
+		var rank_verdict: Dictionary = requirements.evaluate_requirement(
+			{"type": "crew_rank_min", "crew_id": crew_id, "min": BRIEF_RANK_MIN}, _facts())
+		if not bool(rank_verdict["ok"]):
+			return {"ok": false, "reason": "A brief is a Specialist Lead's. They are not there yet.",
+				"blocker": rank_verdict}
+	if not existing.is_empty() and not from_brief and not standing \
+			and str(existing.get("operation_id", "")) != operation_id:
+		return {"ok": false, "reason": "They are on a brief. End it first.",
+			"blocker": {"ok": false, "blocker_code": "on_a_brief",
+				"blocker_copy_key": "operations.on_a_brief",
+				"current": str(existing.get("operation_id", "")), "required": operation_id}}
 	var blocker: Variant = assignment_blocker(operation_id)
 	if blocker != null:
 		return {"ok": false, "reason": _blocker_copy(blocker),
@@ -607,6 +792,22 @@ func _assign(crew_id: String, operation_id: String, payload: Dictionary = {}) ->
 		"selection": null,
 		"assigned_district_id": str(gs.current_district_id),
 	}
+	# The brief rides the record forward. A new standing claim writes a fresh
+	# brief; a renewal or an ordinary same-operation claim carries the one
+	# that was there.
+	if standing:
+		assignment["brief"] = {
+			"operation_id": operation_id,
+			"params": assignment["params"],
+			"spend_limit": int(assignment["spend_limit"]),
+			"since_day": int(gs.day),
+			"idle_nights": 0,
+			"suspended": "",
+			"last_kind": "",
+		}
+		gs.log_activity("%s is on a standing brief. Mornings are theirs now." % _first_name(crew_id), AMBER)
+	elif not existing.is_empty():
+		assignment["brief"] = existing
 	gs.crew_assignments[crew_id] = assignment
 
 	# She shops immediately. The money leaves when the stock is picked up, which
@@ -639,6 +840,8 @@ func _blocker_copy(blocker: Variant) -> String:
 		"payroll_not_delinquent": return "Pay them what you owe first."
 		"crew_unassigned_today": return "They already have the day."
 		"planning_window_open": return "That is a morning decision."
+		"crew_rank_min": return "A brief is a Specialist Lead's."
+		"on_a_brief": return "They are on a brief. End it first."
 	return "Not today."
 
 # --- settlement ------------------------------------------------------------
@@ -664,7 +867,22 @@ func _on_day_ending(ended_day: int) -> void:
 		if bool(assignment.get("settled", false)):
 			continue
 		assignment["settled"] = true
+		var proofs_before: int = _proof_total(str(crew_id))
 		assignment["result"] = _settle(str(crew_id), assignment, ended_day)
+		# RM-D8/D9: on a brief, a night that wrote no proof is an idle night,
+		# and the phone hears about a night only when its kind changed.
+		var brief: Variant = assignment.get("brief")
+		if brief is Dictionary:
+			var worked: bool = _proof_total(str(crew_id)) > proofs_before
+			(brief as Dictionary)["idle_nights"] = 0 if worked else int((brief as Dictionary).get("idle_nights", 0)) + 1
+			var kind := "worked" if worked else "idle"
+			var changed: bool = str((brief as Dictionary).get("last_kind", "")) != kind
+			(brief as Dictionary)["last_kind"] = kind
+			assignment["brief"] = brief
+			_settlement_feed(assignment)
+			if changed:
+				_settlement_callback(assignment)
+			continue
 		# FS-001.9. Inside `day_ending`, after settlement and before the
 		# increment: the report is about the day it is reporting on, and the
 		# clock still reads that day while it is written.

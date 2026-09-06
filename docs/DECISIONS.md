@@ -2126,7 +2126,41 @@ keep her paid, so $1,500 sits owed by day 31. The rung is payroll pressure,
 as ruled; whether the board should return more at 4 is the standing
 86bbjkccu question and is reported, not tuned.
 
-_RM-D7 through RM-D9 land with the standing-brief PR._
+**RM-D7 — the standing brief is what a Specialist Lead is for.** A member
+at rank 4 or above can be given a brief through the existing
+`assign_crew_operation` action with `standing: true`, gated by a
+`crew_rank_min 4` row (the first use of that type in the build) evaluated
+before the operation's own rows. The brief rides the assignment record
+(`crew_assignments[id].brief`) and `_assign` carries it forward, so the day
+scope stays load-bearing. A new `crew_briefs` step in `DAY_START_ORDER`,
+before the ideas, evaluates each brief against its operation's
+`ASSIGNMENT_REQUIREMENTS` and claims the day through `_assign` when they
+pass; when they fail the brief **suspends** with one text naming the
+evaluator's code (the loyalty case defers to the standing complaint, which
+already speaks) and resumes silently the first morning the gate passes.
+
+**RM-D8 — a brief ends three ways.** The player ends it (END BRIEF; today's
+claim stands); the member departs (the brief goes quietly); or two nights
+running wrote no proof — "a night with nothing to do" is defined as a night
+that wrote no proof, which is RM-D3 read backwards and needs no per-adapter
+rule. A manual assignment to a different operation while a brief stands is
+refused with the brief named.
+
+**RM-D9 — a standing operation reports to the feed nightly and to the phone
+on change.** The settlement text goes to the feed every night of a brief;
+the phone hears it only when the night's kind (worked / idle) differs from
+the previous night's. Measured in parity: three steady nights are one text.
+
+### Real bugs caught
+
+1. **The stray `ui/screens/opening.tscn` came back** (D-25's fifth entry):
+   `project_run` with autosave persisted the editor's open scene to disk, and
+   the smoke suite logged three errors loading it. Moved aside again, not
+   committed; the editor's current scene is the regenerator.
+2. **A live probe caught a mid-edit mismatch, not a bug:** the running game
+   loaded a fresh `crew.gd` screen script against an already-loaded
+   `crew_operations.gd` and broke on `brief_for`. Stop and relaunch; the
+   editor's retained error list is not evidence.
 
 ### Recommended next
 

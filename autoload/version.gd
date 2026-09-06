@@ -118,7 +118,16 @@ extends Node
 ## New player-facing behaviour and a new economy: MINOR. One schema bump
 ## (v35, `businesses`), additive -- an older save discovers its businesses
 ## from the history it already carries.
-const VERSION := "1.5.0"
+## 1.5.1 (The Floor): a corrective release. Zero health ends a run -- the
+## web canon did this and the port never carried it over, so a player could
+## sit at zero and keep playing (FL-D1). Injury above zero is unchanged
+## (FL-D2). The "cash out" ending is deleted with no threshold replacing it:
+## wealth never ends this game (FL-D3), which closes D-2. The first rent
+## moves to day 14 so the free week is a whole week (FL-D4); Juan stops
+## repeating Yalonda's tutorial (FL-D5); the People card stops printing its
+## own internals (FL-D6); the Turf board is earned at KNOWN (FL-D7).
+## PATCH: nothing here is a thing a player asked for, and no schema moved.
+const VERSION := "1.5.1"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

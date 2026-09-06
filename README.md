@@ -122,7 +122,9 @@ escalates in Yalonda's voice until the third warning is the door.
 
 **Earn your name.** Respect is gone. Rank is what the people you have
 met wrote down, added up: Nobody, New Face, Known, Player, Connected,
-Boss. Crew needs Known, a corner needs Player, the way out needs Boss.
+Boss. Crew needs Known, a corner needs Player, and the Turf board itself
+needs Known (1.5.1, FL-D7). _(The way out needed Boss; there is no way out
+as of 1.5.1 — see below.)_
 
 **The player's kit.** A knife from a man at the ice machine, a piece from
 Dre's cousin, an '04 Corolla from Sonny's nephew with a trunk the
@@ -133,6 +135,12 @@ a card.
 **One good run has an end.** The way out, priced by what you built.
 Three ways it ends on you, each one warning first. One reckoning screen,
 scored in people.
+
+> **Amended 1.5.1 (D-34).** The paragraph above describes 1.0.0 and is kept
+> as history. There is no way out any more: wealth never ends this game, and
+> no threshold replaced the one removed. A run ends when the player **dies**
+> (health reaching zero, new in 1.5.1) or when the city gets them — evicted,
+> sentenced, or Curtis at the door. The reckoning screen is unchanged.
 
 **Stolen goods have a name.** The Lift walks out with a thing; the
 907List is the fence, and the buyer is sometimes a cop.

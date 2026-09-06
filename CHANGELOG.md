@@ -18,6 +18,69 @@ a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
 
+## 1.5.1 — The Floor: death at zero, no way out, the first week (2026-09-06)
+
+A corrective release. Five playtest findings and one ruling that changes
+what the game is for. Three PRs. Rulings are D-34 (FL-D1..D7), which also
+closes **D-2**, open since the project began. No schema change.
+
+### PR 1 — The floor (`#180`)
+
+- **Zero health ends a run.** A player could sit at zero and keep playing;
+  the web canon ended the run there and the port never carried it over.
+  Checked in one place — `ending.note_health()`, called from
+  `reconcile_persistent_invariants()`, which every dispatch runs before
+  `state_changed`, so the reckoning is on screen the same refresh as the
+  hit. None of the fourteen health writers is touched.
+- **Injury is not death.** Nothing above zero changes, and the two rooms
+  authored to floor at 1 keep their floor. No damage number moved.
+- **There is no way out.** The "cash out" ending is deleted — the action
+  pair, the blocker, the threshold, the three constants and Home's card.
+  **No threshold replaces it:** wealth never ends this game. `"out"`
+  survives as legacy so a save that already ended that way still renders.
+
+### PR 2 — The first week (`#181`)
+
+- **The first rent is day 14**, so the free week is a whole week. Every
+  surface already read the field, so the copy moved with the literal.
+- **Juan says three things** — who he is, how a day goes, and one line
+  about his mother and the rent. He was restating Yalonda's tutorial.
+- **A People card is biography**: the relationship score, the channel tag,
+  the "reads backwards" note and the row count are gone. The evidence
+  rows stay.
+- **The Turf board is earned at KNOWN**, locked with a hint before that.
+  No verb's own requirement moved.
+
+### PR 3 — Close-out
+
+- Version 1.5.1, D-34, this entry, the build log, HANDOFF, and dated
+  amendments on README, `docs/DESIGN.md` and D-31 where they describe the
+  road that was removed.
+
+### Measured across the build
+
+Parity 14,729 → 14,795; territory 403 → 404; save validation 299 → 332;
+smoke touch 1,236 → 1,239, width 2,910 → 2,913, component 52 → 56.
+Confrontation 4,447, dre 427 and tips 93 unchanged.
+
+Moving the first rent raises the `legal_worker` baseline by exactly one
+week's rent (1,242 → 1,392), so every profile percentage in the economy
+sweep falls about 12% with nobody actually worse off.
+
+### Real bugs caught
+
+**A finished run could still spend time.** Every action refused on
+`game_over`; the clock did not. A dead player burned four slots and rolled
+into tomorrow. Guarding `advance_time` then exposed that parity's RNG-drift
+driver had been hitting a sentence ending on day 21 and a Curtis ending on
+day 22 and driving on for eighteen more days — half of every drift
+comparison was measuring a run that was already over.
+
+**The settler profile now dies in every seed** (60% of the day job, from
+244% before the floor existed). A player who never heals dies inside a
+month and there is no recovery pressure loop that makes that a choice.
+Disclosed, not tuned back; recorded as follow-up.
+
 ## 1.5.0 — Her Side of the Street: businesses, the arrangement, the lean (2026-09-06)
 
 The second build of the organized-crime initiative

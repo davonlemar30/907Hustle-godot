@@ -28,6 +28,76 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 1.5.1 — The Floor: two PRs and a close-out (added 2026-09-06)
+
+**A corrective release**, and the one that finally answers D-2. Four playtest
+findings and one owner ruling that changes what the game is for. Nothing in it
+is a thing a player asked for, which is why it is a PATCH; no schema moved.
+
+**The release blocker.** A player could sit at zero health and keep playing.
+Reproduced by a headless probe on 1.5.0: health forced to 0, two days advanced,
+the run open, a wander accepted. `systems/ending.gd` ended a run four ways and
+read health nowhere. The web canon ended it there (`game-core.js:6504`,
+`endRun(state, "killed")`) and the Godot port simply never carried it over —
+it had been missing since the port began.
+
+**The ruling.** 1.0.0 shipped a "cash out": at Boss, with clean money past a
+scaling threshold, the player left and the run was declared won — D-28's "the
+win condition is the way out". The owner ruled that out of the game. 907Hustle
+is a long career in which a surviving player keeps building wealth and
+organization into the hundreds of thousands or millions, and legitimacy at the
+top expands what the player can do rather than ending the run. The terminal
+outcomes are death and incarceration severe enough to end the run. **No money
+threshold of any kind replaces the one removed.**
+
+**PR 1 (`#180`) — The floor.** `ending.note_health()`, called from
+`GameState.reconcile_persistent_invariants()` — which every successful dispatch
+already runs before `state_changed`, so the reckoning is on screen on the same
+refresh as the hit and the encounter sheet that dealt it never gets a frame
+over a dead player. No write site checks health; all fourteen writers are
+untouched, which is the point of the placement. The way out is deleted rather
+than deprecated (the `spenard_blocks` rule), with `"out"` kept as a legacy kind
+so a save that already ended that way still renders.
+
+**PR 2 (`#181`) — The first week.** The first rent moves to day 14, because a
+player told the first week is free counts seven free days and is charged on the
+eighth; every surface already derived from the field, so the copy moved with
+the literal. Juan stops restating Yalonda's tutorial in a roommate's voice and
+says three things of his own. The People card stops printing a disposition
+float, an internal channel name, a lens property and a ledger length at the
+player. The Turf board becomes an earned layer at KNOWN, while every action
+inside it keeps its own higher gate.
+
+**Two real defects found beyond the brief.** A finished run could still spend
+time: every ACTION refused on `game_over` in its own handler, but the CLOCK did
+not, so a dead player burned four slots and rolled into tomorrow. That was
+invisible while the only endings were chosen or scheduled overnight; the floor
+made it reachable. Guarding `advance_time` immediately exposed the second one —
+parity's RNG-drift comparison drives a loud 39-day run and had been reaching a
+sentence ending on day 21 and a Curtis ending on day 22, then driving on for
+another eighteen days because nothing stopped it. **The second half of every
+drift comparison had been measuring a run that was already over.**
+
+**What the floor exposed about the economy.** The driven sweep's wander-heaviest
+profile now dies in **every seed** — 60% of the day job, from 244% before the
+floor existed, on runs that end around day 28 instead of 31. The driver never
+rests, visits the clinic or buys a doctor, and nothing in the game makes that a
+choice rather than an accident: there is no injury or recovery pressure loop.
+Both affected corridors were lowered to their measured margins and **disclosed
+rather than tuned back**, the way every prior entry in `ECON_CORRIDORS` was, and
+the settler's is flagged in place as now measuring truncated runs. Rebalancing
+which hits can reach zero was explicitly out of scope.
+
+**Measured.** Parity 14,729 → 14,795; territory 403 → 404; save validation
+299 → 332; smoke touch 1,236 → 1,239, width 2,910 → 2,913, component 52 → 56.
+Confrontation 4,447, dre 427, tips 93 unchanged. Moving the rent raises the
+`legal_worker` baseline by exactly one week's rent (1,242 → 1,392), so every
+profile percentage falls about 12% with nobody actually worse off.
+
+Rulings: **D-34** (FL-D1..D7), closing **D-2**. Schema stays v35. README,
+`docs/DESIGN.md` and D-31 get dated amendments where they describe the road
+that was removed; history stays history.
+
 ## 1.5.0 — Her Side of the Street: three PRs and a close-out (added 2026-09-06)
 
 **P6 of the organized-crime plan.** Territory has been a board of ground since

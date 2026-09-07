@@ -2278,6 +2278,34 @@ The Curtis and eviction endings are unchanged by this build and are somebody
 else's balance question — recorded here so the next person reading
 `game_over_rate` does not mistake them for a recovery problem again.
 
+### The close-out's live session
+
+Driven through the real game at 1.6.0, version `1.6.0` and schema **36**:
+
+- **One bad room.** A doorstep fight took health 70 → 50; `damage_today` read
+  exactly **20**.
+- **One REST.** Health 50 → **60**, `lay_low_day` stamped, one slot spent.
+- **One clinic visit.** Health 60 → **100** for **$135**, restoring **40** —
+  the ladder is untouched: first aid 18/$55/no slot, clinic 40/$135/one slot at
+  ≤82, doctor 75/$290/one slot at ≤55.
+- **Two damage-free nights**, day 18 → 20: health 62 → **68**, two feed lines
+  reading *"A night nobody came looking. 3 health back."*, `damage_today` 0.
+- `recovery.can_handle("lay_low")` is **false**; `can_handle("rest")` is true.
+
+### What this binds
+
+Nothing beyond recovery. **First aid, the clinic and the doctor are untouched** —
+no price, amount, reveal threshold, slot cost or gate moved (owner ruling 6).
+No damage writer changed and nothing about what can kill moved (FL-D2). There
+is still no injury *state*: `overnight_amount()` is the one function a future
+one would gate, and it is left deliberately unused by this build. Housing is
+not coupled to biology (owner ruling 4); eviction remains an ending, so that
+ruling is recorded for a future housing system rather than exercised here.
+
+P7 (ORG-006) is renumbered to **1.7.0** and is better off for the wait: the
+Northern Lights Motel's authored capability is *recover without spending a
+slot*, and until this build there was no rest model for it to modify.
+
 ## D-34 — The Floor: death at zero, and there is no way out
 
 **Decided** 2026-09-06 · **Ships in** 1.5.1, three PRs (the floor; the first

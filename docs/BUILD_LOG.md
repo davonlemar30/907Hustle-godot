@@ -28,6 +28,79 @@ notes, and the last few batches — see `HANDOFF.md`. For standing rulings, see
 
 ---
 
+## 1.6.0 — Sleep It Off: three PRs and a close-out (added 2026-09-07)
+
+**The other half of 1.5.1.** Making zero health death asked a question the
+build did not answer: what gives health back? The audit found paid treatment
+and a handful of authored shift lines, and that was the list. No rest, no
+night, no time.
+
+The web canon had a free rest at home (`SLEEP_HOME`, +12 for a slot) and the
+Godot port had dropped it silently — the same way it had dropped death at zero,
+and found in the same week. So 1.5.1 shipped a game where **a survivor's
+incidental damage was permanent**: the driven sweep's wander-and-turf profile
+died in every seed by day 27 at four to five damage a day, and even the pure
+legal worker bled about one a day from the `work_hard` shift approach with no
+free road back at all. The owner ruled against permanent incidental damage, and
+this is the loop that closes it.
+
+**PR 1 (`#183`) — Sleep it off.** REST: no money, one slot, +10, no per-day cap
+because time is the cap, no district gate. **Lay Low was folded into it and
+deleted whole** — it spent the same slot for the same nothing and never touched
+health, and its fiction ("lights off, phone down") was already resting. What
+survived is the half that was genuinely distinct: Lay Low was the only
+on-demand, no-money, no-crew Heat sink in the game and the only action Curtis
+read as going quiet, so the **first REST of a day** still does both. Batch 8's
+once-a-day cap survives, guarding the quiet half rather than the action.
+
+And `damage_today`, which the night would need: **derived** in
+`reconcile_persistent_invariants()` from the health that state last saw, rather
+than reported by the fourteen damage writers — which would have been fourteen
+places to forget, exactly the shape of bug FL-D1's one-place check exists to
+avoid. Heals never subtract; it answers "did today hurt", not "where did the
+day net out".
+
+**PR 2 (`#184`) — The night.** A `recovery_overnight` step immediately after
+`heat_day_reset`, before anything that can deal damage: +3 after a damage-free
+day, +1 at or below the severe band of 30, nothing after a day that hurt. One
+function owns the rate, deliberately, so a later injury state has exactly one
+place to gate. The band is a **number the rule reads, not a state** — nothing
+latches, and REST and the whole paid ladder work at full strength inside it, so
+a broke player at 5 health is never soft-locked.
+
+**PR 3 (`#185`) — A harness that heals.** The measuring instrument had the same
+problem the game did: it never healed, so its corridors reported what a strategy
+earned *before dying*. A recovery leg above the earning legs — treat below 60,
+rest below 40, no turf leg below 50 — plus a named `reckless` control that
+refuses all of it and still dies, which is the owner's design-intent line turned
+into a measurement.
+
+**Measured.** The settler, the profile this build exists for, goes from **60% of
+the day job on a 22-day truncated run to 123% across a full 31 days with zero
+deaths**. Every non-control profile now dies zero times; the reckless control
+dies in three seeds of four at minimum health 1. One corridor moved — the
+settler's floor 40 → 95, the first time a corridor in that table has moved UP,
+and the point is that at 40 it could not catch a regression back to dying.
+
+Parity 14,795 → 14,909; save validation 332 → 342; smoke touch 1,239 → 1,260
+and width 2,913 → 2,941. **First aid, the clinic and the doctor are untouched** —
+no price, amount or gate moved anywhere in this build.
+
+**Two findings the work turned up, recorded rather than tuned.** The
+pre-build sweep read "six profiles end in every seed", and that number was
+folding death, eviction, the sentence and Curtis into one figure; splitting
+`deaths` out showed `everyday_criminal`, `stickup` and `stickup_crew` all
+ending on **Curtis** by day 8–11 and four more ending **evicted**, with only the
+settler ever dying of the recovery gap. And on the night alone, **the severe
+band outlasts the rent clock** — a broke player at 5 health is evicted on day 22
+before 26 nights of +1 can heal them. Neither is this build's to fix; both are
+in D-35 so the next reader does not mistake them for recovery problems.
+
+Rulings: **D-35** (SO-D1..D6). Schema v35 → v36, additive. P7 renumbered to
+1.7.0, and better off for the wait — the motel's authored capability is
+*recover without spending a slot*, and until this build there was no rest model
+for it to modify.
+
 ## 1.5.1 — The Floor: two PRs and a close-out (added 2026-09-06)
 
 **A corrective release**, and the one that finally answers D-2. Four playtest

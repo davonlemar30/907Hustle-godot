@@ -539,7 +539,7 @@ web behavior; named divergences are listed in `HANDOFF.md`.
 | Read texts, pay bills, hear word around town | Phone |
 | Reach everything else, and read the rules | More · More → Help |
 | See what the block calls you, and why | More → Character |
-| Patch yourself up, or go quiet for a night | More → Recovery |
+| Patch yourself up, or sleep one off | More → Recovery, or REST on Home |
 | Texts arrive; miss the bill and the line dies holding them | Phone → Texts |
 | Pick up where you left off | automatic autosave · title → CONTINUE RUN |
 

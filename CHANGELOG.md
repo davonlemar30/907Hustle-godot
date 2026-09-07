@@ -18,6 +18,87 @@ a changelog line can. This file is upkeep from here forward, not a rewrite of
 what came before. For full history, see `docs/BUILD_LOG.md` (newest-first,
 append-only) and `docs/DECISIONS.md` (standing rulings).
 
+## 1.6.0 — Sleep It Off: REST, the night, the severe band (2026-09-07)
+
+The recovery loop 1.5.1 made necessary. Making zero health death exposed
+that almost nothing gave health back: paid treatment and a handful of
+authored shift lines, and that was the list. The web canon had a free rest
+at home and the port had dropped it silently — so a survivor's incidental
+damage was permanent, which the owner ruled against.
+
+Three PRs and a close-out. Rulings are D-35 (SO-D1..D6). Schema v35 → v36,
+additive.
+
+### PR 1 — Sleep it off (`#183`)
+
+- **REST**: no money, one slot, **+10 health**. No per-day cap — time is
+  the cap, and four slots spent resting is a whole day not earning. No
+  district gate.
+- **Lay Low is folded into it.** It spent the same slot for the same
+  nothing and never touched health. What survived is the part that was
+  distinct: the first REST of a day still sheds 2.0 Heat and still files
+  Curtis's `quiet_day`. Batch 8's once-a-day cap now guards that half
+  rather than the action.
+- **`damage_today`**, derived in `reconcile_persistent_invariants()` from
+  the health that state last saw rather than reported by fourteen writers.
+  Heals never subtract: it answers "did today hurt".
+
+### PR 2 — The night (`#184`)
+
+- A `recovery_overnight` step immediately after `heat_day_reset`: a
+  damage-free day heals **+3**, or **+1** at or below **30**; a day that
+  hurt heals nothing; either way the counter clears.
+- One function owns the rate, so a later injury state has one place to
+  gate.
+- The severe band is a number the rule reads, not a state. REST and the
+  whole paid ladder work at full strength inside it, so a broke player at
+  5 health is never soft-locked.
+
+### PR 3 — A harness that heals (`#185`)
+
+- The economy driver treats below 60, rests below 40, and declines the
+  turf leg below 50 — where the settler was dying.
+- `economy-metrics` gains treatments, rests, min health, deaths and the
+  end-kind breakdown.
+- A named `reckless` control that refuses all of it, and still dies.
+
+### PR 4 — Close-out
+
+- Version 1.6.0, D-35, this entry, the build log, HANDOFF, and P7
+  renumbered to 1.7.0.
+
+### Measured
+
+The settler — the profile this build exists for — goes from **60% of the
+day job on a 22-day truncated run** to **123% across a full 31 days with
+zero deaths**. Every non-control profile now dies zero times. The reckless
+control dies in **three seeds of four** at minimum health 1.
+
+From 5 health with $0: three RESTs clear the severe band inside one day
+and resting reaches full health in three days, against **26 nights** on
+the night alone. Sleeping is free and slow, a bed is free and fast, a bill
+is fast and expensive.
+
+Parity 14,795 → 14,909; save validation 332 → 342; smoke touch 1,239 →
+1,260 and width 2,913 → 2,941. Territory 404, confrontation 4,447, dre
+427, tips 93 unchanged. **First aid, the clinic and the doctor are
+untouched** — no price, amount or gate moved.
+
+### What the new metrics separated
+
+The pre-build sweep read "six profiles end in every seed" and that number
+folded four different endings into one. Splitting deaths out shows
+`everyday_criminal`, `stickup` and `stickup_crew` all ending on **Curtis**
+by day 8–11, and `trader`, `boost`, `arbitrage` and `boost_finder` ending
+**evicted**. Only the settler was ever dying of the recovery gap. Those
+other endings are unchanged here and are a separate balance question.
+
+A second finding, recorded not tuned: on the night alone, **the severe
+band outlasts the rent clock** — a broke player at 5 health is evicted on
+day 22 before 26 nights of +1 can heal them. Not a soft lock, since REST
+clears the band in a day, but the night by itself is not a road back for
+somebody with no money and no time.
+
 ## 1.5.1 — The Floor: death at zero, no way out, the first week (2026-09-06)
 
 A corrective release. Five playtest findings and one ruling that changes

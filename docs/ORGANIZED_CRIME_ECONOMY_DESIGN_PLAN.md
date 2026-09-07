@@ -891,7 +891,16 @@ kind, and no buy-in. `allegiance: yours` rows, the `kind` column (`laundromat`,
 one-seam capabilities hang off. Business income is **dirty**, on purpose —
 that is what makes laundering a want rather than a feature.
 
-### P7 — Infrastructure — **next**
+### P7 — Infrastructure — **next: 1.7.0**
+
+> **Renumbered 2026-09-07.** P7 was to be 1.6.0; 1.6.0 became "Sleep It Off"
+> (D-35), the recovery loop that 1.5.1's death-at-zero made necessary. P7 is
+> unaffected in scope and is better off for the wait: the Northern Lights
+> Motel's authored capability is *recover without spending a slot*, and until
+> this build there was no rest model for it to modify. It now has one —
+> `recovery.settle_overnight()` and `overnight_amount()` are a single function
+> with a three-constant table, written so exactly this kind of holding has one
+> place to gate.
 
 Capabilities as one-seam effects; **safehouse raises `crew_capacity()`**;
 laundering through the wallet; gun connection unlocks a P4 channel. P6 is

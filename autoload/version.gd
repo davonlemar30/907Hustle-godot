@@ -127,7 +127,19 @@ extends Node
 ## repeating Yalonda's tutorial (FL-D5); the People card stops printing its
 ## own internals (FL-D6); the Turf board is earned at KNOWN (FL-D7).
 ## PATCH: nothing here is a thing a player asked for, and no schema moved.
-const VERSION := "1.5.1"
+## 1.6.0 (Sleep It Off): the recovery loop 1.5.1 made necessary. Zero health
+## became death and nothing gave health back but paid treatment -- the web
+## canon's free rest at home had been dropped in the port, so a survivor's
+## incidental damage was permanent. REST is that verb back: no money, one
+## slot, +10, no per-day cap because time is the cap (SO-D1). Lay Low is
+## folded into it, and the first REST of a day still sheds Heat and files
+## Curtis's read (SO-D3). A day that did no damage heals +3 overnight, or +1
+## inside the severe band at or below 30 (SO-D2, SO-D5), tracked by a derived
+## `damage_today` (SO-D4). The economy harness now treats, rests and declines
+## fights while hurt, so its corridors measure strategies again (SO-D6).
+## A new player-facing verb and a new lifecycle step: MINOR. One schema bump
+## (v36, `damage_today`), additive.
+const VERSION := "1.6.0"
 
 ## The pieces, for anything that needs to compare rather than display.
 func major() -> int:

@@ -22,7 +22,7 @@ extends RefCounted
 ## multipliers."
 ##
 ## That is not a detail. Deshawn reduces the heat your crimes generate; running
-## relief through his multiplier would mean having him on the crew makes Lay Low
+## relief through his multiplier would mean having him on the crew makes going quiet
 ## work LESS well, which inverts his entire purpose. `apply_relief` therefore
 ## does not touch `_gain_multiplier()` at all — not "multiplies by 1.0 for
 ## relief", genuinely does not call it. TI-003's regression list has this at #15.
@@ -251,7 +251,7 @@ func apply_direct(delta: float, _context: Dictionary = {}) -> float:
 		return 0.0
 	return _commit(delta)
 
-## Heat coming off — Lay Low today, Booking and Recovery relief in later slices.
+## Heat coming off — the day's first REST (SO-D3), Booking and Recovery relief.
 ##
 ## Takes a POSITIVE amount and subtracts it, so no call site has to remember a
 ## sign. Bypasses every gain multiplier: see the file header for why running

@@ -631,6 +631,11 @@ func _validate_venues_entered(state: Dictionary, repairs: Array[String]) -> void
 ## actually did, so every day would decay. A `lay_low_day` in the future blocks
 ## going quiet until the run reaches it — the opposite failure, and the one that
 ## costs the player something they are owed.
+##
+## SO-D4 (1.6.0) adds `damage_today` here, because it is the same KIND of fact:
+## a day-scoped counter the night reads and the morning clears. A negative one
+## would read as a day that healed you by being hit, and the overnight step
+## would then refuse to heal a day that never hurt.
 func _validate_heat_day(state: Dictionary, repairs: Array[String]) -> void:
 	if state.has("heat_gain_today"):
 		if not (state["heat_gain_today"] is int or state["heat_gain_today"] is float):
@@ -641,6 +646,17 @@ func _validate_heat_day(state: Dictionary, repairs: Array[String]) -> void:
 			_repair(repairs, "heat_gain_today", "negative gain; defaulted")
 		else:
 			state["heat_gain_today"] = float(state["heat_gain_today"])
+	# SO-D4 (1.6.0, v36): what today has taken off you. Never negative -- it is
+	# a sum of drops, not a net -- and never a non-number.
+	if state.has("damage_today"):
+		if not (state["damage_today"] is int or state["damage_today"] is float):
+			state["damage_today"] = 0
+			_repair(repairs, "damage_today", "wrong type; defaulted")
+		else:
+			state["damage_today"] = int(state["damage_today"])
+			if int(state["damage_today"]) < 0:
+				state["damage_today"] = 0
+				_repair(repairs, "damage_today", "negative; repaired to 0")
 	if not state.has("lay_low_day"):
 		return
 	if not (state["lay_low_day"] is int or state["lay_low_day"] is float):

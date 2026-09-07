@@ -5418,7 +5418,7 @@
   ]
  },
  "recovery": {
-  "lay_low": [
+  "rest_quiet": [
    {
     "heat": 0,
     "area": "north_star_lot",

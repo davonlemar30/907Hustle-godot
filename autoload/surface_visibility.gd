@@ -579,7 +579,7 @@ func card_for(surface_id: String) -> Dictionary:
 ## Which of Home's two standing actions have a door right now, in render order.
 ##
 ##   "post_eli"  Eli has offered the bag, so there is somebody to send
-##   "lay_low"   Recovery is relevant, so there is a reason to go quiet
+##   "rest"      Recovery is relevant, so there is a reason to sleep it off
 ##
 ## The IDs are the screen's render list AND the gate's population, from one
 ## derivation. That is the same rule `operation_card_reason()` is written to —
@@ -600,7 +600,7 @@ func home_actions() -> Array:
 	if ops != null and bool(ops.is_discovered("run_the_bag")):
 		out.append("post_eli")
 	if bool(gs.recovery_available()):
-		out.append("lay_low")
+		out.append("rest")
 	return out
 
 # --- the verdict -----------------------------------------------------------

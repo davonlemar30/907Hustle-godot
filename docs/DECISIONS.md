@@ -2056,6 +2056,95 @@ with shipped code).
 
 ---
 
+## D-35 — Sleep It Off: REST, the night, the severe band, a harness that heals
+
+**Decided** 2026-09-07 · **Ships in** 1.6.0, three PRs plus a close-out (sleep
+it off; the night; a harness that heals; the close-out) · **Source:** the
+recovery audit that followed 1.5.1 and the owner's rulings of 2026-09-07;
+`BUILD_SLEEP_IT_OFF_PROMPT.md`; ClickUp `86bbvu0uj`, and `86bbvrc0j`'s
+follow-up · **Answers** D-34's "the settler dies in every seed" finding
+
+### The question
+
+1.5.1 made zero health death, and then the audit asked the obvious next
+question: what gives health back? Almost nothing. Paid treatment — first aid,
+the clinic, the doctor — and a handful of authored shift lines, and that is the
+list. No rest, no night, no time.
+
+The web canon had a free rest at home (`SLEEP_HOME`, +12 for a slot) and the
+Godot port dropped it silently, the same way it had dropped death at zero. So
+1.5.1 shipped a game where damage was **permanently cumulative for a survivor**:
+the driven economy sweep's wander-and-turf profile died in every seed by day 27
+at four to five damage a day, and even the pure legal worker bled about one a
+day from the `work_hard` shift approach with no free road back at all.
+
+The owner ruled against permanent incidental damage. This build is the recovery
+loop that was always missing.
+
+### The rulings PR 1 depends on
+
+**SO-D1 — REST is the no-money, one-slot recovery verb.** A `rest` action on
+the recovery system: refused when the run is over or when there is nothing to
+sleep off (`health >= health_max` **and** `heat <= 0`); otherwise heals
+`REST_HEALTH := 10` and spends the slot through `time_system.handle
+("advance_time")`. **No once-a-day cap on the healing** (owner default 2): time
+is the cap, four slots is the whole day, and every slot spent resting is a slot
+not earning. **No district gate** (owner default 4): canon's rest had none, and
+Home is a tab rather than a place.
+
+Full health *with* Heat is a valid use, because the day's first REST is still
+the quiet one — so the blocker reads both.
+
+**SO-D3 — Lay Low is folded into REST.** Lay Low spent a slot, cost nothing,
+shed a flat 2.0 Heat, filed a `discretion / quiet_day` observation on Curtis's
+network, and **touched health nowhere**. Its fiction ("lights off, phone down")
+was already resting and its cost was already REST's cost, so two do-nothing
+verbs was one too many.
+
+What survived the fold is the part that was genuinely distinct. Lay Low was the
+only **on-demand, no-money, no-crew Heat sink** in the game — the one lever a
+player can pull *before* a street stop rather than waiting for the night — and
+the only action that made going quiet something Curtis reads. So the **first
+REST of each day** still sheds `REST_QUIET_HEAT := 2` through `apply_relief`
+(still bypassing the district and Deshawn multipliers, TI-003 regression #15 —
+having Deshawn on the crew must not make going quiet work less well) and still
+files Curtis's `quiet_day`. Later RESTs that day heal only.
+
+The once-a-day cap is batch 8's and is kept for batch 8's reason: four Lay Lows
+a day was 8.0 of free shedding, more Heat than a day of play generates. The
+cap now guards the **quiet half**, not the action.
+
+`lay_low_day` keeps its name, its capture, its reset and its validator arm —
+renaming a persisted field is a schema change this build does not need. Its
+comment says what it stamps now.
+
+`lay_low`, `_lay_low`, `lay_low_blocker`, `lay_low_preview` and `LAY_LOW_HEAT`
+are **deleted whole** (the `spenard_blocks` rule), along with the Recovery
+screen's Lay Low card and Home's LAY LOW button. Home's scene node keeps its
+name `Lay` — renaming it would be a scene edit for nothing — and the label it
+draws is asserted instead.
+
+**SO-D4 — `damage_today` is written where FL-D1 reads.** A persisted int (v36,
+additive; a v35 save loads with 0). The night only heals a day that did no
+damage, so the night needs that fact and **nothing owned it**: health is written
+at fourteen sites with no owner, and asking each to report would have been
+fourteen places to forget — exactly the shape of bug FL-D1's one-place check was
+written to avoid.
+
+So it is **derived, not reported**. `reconcile_persistent_invariants()` keeps a
+runtime-only `_health_seen` and adds `max(0, _health_seen - health)` on every
+dispatch, **before** FL-D1's death check so a lethal hit is counted like any
+other. **Heals never subtract** — it answers "did today hurt", not "where did
+the day net out": a player who takes 20 and buys 40 back still had a day that
+hurt, and the night should not reward them for it.
+
+`_health_seen` is deliberately **not persisted**. It is a comparison basis, not
+a fact about the run, and persisting it would make it a second source of truth
+for a number `health` already holds. It is re-based on `reset_to_new_game()`
+and in `SaveSystem._apply()`, because without that the first dispatch after a
+load charges the difference between two different runs' health as damage taken
+today — the danger list's first entry, and asserted in both directions.
+
 ## D-34 — The Floor: death at zero, and there is no way out
 
 **Decided** 2026-09-06 · **Ships in** 1.5.1, three PRs (the floor; the first

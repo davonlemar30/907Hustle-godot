@@ -45,6 +45,7 @@ func _ready() -> void:
 	_test_v33_dismantled()
 	_test_v34_nudges()
 	_test_v35_businesses()
+	_test_v36_damage_today()
 	_test_standing_brief_round_trip()
 	_test_stick_booking_still_validates()
 	_test_decision_stage_reload()
@@ -1191,6 +1192,50 @@ func _test_v33_dismantled() -> void:
 ## HSS-D2 (1.5.0), v35. Every repair the ruling names, plus the migration arm:
 ## a v34 payload loads with no `businesses` at all and discovers its businesses
 ## from the history it already carries.
+
+## SO-D4 (1.6.0), v36. A day-scoped counter the night reads and the morning
+## clears, validated the way `heat_gain_today` beside it is: never a non-number,
+## and never negative -- a negative one would read as a day that healed you by
+## being hit, and the overnight step would then refuse to heal a day that never
+## hurt.
+func _test_v36_damage_today() -> void:
+	var valid := _fixed(_state("damage_today", 14))
+	_check("an honest day's damage survives", int(valid["damage_today"]) == 14)
+	var zero := _fixed(_state("damage_today", 0))
+	_check("a day that did not hurt survives as zero", int(zero["damage_today"]) == 0)
+
+	var negative: Dictionary = _result(_state("damage_today", -9))
+	_check("a negative day's damage is repaired to zero",
+		int((negative["state"] as Dictionary)["damage_today"]) == 0)
+	var noted := false
+	for note in (negative["repairs"] as Array):
+		if str(note).begins_with("damage_today:"):
+			noted = true
+	_check("...and the repair says why", noted)
+
+	var junk := _fixed(_state("damage_today", "lots"))
+	_check("a non-number is defaulted", int(junk["damage_today"]) == 0)
+	var floaty := _fixed(_state("damage_today", 7.9))
+	_check("a float is taken as an int", int(floaty["damage_today"]) == 7)
+
+	# The migration. A v35 payload arrives with no `damage_today` at all --
+	# additive, exactly like every bump before it -- and 0 is the right answer
+	# for a save being opened: today has not hurt yet.
+	var saves := get_node("/root/SaveSystem")
+	var migrated: Dictionary = saves._migrate({"save_version": 35,
+		"state": {"day": 4, "cash": 60, "street_name": "L"}})
+	_check("a v35 save arrives having taken no damage today",
+		not migrated.has("damage_today") or int(migrated.get("damage_today", 0)) == 0)
+	_check("and the live schema is v36", int(saves.SAVE_VERSION) == 36)
+	_check("...with the field persisted",
+		"damage_today" in (saves.PERSIST_FIELDS as Array))
+
+	# `lay_low_day` is untouched by the fold: SO-D3 reused the field rather than
+	# renaming it, so its own arm has to keep passing unchanged.
+	var future := _result(_state("lay_low_day", 40))
+	_check("a quiet day in the future is still cleared",
+		int((future["state"] as Dictionary)["lay_low_day"]) == -1)
+
 func _test_v35_businesses() -> void:
 	# An unknown id is dropped whole rather than repaired into a neutral row.
 	# Repairing it would invent a meeting that never happened -- presence in

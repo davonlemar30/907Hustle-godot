@@ -739,7 +739,7 @@ const MARKET_PRESSURE_PRICE_SCALE := 1.0
 ##
 ## HEAT HAS NO TEETH ON THIS PATH. `gs.heat` is read in exactly five places —
 ## Stickup's success chance, the job interview roll, Exposure's broadcast
-## thresholds, Lay Low's relief cap, and the arrest gates inside Boost's and
+## thresholds, the quiet REST's relief cap, and the arrest gates inside Boost's and
 ## Stickup's consequence chains. A courier who never lifts and never robs
 ## touches none of them. Heat pinned at 15.0 in the sweep and the run carried on
 ## exactly as before: 382%, no arrests, no game over. Heat 15 does not end a run

@@ -21,7 +21,7 @@ func _ready() -> void:
 ## Both spent this batch on the OPERATION card, and both were therefore
 ## unreachable on exactly the run that needs them most. `_bind_gates` hides that
 ## card whenever there is no operation out, no rent crunch and no workable
-## shift — which is a fresh run in its entirety — so POST ELI and LAY LOW were
+## shift — which is a fresh run in its entirety — so POST ELI and REST were
 ## drawn on a node that had already left the layout.
 ##
 ## They have their own card now, directly under Wander, on their own condition:
@@ -35,7 +35,10 @@ func _ready() -> void:
 ## buttons the access layer said were there rather than deciding again.
 const ACTIONS := {
 	"Post": {"id": "post_eli", "label": "POST ELI"},
-	"Lay": {"id": "lay_low", "label": "LAY LOW"},
+	# SO-D3 (1.6.0): the node keeps its scene name `Lay`; the action it fires
+	# is REST now, which inherited going quiet. Renaming the node would be a
+	# scene edit for nothing.
+	"Lay": {"id": "rest", "label": "REST"},
 }
 
 func _wire_taps() -> void:
@@ -46,7 +49,7 @@ func _wire_taps() -> void:
 	#   MOVE PRODUCT -> the Wander card (batch 13). It was canon's
 	#                   `explore_spenard` spending a slot to print the weather.
 	#   POST ELI     -> the Actions card (batch 14).
-	#   LAY LOW      -> the Actions card (batch 14).
+	#   REST         -> the Actions card (batch 14; REST since SO-D3).
 	#
 	# All three sat on a node `_bind_gates` HIDES whenever there is no operation,
 	# no rent crunch and no shift — which is a fresh run in its entirety. HANDOFF
@@ -68,7 +71,7 @@ func _wire_taps() -> void:
 		if b == null:
 			continue
 		b.text = str((ACTIONS[node_name] as Dictionary)["label"])
-		tap_connect(b, _on_post_eli if str(node_name) == "Post" else _on_lay_low)
+		tap_connect(b, _on_post_eli if str(node_name) == "Post" else _on_rest)
 	# One button, dispatching READ — the intent wander.gd now treats as
 	# "explore everything" rather than one of three equal choices (PR 5). A
 	# second, conditional button is pure navigation to the Jobs screen, shown
@@ -179,20 +182,23 @@ func _on_post_eli() -> void:
 			{"crew_id": "eli", "operation_id": "run_the_bag"}):
 		nav.show_toast("Eli has the bag today.")
 
-## Lay Low has existed in `systems/recovery.gd` since it shipped and has only
-## ever been reachable from a conditional row on the More menu. Batch 8 gave it
-## a once-a-day cap; this gives it the button the Home card has been drawing
-## for it the whole time.
-func _on_lay_low() -> void:
+## SO-D1/SO-D3 (1.6.0): REST. This button used to be LAY LOW, which spent the
+## same slot for the same nothing and never touched health. It now heals, and
+## the first REST of a day still buys the quiet Lay Low used to sell on its own.
+##
+## The toast says which of the two happened, because a player who rests twice in
+## a day needs to know the second one did not shed Heat.
+func _on_rest() -> void:
 	var recovery: Object = _gm.system("recovery")
 	if recovery == null:
 		return
-	var blocked: String = str(recovery.lay_low_blocker())
+	var blocked: String = str(recovery.rest_blocker())
 	if not blocked.is_empty():
 		nav.show_toast(blocked + ".")
 		return
-	if _gm.dispatch("lay_low", {}):
-		nav.show_toast("Lights off, phone down.")
+	var quiet: bool = bool(recovery.quiet_available())
+	if _gm.dispatch("rest", {}):
+		nav.show_toast("Lights off, phone down." if quiet else "You lie back down.")
 
 func _on_market() -> void:
 	nav.go_to(nav.MARKET)
@@ -398,7 +404,7 @@ func _wander_line(sys: Object) -> String:
 		return "Nothing the last time out. Somebody knows something."
 	return "You have come back empty a few times now. That tends to change."
 
-## The Actions card: POST ELI and LAY LOW, each shown only when it exists.
+## The Actions card: POST ELI and REST, each shown only when it exists.
 ##
 ## The available list comes from `SurfaceVisibility.home_actions()` — the SAME
 ## call whose size decides whether the card is in the layout at all. That is the
@@ -407,7 +413,7 @@ func _wander_line(sys: Object) -> String:
 ## card while still filling it, or fill a card with buttons that do nothing.
 ##
 ## A button whose action is not on the list is hidden rather than disabled. A
-## disabled LAY LOW on a run at full health with no Heat is a control explaining
+## disabled REST on a run at full health with no Heat is a control explaining
 ## a mechanic the player has no reason to have heard of; there being nothing
 ## there says the same thing without the explanation.
 func _bind_actions() -> void:
@@ -429,13 +435,13 @@ func _bind_actions() -> void:
 ## tapping says whether it can happen right now and why not.
 func _actions_line(available: Array) -> String:
 	var has_eli: bool = "post_eli" in available
-	var has_lay: bool = "lay_low" in available
+	var has_lay: bool = "rest" in available
 	if has_eli and has_lay:
-		return "Somebody to send, or a day to lose on purpose."
+		return "Somebody to send, or a slot to sleep off."
 	if has_eli:
 		return "Eli will take the bag if you want the day covered."
 	if has_lay:
-		return "A day off the street costs a slot and buys quiet."
+		return "A slot in the dark costs the day and buys it back in health."
 	return ""
 
 ## The card's copy, chosen from the reason the access layer already decided.

@@ -481,11 +481,21 @@ func _check_recovery(fixture: Dictionary) -> void:
 	var original_health: int = gs.health
 	var original_area: String = gs.current_district_id
 
-	for row in fixture["lay_low"]:
+	# SO-D3 (1.6.0): the fixture's `lay_low` rows became `rest_quiet` rows. The
+	# NUMBERS are unchanged -- the quiet REST sheds exactly what Lay Low shed,
+	# capped by the Heat actually on the run -- because the fold moved the call
+	# and not the arithmetic.
+	for row in fixture["rest_quiet"]:
 		gs.heat = float(row["heat"])
 		gs.current_district_id = str(row["area"])
-		_expect_float("lay low preview @heat %s" % str(row["heat"]),
-			float(rec.lay_low_preview()), float(row["heat_reduction"]))
+		gs.lay_low_day = -1
+		_expect_float("the day's first REST sheds, @heat %s" % str(row["heat"]),
+			float(rec.rest_quiet_preview()), float(row["heat_reduction"]))
+		# And a second REST that day promises nothing, at every heat.
+		gs.lay_low_day = int(gs.day)
+		_expect_float("...and a second REST that day sheds nothing, @heat %s" % str(row["heat"]),
+			float(rec.rest_quiet_preview()), 0.0)
+	gs.lay_low_day = -1
 	for row in fixture["treatment_costs"]:
 		_expect_int("treatment cost %d" % int(row["base"]),
 			rec.treatment_cost(int(row["base"])), int(row["cost"]))
@@ -2072,7 +2082,7 @@ func _check_list_migration(gs: Node, gm: Node, sys: RefCounted) -> void:
 	# in that build's PR B (dre_intro_offered, DRE-D1's mention latch),
 	# 21 → 22 in the scrolling-degradation fix (no new fields: the inbox
 	# halves capped at PHONE_INBOX_MAX, terminal shark notes pruned).
-	_expect_int("save version is 35", saves.SAVE_VERSION, 35)
+	_expect_int("save version is 36", saves.SAVE_VERSION, 36)
 	_expect_true("the boost discovery latch persists",
 		"boost_targets_discovered" in saves.PERSIST_FIELDS)
 	_expect_true("list_taken persists", "list_taken" in saves.PERSIST_FIELDS)
@@ -13931,7 +13941,7 @@ func _check_save_migration_matrix(gs: Node, gm: Node, engine: RefCounted) -> voi
 	# record, the Pressure ledgers, the bleed queue, the delayed queue, and the
 	# active chain (whose booking block and arrest warnings ride inside it). A
 	# version bump with no new field is a migration arm nobody can test.
-	_expect_int("the schema is v35", saves.SAVE_VERSION, 35)
+	_expect_int("the schema is v36", saves.SAVE_VERSION, 36)
 	for required in ["arrest_record", "district_pressure", "pressure_bleed_pending",
 			"consequence_queue", "consequence_history", "active_consequence",
 			"financial_pressure", "boost_store_bans", "last_blocking_delayed_day"]:
@@ -19310,8 +19320,8 @@ func _check_home_actions(gs: Node, gm: Node) -> void:
 	# 2. Recovery becoming relevant opens the card, WITH the operation card
 	#    still hidden. That pairing is the whole finding.
 	gs.health = gs.health_max - 1
-	_expect_true("a scrape makes lay low relevant",
-		"lay_low" in (access.home_actions() as Array))
+	_expect_true("a scrape makes rest relevant",
+		"rest" in (access.home_actions() as Array))
 	_expect_true("and the actions card arrives",
 		access.is_visible(access.HOME_ACTIONS))
 	_expect_str("while the operation card still has nothing to say",
@@ -19336,8 +19346,11 @@ func _check_home_actions(gs: Node, gm: Node) -> void:
 		and op != null and not op.visible)
 	_expect_true("and POST ELI is not offered before Eli has offered",
 		post != null and not post.visible)
+	# SO-D3 (1.6.0): the node keeps its scene name `Lay`; the button it draws is
+	# REST now. The label is asserted rather than the node, which is the half a
+	# player reads.
 	_expect_str("the button says what it does", lay.text if lay != null else "",
-		"LAY LOW")
+		"REST")
 	_expect_true("and it is a real tap target",
 		lay != null and lay.custom_minimum_size.y >= 44.0)
 	_expect_true("the card says what is on offer",
@@ -23255,7 +23268,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14795
+const MIN_CHECKS := 14851
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -24329,7 +24342,7 @@ func _check_night_owl_door(gs: Node, gm: Node) -> void:
 
 func _check_venue_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v35", int(saves.SAVE_VERSION), 35)
+	_expect_int("the schema is v36", int(saves.SAVE_VERSION), 36)
 	for field in ["attribute_sessions", "gym_streak", "gym_last_day", "venues_entered"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 
@@ -24384,7 +24397,8 @@ func _check_venue_persistence(gs: Node, gm: Node) -> void:
 # not one touched it; one ADDED to it. Nothing happened at 15 — the clamp
 # saturated silently — and the cheapest Heat sink in the game was getting
 # arrested (2.0-5.0 of booking relief against 2.0 for a slot of Lay Low, which
-# itself had no cost, no cap and no blocker of any kind).
+# itself had no cost, no cap and no blocker of any kind). Lay Low was folded
+# into REST in 1.6.0 (SO-D3) and the cap came with it.
 #
 # So a long run ended pinned at the ceiling, and a player at 15 on day 12 and a
 # player at 15 on day 60 were in identical positions. The number carried no
@@ -24403,8 +24417,9 @@ func _check_venue_persistence(gs: Node, gm: Node) -> void:
 #           ==> "a street stop cannot reach clean money" fails.
 # SABOTAGE: restore the `return` in Exposure.propagate_heat
 #           ==> "crossing a threshold adds an audience" fails.
-# SABOTAGE: drop the lay_low_blocker call from _lay_low
-#           ==> "a second attempt is refused" fails.
+# SABOTAGE: drop the `quiet_available()` guard from _rest
+#           ==> "...but sheds no Heat" fails (SO-D3 folded Lay Low into REST;
+#           the once-a-day cap now guards the QUIET half, not the action).
 # SABOTAGE: make heat_day_reset a no-op
 #           ==> "the new day starts quiet" fails. The declared trace does NOT —
 #           the step still runs and still traces, which is the division of
@@ -24423,7 +24438,8 @@ func _check_batch8(gs: Node, gm: Node) -> void:
 	_check_heat_bands(gs, gm)
 	_check_quiet_day_decay(gs, gm)
 	_check_street_stop(gs, gm)
-	_check_lay_low_cap(gs, gm)
+	_check_rest_quiet_cap(gs, gm)
+	_check_damage_today(gs, gm)
 	_check_heat_propagation_adds(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
@@ -24743,39 +24759,193 @@ func _check_street_stop(gs: Node, gm: Node) -> void:
 		float(gs.heat), 15.0 - float(B8_RULES.HEAT_STOP_RELIEF))
 	gs.reset_to_new_game()
 
-# --- Lay Low --------------------------------------------------------------
+# --- REST, and the quiet inside it ----------------------------------------
 
-func _check_lay_low_cap(gs: Node, gm: Node) -> void:
+
+## SO-D4 (1.6.0): what today has taken off you.
+##
+## The night (SO-D2) only heals a day that did no damage, so this fact has to be
+## true on every dispatch. It is DERIVED in `reconcile_persistent_invariants()`
+## from the health that state last saw, rather than reported by the fourteen
+## damage writers -- which would have been fourteen places to forget, and is
+## exactly the shape of bug FL-D1 was written to avoid.
+##
+## The danger the derivation creates is the re-base: reconcile runs on the
+## dispatch that RESETS a run and on the one that loads a save, and a stale
+## comparison basis there would charge the difference between two different runs
+## as damage. Both are asserted first, because both are silent.
+func _check_damage_today(gs: Node, gm: Node) -> void:
+	var saves := get_node("/root/SaveSystem")
+
+	# A fresh run has taken nothing, and the reset itself charges nothing.
+	gs.street_name = "Parity"
+	gs.health = 12
+	gs.reset_to_new_game()
+	_expect_int("a fresh run has taken no damage", int(gs.damage_today), 0)
+	gm.dispatch("advance_time", {})
+	_expect_int("...and the first dispatch after a reset charges nothing",
+		int(gs.damage_today), 0)
+
+	# A save applied over a hurt run does not charge the difference.
+	gs.reset_to_new_game()
+	gs.health = 30
+	var snapshot: Dictionary = saves.capture()
+	gs.health = 95
+	saves._apply(snapshot)
+	_expect_int("a loaded save's health is the loaded one", int(gs.health), 30)
+	gm.dispatch("advance_time", {})
+	_expect_int("...and loading it charges no damage", int(gs.damage_today), 0)
+
+	# Drops accumulate, however they happen.
+	#
+	# Staging a hurt run means WRITING health down, and writing health down is
+	# damage as far as the derivation is concerned -- which is the derivation
+	# working, not a fault. So the fixture settles the staged value through a
+	# dispatch and then zeroes the counter explicitly, the same way the stickup
+	# sub-arm below does, rather than pretending the staging was free.
+	gs.reset_to_new_game()
+	gs.health = 80
+	gm.dispatch("advance_time", {})
+	_expect_int("staging a hurt run is itself counted", int(gs.damage_today), 20)
+	gs.damage_today = 0
+	_expect_int("premise: the counter is cleared for the measurement",
+		int(gs.damage_today), 0)
+	gs.health = 68
+	gm.dispatch("advance_time", {})
+	_expect_int("a twelve-point hit is twelve points of damage",
+		int(gs.damage_today), 12)
+	gs.health = 60
+	gm.dispatch("advance_time", {})
+	_expect_int("...and a second hit adds to it", int(gs.damage_today), 20)
+
+	# Heals never subtract. `damage_today` answers "did today hurt", not "where
+	# did the day net out" -- a player who takes 20 and buys 40 back still had a
+	# day that hurt, and the night should not heal them for it.
+	gs.health = 100
+	gm.dispatch("advance_time", {})
+	_expect_int("healing does not undo the day's damage", int(gs.damage_today), 20)
+	_expect_int("...and health is what the heal made it", int(gs.health), 100)
+
+	# It survives a reload mid-day, for the same reason `heat_gain_today` does:
+	# a run closed after the robbery and reopened before the night must still be
+	# having the day it was having.
+	_expect_true("damage_today is persisted",
+		"damage_today" in (saves.PERSIST_FIELDS as Array))
+	var mid_day: Dictionary = saves.capture()
+	_expect_int("...and rides the capture", int(mid_day.get("damage_today", -1)), 20)
+	gs.reset_to_new_game()
+	saves._apply(mid_day)
+	_expect_int("...and comes back on the other side of a load",
+		int(gs.damage_today), 20)
+	gm.dispatch("advance_time", {})
+	_expect_int("...without the load itself adding to it", int(gs.damage_today), 20)
+
+	# Through a real room, not a hand-written health write.
+	_reset_stickup_probe(gs)
+	gs.damage_today = 0
+	gs.health = int(gs.health_max)
+	var health_before: int = int(gs.health)
+	gm.dispatch("stickup", {"target_id": STICKUP_PROBE_TARGET})
+	var lost: int = health_before - int(gs.health)
+	_expect_int("a room's damage is counted exactly", int(gs.damage_today), lost)
+
+	# And the schema.
+	_expect_int("the schema carries it at v36", int(saves.SAVE_VERSION), 36)
+	var validator: RefCounted = preload("res://autoload/save_validator.gd").new()
+	var repaired: Dictionary = validator.validate_state({"day": 5, "damage_today": -9})
+	_expect_int("a negative day's damage is repaired to zero",
+		int((repaired["state"] as Dictionary)["damage_today"]), 0)
+	var junk: Dictionary = validator.validate_state({"day": 5, "damage_today": "lots"})
+	_expect_int("...and so is a non-number",
+		int((junk["state"] as Dictionary)["damage_today"]), 0)
+	gs.reset_to_new_game()
+
+## SO-D1/SO-D3 (1.6.0). Batch 8's once-a-day cap survives the fold, but it now
+## caps only the QUIET half: every REST heals, and only the first REST of a day
+## sheds Heat and files Curtis's read. That distinction is the whole arm.
+func _check_rest_quiet_cap(gs: Node, gm: Node) -> void:
 	var recovery: Object = gm.system("recovery")
 	if recovery == null:
-		_fail("batch8 lay low", "no recovery system")
+		_fail("rest quiet cap", "no recovery system")
 		return
+	var exposure: Node = get_node("/root/Exposure")
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
 	gs.day = 3
 	gs.time_slots_today = 0
 	gs.heat = 9.0
+	gs.health = 50
+	gs.npc_ledgers["curtis"] = []
 
-	_expect_str("a run that has not gone quiet today can",
-		str(recovery.lay_low_blocker()), "")
-	_expect_true("going quiet dispatches", gm.dispatch("lay_low", {}))
-	_expect_int("and the day is stamped", int(gs.lay_low_day), 3)
-	_expect_str("going quiet is once a day",
-		str(recovery.lay_low_blocker()), "You already went quiet today")
-	var heat_after: float = float(gs.heat)
-	_expect_true("a second attempt is refused", not gm.dispatch("lay_low", {}))
-	_expect_float("and sheds nothing", float(gs.heat), heat_after)
+	_expect_str("a hurt run can sleep it off", str(recovery.rest_blocker()), "")
+	_expect_true("today's quiet is unspent", bool(recovery.quiet_available()))
+	var heat_before: float = float(gs.heat)
+	var slot_before: int = int(gs.time_slots_today)
+	_expect_true("REST dispatches", gm.dispatch("rest", {}))
+	_expect_int("...and heals the authored amount",
+		int(gs.health), 50 + int(recovery.REST_HEALTH))
+	_expect_int("...and spends exactly one slot",
+		int(gs.time_slots_today), slot_before + 1)
+	_expect_float("...and the first REST of the day sheds the quiet",
+		float(gs.heat), heat_before - float(recovery.REST_QUIET_HEAT))
+	_expect_int("...and the day is stamped", int(gs.lay_low_day), 3)
+	_expect_int("...and Curtis reads the quiet once",
+		_curtis_quiet_rows(exposure), 1)
 
+	# The second REST of the day: heals, and does NOT buy the quiet twice.
+	_expect_true("today's quiet is spent", not bool(recovery.quiet_available()))
+	_expect_str("but resting again is not refused", str(recovery.rest_blocker()), "")
+	var health_mid: int = int(gs.health)
+	var heat_mid: float = float(gs.heat)
+	_expect_true("a second REST dispatches", gm.dispatch("rest", {}))
+	_expect_int("...and heals again",
+		int(gs.health), health_mid + int(recovery.REST_HEALTH))
+	_expect_float("...but sheds no Heat", float(gs.heat), heat_mid)
+	_expect_int("...and does not file a second quiet day",
+		_curtis_quiet_rows(exposure), 1)
+
+	# Tomorrow the quiet is available again.
 	gs.day = 4
 	gs.time_slots_today = 0
-	_expect_str("tomorrow it is available again", str(recovery.lay_low_blocker()), "")
-	_expect_true("and it works", gm.dispatch("lay_low", {}))
+	gs.health = 50
+	_expect_true("tomorrow the quiet is available again", bool(recovery.quiet_available()))
+	heat_mid = float(gs.heat)
+	_expect_true("and REST works", gm.dispatch("rest", {}))
+	_expect_float("...and sheds again",
+		float(gs.heat), heat_mid - float(recovery.REST_QUIET_HEAT))
+
+	# The ceiling, and the one refusal.
+	gs.health = int(gs.health_max) - 3
+	gs.time_slots_today = 0
+	gm.dispatch("rest", {})
+	_expect_int("REST never heals past the ceiling",
+		int(gs.health), int(gs.health_max))
+	gs.heat = 0.0
+	gs.time_slots_today = 0
+	_expect_str("at full health with no Heat there is nothing to sleep off",
+		str(recovery.rest_blocker()), "Nothing to sleep off")
+	_expect_true("...and it is refused", not gm.dispatch("rest", {}))
+	# But full health WITH Heat is a valid use -- the quiet is still worth taking.
+	gs.heat = 4.0
+	gs.day = 5
+	_expect_str("full health with Heat can still go quiet",
+		str(recovery.rest_blocker()), "")
+	_expect_true("...and it dispatches", gm.dispatch("rest", {}))
+	_expect_float("...shedding the quiet with nothing to heal", float(gs.heat), 2.0)
+
+	# Lay Low is gone, whole.
+	_expect_true("the lay_low action no longer exists",
+		not recovery.can_handle("lay_low"))
+	_expect_true("...and dispatching it is refused",
+		not gm.dispatch("lay_low", {}))
+	_expect_true("...and REST is what the system answers to",
+		recovery.can_handle("rest"))
 
 	# The save. Both v12 fields fail in the player's favour if left alone, and
 	# they fail in OPPOSITE directions — one grants a decay every day, the other
 	# takes Lay Low away until the run catches up to a day it never reached.
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v35 for Heat's teeth", int(saves.SAVE_VERSION), 35)
+	_expect_int("the schema is v36 for Heat's teeth", int(saves.SAVE_VERSION), 36)
 	for field in ["heat_gain_today", "lay_low_day"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
 	var v11 := {"save_version": 11, "state": {"day": 9, "cash": 400, "street_name": "Legacy"}}
@@ -25248,7 +25418,7 @@ func _check_wander_encounter(gs: Node, gm: Node) -> void:
 
 func _check_wander_persistence(gs: Node, gm: Node) -> void:
 	var saves := get_node("/root/SaveSystem")
-	_expect_int("the schema is v35 for Wander", int(saves.SAVE_VERSION), 35)
+	_expect_int("the schema is v36 for Wander", int(saves.SAVE_VERSION), 36)
 	for field in ["wander_misses", "wander_count", "wander_seen", "wander_recent",
 			"market_discovered", "wander_quiet_streak"]:
 		_expect_true("%s is persisted" % str(field), str(field) in saves.PERSIST_FIELDS)
@@ -27438,3 +27608,13 @@ func _check_wander_reads(gs: Node, gm: Node) -> void:
 	_expect_true("and it says something", gs.activity_log.size() > 0)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
+
+## How many `quiet_day` rows Curtis is carrying. SO-D3's cap is asserted on this
+## rather than on the ledger's size, because a REST can also move Heat, and Heat
+## crossing a threshold writes rows of its own.
+func _curtis_quiet_rows(exposure: Node) -> int:
+	var count := 0
+	for row in exposure.ledger_of("curtis"):
+		if str((row as Dictionary).get("event", "")) == "quiet_day":
+			count += int((row as Dictionary).get("count", 1))
+	return count

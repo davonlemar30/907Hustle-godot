@@ -5569,7 +5569,12 @@ const LIFECYCLE_EXPECTED_TRACE: Array[String] = [
 	# surviving in one of the two places the ordering contract names. Same kind
 	# of fact as the two above it: what has already happened today, cleared as
 	# today begins.
-	"DAY_START", "DAY_START:heat_day_reset", "DAY_START:stickup_day_reset",
+	# SO-D2 (1.6.0): `recovery_overnight` is SECOND, between the day's reset and
+	# everything that can hurt you. It reads yesterday's `damage_today` and
+	# clears it, so any step that dealt damage before it would be healing a day
+	# that had already started hurting.
+	"DAY_START", "DAY_START:heat_day_reset", "DAY_START:recovery_overnight",
+	"DAY_START:stickup_day_reset",
 	"DAY_START:expire_retaliation", "DAY_START:surface_delayed",
 	"DAY_START:retaliation_ambient",
 	# Word of Mouth (0.1.2) appends `tips` and reorders nothing above it: a
@@ -23268,7 +23273,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14851
+const MIN_CHECKS := 14881
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe
@@ -24440,6 +24445,7 @@ func _check_batch8(gs: Node, gm: Node) -> void:
 	_check_street_stop(gs, gm)
 	_check_rest_quiet_cap(gs, gm)
 	_check_damage_today(gs, gm)
+	_check_the_night(gs, gm)
 	_check_heat_propagation_adds(gs, gm)
 	gs.street_name = "Parity"
 	gs.reset_to_new_game()
@@ -24762,6 +24768,196 @@ func _check_street_stop(gs: Node, gm: Node) -> void:
 # --- REST, and the quiet inside it ----------------------------------------
 
 
+
+## SO-D2/SO-D5 (1.6.0): the night, and the severe band.
+##
+## A night only heals a day that did no damage -- keeping working while hurt is
+## the choice the player made, and the night is what they gave up to make it.
+## Below the severe band the night barely helps on its own, but REST and the
+## whole paid ladder still work at full strength there, which is what stops a
+## broke player at 5 health from being soft-locked.
+func _check_the_night(gs: Node, gm: Node) -> void:
+	var recovery: Object = gm.system("recovery")
+	if recovery == null:
+		_fail("the night", "no recovery system")
+		return
+
+	# The table, read off the pure function before anything is driven.
+	gs.street_name = "Parity"
+	gs.reset_to_new_game()
+	gs.damage_today = 0
+	gs.health = 70
+	_expect_int("a healthy day that did no damage heals the full amount",
+		int(recovery.overnight_amount()), int(recovery.OVERNIGHT_HEALTH))
+	gs.damage_today = 1
+	_expect_int("...and a single point of damage cancels the night",
+		int(recovery.overnight_amount()), 0)
+	gs.damage_today = 0
+	gs.health = int(recovery.SEVERE_AT)
+	_expect_true("30 is inside the severe band", bool(recovery.is_severe()))
+	_expect_int("...where the night gives almost nothing",
+		int(recovery.overnight_amount()), int(recovery.OVERNIGHT_SEVERE))
+	gs.health = int(recovery.SEVERE_AT) + 1
+	_expect_true("31 is out of it", not bool(recovery.is_severe()))
+	_expect_int("...and the night is worth the full amount again",
+		int(recovery.overnight_amount()), int(recovery.OVERNIGHT_HEALTH))
+	gs.health = 12
+	_expect_int("deep in the band it is still the severe rate",
+		int(recovery.overnight_amount()), int(recovery.OVERNIGHT_SEVERE))
+	gs.health = int(gs.health_max)
+	_expect_int("and a run at full health heals nothing",
+		int(recovery.overnight_amount()), 0)
+
+	# Driven, through the real lifecycle, so the STEP is what is asserted and
+	# not just the function it calls.
+	var lifecycle: Object = gm.system("day_lifecycle")
+	_expect_true("the day-start order carries the night",
+		"recovery_overnight" in (lifecycle.DAY_START_ORDER as Array))
+	_expect_int("...immediately after the day's own reset",
+		(lifecycle.DAY_START_ORDER as Array).find("recovery_overnight"),
+		(lifecycle.DAY_START_ORDER as Array).find("heat_day_reset") + 1)
+
+	# Staging a hurt run WRITES health down, and a write down is damage (SO-D4).
+	# `rebase_health_seen()` exists for exactly this: it moves the comparison
+	# basis without charging anything, which is what a fixture staging a
+	# starting condition means. Without it every arm below would be measuring a
+	# day that "hurt" by being set up.
+	gs.reset_to_new_game()
+	gs.day = 10
+	gs.health = 60
+	gs.rebase_health_seen()
+	gs.damage_today = 0
+	gs.activity_log = []
+	_cross_one_day(gs, gm)
+	_expect_int("a damage-free day heals overnight",
+		int(gs.health), 60 + int(recovery.OVERNIGHT_HEALTH))
+	_expect_int("...and the morning clears the day it described",
+		int(gs.damage_today), 0)
+	_expect_true("...and says so once", _feed_mentions(gs, "health back"))
+
+	gs.health = 60
+	gs.rebase_health_seen()
+	gs.damage_today = 7
+	gs.activity_log = []
+	_cross_one_day(gs, gm)
+	_expect_int("a day that hurt heals nothing overnight", int(gs.health), 60)
+	_expect_int("...and still clears the counter", int(gs.damage_today), 0)
+	_expect_true("...and says nothing at all", not _feed_mentions(gs, "health back"))
+
+	# The night after a REST taken FROM the night slot. The slot is spent, the
+	# day crosses, and the morning then judges the day that just ended -- which
+	# is the day that hurt. Both halves land, in that order.
+	gs.reset_to_new_game()
+	gs.day = 10
+	gs.health = 50
+	gs.rebase_health_seen()
+	gs.damage_today = 6
+	gs.time_slots_today = 3
+	gs.time_slot = "NIGHT"
+	gm.dispatch("rest", {})
+	_expect_int("a night REST heals its full amount",
+		int(gs.health), 50 + int(recovery.REST_HEALTH))
+	_expect_int("...and the morning after a day that hurt adds nothing",
+		int(gs.health), 50 + int(recovery.REST_HEALTH))
+	_expect_int("...and the counter is cleared by the night it crossed",
+		int(gs.damage_today), 0)
+
+	# SO-D5: the walk. Five health, no money, and no soft lock -- two RESTs
+	# clear the band inside a day, and nine damage-free days reach the ceiling.
+	gs.reset_to_new_game()
+	gs.day = 10
+	gs.health = 5
+	gs.rebase_health_seen()
+	gs.cash = 0
+	gs.clean_cash = 0
+	gs.dirty_cash = 0
+	gs.damage_today = 0
+	gs.time_slots_today = 0
+	_expect_true("a broke player at 5 health can still rest",
+		str(recovery.rest_blocker()).is_empty())
+	gm.dispatch("rest", {})
+	gm.dispatch("rest", {})
+	_expect_int("two RESTs put them at 25", int(gs.health), 25)
+	gm.dispatch("rest", {})
+	_expect_true("a third clears the severe band inside one day",
+		int(gs.health) > int(recovery.SEVERE_AT))
+	_expect_true("...and it cost no money", int(gs.cash) == 0)
+
+	# SO-D5's second half: 100 within nine damage-free days, from 5 health with
+	# no money. The free road is REST plus the night, so that is what is driven.
+	#
+	# The first version of this arm asserted the NIGHT ALONE would reach the
+	# ceiling and drove 400 crossings to try. It stalled at 16 -- because a run
+	# with $0 misses two rents and is EVICTED on day 22, and `settle_overnight`
+	# correctly stops on `game_over`. That was the arm measuring eviction, not
+	# recovery. Nine days is the ruling's own window and is well inside it.
+	gs.reset_to_new_game()
+	gs.day = 10
+	gs.health = 5
+	gs.rebase_health_seen()
+	gs.cash = 0
+	gs.clean_cash = 0
+	gs.dirty_cash = 0
+	gs.damage_today = 0
+	gs.time_slots_today = 0
+	var start_day: int = int(gs.day)
+	var guard := 0
+	while int(gs.health) < int(gs.health_max) and guard < 60 and not gs.game_over:
+		guard += 1
+		if str(recovery.rest_blocker()).is_empty():
+			gm.dispatch("rest", {})
+		else:
+			gm.dispatch("advance_time", {})
+	_expect_int("resting the free road reaches the ceiling", int(gs.health),
+		int(gs.health_max))
+	_expect_true("...inside nine damage-free days (%d)" % (int(gs.day) - start_day),
+		int(gs.day) - start_day <= 9)
+	_expect_true("...and it cost nothing", int(gs.cash) == 0)
+	_expect_true("...and the run is still alive to have spent the time",
+		not gs.game_over)
+
+	# And the night alone, on a run that stays fed: slow, but it climbs out of
+	# the band on its own, which is the "no soft lock" half of the ruling.
+	gs.reset_to_new_game()
+	gs.day = 10
+	gs.health = 5
+	gs.rebase_health_seen()
+	gs.damage_today = 0
+	guard = 0
+	while bool(recovery.is_severe()) and guard < 60 and not gs.game_over:
+		guard += 1
+		# Kept fed AND kept housed. Rent is paid by an explicit action, not
+		# deducted, so topping up the wallet is not enough -- the first version
+		# of this arm was evicted on day 22 at 16 health and exited the loop on
+		# `game_over` rather than on leaving the band, which measured eviction
+		# instead of healing.
+		gs.cash = 5000
+		gs.clean_cash = 5000
+		if int(gs.day) >= int(gs.rent_due_day):
+			gm.dispatch("pay_rent", {})
+		gs.damage_today = 0
+		_cross_one_day(gs, gm)
+	_expect_true("the night alone climbs out of the severe band (%d nights)" % guard,
+		not bool(recovery.is_severe()))
+	_expect_true("...and it is slow enough to hurt: %d nights against three days of resting" % guard,
+		guard >= 20)
+	gs.reset_to_new_game()
+
+## One whole day, through the real dispatch path, however many slots are left.
+func _cross_one_day(gs: Node, gm: Node) -> void:
+	var target: int = int(gs.day) + 1
+	var guard := 0
+	while int(gs.day) < target and guard < 40:
+		guard += 1
+		gm.dispatch("advance_time", {})
+
+## Does the feed carry a line containing this text?
+func _feed_mentions(gs: Node, text: String) -> bool:
+	for entry in gs.activity_log:
+		if str((entry as Dictionary).get("text", "")).contains(text):
+			return true
+	return false
+
 ## SO-D4 (1.6.0): what today has taken off you.
 ##
 ## The night (SO-D2) only heals a day that did no damage, so this fact has to be
@@ -24803,18 +24999,27 @@ func _check_damage_today(gs: Node, gm: Node) -> void:
 	# working, not a fault. So the fixture settles the staged value through a
 	# dispatch and then zeroes the counter explicitly, the same way the stickup
 	# sub-arm below does, rather than pretending the staging was free.
+	#
+	# SO-D2: every dispatch below is held INSIDE one day. `advance_time` from
+	# the last slot crosses the night, and the night's own step clears
+	# `damage_today` -- correctly, since the day it described is over. This arm
+	# measures accumulation WITHIN a day, so it keeps the clock at the top of
+	# the day rather than measuring the night by accident.
 	gs.reset_to_new_game()
 	gs.health = 80
+	gs.time_slots_today = 0
 	gm.dispatch("advance_time", {})
 	_expect_int("staging a hurt run is itself counted", int(gs.damage_today), 20)
 	gs.damage_today = 0
 	_expect_int("premise: the counter is cleared for the measurement",
 		int(gs.damage_today), 0)
 	gs.health = 68
+	gs.time_slots_today = 0
 	gm.dispatch("advance_time", {})
 	_expect_int("a twelve-point hit is twelve points of damage",
 		int(gs.damage_today), 12)
 	gs.health = 60
+	gs.time_slots_today = 0
 	gm.dispatch("advance_time", {})
 	_expect_int("...and a second hit adds to it", int(gs.damage_today), 20)
 
@@ -24822,6 +25027,7 @@ func _check_damage_today(gs: Node, gm: Node) -> void:
 	# did the day net out" -- a player who takes 20 and buys 40 back still had a
 	# day that hurt, and the night should not heal them for it.
 	gs.health = 100
+	gs.time_slots_today = 0
 	gm.dispatch("advance_time", {})
 	_expect_int("healing does not undo the day's damage", int(gs.damage_today), 20)
 	_expect_int("...and health is what the heal made it", int(gs.health), 100)
@@ -24837,6 +25043,7 @@ func _check_damage_today(gs: Node, gm: Node) -> void:
 	saves._apply(mid_day)
 	_expect_int("...and comes back on the other side of a load",
 		int(gs.damage_today), 20)
+	gs.time_slots_today = 0
 	gm.dispatch("advance_time", {})
 	_expect_int("...without the load itself adding to it", int(gs.damage_today), 20)
 
@@ -27618,3 +27825,11 @@ func _curtis_quiet_rows(exposure: Node) -> int:
 		if str((row as Dictionary).get("event", "")) == "quiet_day":
 			count += int((row as Dictionary).get("count", 1))
 	return count
+
+## The last few feed lines, for a diagnostic that needs to say WHY.
+func _recent_feed(gs: Node, count: int) -> Array:
+	var out: Array = []
+	var log_rows: Array = gs.activity_log
+	for i in range(maxi(0, log_rows.size() - count), log_rows.size()):
+		out.append(str((log_rows[i] as Dictionary).get("text", "")))
+	return out

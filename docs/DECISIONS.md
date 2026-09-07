@@ -2145,6 +2145,71 @@ and in `SaveSystem._apply()`, because without that the first dispatch after a
 load charges the difference between two different runs' health as damage taken
 today — the danger list's first entry, and asserted in both directions.
 
+### The rulings PR 2 depends on
+
+**SO-D2 — The night heals a day that did no damage.** A `recovery_overnight`
+step in `DAY_START_ORDER`, **immediately after `heat_day_reset`** and before
+anything that can deal damage, calling `recovery.settle_overnight()`:
+
+- `damage_today == 0` and out of the severe band → **`OVERNIGHT_HEALTH := 3`**
+- `damage_today == 0` and in the band → **`OVERNIGHT_SEVERE := 1`**
+- `damage_today > 0` → nothing
+- then `damage_today` is cleared either way, because the day it described is over.
+
+The position is load-bearing and the trace pin is literal: the step reads
+yesterday's `damage_today` and then clears it, so nothing between the day's
+reset and this step may deal damage.
+
+**One function owns the rate.** `settle_overnight()` and the pure
+`overnight_amount()` beside it are the only places a night's value is decided,
+so a later injury state (laid up, hospitalised, incapacity) has exactly one
+place to gate rather than a rule scattered through a lifecycle step. That is
+the extension point this build leaves behind deliberately.
+
+A night that healed writes one feed line; a night that did not writes none —
+"you did not heal" is not news, and a line every morning is noise a player
+learns to skip past the mornings that matter.
+
+**SO-D5 — Serious injury stays dangerous and never soft-locks.** The severe
+band is a **number the overnight rule reads, not a state**: nothing latches,
+nothing has to be cleared, and a player crosses back out of it the moment their
+health does. At or below `SEVERE_AT := 30` the night gives at most 1 — but
+**REST still gives its full 10, and first aid, the clinic and the doctor are
+untouched** (owner ruling 6). A broke player at 5 health with $0 is never
+stuck.
+
+### Measured (MEAS-D1) — the night
+
+| Case | Health before | After | Feed |
+|---|---|---|---|
+| damage-free day | 60 | **63** | "A night nobody came looking. 3 health back." |
+| a day that hurt | 48 | **48** | *(none)* |
+| damage-free, in the band | 25 | **26** | "You sleep badly and wake up barely better. 1 back." |
+| at full health | 100 | 100 | *(none)* |
+
+**The free road, driven from 5 health with $0** (SO-D5): three RESTs clear the
+severe band inside one day, and resting reaches the ceiling in **3 days**,
+inside the ruling's nine-day window, having spent nothing.
+
+**The night alone, from 5 health**, takes **26 nights** to climb out of the
+band — against three days of resting. That gap is the design: sleeping is free
+and slow, a bed is free and fast, and a bill is fast and expensive.
+
+### A real finding from PR 2's own test work
+
+**A broke player in the severe band is evicted before the night can heal them.**
+The first version of the band arm drove nights alone from 5 health with no
+money and stalled at 16 health — because a run with $0 misses two rents and is
+evicted on **day 22**, and `settle_overnight` correctly stops on `game_over`.
+The arm was measuring eviction, not recovery.
+
+The arm now keeps the run housed so it measures what it claims to. But the
+underlying fact is real and is worth an owner's eye: **on the night alone, the
+severe band outlasts the rent clock.** It is not a soft lock — REST is free and
+clears the band in a day — but it does mean the night is not, by itself, a road
+back for a player with no money and no time. That is the argument for REST
+existing, and it is recorded rather than tuned.
+
 ## D-34 — The Floor: death at zero, and there is no way out
 
 **Decided** 2026-09-06 · **Ships in** 1.5.1, three PRs (the floor; the first

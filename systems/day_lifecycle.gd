@@ -185,6 +185,11 @@ const POST_SETTLE_ORDER: Array[String] = [
 ## it changes when a paid-for line comes back.
 const DAY_START_ORDER: Array[String] = [
 	"heat_day_reset",
+	# SO-D2 (1.6.0): the night heals a day that did no damage. SECOND, and the
+	# position is load-bearing: it reads `damage_today` from the day that just
+	# ended and then clears it, so nothing between the day's reset and this
+	# step may deal damage.
+	"recovery_overnight",
 	"stickup_day_reset",
 	"expire_retaliation",
 	"surface_delayed",
@@ -481,6 +486,11 @@ func _run_day_start_step(step: String, today: int) -> void:
 		var stick: Object = gm.system("stickup") if gm != null else null
 		if stick != null:
 			stick.day_reset(today)
+		return
+	if step == "recovery_overnight":
+		var recovery: Object = gm.system("recovery") if gm != null else null
+		if recovery != null:
+			recovery.settle_overnight(today)
 		return
 	if step == "heat_day_reset":
 		gs.heat_gain_today = 0.0

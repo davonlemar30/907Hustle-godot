@@ -99,6 +99,22 @@ const TREATMENTS := [FIRST_AID, CLINIC, DOCTOR]
 
 ## SO-D1: what one slot of sleep is worth. Owner ruling 1, range 8-12.
 const REST_HEALTH := 10
+## SO-D2/SO-D5: the night, in three numbers.
+##
+## `settle_overnight()` is the ONE function that decides what a night gives
+## back, so a later injury state (laid up, hospitalised, incapacity) has exactly
+## one place to gate rather than a rule scattered across a lifecycle step.
+##
+## A night only heals a day that did no damage: keeping working while hurt is
+## the choice the player is making, and the night is what they gave up to make
+## it. Below the severe band it heals barely at all on its own -- serious injury
+## stays dangerous -- but REST and the whole paid ladder still work at full
+## strength there, so a broke player at 5 health is never soft-locked (SO-D5,
+## owner ruling 3).
+const OVERNIGHT_HEALTH := 3
+const OVERNIGHT_SEVERE := 1
+const SEVERE_AT := 30
+
 ## SO-D3: the quiet, inherited from Lay Low. Canon:
 ## `max(1, 2 + baseBonus - danger)`, both terms pinned at 0 without the base
 ## system, so the reduction is a flat 2. Once a day (`lay_low_day`).
@@ -325,3 +341,52 @@ func _rest_line(restored: int, went_quiet: bool, dropped: float) -> String:
 	if restored > 0:
 		return "You lie down again. %d health back." % restored
 	return "You lie down again. Nothing much changes."
+
+# --- the night (SO-D2, SO-D5) ----------------------------------------------
+
+## True when this run is hurt badly enough that the night barely helps.
+##
+## A number the overnight rule reads, and deliberately NOT a state: nothing
+## latches, nothing has to be cleared, and a player crosses back out of it the
+## moment their health does. The screens can read it too, if they ever want to.
+func is_severe() -> bool:
+	return int(gs.health) <= SEVERE_AT
+
+## What tonight would give back, before it is given. Pure, so the suite can pin
+## the table without driving a night.
+func overnight_amount() -> int:
+	if int(gs.damage_today) > 0:
+		return 0
+	if int(gs.health) >= int(gs.health_max):
+		return 0
+	return OVERNIGHT_SEVERE if is_severe() else OVERNIGHT_HEALTH
+
+## DAY_START `recovery_overnight`, immediately after `heat_day_reset`.
+##
+## It runs second on purpose. It reads `damage_today` from the day that just
+## ended and then clears it, so nothing between the day's reset and this step
+## may deal damage -- which is why the position is second and why the lifecycle
+## trace pin for it is literal.
+##
+## A night that healed writes one feed line. A night that did not writes none:
+## "you did not heal" is not news, and a line every morning would be noise the
+## player learns to skip past the mornings that matter.
+func settle_overnight(_today: int) -> void:
+	if gs.game_over:
+		return
+	var amount: int = overnight_amount()
+	if amount > 0:
+		var before: int = int(gs.health)
+		gs.health = clampi(before + amount, 0, int(gs.health_max))
+		var restored: int = int(gs.health) - before
+		if restored > 0:
+			gs.log_activity(_overnight_line(restored), GREEN)
+	# Cleared whether or not anything healed: the day it described is over.
+	gs.damage_today = 0
+
+## VOX-D1. A night is a fact. The severe line says less on purpose -- somebody
+## this hurt does not wake up feeling reported on.
+func _overnight_line(restored: int) -> String:
+	if is_severe():
+		return "You sleep badly and wake up barely better. %d back." % restored
+	return "A night nobody came looking. %d health back." % restored

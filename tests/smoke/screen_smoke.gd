@@ -355,6 +355,16 @@ func _stage_long_lines(gs: Node) -> void:
 	# beater's own producer is turned off here -- this fixture wants a stated
 	# board, not whichever one a cold morning would have produced.
 	gs.beater_dead_today = false
+	# SO-D1/SO-D3 (1.6.0): the Recovery screen's REST card and Home's Actions
+	# card at 375. Hurt enough that the ladder reveals its lower rungs and the
+	# REST card previews health, and hot enough that it also previews the
+	# quiet -- which is the longest the card ever gets. `lay_low_day` is cleared
+	# so today's quiet is unspent; the spent state is asserted in parity, where
+	# it can be driven rather than staged.
+	gs.health = 40
+	gs.heat = 6.0
+	gs.lay_low_day = -1
+	gs.damage_today = 12
 	# HSS-D9: the verbs and their blockers at 375. Tone is already on the roster
 	# from the RM-D7 staging above, which is the crew_count_min LEAN needs; a
 	# WARM Lani is what ASK needs. Between them the laundromat's row renders both

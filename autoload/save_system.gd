@@ -199,6 +199,14 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## exist.
 ## v31: `game_over_kind`, `leaving`, `run_earnings` (One Good Run PR 4,
 ## OG-D4) -- the ending. Additive.
+## v36: `damage_today` (Sleep It Off PR 1, SO-D4) -- how much health today has
+## taken off you. Additive: a v35 save loads with 0, which reads as "today has
+## not hurt yet" and is the correct answer for a save being opened. The
+## overnight heal (SO-D2) only lands after a damage-free day, so the night
+## needs this fact and nothing owned it; it is DERIVED in
+## `reconcile_persistent_invariants()` from the health that state last saw
+## rather than reported by the fourteen damage writers, which would have been
+## fourteen places to forget. See `GameState.damage_today`.
 ## v35: `businesses` (Her Side of the Street PR 1, HSS-D2) -- the businesses
 ## the player knows about, and where each one stands. Additive: a v34 save
 ## loads with `{}` and discovers its businesses from the history it already
@@ -218,7 +226,7 @@ const SAVE_TEMP_PATH := SAVE_PATH + ".tmp"
 ## PR 3, HS-D3) -- the districts he is out of, and the hold toward it.
 ## v32: `hot_goods` (One Good Run PR 5, OG-D5) -- what the Lift walked out
 ## with and has not fenced. Additive: an empty coat.
-const SAVE_VERSION := 35
+const SAVE_VERSION := 36
 const RANK := preload("res://data/rank.gd")
 const SAVE_VALIDATOR := preload("res://autoload/save_validator.gd")
 const TERRITORY_DEFS := preload("res://data/territory_definitions.gd")
@@ -291,6 +299,8 @@ const PERSIST_FIELDS: Array[String] = [
 	# Heat's teeth (v12). `heat_gain_today` is the quiet-day flag and must
 	# survive a mid-day reload or the day gets a decay it did not earn.
 	"heat_gain_today", "lay_low_day",
+	# What today has taken off you (v36, SO-D4).
+	"damage_today",
 	# Wander (v13). The ramp and the seen-cards ledger; both are the run's own
 	# history of going out and looking, and neither can be reconstructed.
 	"wander_misses", "wander_count", "wander_seen", "wander_recent",
@@ -970,6 +980,10 @@ func _migrate(payload: Dictionary) -> Dictionary:
 				# v24 -> v25: wander_quiet_streak. Purely additive -- see this
 				# arm's own paragraph by SAVE_VERSION.
 				pass
+			35:
+				# v35 -> v36: damage_today. Additive; 0 is "today has not hurt
+				# yet", which is the right answer for a save being opened.
+				pass
 			34:
 				# v34 -> v35: businesses. Additive; the rows are discovered
 				# from latches this save already carries -- see this arm's own
@@ -1047,6 +1061,11 @@ func _apply(state: Dictionary) -> void:
 		if prices.has(id):
 			prod.price = clampi(int(prices[id]), int(prod.min), int(prod.max))
 	_classify_loaded_wallet(state)
+	# SO-D4: the loaded run's health is now this state's health, so the damage
+	# comparison basis has to move with it. Without this the first dispatch
+	# after a load would charge the difference between the run that was in
+	# memory and the run that just replaced it as damage taken today.
+	gs.rebase_health_seen()
 
 ## Guarantee `cash == dirty_cash + clean_cash` on everything that loads.
 ##

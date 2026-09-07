@@ -110,7 +110,7 @@ func _build_body() -> void:
 		body.add_child(_menu_row(
 			"Recovery",
 			"Health %d" % gs.health,
-			"Treat injuries or lay low to reduce Heat.",
+			"Treat injuries, or sleep one off to heal and go quiet.",
 			nav.RECOVERY))
 
 	body.add_child(_menu_row(

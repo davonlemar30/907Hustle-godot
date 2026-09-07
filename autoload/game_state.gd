@@ -221,7 +221,7 @@ var map_cells: int = 12
 var active_operation: Dictionary = {
 	"title": "TONIGHT'S OPERATION",
 	"body": "Curtis is probing Minnesota Off-Ramp. Police pressure rising in North Spenard.",
-	"actions": ["MOVE PRODUCT", "POST ELI", "LAY LOW"],
+	"actions": ["MOVE PRODUCT", "POST ELI", "REST"],
 }
 
 # --- Activity feed ---------------------------------------------------------------
@@ -461,6 +461,12 @@ func reset_to_new_game() -> void:
 	# Heat starts cool, quiet and un-laid-low.
 	heat_gain_today = 0.0
 	lay_low_day = -1
+	# SO-D4: a new run has taken nothing off you yet, and the comparison basis
+	# is re-based to the health this run actually starts at. Without the
+	# re-base, the first dispatch after a reset would charge the difference
+	# between the old run's health and 100 as damage.
+	damage_today = 0
+	_health_seen = health
 	# Nothing walked, nothing found, nothing seen.
 	wander_misses = 0
 	wander_quiet_streak = 0
@@ -773,7 +779,35 @@ func reconcile_persistent_invariants() -> void:
 	if health < health_max or heat > 1.0:
 		recovery_introduced = true
 	_reconcile_progression_latches()
+	# SO-D4 BEFORE FL-D1: a lethal hit is counted like any other. It does not
+	# matter to the dead player; it matters to the invariant that every drop in
+	# health is accounted for, which is what makes the night's "did today hurt"
+	# read trustworthy.
+	_reconcile_damage_today()
 	_reconcile_the_floor()
+
+## SO-D4 (1.6.0): derive today's damage from the health this state last saw.
+##
+## Only DROPS count. A heal moves the basis up without crediting anything back,
+## because `damage_today` answers "did today hurt" and not "where did the day
+## net out" -- a player who takes 20 and buys 40 back still had a day that hurt,
+## and the night should not heal them for it.
+func _reconcile_damage_today() -> void:
+	if _health_seen < 0:
+		_health_seen = health
+		return
+	if health < _health_seen:
+		damage_today += _health_seen - health
+	_health_seen = health
+
+## Re-base the comparison basis to the current health without charging anything.
+##
+## Called when the run changes underneath this state -- a reset, or a save
+## applied over it. `SaveSystem._apply()` writes health directly, so without
+## this the next dispatch would read the difference between two different runs
+## as damage taken today.
+func rebase_health_seen() -> void:
+	_health_seen = health
 
 ## FL-D1 (1.5.1): zero is death, checked in one place.
 ##
@@ -1795,7 +1829,41 @@ var venues_entered: Array = []
 ## would hand back a decay the day had not earned.
 var heat_gain_today: float = 0.0
 
-## The day Lay Low was last used. Once a day.
+## SO-D4 (1.6.0, v36): how much health today has taken off you.
+##
+## The overnight heal (SO-D2) only lands after a day that did no damage, so the
+## night needs to know whether the day hurt. Nothing owned that fact: health is
+## written at fourteen sites with no owner, and asking each of them to report
+## would be fourteen places to forget.
+##
+## So it is derived rather than reported. `reconcile_persistent_invariants()`
+## runs inside every successful dispatch and already reads health for FL-D1's
+## floor; it keeps a runtime-only `_health_seen` and adds any DROP since the
+## last dispatch here. Heals never subtract — this is a record of what the day
+## cost, not a net.
+##
+## Persisted for the same reason `heat_gain_today` is: a run closed after the
+## robbery and reopened before the night must still be having the day it was
+## having, or a reload would hand back a night the day had not earned.
+## Zeroed at run start and by the overnight step itself.
+var damage_today: int = 0
+
+## Runtime only, and deliberately NOT persisted: the health this state last saw.
+##
+## It is a comparison basis, not a fact about the run, and persisting it would
+## make it a second source of truth for a number `health` already holds. It is
+## re-based whenever the run changes underneath it — `reset_to_new_game()` and
+## `SaveSystem._apply()` — because the alternative is charging the difference
+## between two different runs' health to `damage_today` on the first dispatch
+## after a load. See `rebase_health_seen()`.
+var _health_seen: int = -1
+
+## The day the quiet was last taken. Once a day.
+##
+## SO-D3 (1.6.0) folded Lay Low into REST and this field kept its NAME, because
+## renaming a persisted field is a schema change this build does not need. What
+## it stamps now is the first REST of a day -- the one that also sheds Heat and
+## files Curtis's read. Later RESTs that day heal and leave this alone.
 ##
 ## It had no blocker of any kind — no cost, no cap, no gate — which made four
 ## slots a day worth 8.0 of shedding for free, against a street stop that can

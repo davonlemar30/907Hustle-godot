@@ -25,17 +25,42 @@ extends RefCounted
 ## can do mid-crisis, which is what makes the expensive options a real decision
 ## rather than a formality.
 ##
-## ## Lay Low
+## ## REST, and the quiet that used to be its own verb
 ##
-## Canon drops Heat by `max(1, 2 + baseBonus - danger)` and files a `discretion`
-## observation on Curtis's network — going quiet is itself something the
-## neighborhood notices, and Curtis is the one who notices it. Both terms need
-## the base system (`base.tracks.security`, `base.watched`), so the reduction is
-## a flat 2 here and named below.
+## SO-D1/SO-D3 (1.6.0). Canon had a free rest at home (`SLEEP_HOME`,
+## game-core.js:8764-8769) and the port dropped it, which is how the game
+## arrived at 1.5.1 with health that only ever went down unless you paid. REST
+## is that verb: **no money, one slot, +10 health.** It is the free road; the
+## ladder above stays the fast one, and four times faster per slot.
 ##
-## Canon's warning is on the screen, not in the code, and it is the point of the
-## action: **debt, wages, markets and Curtis keep moving while the lights are
-## off.** Laying low is not a pause, it is a trade.
+## **Lay Low was folded into it.** Lay Low spent a slot, cost nothing, shed a
+## flat 2.0 Heat and filed a `discretion` observation on Curtis's network — and
+## touched health nowhere. Its fiction ("lights off, phone down") was already
+## resting and its cost was already REST's cost, so carrying two do-nothing
+## verbs was carrying one too many.
+##
+## What survived the fold is the part that was actually distinct: Lay Low was
+## the only **on-demand, no-money, no-crew Heat sink** in the game — the one
+## lever you can pull before a street stop rather than waiting for the night —
+## and the only action that made going quiet something Curtis reads. So the
+## **first REST of each day** still does both: it sheds `REST_QUIET_HEAT`
+## through `apply_relief` (which bypasses the district and Deshawn multipliers
+## on purpose — TI-003 regression #15; having Deshawn on the crew must not make
+## going quiet work less well) and files Curtis's `quiet_day`. Later RESTs that
+## day heal only.
+##
+## The once-a-day cap is batch 8's and is kept for batch 8's reason: four
+## Lay Lows a day was 8.0 of shedding for free, which is more Heat than a day of
+## play generates, and it meant Heat could always be ground off rather than
+## carried. The HEALING has no such cap (owner default 2) — time is the cap, and
+## four slots spent resting is a whole day not earning.
+##
+## `lay_low_day` keeps its name. It still means "the day the quiet was taken";
+## renaming a persisted field is a schema change this build does not need.
+##
+## Canon's warning is on the screen, not in the code, and it is still the point:
+## **debt, wages, markets and Curtis keep moving while the lights are off.**
+## Resting is not a pause, it is a trade.
 ##
 ## ## Not ported, each named rather than stubbed
 ##
@@ -51,7 +76,7 @@ extends RefCounted
 const GREEN := Color(0.451, 0.722, 0.404)
 const BLUE := Color(0.373, 0.663, 0.847)
 
-## The shared owners. Treatments spend; Lay Low relieves.
+## The shared owners. Treatments spend; the day's first REST relieves.
 func _wallet() -> Object:
 	return gm.system("wallet")
 
@@ -72,9 +97,12 @@ const DOCTOR := {"id": "doctor", "name": "No-Questions Doctor", "amount": 75, "c
 
 const TREATMENTS := [FIRST_AID, CLINIC, DOCTOR]
 
-## Canon: `max(1, 2 + baseBonus - danger)`, both terms pinned at 0 without the
-## base system, so the reduction is a flat 2.
-const LAY_LOW_HEAT := 2
+## SO-D1: what one slot of sleep is worth. Owner ruling 1, range 8-12.
+const REST_HEALTH := 10
+## SO-D3: the quiet, inherited from Lay Low. Canon:
+## `max(1, 2 + baseBonus - danger)`, both terms pinned at 0 without the base
+## system, so the reduction is a flat 2. Once a day (`lay_low_day`).
+const REST_QUIET_HEAT := 2
 
 ## Canon gates the No-Questions Doctor on `base.tracks.recovery >= 2 ||
 ## npc.mina.trust >= 3`. There is no base system, and `npc.mina.trust` is a
@@ -86,8 +114,8 @@ const DOCTOR_BAND := "trusted"
 
 var gs: Node
 var time_system: RefCounted
-## Reached for the wallet and the heat system: treatments spend, Lay Low
-## relieves.
+## Reached for the wallet and the heat system: treatments spend, the day's
+## first REST relieves.
 var gm: Node
 
 func setup(game_state: Node, time: RefCounted, manager: Node) -> void:
@@ -99,7 +127,7 @@ func _exposure() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("/root/Exposure")
 
 func can_handle(action: String) -> bool:
-	return action in ["use_first_aid", "heal", "lay_low"]
+	return action in ["use_first_aid", "heal", "rest"]
 
 func handle(action: String, payload: Dictionary) -> Dictionary:
 	match action:
@@ -107,8 +135,8 @@ func handle(action: String, payload: Dictionary) -> Dictionary:
 			return _treat(FIRST_AID)
 		"heal":
 			return _heal(str(payload.get("treatment_id", "")))
-		"lay_low":
-			return _lay_low()
+		"rest":
+			return _rest()
 	return {"ok": false, "reason": "Unknown recovery action."}
 
 # --- reads -----------------------------------------------------------------
@@ -174,14 +202,23 @@ func treat_blocker(treatment: Dictionary) -> String:
 
 ## Canon layLowPreview. The `min` against current Heat is presentation — the
 ## reducer clamps at 0 anyway — but it is what stops the card promising a drop
-## of 2 to somebody sitting at 1.
+## of 2 to somebody sitting at 1. SO-D3: it also returns 0 once today's quiet
+## has been spent, so a second REST's card does not promise Heat it will not
+## shed.
 ##
 ## **Returns a float on purpose.** Heat became fractional in Phase 3e (Deshawn's
 ## 0.80 reduction needs it), and canon does not round this either. A first pass
 ## returned int and silently truncated a player at 1.6 into a promised drop of
 ## 1 — the parity fixture caught it, because it walks heats that are not whole.
-func lay_low_preview() -> float:
-	return minf(gs.heat, float(LAY_LOW_HEAT))
+func rest_quiet_preview() -> float:
+	if not quiet_available():
+		return 0.0
+	return minf(gs.heat, float(REST_QUIET_HEAT))
+
+## SO-D1: what one REST would put back, clamped by the ceiling. The card
+## promises this and `_rest` delivers exactly it.
+func rest_health_preview() -> int:
+	return mini(int(gs.health_max) - int(gs.health), REST_HEALTH)
 
 # --- actions ---------------------------------------------------------------
 
@@ -221,44 +258,70 @@ func _heal(treatment_id: String) -> Dictionary:
 		return {"ok": false, "reason": "You have no private medical contact."}
 	return _treat(treatment)
 
-## Why Lay Low can be refused, or "" if it cannot.
+## SO-D1: why REST can be refused, or "" if it cannot.
 ##
-## Every other action on this screen has had a blocker since it shipped; Lay Low
-## had none at all — no cost, no cap, no gate. Four slots a day made it worth
-## 8.0 of shedding for free, which is more Heat than any single day of play can
-## realistically generate, and it meant Heat could always be ground off rather
-## than carried. Batch 8's whole subject is Heat being something you live with,
-## and it cannot be while this is unlimited.
+## There has to be something to sleep off. At full health with no Heat there is
+## nothing REST would do, and an action that runs and changes nothing is worse
+## than one that says so. Heat above zero counts as something to sleep off even
+## at full health, because the day's first REST is still the quiet one.
 ##
-## Once a day, and the day is the unit deliberately: a cap of two would be a
-## smaller version of the same "spend slots until it is gone" answer.
-func lay_low_blocker() -> String:
+## Note what is NOT here: a once-a-day cap on resting (owner default 2 -- time
+## is the cap), a district gate (owner default 4 -- canon's rest had none, and
+## Home is a tab rather than a place), and any money.
+func rest_blocker() -> String:
 	if gs.game_over:
 		return "The run is over"
-	if int(gs.lay_low_day) == gs.day:
-		return "You already went quiet today"
+	if int(gs.health) >= int(gs.health_max) and float(gs.heat) <= 0.0:
+		return "Nothing to sleep off"
 	return ""
 
-## Canon's LAY_LOW: Heat down, one slot gone, and Curtis hears about the quiet.
+## True when today's quiet is still unspent -- the first REST of a day sheds
+## Heat and files Curtis's read, later ones only heal. Read by the Recovery
+## screen so the card can preview both halves honestly.
+func quiet_available() -> bool:
+	return int(gs.lay_low_day) != int(gs.day)
+
+## SO-D1/SO-D3: sleep it off.
 ##
-## The observation is the part that is easy to miss. Going quiet is not
-## invisible — it is a `discretion` row on the network channel, and Curtis is
-## the one lens that reads discretion as information about you.
-func _lay_low() -> Dictionary:
-	var blocked: String = lay_low_blocker()
+## Every REST heals. The FIRST REST of a day is also the quiet one: it sheds
+## Heat and Curtis notices. Both halves are reported so the caller can say what
+## actually happened rather than guessing from the state afterwards.
+func _rest() -> Dictionary:
+	var blocked: String = rest_blocker()
 	if not blocked.is_empty():
 		return {"ok": false, "reason": blocked + "."}
-	# Relief, not a negative gain. TI-003 §7: relief bypasses the district and
-	# Deshawn multipliers — having Deshawn on the crew must not make going quiet
-	# work less well, which is what routing this through the gain pipeline would
-	# do. `apply_relief` returns a signed delta; the copy wants the magnitude.
-	var dropped: float = -_heat().apply_relief(float(LAY_LOW_HEAT),
-		{"source_id": "lay_low"})
-	var exposure: Node = _exposure()
-	if exposure != null:
-		exposure.record_observation("curtis",
-			{"type": "discretion", "event": "quiet_day", "source": "network"})
-	gs.lay_low_day = gs.day
-	gs.log_activity("Lights off, phone down. Heat drops %.1f." % dropped, BLUE)
+
+	var before: int = int(gs.health)
+	gs.health = clampi(int(gs.health) + REST_HEALTH, 0, int(gs.health_max))
+	var restored: int = int(gs.health) - before
+
+	# The quiet, once a day (batch 8's cap, kept). Relief and not a negative
+	# gain: TI-003 §7 has relief bypass the district and Deshawn multipliers,
+	# because having Deshawn on the crew must not make going quiet work less
+	# well, which is what routing this through the gain pipeline would do.
+	# `apply_relief` returns a signed delta; the copy wants the magnitude.
+	var dropped: float = 0.0
+	var went_quiet: bool = quiet_available()
+	if went_quiet:
+		dropped = -_heat().apply_relief(float(REST_QUIET_HEAT), {"source_id": "rest_quiet"})
+		var exposure: Node = _exposure()
+		if exposure != null:
+			exposure.record_observation("curtis",
+				{"type": "discretion", "event": "quiet_day", "source": "network"})
+		gs.lay_low_day = int(gs.day)
+
+	gs.log_activity(_rest_line(restored, went_quiet, dropped), BLUE)
 	time_system.handle("advance_time", {})
-	return {"ok": true, "dropped": dropped}
+	return {"ok": true, "restored": restored, "dropped": dropped, "quiet": went_quiet}
+
+## VOX-D1, the Power register. "Lights off, phone down" was Lay Low's line and
+## it stays, because it was always describing rest. The health is a fact, not a
+## comfort -- nobody is tucked in.
+func _rest_line(restored: int, went_quiet: bool, dropped: float) -> String:
+	if went_quiet and restored > 0:
+		return "Lights off, phone down. %d health back, and the heat drops %.1f." % [restored, dropped]
+	if went_quiet:
+		return "Lights off, phone down. The heat drops %.1f." % dropped
+	if restored > 0:
+		return "You lie down again. %d health back." % restored
+	return "You lie down again. Nothing much changes."

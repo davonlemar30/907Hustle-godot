@@ -16312,6 +16312,20 @@ const ECON_PROFILES: Array[Dictionary] = [
 	# `_econ_try_repeatables`'s own header for the climb and the scope.
 	{"name": "repeat_contractor", "job": true, "trade": false, "flip": false,
 		"best_job": true, "repeatables": true, "seed": "econ-repeatables"},
+	# SO-D6 (1.6.0): the one that does not look after itself.
+	#
+	# The owner's design-intent line is that "a reckless player who continues
+	# fighting and refuses recovery should still be able to die," and a claim
+	# like that is worth a measurement rather than a paragraph. `reckless` skips
+	# the recovery leg entirely and carries the contest guard past it, so it
+	# fights while hurt exactly the way every profile did before this build.
+	#
+	# It is NOT in `ECON_CORRIDORS` on purpose: it is not a strategy anybody is
+	# measuring the economy of, it is a control. `_check_economy_profiles`
+	# asserts it dies while every other profile does not.
+	{"name": "reckless", "job": true, "trade": false, "flip": false,
+		"turf": true, "wander": true, "best_job": true, "gated": true,
+		"reckless": true, "seed": "econ-settler"},
 ]
 
 ## Corridor assertions (`86bbjxth6`), Batch 18 PR 4.
@@ -16337,6 +16351,25 @@ const ECON_PROFILES: Array[Dictionary] = [
 ## `pct_of_job` rather than raw net worth: net worth swings with the baseline
 ## job's own market-seeded pay, and the corridor should track a profile's
 ## standing RELATIVE to the day job, not chase the baseline's own noise.
+## SO-D6 (1.6.0): what a plausible person does about being hurt.
+##
+## Owner ruling 7's defaults, and they are deliberately blunt. Nothing here
+## reads the odds of the next room, counts remaining slots, or optimises: a
+## driver that survived by being clever would measure a bot's economy, not a
+## strategy's. Treat when a bill is worth it, lie down when it is not, and do
+## not go looking for a fight while hurt.
+const ECON_TREAT_BELOW := 60
+const ECON_REST_BELOW := 40
+## A contest at low health is how the settler was dying: -8 or -16 a loss,
+## opened whenever the wallet could afford the claim and never mind the body.
+const ECON_CONTEST_ABOVE := 50
+
+## SO-D6 (1.6.0): every corridor below was re-measured from a fresh run after
+## the harness gained its recovery leg. **Only `settler` moved** -- it was the
+## only profile that had been dying, and the recovery leg only fires on a run
+## that is actually hurt, so the profiles that never dropped below 60 health
+## measure exactly what they measured before. Their numbers are unchanged and
+## are re-confirmed rather than re-derived.
 const ECON_CORRIDORS: Dictionary = {
 	"legal_worker": {"floor": 100, "ceiling": 100},
 	# WS-D4 (0.8.0) lifted the ceiling from 130: the floor pays a little on
@@ -16489,37 +16522,21 @@ const ECON_CORRIDORS: Dictionary = {
 	# the soldier hire land later too. Measured 180%; floor lowered to the
 	# measured number's margin rather than the name made cheap again.
 	#
-	# FL-D1 (1.5.1): **this profile now dies.** Zero health ends a run as of
-	# this build, and `settler` is the wander-heaviest driver in the sweep --
-	# ~36 walks over thirty days, taking street damage the whole way, and the
-	# driver never rests, visits the clinic or buys a doctor. Measured 158%
-	# across 4 seeds with a **50% game-over rate** and an average run of 28 days
-	# rather than 31; the profiles that do not walk are unmoved.
+	# FL-D1 (1.5.1): this profile DIED, in every seed, and the floor was dropped
+	# to 40 to admit it -- a corridor measuring what a settler earned before dying
+	# rather than what the strategy was worth. That flag is REMOVED here.
 	#
-	# The floor is lowered to the measured number's own margin and NOT tuned
-	# back, the same way every entry above was: the corridor is a measurement,
-	# and the measurement moved because a real bug was fixed. Rebalancing which
-	# hits reach zero is explicitly out of this build's scope (FL-D2), so the
-	# number is disclosed rather than defended. **What this exposes is real and
-	# is worth an owner's decision:** a player who never heals dies inside a
-	# month, and the game has no injury/recovery pressure loop to make that a
-	# choice rather than an accident. That is recorded as follow-up, not fixed
-	# here.
-	# FL-D4 (1.5.1): the same denominator rise and calendar reshuffle as
-	# `flipper` above, on top of FL-D1's floor -- and on this profile the two
-	# compound. Measured **60%, with a 100% game-over rate**: the extra early
-	# cash from a free second week buys more walking, and more walking on a
-	# driver that never heals is more damage. It dies in every seed now, where
-	# in PR 1 it died in half of them.
+	# SO-D6 (1.6.0): the harness heals now. The same profile treats when it is
+	# hurt, lies down when it cannot afford to, and does not open a Curtis
+	# contest below 50 health -- which is where it was dying, at -8 or -16 a lost
+	# fight opened whenever the wallet could afford the claim and never mind the
+	# body. Measured **123% across a full 31 days, zero deaths, minimum health 45,
+	# 14.5 treatments a run** -- against 60% on a 22-day truncated run before.
 	#
-	# **This corridor is now measuring truncated runs**, which makes it a weak
-	# signal for this profile specifically -- it reports what a settler earns
-	# before dying rather than what the strategy is worth. Lowered to the
-	# measured margin and disclosed rather than tuned back, per FL-D2, and
-	# flagged for revisit when an injury/recovery pressure loop exists to make
-	# not-healing a choice. That is the follow-up D-34 records; it is not this
-	# build's to fix.
-	"settler": {"floor": 40, "ceiling": 520},
+	# The floor moves UP to the measured margin, which is the first time a
+	# corridor in this table has, and it is the point: the number can catch a
+	# regression back to dying again now, which at floor 40 it could not.
+	"settler": {"floor": 95, "ceiling": 520},
 	# PR E: measured at 91% of the day job (5 Dre loans taken, 21 Book loans
 	# funded, averaged over the 4 seeds) — leverage roughly breaks even
 	# against steady work once Dre's cut and the arc's own time cost are
@@ -16695,6 +16712,10 @@ func _econ_sellable_here(gs: Node) -> Dictionary:
 ## only assertions are invariants that would be bugs at any balance.
 func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	_econ_ready(gs, profile)
+	# SO-D6: `_econ_try_turf` is reached through several call sites and does not
+	# take the profile, so the one flag it needs rides the state as metadata for
+	# the length of the run rather than being threaded through four signatures.
+	gs.set_meta("econ_reckless", bool(profile.get("reckless", false)))
 	var wants_job: bool = bool(profile.get("job", false))
 	var wants_trade: bool = bool(profile.get("trade", false))
 	var wants_flip: bool = bool(profile.get("flip", false))
@@ -16743,6 +16764,9 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 		"dre_loans_taken": 0, "book_loans_funded": 0,
 		"repeat_contracts_worked": 0,
 		"applications": 0, "jobs": 0, "take": 0,
+		# SO-D6: what the run did about being hurt, and how that went.
+		"treatments": 0, "rests": 0, "damage_taken": 0,
+		"min_health": 100, "deaths": 0,
 	}
 	# The street stop counts on the SYSTEM HANDLE, which is boot-scoped rather
 	# than run-scoped, so this profile's share of it is a delta. See
@@ -16790,6 +16814,10 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 				+ maxi(0, int(gs.arrest_record["priors"]) - before_priors)
 			continue
 		metrics["peak_heat"] = maxf(float(metrics["peak_heat"]), float(gs.heat))
+		# SO-D6: the body, sampled where the wallet already is. `damage_today`
+		# is cleared by the night, so the running total is accumulated here
+		# rather than read at the end.
+		metrics["min_health"] = mini(int(metrics.get("min_health", 100)), int(gs.health))
 		metrics["peak_financial_pressure"] = maxi(
 			int(metrics["peak_financial_pressure"]), int(gs.financial_pressure))
 		var engine: Object = gm.system("consequence")
@@ -16831,6 +16859,50 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 			if gm.dispatch("pay_phone_bill", {"surface": "store"}):
 				metrics["phone_paid"] = int(metrics.get("phone_paid", 0)) + 1
 				continue
+
+		# --- staying alive, above the earning legs (SO-D6) ---
+		#
+		# The harness never healed. 1.5.1 made zero health death and this
+		# instrument went on driving profiles into the ground: measured before
+		# this build, SIX profiles died in 100% of seeds and three more in
+		# 25-50%, so their corridors were reporting what a strategy earns
+		# BEFORE dying rather than what it is worth.
+		#
+		# A person with $135 and 40 health goes to the clinic. A person with no
+		# money lies down. Neither keeps working a shift at 12 health because
+		# the spreadsheet says the shift pays. So the driver treats first, rests
+		# second, and does both above the earning legs -- because a player does.
+		#
+		# Thresholds are owner ruling 7 and are tuned toward a plausible person,
+		# never toward survival: nothing here reads the odds of the next room or
+		# counts how many slots are left. See `RECKLESS` for the profile that
+		# deliberately does none of it.
+		if not bool(profile.get("reckless", false)):
+			var recovery_sys: Object = gm.system("recovery")
+			if recovery_sys != null and int(gs.health) < ECON_TREAT_BELOW:
+				# The clinic if it is on offer and affordable, else first aid.
+				# Read off `visible_treatments()` rather than the constants, so
+				# the driver can only reach a card the ladder actually reveals.
+				var took_treatment := false
+				for treatment in recovery_sys.visible_treatments():
+					var t: Dictionary = treatment
+					if str(t["id"]) == "doctor":
+						continue
+					if int(gs.cash) < int(recovery_sys.treatment_cost(int(t["cost"]))):
+						continue
+					var action := "use_first_aid" if str(t["id"]) == "first_aid" else "heal"
+					if gm.dispatch(action, {"treatment_id": str(t["id"])}):
+						metrics["treatments"] = int(metrics.get("treatments", 0)) + 1
+						took_treatment = true
+						break
+				if took_treatment:
+					continue
+			# Nothing affordable, and hurt enough that working is not the move.
+			if recovery_sys != null and int(gs.health) < ECON_REST_BELOW \
+					and str(recovery_sys.rest_blocker()).is_empty():
+				if gm.dispatch("rest", {}):
+					metrics["rests"] = int(metrics.get("rests", 0)) + 1
+					continue
 
 		# --- the legal leg, first on the ladder for the profiles that have it ---
 		var jobs_system: Object = gm.system("jobs")
@@ -17020,6 +17092,15 @@ func _simulate_economy(gs: Node, gm: Node, profile: Dictionary) -> Dictionary:
 	metrics["final_heat"] = float(gs.heat)
 	metrics["days_played"] = int(gs.day)
 	metrics["game_over"] = bool(gs.game_over)
+	metrics["damage_taken"] = int(metrics.get("damage_taken", 0)) + int(gs.damage_today)
+	# SO-D6: WHY the run ended, separated. `game_over_rate` has always folded
+	# death, eviction, the sentence and Curtis into one number, which is why the
+	# pre-1.6.0 sweep read "six profiles die in every seed" without saying that
+	# some of them were being SENTENCED rather than killed. `deaths` counts only
+	# the floor (FL-D1).
+	metrics["died"] = bool(gs.game_over) and str(gs.game_over_kind) == "dead"
+	metrics["end_kind"] = str(gs.game_over_kind)
+	metrics["final_health"] = int(gs.health)
 	metrics["evicted"] = bool(gs.game_over)
 	metrics["game_over_reason"] = str(gs.game_over_reason)
 	metrics["rent_missed"] = int(gs.rent_missed)
@@ -17091,7 +17172,8 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 		"stops", "seizures", "heat_stops", "heat_seized", "bans",
 		"wanders", "found", "shift_pay", "upgrades", "clocked", "workable",
 		"corners", "soldiers", "turf_spend", "turf_income",
-		"dre_loans_taken", "book_loans_funded", "repeat_contracts_worked"]
+		"dre_loans_taken", "book_loans_funded", "repeat_contracts_worked",
+		"treatments", "rests", "damage_taken", "min_health", "final_health"]
 	for key in averaged:
 		var total: float = 0.0
 		for run in runs:
@@ -17103,6 +17185,18 @@ func _econ_mean_over_seeds(gs: Node, gm: Node, profile: Dictionary) -> Dictionar
 			overs += 1
 	out["game_over_rate"] = float(overs) / float(maxi(1, runs.size()))
 	out["game_over"] = overs > 0
+	# SO-D6: deaths, apart from every other way a run can end.
+	var died: int = 0
+	var kinds: Dictionary = {}
+	for run in runs:
+		if bool(run.get("died", false)):
+			died += 1
+		var kind := str(run.get("end_kind", ""))
+		if not kind.is_empty():
+			kinds[kind] = int(kinds.get(kind, 0)) + 1
+	out["deaths"] = died
+	out["death_rate"] = float(died) / float(maxi(1, runs.size()))
+	out["end_kinds"] = kinds
 	out["game_over_reason"] = str((runs[runs.size() - 1] as Dictionary).get("game_over_reason", ""))
 	return out
 
@@ -17468,6 +17562,18 @@ func _econ_try_turf(gs: Node, gm: Node, metrics: Dictionary) -> bool:
 	var terr: Object = gm.system("territory")
 	if terr == null or bool(gs.game_over):
 		return false
+	# SO-D6 (1.6.0): do not go looking for a fight while hurt.
+	#
+	# This is where the settler was dying. A Curtis corner opens a contest, a
+	# lost contest is -8 or -16, and this leg opened one whenever the wallet
+	# could afford the claim -- never mind the body. Four to five damage a day,
+	# dead in every seed by day 27.
+	#
+	# The guard is on the whole leg rather than on the contest specifically,
+	# because recruiting a soldier and buying a corner are both steps toward
+	# the fight and a hurt player is not taking them either. Owner ruling 7.
+	if int(gs.health) < ECON_CONTEST_ABOVE and not bool(gs.get_meta("econ_reckless", false)):
+		return false
 	# What must survive the purchase: this week's rent and the phone bill.
 	var reserve: int = int(gs.WEEKLY_RENT) + int(gs.PHONE_BILL)
 
@@ -17720,6 +17826,14 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 			"dre_loans_taken": snappedf(float(row["dre_loans_taken"]), 0.1),
 			"book_loans_funded": snappedf(float(row["book_loans_funded"]), 0.1),
 			"repeat_contracts_worked": snappedf(float(row["repeat_contracts_worked"]), 0.1),
+			"treatments": snappedf(float(row.get("treatments", 0)), 0.1),
+			"rests": snappedf(float(row.get("rests", 0)), 0.1),
+			"damage_taken": snappedf(float(row.get("damage_taken", 0)), 0.1),
+			"min_health": snappedf(float(row.get("min_health", 0)), 0.1),
+			"final_health": snappedf(float(row.get("final_health", 0)), 0.1),
+			"deaths": int(row.get("deaths", 0)),
+			"death_rate": snappedf(float(row.get("death_rate", 0.0)), 0.01),
+			"end_kinds": row.get("end_kinds", {}),
 		}))
 
 	# --- invariants, not balance ---
@@ -17729,6 +17843,44 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 	# tune against.
 	var wallet: RefCounted = gm.system("wallet") as RefCounted
 	_expect_true("the wallet balances after the economy sweep", wallet.is_balanced())
+
+	# SO-D6 (1.6.0): nobody the harness is measuring should be dying of the
+	# thing this build fixed, and the one profile that refuses to look after
+	# itself should still be able to.
+	#
+	# `deaths` is separated from `game_over_rate` deliberately. Before this
+	# build the sweep read "six profiles end in every seed" and that number
+	# folded death, eviction, the sentence and Curtis into one — most of those
+	# runs were being ended by CURTIS or by rent, not by the floor, and the
+	# distinction is the difference between a recovery bug and a balance
+	# question that belongs to somebody else.
+	for row in rows:
+		var name := str(row["profile"])
+		if name == "reckless":
+			_expect_true("the reckless driver still dies (%d of %d seeds)"
+				% [int(row.get("deaths", 0)), int(row.get("seeds", 0))],
+				int(row.get("deaths", 0)) > 0)
+			_expect_true("...having gone all the way down (min health %s)"
+				% str(row.get("min_health", "?")),
+				float(row.get("min_health", 100)) <= 5.0)
+			continue
+		_expect_int("%s does not die of its own strategy" % name,
+			int(row.get("deaths", 0)), 0)
+
+	# The settler is the profile this build exists for: it took corners and it
+	# survived doing it, which it could not do in 1.5.1.
+	for row in rows:
+		if str(row["profile"]) != "settler":
+			continue
+		_expect_true("the settler still takes corners (%s)" % str(row.get("corners", 0)),
+			float(row.get("corners", 0)) > 0.0)
+		_expect_true("...and survives thirty days doing it (%s)" % str(row["days_played"]),
+			float(row["days_played"]) >= 30.0)
+		_expect_int("...without dying once", int(row.get("deaths", 0)), 0)
+		_expect_true("...and it used the recovery it now has (%s treatments)"
+			% str(row.get("treatments", 0)),
+			float(row.get("treatments", 0)) + float(row.get("rests", 0)) > 0.0)
+
 	for row in rows:
 		var name := str(row["profile"])
 		_expect_true("%s played some days" % name, float(row["days_played"]) > 1.0)
@@ -17824,6 +17976,14 @@ func _check_economy_profiles(gs: Node, gm: Node) -> void:
 	for row in rows:
 		var name := str(row["profile"])
 		var pct: int = int(row["pct_of_job"])
+		# SO-D6: the reckless control has no corridor ON PURPOSE. It is not a
+		# strategy anybody is measuring the economy of -- it exists to prove a
+		# player who refuses recovery can still die, which is asserted below on
+		# `deaths` rather than on money. Named explicitly rather than skipped by
+		# a missing entry, so the "a profile without a corridor is a COVERAGE
+		# gap" rule keeps its teeth for every other profile.
+		if name == "reckless":
+			continue
 		if not ECON_CORRIDORS.has(name):
 			_fail("economy corridor", "%s has no corridor in ECON_CORRIDORS" % name)
 			continue
@@ -23273,7 +23433,7 @@ func _fail(label: String, detail: String) -> void:
 ## rather than opening a fourth (driven, not read off a constant). The police
 ## stop's own arms moved from "the original two choices" to the triad plus
 ## HANDS OUT, the guaranteed out it shipped without.
-const MIN_CHECKS := 14881
+const MIN_CHECKS := 14909
 
 func _finish() -> void:
 	# Last action before reporting: restore the file captured before ANY probe

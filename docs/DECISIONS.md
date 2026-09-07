@@ -2210,6 +2210,74 @@ clears the band in a day — but it does mean the night is not, by itself, a roa
 back for a player with no money and no time. That is the argument for REST
 existing, and it is recorded rather than tuned.
 
+### The ruling PR 3 depends on
+
+**SO-D6 — The harness heals like a person.** `_simulate_economy` gains a
+recovery leg evaluated **above the earning legs**, because that is where it
+sits for a player too: **treat** when `health < 60` (the clinic if the ladder
+has revealed it and the wallet can afford it, else first aid — read off
+`visible_treatments()` so the driver can only reach a card a real run could),
+**REST** when `health < 40` and nothing was affordable, and `_econ_try_turf`
+**declines the whole leg below 50 health**.
+
+The guard is on the whole turf leg rather than on the contest specifically:
+recruiting a soldier and buying a corner are both steps toward the fight, and a
+hurt player is not taking them either.
+
+Thresholds are owner ruling 7 and are deliberately blunt. Nothing reads the
+odds of the next room, counts remaining slots, or optimises — a driver that
+survived by being clever would measure a bot's economy rather than a strategy's.
+
+`economy-metrics` gains `treatments`, `rests`, `damage_taken`, `min_health`,
+`final_health`, `deaths`, `death_rate` and `end_kinds`. A named **`reckless`**
+control profile skips the recovery leg and carries the contest guard past it,
+so it fights while hurt exactly the way every profile did before this build; it
+is deliberately **not** in `ECON_CORRIDORS`, because it is a control rather than
+a strategy anybody is measuring the economy of.
+
+### Measured (MEAS-D1) — the harness, before and after
+
+| Profile | pct before | pct after | ended before | ended after | deaths after | min health | treatments |
+|---|---|---|---|---|---|---|---|
+| **settler** | 60 (22 days) | **123 (31 days)** | 100% | **0%** | **0** | 45 | 14.5 |
+| everyday_criminal | 42 (8 days) | 39 (8 days) | 100% | 100% *(curtis)* | **0** | 45.5 | 3.3 |
+| stickup | 49 (8 days) | 46 (8 days) | 100% | 100% *(curtis)* | **0** | 44.8 | 3.0 |
+| stickup_crew | 31 (11 days) | 30 (11 days) | 100% | 100% *(curtis)* | **0** | 55.0 | 2.8 |
+| trader | 2 (22 days) | 2 (22 days) | 100% | 100% *(evicted)* | **0** | 98.5 | 0 |
+| boost | 4 | 3 | 50% | 50% *(evicted)* | **0** | 64.3 | 0.8 |
+| **reckless** *(control)* | — | 92 (25 days) | — | 75% | **3 of 4** | **1.0** | 0 |
+
+Every other profile is unmoved: the recovery leg only fires on a run that is
+actually hurt, and the profiles that never drop below 60 health measure exactly
+what they measured before.
+
+**Zero deaths across every non-control profile. The reckless control dies in
+three seeds of four, at minimum health 1.** That is the owner's design-intent
+line — *"a reckless player who continues fighting and refuses recovery should
+still be able to die"* — measured rather than asserted.
+
+**Only one corridor moved.** `settler` goes floor 40 → **95**. The 40 was
+1.5.1's admission that the corridor was measuring truncated runs; the flag is
+removed and the floor raised to the measured margin, which is the first time a
+corridor in this table has moved UP. That is the point: at 40 the number could
+not catch a regression back to dying, and now it can.
+
+### The finding the new metrics separated
+
+The pre-build sweep read **"six profiles end in every seed"** and that number
+was doing real damage to the reading, because `game_over_rate` folded death,
+eviction, the sentence and Curtis into one figure.
+
+Splitting `deaths` out shows what was actually happening: `everyday_criminal`,
+`stickup` and `stickup_crew` all end on **Curtis** (Exposure maxed, nobody
+standing with them — four seeds of four, by day 8–11), and `trader`, `boost`,
+`arbitrage` and `boost_finder` end on **eviction**. **Only the settler was ever
+dying of the recovery gap**, and it is fixed.
+
+The Curtis and eviction endings are unchanged by this build and are somebody
+else's balance question — recorded here so the next person reading
+`game_over_rate` does not mistake them for a recovery problem again.
+
 ## D-34 — The Floor: death at zero, and there is no way out
 
 **Decided** 2026-09-06 · **Ships in** 1.5.1, three PRs (the floor; the first
